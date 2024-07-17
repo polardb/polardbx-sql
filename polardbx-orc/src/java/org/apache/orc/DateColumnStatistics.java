@@ -62,4 +62,7 @@ public interface DateColumnStatistics extends ColumnStatistics {
    * @deprecated Use #getMaximumLocalDate instead
    */
   Date getMaximum();
+
+  Date getFirst();
+  Date getLatest();
 }

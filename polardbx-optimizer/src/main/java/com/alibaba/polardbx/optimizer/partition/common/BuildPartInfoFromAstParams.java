@@ -33,6 +33,7 @@ public class BuildPartInfoFromAstParams {
     protected String schemaName;
     protected String tableName;
     protected String tableGroupName;
+    protected boolean withImplicitTableGroup;
     protected String joinGroupName;
     protected SqlPartitionBy sqlPartitionBy;
     protected Map<SqlNode, RexNode> boundExprInfo;
@@ -67,6 +68,14 @@ public class BuildPartInfoFromAstParams {
 
     public void setTableGroupName(String tableGroupName) {
         this.tableGroupName = tableGroupName;
+    }
+
+    public boolean isWithImplicitTableGroup() {
+        return withImplicitTableGroup;
+    }
+
+    public void setWithImplicitTableGroup(boolean withImplicitTableGroup) {
+        this.withImplicitTableGroup = withImplicitTableGroup;
     }
 
     public String getJoinGroupName() {

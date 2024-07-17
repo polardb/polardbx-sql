@@ -473,17 +473,22 @@ public class MySqlSelectParser extends SQLSelectParser {
             } else {
                 tableSource = parseTableSource();
                 accept(Token.RPAREN);
-                if (lexer.token() == Token.AS
-                    && tableSource instanceof SQLValuesTableSource) {
-                    lexer.nextToken();
-                    String alias = lexer.stringVal();
-                    lexer.nextToken();
-                    tableSource.setAlias(alias);
-                    accept(Token.LPAREN);
-                    SQLValuesTableSource values = (SQLValuesTableSource) tableSource;
-                    this.exprParser.names(values.getColumns(), tableSource);
-                    accept(Token.RPAREN);
+                if (tableSource instanceof SQLValuesTableSource) {
+                    ((SQLValuesTableSource) tableSource).setBracket(true);
+                    if (lexer.token() == Token.AS) {
+                        lexer.nextToken();
+                        String alias = lexer.stringVal();
+                        lexer.nextToken();
+                        tableSource.setAlias(alias);
+                        if (lexer.token() == Token.LPAREN) {
+                            accept(Token.LPAREN);
+                            SQLValuesTableSource values = (SQLValuesTableSource) tableSource;
+                            this.exprParser.names(values.getColumns(), tableSource);
+                            accept(Token.RPAREN);
+                        }
+                    }
                 }
+
             }
 
             return parseTableSourceRest(tableSource);
@@ -998,6 +1003,16 @@ public class MySqlSelectParser extends SQLSelectParser {
                 lexer.reset(savePoint);
                 setErrorEndPos(lexer.pos());
                 printError(lexer.token());
+            }
+
+            //支持as of tso expr; expr 不做限定，可以是tso，可以是表达式。
+            //不同于下面as of timestamp 和 as of 限定了后面表达式类型;
+            if (lexer.identifierEquals("TSO")) {
+                lexer.nextToken();
+                SQLExpr expr = this.exprParser.expr();
+                tableSource.setFlashback(expr);
+                tableSource.setFlashbackWithTso(true);
+                return true;
             }
 
             SQLExpr expr = this.exprParser.expr();

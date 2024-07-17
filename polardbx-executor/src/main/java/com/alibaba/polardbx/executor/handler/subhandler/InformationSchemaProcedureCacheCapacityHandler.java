@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.FetchProcedureCacheCapacitySyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaProcedureCacheCapacity;
@@ -41,7 +42,8 @@ public class InformationSchemaProcedureCacheCapacityHandler extends BaseVirtualV
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchProcedureCacheCapacitySyncAction());
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchProcedureCacheCapacitySyncAction(),
+            SyncScope.NOT_COLUMNAR_SLAVE);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

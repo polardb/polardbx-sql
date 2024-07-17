@@ -1,0 +1,191 @@
+# clean
+drop table if exists `t_order_single_1`;
+drop table if exists `t_order_single_2`;
+drop table if exists `t_order_single_3`;
+drop table if exists `t_order_single_4`;
+drop table if exists `t_order_single_5`;
+drop table if exists `t_order_broadcast_1`;
+drop table if exists `t_order_broadcast_2`;
+drop table if exists `t_order_broadcast_3`;
+drop table if exists `t_order_broadcast_4`;
+drop table if exists `t_order_broadcast_5`;
+  
+  # create single table with cci (without PARTITION BY and PARTITIONS) 
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_single_1` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`)
+) ENGINE = InnoDB CHARSET = utf8 SINGLE;
+show full create table `t_order_single_1`;
+check columnar index `seller_id` on `t_order_single_1` meta;
+
+  # create single table with cci (with PARTITION BY, without PARTITIONS)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_single_2` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`) PARTITION BY HASH(`id`)
+) ENGINE = InnoDB CHARSET = utf8 SINGLE;
+show full create table `t_order_single_2`;
+check columnar index `seller_id` on `t_order_single_2` meta;
+  
+  # create single table with cci (without PARTITION BY and PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+CREATE TABLE `t_order_single_3` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`)
+) ENGINE = InnoDB CHARSET = utf8 SINGLE;
+show full create table `t_order_single_3`;
+check columnar index `seller_id` on `t_order_single_3` meta;
+  
+  # create single table with cci (with PARTITION BY, without PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+CREATE TABLE `t_order_single_4` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`) PARTITION BY HASH(`id`)
+) ENGINE = InnoDB CHARSET = utf8 SINGLE;
+show full create table `t_order_single_4`;
+check columnar index `seller_id` on `t_order_single_4` meta;
+
+  # create single table with cci (without PARTITION BY and PARTITIONS, using implicit pk)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_single_5` (
+`id` bigint(11) NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+CLUSTERED COLUMNAR INDEX(`seller_id`)
+) ENGINE = InnoDB CHARSET = utf8 SINGLE;
+show full create table `t_order_single_5`;
+check columnar index `seller_id` on `t_order_single_5` meta;
+
+  # create broadcast table with cci (without PARTITION BY and PARTITIONS) 
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_broadcast_1` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`)
+) ENGINE = InnoDB CHARSET = utf8 BROADCAST;
+show full create table `t_order_broadcast_1`;
+check columnar index `seller_id` on `t_order_broadcast_1` meta;
+
+  # create broadcast table with cci (with PARTITION BY, without PARTITIONS)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_broadcast_2` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`) PARTITION BY HASH(`id`)
+) ENGINE = InnoDB CHARSET = utf8 BROADCAST;
+show full create table `t_order_broadcast_2`;
+check columnar index `seller_id` on `t_order_broadcast_2` meta;
+  
+  # create broadcast table with cci (without PARTITION BY and PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+CREATE TABLE `t_order_broadcast_3` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`)
+) ENGINE = InnoDB CHARSET = utf8 BROADCAST;
+show full create table `t_order_broadcast_3`;
+check columnar index `seller_id` on `t_order_broadcast_3` meta;
+  
+  # create broadcast table with cci (with PARTITION BY, without PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+CREATE TABLE `t_order_broadcast_4` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+PRIMARY KEY (`id`),
+CLUSTERED COLUMNAR INDEX(`seller_id`) PARTITION BY HASH(`id`)
+) ENGINE = InnoDB CHARSET = utf8 BROADCAST;
+show full create table `t_order_broadcast_4`;
+check columnar index `seller_id` on `t_order_broadcast_4` meta;
+
+  # create broadcast table with cci (without PARTITION BY and PARTITIONS, using implicit pk)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_broadcast_5` (
+`id` bigint(11) NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double ( 10, 2 ),
+CLUSTERED COLUMNAR INDEX(`seller_id`)
+) ENGINE = InnoDB CHARSET = utf8 BROADCAST;
+show full create table `t_order_broadcast_5`;
+check columnar index `seller_id` on `t_order_broadcast_5` meta;
+
+# cleanup
+drop table if exists `t_order_single_1`;
+drop table if exists `t_order_single_2`;
+drop table if exists `t_order_single_3`;
+drop table if exists `t_order_single_4`;
+drop table if exists `t_order_single_5`;
+drop table if exists `t_order_broadcast_1`;
+drop table if exists `t_order_broadcast_2`;
+drop table if exists `t_order_broadcast_3`;
+drop table if exists `t_order_broadcast_4`;
+drop table if exists `t_order_broadcast_5`;

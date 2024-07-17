@@ -76,7 +76,7 @@ public class SystemDefaultPropertyHelper {
             conn.setAutoCommit(false);
             InstConfigAccessor instConfigAcc = new InstConfigAccessor();
             instConfigAcc.setConnection(conn);
-            instConfigAcc.addInstConfigs(InstIdUtil.getInstId(), properties);
+            instConfigAcc.addInstConfigs(InstIdUtil.getInstId(), properties, false);
             conn.commit();
         } catch (Throwable ex) {
             logger.warn("Failed to register to system default properties into metadb, err is" + ex.getMessage(), ex);
@@ -277,6 +277,9 @@ public class SystemDefaultPropertyHelper {
             ConnectionParams.ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX.getDefault());
         sysDefaultProperties.put(ConnectionProperties.ENABLE_AUTO_USE_COLUMNS_PARTITION,
             ConnectionParams.ENABLE_AUTO_USE_COLUMNS_PARTITION.getDefault());
+
+        sysDefaultProperties.put(ConnectionProperties.MAX_PARTITION_NAME_LENGTH,
+            ConnectionParams.MAX_PARTITION_NAME_LENGTH.getDefault());
     }
 
     private static void prepareDefaultPropertiesForServerId(Properties sysDefaultProperties) {

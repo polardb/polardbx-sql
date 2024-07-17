@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.TableName;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.googlecode.protobuf.format.JsonFormat;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.properties.ConnectionParams;

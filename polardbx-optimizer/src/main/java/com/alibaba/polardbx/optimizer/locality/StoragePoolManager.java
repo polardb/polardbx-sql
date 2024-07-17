@@ -16,10 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.locality;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
@@ -27,10 +30,14 @@ import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.locality.StoragePoolInfoAccessor;
 import com.alibaba.polardbx.gms.locality.StoragePoolInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
+import com.alibaba.polardbx.gms.topology.StorageInfoExtraFieldJSON;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +50,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -101,13 +109,18 @@ public class StoragePoolManager extends AbstractLifecycle {
     }
 
     public Boolean isTriggered() {
-        return !storagePoolCache.isEmpty();
+        Set<String> cachedStoragePoolName = new HashSet<>(storagePoolCacheByName.keySet());
+        Boolean isRecycleStoragePoolEmpty =
+            CollectionUtils.isEmpty(storagePoolCacheByName.get(RECYCLE_STORAGE_POOL_NAME).getDnLists());
+        cachedStoragePoolName.remove(DEFAULT_STORAGE_POOL_NAME);
+        cachedStoragePoolName.remove(RECYCLE_STORAGE_POOL_NAME);
+        return !cachedStoragePoolName.isEmpty() || !isRecycleStoragePoolEmpty;
     }
 
     @Override
     protected void doInit() {
         super.doInit();
-        logger.info("init StoragePoolManager");
+        logger.warn("init StoragePoolManager");
         if (mockMode) {
             this.storagePoolCache = new HashMap<>();
             this.storagePoolCacheByName = new HashMap<>();
@@ -123,10 +136,68 @@ public class StoragePoolManager extends AbstractLifecycle {
 
             MetaDbConfigManager.getInstance().register(dataId, conn);
             MetaDbConfigManager.getInstance().bindListener(dataId, listener);
+            initializeDefaultAndRecycleStoragePool();
             reloadStoragePoolInfoFromMetaDb();
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
                 "setup storage pool config_listener failed");
+        }
+    }
+
+    private void initializeDefaultAndRecycleStoragePool() {
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            StoragePoolInfoAccessor accessor = new StoragePoolInfoAccessor();
+            accessor.setConnection(conn);
+            List<StoragePoolInfoRecord> records = accessor.getAllStoragePoolInfoRecord();
+            ServerInstIdManager serverInstIdManager = ServerInstIdManager.getInstance();
+            if (records.isEmpty()) {
+                if (!ConfigDataMode.isMasterMode()) {
+                    return;
+                }
+                String instId = serverInstIdManager.getMasterInstId();
+                StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
+                storageInfoAccessor.setConnection(conn);
+                List<StorageInfoRecord> storageInfoRecords =
+                    storageInfoAccessor.getStorageInfosByInstId(instId).stream()
+                        .filter(o -> o.instKind == StorageInfoRecord.INST_KIND_MASTER).collect(Collectors.toList());
+                Set<String> storageInstIds =
+                    storageInfoRecords.stream().map(o -> o.storageInstId).collect(Collectors.toSet());
+                String defaultDnIds = StringUtils.join(storageInstIds, ",");
+                List<String> undeletableDnIds =
+                    DbTopologyManager.getNonDeletableStorageInst(conn).stream().filter(o -> storageInstIds.contains(o))
+                        .collect(Collectors.toList());
+                String undeletableDnId;
+                if (undeletableDnIds.isEmpty()) {
+                    if (storageInstIds.size() > 0) {
+                        undeletableDnId = new ArrayList<>(storageInstIds).get(0);
+                    } else {
+                        logger.warn(
+                            "initialize failed for instance..." + "because there are no avaliable storage insts");
+                        return;
+                    }
+                } else {
+                    undeletableDnId = undeletableDnIds.get(0);
+                }
+                String initializeStoragePoolInfo =
+                    String.format("initialize %s storage pool info with %s, %s", "default", defaultDnIds,
+                        undeletableDnId);
+                EventLogger.log(EventType.STORAGE_POOL_INFO, initializeStoragePoolInfo);
+                accessor.addNewStoragePoolInfo(DEFAULT_STORAGE_POOL_NAME, defaultDnIds, undeletableDnId);
+                initializeStoragePoolInfo =
+                    String.format("initialize %s storage pool info with %s, %s", "recycle", defaultDnIds,
+                        undeletableDnId);
+                logger.warn(initializeStoragePoolInfo);
+                EventLogger.log(EventType.STORAGE_POOL_INFO, initializeStoragePoolInfo);
+                accessor.addNewStoragePoolInfo(RECYCLE_STORAGE_POOL_NAME, "", "");
+                for (StorageInfoRecord storageInfoRecord : storageInfoRecords) {
+                    StorageInfoExtraFieldJSON extras =
+                        Optional.ofNullable(storageInfoRecord.extras).orElse(new StorageInfoExtraFieldJSON());
+                    extras.setStoragePoolName(DEFAULT_STORAGE_POOL_NAME);
+                    storageInfoAccessor.updateStoragePoolName(storageInfoRecord.storageInstId, extras);
+                }
+            }
+        } catch (SQLException e) {
+            logger.warn("initialize failed for instance..." + e.getMessage());
         }
     }
 
@@ -212,6 +283,18 @@ public class StoragePoolManager extends AbstractLifecycle {
             fullDnSet.removeAll(Arrays.asList(removeDnIds));
             String aftershrinkDnIds = StringUtils.join(fullDnSet, ",");
             updateStoragePoolInfo(storagePoolName, aftershrinkDnIds, undeletableDnId);
+        }
+        reloadStoragePoolInfoFromMetaDb();
+    }
+
+    public void autoExpandDefaultStoragePool() {
+        if (storagePoolCacheByName.containsKey(DEFAULT_STORAGE_POOL_NAME)) {
+            StoragePoolInfo storagePoolInfo = storagePoolCacheByName.get(DEFAULT_STORAGE_POOL_NAME);
+            String undeletableDnId = storagePoolInfo.getUndeletableDnId();
+            String[] dnIds = storagePoolInfo.getDnIds().split(",");
+            Set<String> fullDnSet = DbTopologyManager.getAllAliveStorageInsts(InstIdUtil.getMasterInstId());
+            String afterExpandDnIds = StringUtils.join(fullDnSet, ",");
+            updateStoragePoolInfo(DEFAULT_STORAGE_POOL_NAME, afterExpandDnIds, undeletableDnId);
         }
         reloadStoragePoolInfoFromMetaDb();
     }
@@ -320,7 +403,7 @@ public class StoragePoolManager extends AbstractLifecycle {
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             StoragePoolInfoAccessor accessor = new StoragePoolInfoAccessor();
             accessor.setConnection(conn);
-            accessor.truncateStoragePoolInfo();
+            accessor.truncateStoragePoolInfo(DEFAULT_STORAGE_POOL_NAME, RECYCLE_STORAGE_POOL_NAME);
         } catch (SQLException e) {
             MetaDbLogUtil.META_DB_LOG.error(e);
             throw GeneralUtil.nestedException(e);
@@ -381,10 +464,11 @@ public class StoragePoolManager extends AbstractLifecycle {
                 StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
                 storageInfoAccessor.setConnection(conn);
                 List<StorageInfoRecord> storageInfoRecords =
-                    storageInfoAccessor.getStorageInfosByInstId(InstIdUtil.getInstId()).
-                        stream().filter(o -> o.instKind == StorageInfoRecord.INST_KIND_MASTER)
+                    storageInfoAccessor.getStorageInfosByInstId(InstIdUtil.getInstId()).stream()
+                        .filter(o -> o.instKind == StorageInfoRecord.INST_KIND_MASTER)
                         .filter(o -> !occupiedStorageIds.contains(o.storageInstId)).collect(Collectors.toList());
-                storageIds = storageInfoRecords.stream().map(o -> o.storageInstId).collect(Collectors.toList());
+                storageIds =
+                    storageInfoRecords.stream().map(o -> o.storageInstId).distinct().collect(Collectors.toList());
             } else {
                 storageIds = newCacheByName.get(DEFAULT_STORAGE_POOL_NAME).getDnLists();
             }
@@ -393,7 +477,7 @@ public class StoragePoolManager extends AbstractLifecycle {
             this.storagePoolCacheByName = newCacheByName;
             this.storagePoolMap = newStoragePoolMap;
 
-            logger.info("reload storage pool cache from metadb: ");
+            logger.warn("reload storage pool cache from metadb: ");
         } catch (SQLException e) {
             MetaDbLogUtil.META_DB_LOG.error(e);
             throw GeneralUtil.nestedException(e);

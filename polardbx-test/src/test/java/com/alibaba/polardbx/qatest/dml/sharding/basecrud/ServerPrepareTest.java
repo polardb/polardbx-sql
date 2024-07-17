@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.basecrud;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
@@ -432,8 +433,32 @@ public class ServerPrepareTest extends ReadBaseTestCase {
             Assert.fail("Expect exception");
         } catch (SQLException e) {
             // 预期MySQL prepare也失败
-            System.out.println(e.getMessage());
             Assert.assertTrue(e.getMessage().contains(errMsg));
+        }
+    }
+
+    @Test
+    public void prepareExceedsLimitTest() {
+        if (!PropertiesUtil.usePrepare() || PropertiesUtil.useCursorFetch()) {
+            // 只有 ServerPrepare 才报错
+            return;
+        }
+        // 同一个session内prepare语句上限
+        final int MAX_PREPARED_COUNT = Integer.parseInt(ConnectionParams.MAX_SESSION_PREPARED_STMT_COUNT.getDefault());
+        for (int i = 0; i < MAX_PREPARED_COUNT; i++) {
+            try {
+                PreparedStatement ps = tddlPreparedConn.prepareStatement("select concat(?,?)");
+            } catch (SQLException e) {
+                e.printStackTrace();
+                Assert.fail("Expect prepare success");
+            }
+        }
+        try {
+            PreparedStatement ps = tddlPreparedConn.prepareStatement("select concat(?,?)");
+            Assert.fail("Expect prepare failure");
+        } catch (SQLException e) {
+            Assert.assertTrue(e.getMessage()
+                .contains("Can't create more than MAX_SESSION_PREPARED_STMT_COUNT statements in one session"));
         }
     }
 

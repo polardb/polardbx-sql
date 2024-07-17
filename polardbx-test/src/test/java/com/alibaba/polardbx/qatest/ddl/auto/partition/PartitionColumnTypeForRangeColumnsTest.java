@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.qatest.ddl.auto.partition;
 
 import org.junit.Ignore;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
@@ -1331,6 +1333,11 @@ public class PartitionColumnTypeForRangeColumnsTest extends PartitionColumnTypeT
 
         );
     }
+//
+//    @Before
+//    public void setSqlMode(){
+//        JdbcUtil.executeSuccess(tddlConnection, "SET SESSION sql_mode = 'STRICT_TRANS_TABLES'");
+//    }
 
     @Test
     public void runTest() throws SQLException {

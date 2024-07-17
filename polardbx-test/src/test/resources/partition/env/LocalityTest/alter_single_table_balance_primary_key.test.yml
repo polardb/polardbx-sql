@@ -1,0 +1,27 @@
+storageList: [ $dn1, $dn2 ]
+dbName: "test_locality_balance_single"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists test_locality_balance_single"
+      - "create database test_locality_balance_single mode = auto"
+      - "use test_locality_balance_single"
+      - " create table s0(x int, y int) single locality='balance_single_table=on'"
+      - " alter table s0 ADD CONSTRAINT pk_y PRIMARY KEY (y);"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - s0 table "balance_single_table=on"
+      tableGroupMatchCheck:
+        - s0 $tg1 "balance_single_table=on"
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - s0 table "$dn1,$dn2"
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "drop database if exists test_locality_balance_single;"

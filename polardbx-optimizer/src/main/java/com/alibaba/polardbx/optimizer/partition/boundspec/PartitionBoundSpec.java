@@ -225,6 +225,9 @@ public abstract class PartitionBoundSpec {
         case HASH:
             result = new HashBoundSpec();
             break;
+        case DIRECT_HASH:
+            result = new DirectHashBoundSpec();
+            break;
         case KEY:
             result = new KeyBoundSpec();
             break;
@@ -236,6 +239,9 @@ public abstract class PartitionBoundSpec {
             break;
         case UDF_HASH:
             result = new UdfHashBoundSpec();
+            break;
+        case CO_HASH:
+            result = new CoHashBoundSpec();
             break;
         default:
             throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "unknown partition policy");

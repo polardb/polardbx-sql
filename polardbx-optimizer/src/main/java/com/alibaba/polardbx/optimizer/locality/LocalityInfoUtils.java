@@ -231,7 +231,8 @@ public class LocalityInfoUtils {
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
 //            .filter(partitionGroup -> !StringUtils.isEmpty(partitionGroup.getLocality())).collect(Collectors.toList());
 
-        Map<String, List<GroupDetailInfoExRecord>> groupInfoOfPartitionGroups = new HashMap<>();
+        Map<String, List<GroupDetailInfoExRecord>> groupInfoOfPartitionGroups =
+            new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
             LocalityDesc localityDesc = LocalityInfoUtils.parse(partitionGroupRecord.locality);
             if (!localityDesc.holdEmptyDnList()) {
@@ -280,11 +281,15 @@ public class LocalityInfoUtils {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
         List<GroupDetailInfoExRecord> records = groupDetailInfoExRecordList.stream()
-            .filter(o -> dbLocalityDesc.matchStorageInstance(o.storageInstId))
+            .filter(o -> dbLocalityDesc.fullMatchStorageInstance(o.storageInstId))
             .collect(Collectors.toList());
+        List<GroupDetailInfoExRecord> finalRecords = new ArrayList<>();
+        for (GroupDetailInfoExRecord record : records) {
+            finalRecords.add(record);
+        }
         LocalityDesc tgLocalityDesc = tableGroupConfig.getLocalityDesc();
         if (!tgLocalityDesc.holdEmptyDnList()) {
-            records = records.stream()
+            finalRecords = records.stream()
                 .filter(o -> tableGroupConfig.getLocalityDesc().matchStorageInstance(o.storageInstId))
                 .collect(Collectors.toList());
         }
@@ -297,14 +302,14 @@ public class LocalityInfoUtils {
                     String.format("can't find the partitionGroup [%s].[%s] ",
                         tableGroupConfig.getTableGroupRecord().getTg_name(), firstLevelPartition));
             }
-            LocalityDesc localityDesc = LocalityDesc.parse(partitionGroupRecords.get(0).locality);
+            LocalityDesc localityDesc = LocalityInfoUtils.parse(partitionGroupRecords.get(0).locality);
             if (!localityDesc.holdEmptyDnList()) {
-                records =
+                finalRecords =
                     records.stream().filter(o -> localityDesc.matchStorageInstance(o.storageInstId))
                         .collect(Collectors.toList());
             }
         }
-        return records;
+        return finalRecords;
     }
 
     public static Boolean withoutRestrictedAllowedGroup(String schemaName, Long tableGroupId,

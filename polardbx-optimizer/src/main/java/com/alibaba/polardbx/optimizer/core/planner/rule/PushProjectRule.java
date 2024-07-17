@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptRule;
@@ -157,8 +158,8 @@ public class PushProjectRule extends RelOptRule {
             // then try push part of project down
             List<RexNode> subquerys =
                 project.getProjects().stream().filter(e -> RexUtil.containsCorrelation(e)).collect(Collectors.toList());
-            if (subquerys.size() > 0 && RelUtils
-                .isAllSingleTableInSameSchema(RelOptUtil.findTables(logicalView))) {
+            if (subquerys.size() > 0 && TableTopologyUtil
+                .isAllSingleTableInSamePhysicalDB(RelOptUtil.findTables(logicalView))) {
 
                 // find push part of projects
                 List<RexNode> pushPart = subquerys.stream().filter(e -> couldPush(e)).collect(Collectors.toList());
@@ -235,7 +236,7 @@ public class PushProjectRule extends RelOptRule {
         dynamicFinder.getScalar().stream().map(s -> RelOptUtil.findTables(s.getRel())).forEach(t -> tables.addAll(t));
         dynamicFinder.getCorrelateScalar().stream().map(s -> RelOptUtil.findTables(s.getRel()))
             .forEach(t -> tables.addAll(t));
-        return RelUtils.isAllSingleTableInSameSchema(tables);
+        return TableTopologyUtil.isAllSingleTableInSamePhysicalDB(tables);
     }
 
     protected boolean remainProject(Project project) {

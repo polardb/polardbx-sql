@@ -18,18 +18,8 @@
 
 package org.apache.orc.impl;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedOutputStream;
-
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -39,11 +29,20 @@ import org.apache.orc.OrcFile;
 import org.apache.orc.OrcProto;
 import org.apache.orc.PhysicalWriter;
 import org.apache.orc.TypeDescription;
+import org.apache.orc.impl.writer.StreamOptions;
 import org.apache.orc.impl.writer.WriterEncryptionKey;
 import org.apache.orc.impl.writer.WriterEncryptionVariant;
-import org.apache.orc.impl.writer.StreamOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class PhysicalFsWriter implements PhysicalWriter {
   private static final Logger LOG = LoggerFactory.getLogger(PhysicalFsWriter.class);
@@ -104,7 +103,7 @@ public class PhysicalFsWriter implements PhysicalWriter {
           opts.getBufferSize()));
     }
     CompressionCodec codec = OrcCodecPool.getCodec(opts.getCompress());
-    if (codec != null){
+    if (codec != null) {
       compress.withCodec(codec, codec.getDefaultOptions());
     }
     this.compressionStrategy = opts.getCompressionStrategy();
@@ -114,6 +113,9 @@ public class PhysicalFsWriter implements PhysicalWriter {
         " compression: {}", path, defaultStripeSize, blockSize, compress);
     rawWriter = fs.create(path, opts.getOverwrite(), HDFS_BUFFER_SIZE,
         fs.getDefaultReplication(path), blockSize);
+    if (opts.getRateLimiter() != null) {
+      rawWriter = new FSDataOutputStreamRateLimiter(rawWriter, opts.getRateLimiter());
+    }
     blockOffset = 0;
     unencrypted = new VariantTracker(opts.getSchema(), compress);
     writeVariableLengthBlocks = opts.getWriteVariableLengthBlocks();
@@ -121,7 +123,7 @@ public class PhysicalFsWriter implements PhysicalWriter {
     rawStream = new DirectStream(rawWriter);
     compressStream = new OutStream("stripe footer", compress, rawStream);
     codedCompressStream = CodedOutputStream.newInstance(compressStream);
-    for(WriterEncryptionVariant variant: encryption) {
+    for (WriterEncryptionVariant variant : encryption) {
       WriterEncryptionKey key = variant.getKeyDescription();
       StreamOptions encryptOptions =
           new StreamOptions(unencrypted.options)
@@ -745,6 +747,13 @@ public class PhysicalFsWriter implements PhysicalWriter {
                                ) throws IOException {
     OutputStream stream = createIndexStream(name);
     bloom.build().writeTo(stream);
+    stream.flush();
+  }
+
+  @Override
+  public void writeBitmap(StreamName name, OrcProto.BitmapIndex.Builder bitmap) throws IOException {
+    OutputStream stream = createIndexStream(name);
+    bitmap.build().writeTo(stream);
     stream.flush();
   }
 

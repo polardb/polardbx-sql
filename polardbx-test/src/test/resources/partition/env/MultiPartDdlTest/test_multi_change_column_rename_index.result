@@ -1,0 +1,73 @@
+DROP DATABASE IF EXISTS d_multi_part_ddl;
+CREATE DATABASE d_multi_part_ddl MODE 'auto';
+USE d_multi_part_ddl;
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1 (
+	c1 varchar(10),
+	c2 varchar(20),
+	c3 varchar(30),
+	c4 varchar(40),
+	c5 varchar(50),
+	c6 varchar(60)
+);
+ALTER TABLE `t1`
+	ADD LOCAL INDEX `i_ab` (c3, c4);
+ALTER TABLE `t1`
+	ADD LOCAL INDEX `i_cd` (c3, c5);
+ALTER TABLE `t1`
+	ADD LOCAL INDEX `i_fn` (c2, c4);
+ALTER TABLE `t1`
+	ADD LOCAL INDEX `i_ch` (c1, c6);
+ALTER TABLE `t1`
+	ADD LOCAL INDEX `i_mn` (c1, c5);
+ALTER TABLE `t1`
+	MODIFY COLUMN `c3` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+	MODIFY COLUMN `c4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`,
+	CHANGE COLUMN `c2` `c5` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`,
+	CHANGE COLUMN `c6` `c2` varchar(60) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c5`,
+	CHANGE COLUMN `c1` `c7` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+	CHANGE COLUMN `c5` `c1` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c7`;
+/*+TDDL:CMD_EXTRA(LOGICAL_CHECK_COLUMN_ORDER=true)*/CHECK TABLE t1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.t1:Topology,check,status,OK
+d_multi_part_ddl.t1:Columns,check,status,OK
+t1.i_ab:Local Index,check,status,OK
+t1.i_cd:Local Index,check,status,OK
+t1.i_ch:Local Index,check,status,OK
+t1.i_fn:Local Index,check,status,OK
+t1.i_mn:Local Index,check,status,OK
+ALTER TABLE `t1`
+	DROP COLUMN `c5`,
+	DROP COLUMN `c2`,
+	MODIFY COLUMN `c4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+	MODIFY COLUMN `c3` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`,
+	MODIFY COLUMN `c7` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL AFTER `c3`,
+	RENAME INDEX `i_ab` TO `i_mn`,
+	RENAME INDEX `i_cd` TO `i_ch`,
+	RENAME INDEX `i_ch` TO `i_ab`,
+	RENAME INDEX `i_mn` TO `i_fn`,
+	RENAME INDEX `i_fn` TO `i_cd`,
+	CHARACTER SET = utf8;
+/*+TDDL:CMD_EXTRA(LOGICAL_CHECK_COLUMN_ORDER=true)*/CHECK TABLE t1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.t1:Topology,check,status,OK
+d_multi_part_ddl.t1:Columns,check,status,OK
+t1.i_ab:Local Index,check,status,OK
+t1.i_cd:Local Index,check,status,OK
+t1.i_ch:Local Index,check,status,OK
+t1.i_fn:Local Index,check,status,OK
+t1.i_mn:Local Index,check,status,OK
+ALTER TABLE `t1`
+	RENAME INDEX `i_cd` TO `i_pq`,
+	CHARACTER SET = utf8;
+/*+TDDL:CMD_EXTRA(LOGICAL_CHECK_COLUMN_ORDER=true)*/CHECK TABLE t1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.t1:Topology,check,status,OK
+d_multi_part_ddl.t1:Columns,check,status,OK
+t1.i_ab:Local Index,check,status,OK
+t1.i_ch:Local Index,check,status,OK
+t1.i_fn:Local Index,check,status,OK
+t1.i_mn:Local Index,check,status,OK
+t1.i_pq:Local Index,check,status,OK
+USE polardbx;
+DROP DATABASE IF EXISTS d_multi_part_ddl;

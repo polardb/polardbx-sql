@@ -107,6 +107,11 @@ public interface StorageField {
     void hash(long[] numbers);
 
     /**
+     * Get hash code of storage filed using Xxhash64
+     */
+    long xxHashCode();
+
+    /**
      * Make sort key byte array from this field.
      *
      * @param result The byte array to hold the result.

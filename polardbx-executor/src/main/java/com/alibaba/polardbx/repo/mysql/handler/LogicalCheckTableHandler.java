@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
+import com.alibaba.polardbx.common.properties.BooleanConfigParam;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -32,6 +34,8 @@ import com.alibaba.polardbx.executor.handler.LogicalCheckLocalPartitionHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.engine.FileSystemGroup;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
+import com.alibaba.polardbx.gms.metadb.record.RecordConverter;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -67,6 +71,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.repo.mysql.checktable.CheckTableUtil;
+import com.alibaba.polardbx.repo.mysql.checktable.ColumnDiffResult;
 import com.alibaba.polardbx.repo.mysql.checktable.FieldDescription;
 import com.alibaba.polardbx.repo.mysql.checktable.TableCheckResult;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
@@ -202,6 +207,8 @@ public class LogicalCheckTableHandler extends HandlerCommon {
 
     protected void doCheckTableColumn(String schemaName, String logicalTableName, ExecutionContext executionContext,
                                       ArrayResultCursor result) {
+        Boolean checkLogicalColumnOrder =
+            executionContext.getParamManager().getBoolean(ConnectionParams.CHECK_LOGICAL_COLUMN_ORDER);
         String tableText = String.format("%s.%s:Columns", schemaName, logicalTableName);
         String opText = "check";
         String statusText = "status";
@@ -221,22 +228,59 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         if (logicalTablePartInfo.getPartitionBy().getSubPartitionBy() != null) {
             firstPartSpec = firstPartSpec.getSubPartitions().get(0);
         }
-        String firstPhysicalGroupName = firstPartSpec.getLocation().getGroupKey();
-        String firstPhysicalTableName = firstPartSpec.getLocation().getPhyTableName();
+        String physicalGroupName = firstPartSpec.getLocation().getGroupKey();
+        String physicalTableName = firstPartSpec.getLocation().getPhyTableName();
 
         TableDescription firstPhysicalTableDesc = CheckTableUtil.getTableDescription((MyRepository) this.repo,
-            firstPhysicalGroupName,
-            firstPhysicalTableName,
+            physicalGroupName,
+            physicalTableName,
             false,
             schemaName);
         try (Connection connection = MetaDbUtil.getConnection()) {
+            Boolean columnOrderSame = true;
             TableInfoManager tableInfoManager = new TableInfoManager();
             tableInfoManager.setConnection(connection);
-            List<ColumnsRecord> columnsRecordList = tableInfoManager.queryColumns(schemaName, logicalTableName);
+            List<ColumnsRecord> logicalColumnsRecord = tableInfoManager.queryColumns(schemaName, logicalTableName);
+            if (checkLogicalColumnOrder) {
+                List<String> columnNames =
+                    logicalColumnsRecord.stream().map(o -> o.columnName).collect(Collectors.toList());
+                TGroupDataSource dataSource =
+                    (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                        .getGroupExecutor(physicalGroupName).getDataSource();
+                List<ColumnsInfoSchemaRecord> physicalColumnsInfo;
+                Map<String, Map<String, Object>> columnsJdbcExtInfo;
+                try (Connection phyDbConn = dataSource.getConnection()) {
+                    String physicalDbName = buildPhysicalDbNameFromGroupName(dataSource.getDbGroupKey());
+                    physicalColumnsInfo =
+                        tableInfoManager.fetchColumnInfoSchema(physicalDbName, physicalTableName, columnNames,
+                            phyDbConn);
+                    columnsJdbcExtInfo = tableInfoManager.fetchColumnJdbcExtInfo(
+                        physicalDbName, physicalTableName, dataSource);
+                } catch (SQLException e) {
+                    logger.error(String.format(
+                        "error occurs while checking table column, schemaName: %s, tableName: %s", schemaName,
+                        logicalTableName), e);
+                    throw GeneralUtil.nestedException(e);
+                }
+                List<ColumnsRecord> physicalColumnsRecord =
+                    RecordConverter.convertColumn(physicalColumnsInfo, columnsJdbcExtInfo, schemaName,
+                        logicalTableName);
+                ColumnDiffResult columnDiffResult =
+                    ColumnDiffResult.diffPhysicalColumnAndLogicalColumnOrder(physicalColumnsRecord,
+                        logicalColumnsRecord);
 
-//        Map<String, FieldDescription> logicalTableMetaDbDesc = new LinkedHashMap<>();
+                if (columnDiffResult.diff()) {
+                    statusText = "Error";
+                    columnOrderSame = false;
+                    List<Object[]> columnDiffRows = columnDiffResult.convertToRows(tableText, opText, statusText);
+                    for (Object[] columDiffRow : columnDiffRows) {
+                        result.addRow(columDiffRow);
+                    }
+                }
+            }
+
             List<FieldDescription> logicalTableDesc = new ArrayList<>();
-            for (ColumnsRecord columnsRecord : columnsRecordList) {
+            for (ColumnsRecord columnsRecord : logicalColumnsRecord) {
                 FieldDescription fieldDescription = new FieldDescription();
                 fieldDescription.setFieldDefault(columnsRecord.columnDefault);
                 fieldDescription.setFieldKey(columnsRecord.columnKey);
@@ -255,9 +299,11 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             }
             TableCheckResult checkResult =
                 CheckTableUtil.verifyLogicalAndPhysicalMeta(firstPhysicalTableDesc, logicalTableDesc);
-            if (!isCheckResultNormal(checkResult)) {
+            if (!isCheckResultNormal(checkResult) || !columnOrderSame) {
                 statusText = "Error";
-                outputFieldCheckResults(result, tableText, opText, statusText, checkResult, isBroadCast);
+                if (!isCheckResultNormal(checkResult)) {
+                    outputFieldCheckResults(result, tableText, opText, statusText, checkResult, isBroadCast);
+                }
             } else {
                 String msgContent = statusOK;
                 result.addRow(new Object[] {tableText, opText, statusText, msgContent});
@@ -291,7 +337,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 int stripeNum = 0;
                 try {
                     // check the existence of file record in oss
-                    if (!fileSystemGroup.exists(fileMeta.getFileName())) {
+                    if (!fileSystemGroup.exists(fileMeta.getFileName(), false)) {
                         result.addRow(new Object[] {
                             tableText, opText, MsgType.error.name(),
                             "File " + fileMeta.getFileName() + " doesn't exist"});
@@ -325,7 +371,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                             }
                             // check the existence of bloom filter in oss
                             if (!StringUtil.isEmpty(path)) {
-                                if (!fileSystemGroup.exists(path)) {
+                                if (!fileSystemGroup.exists(path, false)) {
                                     result.addRow(new Object[] {
                                         tableText, opText, MsgType.error.name(),
                                         "Bloom filter " + path + " doesn't exist"});
@@ -425,11 +471,11 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         }
 
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
-            if (bean.gsiMetaBean != null) {
+            if (bean.gsiMetaBean != null && !bean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean gsiMetaBean = bean.gsiMetaBean;
-                doCheckForOnePartTableTopology(schemaName, gsiMetaBean.indexTableName, executionContext, result,
+                doCheckForOnePartTableTopology(schemaName, gsiMetaBean.indexName, executionContext, result,
                     logicalTableName);
-                doCheckTableGsiCoveringColumns(schemaName, gsiMetaBean.indexTableName, logicalTableName,
+                doCheckTableGsiCoveringColumns(schemaName, gsiMetaBean.indexName, logicalTableName,
                     executionContext, result);
             }
         }
@@ -574,7 +620,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
             // 标识该表是否广播表
             isBroadcastTable = tableRule.isBroadcast();
 
-            // We should check each group for broadcast table.
+            // We should check each group for broadcast table
             if (isBroadcastTable) {
                 referenceGroupName = defaultDbIndex;
                 referenceTableName = physicalTableName;

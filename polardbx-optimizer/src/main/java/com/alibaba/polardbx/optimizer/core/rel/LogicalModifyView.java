@@ -17,7 +17,9 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableModify;
@@ -113,7 +115,14 @@ public class LogicalModifyView extends LogicalView {
             if (executionContext.getParams() != null) {
                 executionContext.getParams().setParams(param);
             }
-            Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
+            Map<String, List<List<String>>> targetTables;
+            Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> pruningMap =
+                OptimizerUtils.pruningInValue(this, executionContext);
+            if (pruningMap == null) {
+                targetTables = getTargetTables(executionContext);
+            } else {
+                targetTables = transformToTargetTables(pruningMap);
+            }
             List<String> logTbls = new ArrayList<>();
 
             logTbls.addAll(this.tableNames);
@@ -122,8 +131,9 @@ public class LogicalModifyView extends LogicalView {
                 param,
                 this,
                 dbType,
-                logTbls, getSchemaName());
-        relNodes.addAll(phyTableModifyBuilder.build(executionContext));
+                logTbls, getSchemaName(),
+                pruningMap);
+            relNodes.addAll(phyTableModifyBuilder.build(executionContext));
         }
         if (relNodes.size() > 1 && relNodes.get(0) instanceof PhyTableOperation) {
             return mergeGroupNode(relNodes, executionContext);

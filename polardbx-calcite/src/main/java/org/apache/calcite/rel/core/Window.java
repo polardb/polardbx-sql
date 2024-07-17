@@ -64,7 +64,6 @@ import java.util.List;
 public abstract class Window extends SingleRel {
   public final ImmutableList<Group>      groups;
   public final ImmutableList<RexLiteral> constants;
-  private      RelOptCost                fixedCost;
 
   /**
    * Creates a window relational expression.
@@ -183,14 +182,6 @@ public abstract class Window extends SingleRel {
       count += group.aggCalls.size();
     }
     return planner.getCostFactory().makeCost(rowsIn, rowsIn * count, 0,0,0);
-  }
-
-  public void setFixedCost(RelOptCost relOptCost) {
-    this.fixedCost = relOptCost;
-  }
-
-  public RelOptCost getFixedCost() {
-    return fixedCost;
   }
 
   /**

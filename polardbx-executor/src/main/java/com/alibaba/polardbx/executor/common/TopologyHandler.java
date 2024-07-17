@@ -37,6 +37,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
@@ -64,7 +65,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TopologyHandler extends AbstractLifecycle {
 
     public final static Logger logger = LoggerFactory.getLogger(TopologyHandler.class);
-
     private final Map<String/* group key of upper case */, IGroupExecutor> executorMap =
         new ConcurrentHashMap<String, IGroupExecutor>();
 
@@ -117,7 +117,8 @@ public class TopologyHandler extends AbstractLifecycle {
             // refresh the topology for matrix
             refresh();
         } catch (Throwable ex) {
-            logger.error("matrix topology init error,file is: appname is: " + this.getAppName(), ex);
+            logger.error("matrix topology init error, appname is: "
+                    + this.getAppName(), ex);
             throw GeneralUtil.nestedException(ex);
         }
         MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getDbTopologyDataId(schemaName), null);
@@ -230,11 +231,13 @@ public class TopologyHandler extends AbstractLifecycle {
             }
 
             List<Group> grpListToClose = new ArrayList<>();
+            List<String> grpNameListToClose = new ArrayList<>();
             for (Group oldGroup : oldGroups) {
                 boolean found = newGrpNameSet.contains(oldGroup.getName().toUpperCase());
                 if (!found) {
                     // 关闭老的group
                     grpListToClose.add(oldGroup);
+                    grpNameListToClose.add(oldGroup.getName());
                 }
             }
             for (Group oldGroup : oldScaleOutGroups) {
@@ -242,6 +245,7 @@ public class TopologyHandler extends AbstractLifecycle {
                 if (!found) {
                     // 关闭老的scale out group
                     grpListToClose.add(oldGroup);
+                    grpNameListToClose.add(oldGroup.getName());
                 }
             }
             loadAllTransGroupList();
@@ -259,6 +263,8 @@ public class TopologyHandler extends AbstractLifecycle {
                     logger.error(e);
                 }
             }
+            DbTopologyManager.refreshGroupKeysIntoTopologyMapping(this.allTransGroupList, grpNameListToClose,
+                matrix.getSchemaName());
         }
     }
 
@@ -569,7 +575,6 @@ public class TopologyHandler extends AbstractLifecycle {
         LoggerInit.TDDL_DYNAMIC_CONFIG.info(logMsg);
 
         this.allTransGroupList = groupNames;
-
         if (topologyChanger != null) {
             topologyChanger.onTopology(this);
         }

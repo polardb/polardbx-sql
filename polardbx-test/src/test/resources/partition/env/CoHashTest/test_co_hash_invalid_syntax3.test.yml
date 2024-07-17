@@ -1,0 +1,71 @@
+## DISABLE_FAST_SQL_PARSER
+
+## error_msg: $# not allowed #$
+CREATE TABLE `h_l4_bi` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(left(`c`, 4))
+PARTITIONS 8;
+
+## error_msg: $# not allowed #$
+CREATE TABLE `h_r4_bi` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(right(`c`, 4))
+PARTITIONS 8;
+
+## error_msg: $# not allowed #$
+CREATE TABLE `h_ss4_bi` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(substr(`c`, 4))
+PARTITIONS 8;
+
+  ## error_msg: $# not allowed #$
+CREATE TABLE `h_ss4_bi` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` decimal(10,0) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(substr(`c`, 4))
+PARTITIONS 8;
+
+  ## error_msg: $# not allowed #$
+CREATE TABLE `r_ss4_bi` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(substr(`c`, 4))
+(
+  partition p1 values less than(maxvalue)
+);
+
+## error_msg: $# not allowed #$
+CREATE TABLE `l_ss4_bi` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(substr(`c`, 4))
+(
+partition p1 values in(default)
+);

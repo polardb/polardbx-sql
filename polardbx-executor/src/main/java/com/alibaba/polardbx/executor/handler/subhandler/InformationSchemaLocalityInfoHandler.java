@@ -128,9 +128,7 @@ public class InformationSchemaLocalityInfoHandler extends BaseVirtualViewSubClas
                 partitionGroupRecordList = tableGroupConfig.getPartitionGroupRecords();
                 objectName = tableGroupConfig.getTableGroupRecord().getTg_name();
                 locality = tableGroupConfig.getLocalityDesc().toString();
-                List<String> tableList =
-                    tableGroupConfig.getAllTables().stream().map(o -> o.getTableName()).collect(Collectors.toList());
-                String tableListString = String.join(",", tableList);
+                String tableListString = String.join(",", tableGroupConfig.getAllTables());
                 result.addRow(
                     new Object[] {schemaName, "tablegroup", objectName, objectId, "", locality, tableListString, ""});
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecordList) {

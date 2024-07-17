@@ -51,7 +51,7 @@ public class ProjectJoinCommuteRule extends RelOptRule {
     public ProjectJoinCommuteRule(Class<? extends Join> clazz,
                                   RelBuilderFactory relBuilderFactory, boolean swapOuter) {
         super(operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-            operand(clazz, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+                operand(clazz, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
             relBuilderFactory, null);
         this.swapOuter = swapOuter;
     }

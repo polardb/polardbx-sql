@@ -1,0 +1,70 @@
+#clean
+DROP TABLE IF EXISTS t_order_0;
+DROP TABLE IF EXISTS t_order_1;
+
+
+# create auto partition table t_order_0 with cci cci_0(seller_id) PARTITION BY RANGE COLUMNS (`order_id`, `order_datetime`) (
+#		PARTITION p1 VALUES LESS THAN (10000, '2021-01-01'),
+#		PARTITION p2 VALUES LESS THAN (20000, '2021-01-01'),
+#		PARTITION p3 VALUES LESS THAN (30000, '2021-01-01'),
+#		PARTITION p4 VALUES LESS THAN (40000, '2021-01-01'),
+#		PARTITION p5 VALUES LESS THAN (50000, '2021-01-01'),
+#		PARTITION p6 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+#	)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE TABLE `t_order_0` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	`order_datetime` datetime DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`rint` double(10, 2),
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX cci_0(`seller_id`) PARTITION BY RANGE COLUMNS (`order_id`, `order_datetime`) (
+		PARTITION p1 VALUES LESS THAN (10000, '2021-01-01'),
+		PARTITION p2 VALUES LESS THAN (20000, '2021-01-01'),
+		PARTITION p3 VALUES LESS THAN (30000, '2021-01-01'),
+		PARTITION p4 VALUES LESS THAN (40000, '2021-01-01'),
+		PARTITION p5 VALUES LESS THAN (50000, '2021-01-01'),
+		PARTITION p6 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+	)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+SHOW FULL CREATE TABLE t_order_0;
+CHECK COLUMNAR INDEX `cci_0` ON `t_order_0` META;
+
+# create auto partition table t_order_1 with cci cci_1(seller_id) PARTITION BY RANGE (to_days(`order_datetime`)) (
+#		PARTITION p1 VALUES LESS THAN (to_days('2021-01-01')),
+#		PARTITION p2 VALUES LESS THAN (to_days('2021-04-01')),
+#		PARTITION p3 VALUES LESS THAN (to_days('2021-07-01')),
+#		PARTITION p4 VALUES LESS THAN (to_days('2021-10-01')),
+#		PARTITION p5 VALUES LESS THAN (to_days('2022-01-01')),
+#		PARTITION p6 VALUES LESS THAN MAXVALUE
+#	)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE TABLE `t_order_1` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	`order_datetime` datetime DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`rint` double(10, 2),
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX cci_1(`seller_id`) PARTITION BY RANGE (to_days(`order_datetime`)) (
+		PARTITION p1 VALUES LESS THAN (to_days('2021-01-01')),
+		PARTITION p2 VALUES LESS THAN (to_days('2021-04-01')),
+		PARTITION p3 VALUES LESS THAN (to_days('2021-07-01')),
+		PARTITION p4 VALUES LESS THAN (to_days('2021-10-01')),
+		PARTITION p5 VALUES LESS THAN (to_days('2022-01-01')),
+		PARTITION p6 VALUES LESS THAN MAXVALUE
+	)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+SHOW FULL CREATE TABLE t_order_1;
+CHECK COLUMNAR INDEX `cci_1` ON `t_order_1` META;
+
+#cleanup
+DROP TABLE IF EXISTS t_order_0;
+DROP TABLE IF EXISTS t_order_1;

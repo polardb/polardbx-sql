@@ -16,22 +16,19 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
+import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
-import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
 import org.apache.calcite.plan.DeriveMode;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.PhysicalNode;
-import org.apache.calcite.rel.RelCollation;
-import org.apache.calcite.rel.RelDistribution;
-import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
@@ -63,6 +60,10 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
     private final RexNode otherCondition;
     private final boolean runtimeFilterPushedDown;
 
+    private boolean outerBuild;
+
+    private boolean keepPartition = false;
+
     // ~ Constructors -----------------------------------------------------------
 
     public SemiHashJoin(
@@ -82,7 +83,8 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         String subqueryPosition,
         RexNode equalCondition,
         RexNode otherCondition,
-        boolean runtimeFilterPushedDown
+        boolean runtimeFilterPushedDown,
+        boolean driverBuilder
     ) {
         super(
             cluster,
@@ -104,6 +106,9 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         this.equalCondition = equalCondition;
         this.otherCondition = otherCondition;
         this.runtimeFilterPushedDown = runtimeFilterPushedDown;
+        if (JoinRelType.SEMI == joinType || JoinRelType.ANTI == joinType) {
+            this.outerBuild = driverBuilder;
+        }
     }
 
     public SemiHashJoin(
@@ -122,7 +127,8 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         RelNode pushDownRelNode,
         String subqueryPosition,
         RexNode equalCondition,
-        RexNode otherCondition
+        RexNode otherCondition,
+        boolean driverBuilder
     ) {
         super(
             cluster,
@@ -144,6 +150,9 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         this.equalCondition = equalCondition;
         this.otherCondition = otherCondition;
         this.runtimeFilterPushedDown = false;
+        if (JoinRelType.SEMI == joinType || JoinRelType.ANTI == joinType) {
+            this.outerBuild = driverBuilder;
+        }
     }
 
     public SemiHashJoin(RelInput relInput) {
@@ -159,7 +168,7 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
             ImmutableSet.<CorrelationId>of(),
             JoinRelType.valueOf(relInput.getString("joinType")),
             null);
-        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE);
+        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE).replace(relInput.getPartitionWise());
         this.equalCondition = relInput.getExpression("equalCondition");
         this.otherCondition = relInput.getExpression("otherCondition");
         if (relInput.get("operands") == null) {
@@ -168,6 +177,10 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
             this.operands = relInput.getExpressionList("operands");
         }
         this.runtimeFilterPushedDown = relInput.getBoolean("insertRf", false);
+        if (JoinRelType.SEMI == joinType || JoinRelType.ANTI == joinType) {
+            outerBuild = relInput.getBoolean("driverBuilder", false);
+        }
+        this.keepPartition = relInput.getBoolean("keepPartition", false);
     }
 
     public static SemiHashJoin create(
@@ -177,7 +190,8 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         RexNode condition,
         LogicalSemiJoin semiJoin,
         RexNode equalCondition,
-        RexNode otherCondition) {
+        RexNode otherCondition,
+        boolean driverBuilder) {
         final RelOptCluster cluster = left.getCluster();
         final JoinInfo joinInfo = JoinInfo.of(left, right, condition);
         return new SemiHashJoin(
@@ -196,7 +210,8 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
             semiJoin.getPushDownRelNode(),
             semiJoin.getSubqueryPosition(),
             equalCondition,
-            otherCondition);
+            otherCondition,
+            driverBuilder);
     }
 
     @Override
@@ -226,8 +241,10 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
                 subqueryPosition,
                 equalCondition,
                 otherCondition,
-                runtimeFilterPushedDown
+                runtimeFilterPushedDown,
+                outerBuild
             );
+        semiHashJoin.keepPartition = keepPartition;
         semiHashJoin.setFixedCost(fixedCost);
         return semiHashJoin;
     }
@@ -259,10 +276,24 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
                 subqueryPosition,
                 equalCondition,
                 otherCondition,
-                runtimeFilterPushedDown
+                runtimeFilterPushedDown,
+                outerBuild
             );
+        semiHashJoin.keepPartition = keepPartition;
         semiHashJoin.setFixedCost(fixedCost);
         return semiHashJoin;
+    }
+
+    public boolean isOuterBuild() {
+        return outerBuild;
+    }
+
+    public RelNode getBuildNode() {
+        return outerBuild ? getOuter() : getInner();
+    }
+
+    public RelNode getProbeNode() {
+        return outerBuild ? getInner() : getOuter();
     }
 
     public boolean isRuntimeFilterPushedDown() {
@@ -282,17 +313,33 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         if (fixedCost != null) {
             return fixedCost;
         }
-        final double leftRowCount = mq.getRowCount(left);
-        final double rightRowCount = mq.getRowCount(right);
+        if (outerBuild) {
+            return computeSelfCost(planner, mq, true, joinType == JoinRelType.ANTI);
+        } else {
+            return computeSelfCost(planner, mq, false, false);
+        }
+    }
 
-        double rowCount = leftRowCount + rightRowCount;
+    public RelOptCost computeSelfCost(RelOptPlanner planner,
+                                      RelMetadataQuery mq, boolean outerBuild, boolean isReverseAnti) {
+
+        final RelNode probe = !outerBuild ? left : right;
+        final RelNode build = !outerBuild ? right : left;
+        final double probeRowCount = mq.getRowCount(probe);
+        final double buildRowCount = mq.getRowCount(build);
+
+        double rowCount = probeRowCount + buildRowCount;
         double buildWeight = CostModelWeight.INSTANCE.getBuildWeight();
         double probeWeight = CostModelWeight.INSTANCE.getProbeWeight();
-        double driveSideRowCount = leftRowCount;
-        double anotherSideRowCount = rightRowCount;
 
-        double cpu = buildWeight * anotherSideRowCount + probeWeight * driveSideRowCount;
-        double memory = MemoryEstimator.estimateRowSizeInHashTable(right.getRowType()) * anotherSideRowCount;
+        // Increase cost weight of reverse semi/anti hash join
+        if (outerBuild) {
+            probeWeight = isReverseAnti ? CostModelWeight.INSTANCE.getReverseAntiProbeWeight()
+                : CostModelWeight.INSTANCE.getReverseSemiProbeWeight();
+        }
+
+        double cpu = buildWeight * buildRowCount + probeWeight * probeRowCount;
+        double memory = MemoryEstimator.estimateRowSizeInHashTable(build.getRowType()) * buildRowCount;
 
         return planner.getCostFactory().makeCost(rowCount, cpu, memory, 0, 0);
     }
@@ -305,13 +352,24 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
         return otherCondition;
     }
 
+    public boolean isKeepPartition() {
+        return keepPartition;
+    }
+
+    public void setKeepPartition(boolean keepPartition) {
+        this.keepPartition = keepPartition;
+    }
+
     @Override
     public RelWriter explainTerms(RelWriter pw) {
         return super.explainTerms(pw)
             .itemIf("equalCondition", equalCondition, equalCondition != null)
             .itemIf("otherCondition", otherCondition, otherCondition != null)
             .itemIf("operands", operands, operands != null && !operands.isEmpty())
-            .itemIf("insertRf", runtimeFilterPushedDown, runtimeFilterPushedDown);
+            .itemIf("insertRf", runtimeFilterPushedDown, runtimeFilterPushedDown)
+            .itemIf("driverBuilder", outerBuild, outerBuild)
+            .itemIf("keepPartition", keepPartition, keepPartition)
+            .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop());
     }
 
     @Override
@@ -321,9 +379,12 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
 
         RexExplainVisitor visitor = new RexExplainVisitor(this);
         condition.accept(visitor);
+
         return pw.item("condition", visitor.toSqlString())
             .item("type", joinType.name().toLowerCase())
-            .itemIf("systemFields", getSystemFieldList(), !getSystemFieldList().isEmpty());
+            .itemIf("systemFields", getSystemFieldList(), !getSystemFieldList().isEmpty())
+            .item("build", !outerBuild ? "inner" : "outer")
+            .itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
     }
 
     public List<RexNode> getOperands() {
@@ -333,6 +394,9 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
     @Override
     public Pair<RelTraitSet, List<RelTraitSet>> passThroughTraits(
         final RelTraitSet required) {
+        if (outerBuild) {
+            return null;
+        }
         return CBOUtil.passThroughTraitsForJoin(
             required, this, joinType, left.getRowType().getFieldCount(), getTraitSet());
     }
@@ -340,6 +404,9 @@ public class SemiHashJoin extends SemiJoin implements PhysicalNode {
     @Override
     public Pair<RelTraitSet, List<RelTraitSet>> deriveTraits(
         final RelTraitSet childTraits, final int childId) {
+        if (outerBuild) {
+            return null;
+        }
         return HashJoin.deriveTraitsForJoin(childTraits, childId, getTraitSet(), left, right);
     }
 

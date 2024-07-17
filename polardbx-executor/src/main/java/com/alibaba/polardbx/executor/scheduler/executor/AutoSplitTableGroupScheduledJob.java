@@ -40,7 +40,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.*;
+import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILED;
+import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;
+import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.RUNNING;
+import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.SUCCESS;
 import static com.cronutils.model.CronType.QUARTZ;
 
 /**

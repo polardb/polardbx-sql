@@ -29,12 +29,12 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.executor.mpp.util.FinalizerService;
+import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.google.common.collect.Sets;
 
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;

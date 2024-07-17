@@ -16,15 +16,22 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -70,6 +77,10 @@ public class PushCorrelateRule extends RelOptRule {
         if (leftView instanceof OSSTableScan) {
             return false;
         }
+        if (!PlannerContext.getPlannerContext(call).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_PUSH_CORRELATE)) {
+            return false;
+        }
         return true;
     }
 
@@ -80,7 +91,8 @@ public class PushCorrelateRule extends RelOptRule {
         RelNode rightPlan = call.rels[2];
         RelBuilder relBuilder = call.builder();
 
-        if (PlannerContext.getPlannerContext(rightPlan).getSqlKind().belongsTo(DML)) {
+        if (PlannerContext.getPlannerContext(rightPlan).getSqlKind().belongsTo(DML) ||
+            CBOUtil.containsCorrelate(rightPlan)) {
             return;
         }
 
@@ -93,7 +105,7 @@ public class PushCorrelateRule extends RelOptRule {
         // judge if one materialized apply plan should be built
         boolean materializedPath = false;
 
-        if (!RelUtils.isAllSingleTableInSameSchema(tables)) {
+        if (!TableTopologyUtil.isAllSingleTableInSamePhysicalDB(tables)) {
             // meaning has correlate columns
             if (RelOptUtil.getVariablesUsed(rightPlan).size() > 0) {
                 return;

@@ -18,11 +18,12 @@ package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.optimizer.config.table.PolarDBXOrcSchema;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.PolarDBXOrcSchema;
 import com.alibaba.polardbx.optimizer.core.datatype.BigBitType;
 import com.alibaba.polardbx.optimizer.core.datatype.BinaryType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.SetType;
 
 import java.nio.charset.Charset;
 import java.sql.Blob;
@@ -50,9 +51,13 @@ public class ColumnProviders {
 
     public static final ColumnProvider<Long> LONG_COLUMN_PROVIDER = new LongColumnProvider();
 
+    public static final ColumnProvider<Long> YEAR_COLUMN_PROVIDER = new YearColumnProvider();
+
     public static final ColumnProvider<Long> UNSIGNED_LONG_COLUMN_PROVIDER = new UnsignedLongColumnProvider();
 
     public static final ColumnProvider<Integer> INTEGER_COLUMN_PROVIDER = new IntegerColumnProvider();
+
+    public static final ColumnProvider<Integer> INTEGER_24_COLUMN_PROVIDER = new Integer24ColumnProvider();
 
     public static final ColumnProvider<Integer> BIT_COLUMN_PROVIDER = new BitColumnProvider();
 
@@ -74,11 +79,15 @@ public class ColumnProviders {
 
     public static final ColumnProvider<Blob> BLOB_COLUMN_PROVIDER = new BlobColumnProvider();
 
-    public static final ColumnProvider<String> STRING_COLUMN_PROVIDER = new StringColumnProvider();
+    public static final ColumnProvider<String> ENUM_COLUMN_PROVIDER = new EnumColumnProvider();
+
+    public static final ColumnProvider<String> JSON_COLUMN_PROVIDER = new JsonColumnProvider();
 
     public static final ColumnProvider<Long> BIG_BIT_COLUMN_PROVIDER = new BigBitColumnProvider();
 
     public static final ColumnProvider<String> BINARY_COLUMN_PROVIDER = new BinaryColumnProvider();
+
+    public static final ColumnProvider<String> SET_COLUMN_PROVIDER = new SetColumnProvider();
 
     public static List<ColumnProvider> getColumnProviders(PolarDBXOrcSchema orcSchema) {
         return orcSchema.getColumnMetas().stream()
@@ -123,7 +132,7 @@ public class ColumnProviders {
 
         // for year
         case MYSQL_TYPE_YEAR:
-            return LONG_COLUMN_PROVIDER;
+            return YEAR_COLUMN_PROVIDER;
 
         /* =========== Fixed-point Numeric ============ */
         case MYSQL_TYPE_DECIMAL:
@@ -154,7 +163,7 @@ public class ColumnProviders {
                 return INTEGER_COLUMN_PROVIDER;
             } else {
                 // for mediumint signed
-                return INTEGER_COLUMN_PROVIDER;
+                return INTEGER_24_COLUMN_PROVIDER;
             }
 
         case MYSQL_TYPE_SHORT:
@@ -196,6 +205,8 @@ public class ColumnProviders {
             // for varchar/char
             if (dataType instanceof BinaryType) {
                 return BINARY_COLUMN_PROVIDER;
+            } else if (dataType instanceof SetType) {
+                return SET_COLUMN_PROVIDER;
             } else {
                 return VARCHAR_COLUMN_PROVIDERS.get(dataType.getCollationName());
             }
@@ -204,10 +215,11 @@ public class ColumnProviders {
             return BLOB_COLUMN_PROVIDER;
 
         case MYSQL_TYPE_ENUM:
-        case MYSQL_TYPE_JSON:
             // for enum
-            return STRING_COLUMN_PROVIDER;
-
+            return ENUM_COLUMN_PROVIDER;
+        case MYSQL_TYPE_JSON:
+            // for json
+            return JSON_COLUMN_PROVIDER;
         default:
             return null;
         }

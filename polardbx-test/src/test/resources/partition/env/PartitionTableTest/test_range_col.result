@@ -35,13 +35,13 @@ FROM tbl
 WHERE a = 99
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="99")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a = 200
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p2]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p2]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="200")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a < 200

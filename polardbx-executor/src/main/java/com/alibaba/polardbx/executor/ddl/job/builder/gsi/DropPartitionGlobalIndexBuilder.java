@@ -21,7 +21,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.core.DDL;

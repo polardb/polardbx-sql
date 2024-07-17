@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;

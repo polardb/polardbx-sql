@@ -88,4 +88,13 @@ public class StorageStatus implements Serializable {
     public void setInstId(String instId) {
         this.instId = instId;
     }
+
+    public boolean satisfy(StorageStatus storageStatus) {
+        return this.isBusy == storageStatus.isBusy && this.isDelay == storageStatus.isDelay;
+    }
+
+    @Override
+    public StorageStatus clone() {
+        return new StorageStatus(instId, delaySecond, activeSession, isBusy, isDelay);
+    }
 }

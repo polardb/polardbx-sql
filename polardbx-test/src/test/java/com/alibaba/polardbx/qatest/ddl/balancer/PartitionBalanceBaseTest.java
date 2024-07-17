@@ -75,7 +75,7 @@ public class PartitionBalanceBaseTest extends BalancerTestBase {
             connections.add(tddlConnection);
             DataLoader dataLoader = DataLoader.create(tddlConnection, tableName, new ManualHotSpotDataGenerator());
             Thread thread = new Thread(() -> {
-                dataLoader.batchInsert(tableRows);
+                dataLoader.batchInsert(tableRows, false);
             });
             threads.add(thread);
             thread.start();

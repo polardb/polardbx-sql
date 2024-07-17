@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx;
 
+import com.alibaba.fastjson.parser.ParserConfig;
+import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
@@ -31,20 +36,15 @@ import com.alibaba.polardbx.config.loader.ClusterLoader;
 import com.alibaba.polardbx.config.loader.GmsClusterLoader;
 import com.alibaba.polardbx.config.loader.ServerLoader;
 import com.alibaba.polardbx.server.util.MockUtil;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.TreeMap;
 
 public class CobarConfig extends AbstractLifecycle implements Lifecycle {
@@ -52,13 +52,25 @@ public class CobarConfig extends AbstractLifecycle implements Lifecycle {
     private volatile ServerLoader serverLoader;
     private volatile ClusterLoader clusterLoader;
     private volatile String cluster;
-    private volatile String unitName;
     private volatile String instanceId;
     private volatile QuarantineConfig quarantine;
     private volatile AuthorizeConfig authorizeConfig;
 
     public CobarConfig() {
+        enableFastJsonAutoType();
         initCobarConfig();
+    }
+
+    private void enableFastJsonAutoType() {
+        try {
+            ParserConfig.getGlobalInstance();
+            ParserConfig.getGlobalInstance().addAccept("com.taobao.tddl.");
+            ParserConfig.getGlobalInstance().addAccept("com.alibaba.tddl.");
+            ParserConfig.getGlobalInstance().addAccept("com.alibaba.polardbx.");
+            ParserConfig.getGlobalInstance().addAccept("org.apache.calcite.");
+        } catch (Throwable e) {
+            // ignore
+        }
     }
 
     protected void initCobarConfig() {
@@ -76,9 +88,6 @@ public class CobarConfig extends AbstractLifecycle implements Lifecycle {
 
             trustIps = StringUtils.join(trustIpList, ',');
             quarantine.resetTrustedIps(trustIps);
-            if (!ConfigDataMode.isFastMock()) {
-                initTrupIpListener();
-            }
             quarantine.resetBlackList(serverLoader.getSystem().getBlackIps());
             quarantine.resetWhiteList(serverLoader.getSystem().getWhiteIps());
 
@@ -91,56 +100,44 @@ public class CobarConfig extends AbstractLifecycle implements Lifecycle {
     }
 
     /**
-     * 动态修改trustIps
+     * <pre>
+     *
+     *  CobarConfig 的第一个阶段初始化的动作 （即initCobarConfig）：
+     *
+     *  1. 将
+     *          server.propeties
+     *      /   JVM 启动参数
+     *      /   com.taobao.tddl.monitor
+     *      /   com.taobao.tddl.trustips （信任IP与白名单）
+     *      的所有属性全部读取，并放到System.properties中,
+     *      并同时将部分System.properties保存到ServerLoader.SystemConfig中
+     *
+     *  2.  订阅了  com.taobao.tddl.monitor 与  com.taobao.tddl.trustips 这两个dataId的Diamond变更，
+     *      并将这个变更信息实时保存在ServerLoader.SystemConfig（但没有变更System.properties中的值）
+     *
+     *  3. 更新ConfigDataMode的信息
+     *
+     *  //=======================
+     *
+     *  CobarConfig 的第二个阶段初始化的动作 （即doInit）：
+     *
+     *   1.
+     *   如果是cluster模式，加载cluster集群配置,
+     *   如果是drds模式，从 InstanceInfoEvent 中加载实例配置，
+     *   并保存到ServerLoader.SystemConfig中（但没有变更System.properties中的值）
+     *
+     *   2. 从 com.taobao.tddl.instance_properties.xxx_cluster
+     *      中获取实例所对应的集群的Diamond的动态配置，并订阅其变更，
+     *      将最新的配置信息保存到ServerLoader.SystemConfig中（但没有变更System.properties中的值）
+     * </pre>
      */
-    private void initTrupIpListener() {
-        changeTrustIps("");
-    }
-
-    private void changeTrustIps(String data) {
-        if (StringUtils.isEmpty(data)) {
-            return;
-        }
-        Properties properties = new Properties();
-        InputStream in = null;
-        try {
-            in = new ByteArrayInputStream(data.getBytes());
-            properties.load(in);
-            List<String> trustIpList = Lists.newArrayList();
-            String trustIps = properties.getProperty("trustIps");
-            if (StringUtils.isNotEmpty(trustIps)) {
-                String oldTrustedIps = serverLoader.getSystem().getTrustedIps();
-                if (StringUtils.isNotEmpty(oldTrustedIps)) {
-                    List<String> array = Lists.newArrayList();
-                    array.add(oldTrustedIps);
-                    array.add(trustIps);
-                    trustIps = StringUtils.join(array, ',');
-                }
-                serverLoader.getSystem().setTrustedIps(trustIps);
-                trustIpList.add(trustIps);
-            } else {
-                return;
-            }
-
-            trustIps = StringUtils.join(trustIpList, ',');
-            quarantine.resetTrustedIps(trustIps);
-
-        } catch (IOException e) {
-            throw GeneralUtil.nestedException(e);
-        } finally {
-            IOUtils.closeQuietly(in);
-        }
-    }
-
     @Override
     protected void doInit() {
         if (ConfigDataMode.isFastMock()) {
             return;
         }
 
-        ConfigDataMode.setMode(ConfigDataMode.Mode.MANAGER);
         this.cluster = serverLoader.getSystem().getClusterName();
-        this.unitName = serverLoader.getSystem().getUnitName();
         this.instanceId = serverLoader.getSystem().getInstanceId();
 
         //clusterLoader = new ManagerClusterLoader(cluster, unitName);
@@ -205,32 +202,6 @@ public class CobarConfig extends AbstractLifecycle implements Lifecycle {
             return clusterLoader.isLock();
         } else {
             return false;
-        }
-    }
-
-    public void reloadCluster(String cluster, String unitName, String instanceId) {
-
-        if (!StringUtils.equals(instanceId, this.instanceId)) {
-            // 出现instanceId变动
-            if (clusterLoader != null) {
-                if (CobarServer.getInstance().isOnline()) {
-                    serverLoader.getSystem().setInstanceId(this.instanceId);
-                    throw new TddlRuntimeException(ErrorCode.ERR_CONFIG,
-                        "change cluster should offline server, so ignore. current instance = " + instanceId);
-                }
-                clusterLoader.destroy();
-            }
-
-            if (StringUtils.isEmpty(instanceId)) {
-                return;
-            }
-            this.cluster = null; // 清空
-            this.unitName = null;
-            this.serverLoader.getSystem().setClusterName(null);
-            this.serverLoader.getSystem().setUnitName(null);
-            this.clusterLoader = new GmsClusterLoader(serverLoader.getSystem());
-            this.instanceId = instanceId;
-            this.clusterLoader.init();
         }
     }
 

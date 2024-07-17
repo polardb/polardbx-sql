@@ -21,10 +21,12 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateFunctionOnAllDnTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateFunctionRegisterMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateFunctionSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcCreateFunctionMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.pl.PLUtils;
 import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
+import com.alibaba.polardbx.executor.pl.UdfUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFunction;
 import com.google.common.collect.Lists;
@@ -48,6 +50,7 @@ public class CreateFunctionJobFactory extends AbstractFunctionJobFactory {
             throw new TddlRuntimeException(ErrorCode.ERR_UDF_ALREADY_EXISTS,
                 String.format("function: %s already exist", udfName));
         }
+        UdfUtils.validateContent(createFunction.getSqlCreateFunction().getText());
     }
 
     @Override
@@ -60,13 +63,14 @@ public class CreateFunctionJobFactory extends AbstractFunctionJobFactory {
         DdlTask addMetaTask = new CreateFunctionRegisterMetaTask(schema, null,
             functionName, createContent);
         DdlTask syncTask = new CreateFunctionSyncTask(schema, functionName, createContent, canPush);
+        CdcCreateFunctionMarkTask cdcCreateFunctionMarkTask = new CdcCreateFunctionMarkTask(schema, functionName);
 
         if (canPush) {
             String createFunctionOnDn = PLUtils.getCreateFunctionOnDn(createContent);
             DdlTask createOnAllDbTask = new CreateFunctionOnAllDnTask(schema, functionName, createFunctionOnDn);
-            return Lists.newArrayList(addMetaTask, createOnAllDbTask, syncTask);
+            return Lists.newArrayList(addMetaTask, createOnAllDbTask, syncTask, cdcCreateFunctionMarkTask);
         } else {
-            return Lists.newArrayList(addMetaTask, syncTask);
+            return Lists.newArrayList(addMetaTask, syncTask, cdcCreateFunctionMarkTask);
         }
     }
 

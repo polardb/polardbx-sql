@@ -78,7 +78,7 @@ public class SingleModifyGsiWriter extends AbstractSingleWriter implements Disti
 
         switch (getOperation()) {
         case UPDATE:
-            if (GlobalIndexMeta.canWrite(ec, gsiMeta)) {
+            if (GlobalIndexMeta.canWrite(ec, gsiMeta) || GlobalIndexMeta.canDelete(ec, gsiMeta)) {
                 // WRITE_ONLY or PUBLIC
                 return updateWriter.getInput(ec, rowGenerator);
             }

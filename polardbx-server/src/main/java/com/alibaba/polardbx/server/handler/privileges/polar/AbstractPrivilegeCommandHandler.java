@@ -16,21 +16,34 @@
 
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
-import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
-import com.alibaba.polardbx.net.packet.OkPacket;
-import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.cdc.SQLHelper;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
+import com.alibaba.polardbx.common.cdc.DdlScope;
+import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLSetStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.server.ServerConnection;
+import com.google.common.collect.Maps;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
+import java.util.Map;
 
-import static com.alibaba.polardbx.server.handler.privileges.polar.PolarHandlerCommon.checkMasterInstance;
+import static com.alibaba.polardbx.common.cdc.ICdcManager.POLARDBX_SERVER_ID;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_GRANTER_NO_GRANT_PRIV;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_OPERATION_NOT_ALLOWED;
+import static com.alibaba.polardbx.server.handler.privileges.polar.PolarHandlerCommon.checkMasterInstance;
 
 /**
  * @author bairui.lrj
@@ -64,6 +77,7 @@ public abstract class AbstractPrivilegeCommandHandler implements PrivilegeComman
     public void handle(boolean hasMore) {
         beforeHandle();
         doHandle();
+        markDdlForCdc(getSqlKind());
         afterHandle();
     }
 
@@ -89,6 +103,8 @@ public abstract class AbstractPrivilegeCommandHandler implements PrivilegeComman
 
     protected abstract void doHandle();
 
+    protected abstract SqlKind getSqlKind();
+
     protected void afterHandle() {
         privManager.triggerReload();
     }
@@ -104,5 +120,41 @@ public abstract class AbstractPrivilegeCommandHandler implements PrivilegeComman
                 throw new TddlRuntimeException(ERR_GRANTER_NO_GRANT_PRIV, "ROLE", role.getIdentifier());
             }
         }
+    }
+
+    //TODO cdc@jinwu
+    private void markDdlForCdc(SqlKind sqlKind) {
+        Map<String, Object> param = Maps.newHashMap();
+        param.put(ICdcManager.CDC_DDL_SCOPE, DdlScope.Instance);
+
+        final Map<String, Object> extraVariables = serverConn.getExtraServerVariables();
+        if (null != extraVariables && extraVariables.containsKey(POLARDBX_SERVER_ID)) {
+            Object serverId = extraVariables.get(POLARDBX_SERVER_ID);
+            param.put(POLARDBX_SERVER_ID, serverId);
+        }
+
+        SQLStatement statement = SQLHelper.parseSql(getSql().toString());
+        if (statement instanceof SQLSetStatement) {
+            SQLSetStatement sqlSetStatement = (SQLSetStatement) statement;
+            if (sqlSetStatement.getOption() != null && StringUtils.equalsIgnoreCase(
+                sqlSetStatement.getOption().name(), "PASSWORD")) {
+                for (SQLAssignItem item : ((SQLSetStatement) statement).getItems()) {
+                    if (item.getTarget() == null) {
+                        return;
+                    }
+                }
+            }
+        }
+
+        CdcManagerHelper.getInstance().notifyDdlNew(
+            SystemDbHelper.DEFAULT_DB_NAME,
+            "*",
+            sqlKind.name(),
+            getSql().toString(),
+            DdlType.UNSUPPORTED,
+            null,
+            null,
+            CdcDdlMarkVisibility.Protected,
+            param);
     }
 }

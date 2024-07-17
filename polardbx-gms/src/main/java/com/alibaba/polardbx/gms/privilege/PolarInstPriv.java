@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.gms.privilege;
 
+import com.taobao.tddl.common.privilege.AuthPlugin;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -41,7 +43,8 @@ public class PolarInstPriv extends BasePolarPriv {
 
     static Collection<PolarAccountInfo> loadInstPrivs(Connection conn, Collection<PolarAccount> accounts)
         throws SQLException {
-        final String sql = String.format("SELECT * FROM %s WHERE %s = ? and %s = ?", PolarPrivUtil.USER_PRIV_TABLE, PolarPrivUtil.USER_NAME, PolarPrivUtil.HOST);
+        final String sql = String.format("SELECT * FROM %s WHERE %s = ? and %s = ?", PolarPrivUtil.USER_PRIV_TABLE,
+            PolarPrivUtil.USER_NAME, PolarPrivUtil.HOST);
         List<PolarAccountInfo> accountInfos = new ArrayList<>(accounts.size());
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             for (PolarAccount account : accounts) {
@@ -65,12 +68,14 @@ public class PolarInstPriv extends BasePolarPriv {
         Long accountId = rs.getLong(PolarPrivUtil.ACCOUNT_ID);
 
         String password = rs.getString(PolarPrivUtil.PASSWORD);
+        String plugin = rs.getString(PolarPrivUtil.PLUGIN);
         PolarAccountInfo userInfo = new PolarAccountInfo(PolarAccount.newBuilder()
             .setAccountId(accountId)
             .setAccountType(AccountType.lookupByCode(rs.getByte(PolarPrivUtil.ACCOUNT_TYPE)))
             .setUsername(instPriv.getUserName())
             .setHost(instPriv.getHost())
             .setPassword(password)
+            .setAuthPlugin(AuthPlugin.lookupByName(plugin))
             .build());
 
         userInfo.setInstPriv(instPriv);

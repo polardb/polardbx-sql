@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.handler.subhandler;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -30,6 +29,7 @@ import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.metadb.table.GsiStatisticsAccessorDelegate;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
@@ -43,16 +43,12 @@ import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rex.RexBuilder;
-import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.commons.collections.CollectionUtils;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,8 +90,8 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         // schemaName -> gsi table beans
         Map<String, List<GsiMetaManager.GsiTableMetaBean>> schemaToGsiTables =
             meta.getTableMeta().values().stream()
-                // only collect gsi table bean
-                .filter(bean -> bean.gsiMetaBean != null)
+                // only collect gsi table bean, excluding columnar index
+                .filter(bean -> bean.gsiMetaBean != null && !bean.gsiMetaBean.columnarIndex)
                 // group by schema name
                 .collect(Collectors.groupingBy(bean -> bean.tableSchema, Collectors.toList()));
 
@@ -128,7 +124,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
 
         // filter condition 1: TABLE_SCHEMA = {schemaName}
         RexNode filterCondition = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
-            rexBuilder.makeInputRef(informationSchemaTables, informationSchemaTables.getTableSchemaIndex()),
+            rexBuilder.makeInputRef(informationSchemaTables, InformationSchemaTables.getTableSchemaIndex()),
             rexBuilder.makeLiteral(schemaName));
 
         // filter condition 2: TABLE_NAME IN (tableName1, tableName2, ...)
@@ -136,7 +132,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         gsiTableBeans.forEach(bean ->
             tableNameLiterals.add(rexBuilder.makeLiteral(bean.tableName)));
         RexNode inCondition = rexBuilder.makeCall(SqlStdOperatorTable.IN,
-            rexBuilder.makeInputRef(informationSchemaTables, informationSchemaTables.getTableNameIndex()),
+            rexBuilder.makeInputRef(informationSchemaTables, InformationSchemaTables.getTableNameIndex()),
             rexBuilder.makeCall(SqlStdOperatorTable.ROW, tableNameLiterals));
 
         // final filter condition: condition 1 AND condition 2
@@ -145,7 +141,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         informationSchemaTables.setIncludeGsi(true);
 
         // GSI table name -> GSI size in MB
-        Map<String, Double> gsiSizes = new HashMap<>(gsiTableBeans.size());
+        Map<String, Double> gsiSizes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         // If some GSI can not get size, just set its size to NULL.
         // In this way, all GSI tables are made sure to be presented int the final result.
         Cursor cursor = null;
@@ -187,7 +183,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         //query gsi statistics info
         Map<String, Set<String>> schemaAndGsis = new TreeMap<>(String::compareToIgnoreCase);
         gsiTableBeans.forEach(tableBean -> {
-            if (tableBean != null && tableBean.gsiMetaBean != null) {
+            if (tableBean != null && tableBean.gsiMetaBean != null && !tableBean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean indexBean = tableBean.gsiMetaBean;
                 String schema = indexBean.tableSchema;
                 String index = indexBean.indexName;
@@ -197,11 +193,12 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
                 schemaAndGsis.get(schema).add(index);
             }
         });
-        GsiStatisticsManager statisticsManager = GsiStatisticsManager.getInstance();
-        if (statisticsManager.enableGsiStatisticsCollection()) {
+
+        if (GsiStatisticsManager.enableGsiStatisticsCollection()) {
             for (String schemaToSync : schemaAndGsis.keySet()) {
                 SyncManagerHelper.sync(
-                    new GsiStatisticsSyncAction(schemaToSync, null, null, GsiStatisticsSyncAction.QUERY_RECORD));
+                    new GsiStatisticsSyncAction(schemaToSync, null, null, GsiStatisticsSyncAction.QUERY_RECORD),
+                    SyncScope.ALL);
             }
         }
 
@@ -226,7 +223,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
 
         // make sure all GSI tables are presented in the final result
         gsiTableBeans.forEach(tableBean -> {
-            if (tableBean != null && tableBean.gsiMetaBean != null) {
+            if (tableBean != null && tableBean.gsiMetaBean != null && !tableBean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean indexBean = tableBean.gsiMetaBean;
                 // visit count, last access time
                 String schema = indexBean.tableSchema;
@@ -288,28 +285,8 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
      * @return empty set if no schema names specified in conditions
      */
     Set<String> getEqualSchemaNames(VirtualView virtualView, ExecutionContext executionContext) {
-        InformationSchemaGlobalIndexes informationSchemaGlobalIndexes = (InformationSchemaGlobalIndexes) virtualView;
-        // get schema indexes in filter condition, objects in {schemaIndexList} are like '?0', '?1'
-        List<Object> schemaIndexList = virtualView.getIndex()
-            .get(informationSchemaGlobalIndexes.getTableSchemaIndex());
-
-        // use parameters to map the objects in {schemaIndexList} to schema names: '?0' -> 'db1'
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
-
-        Set<String> schemaNames = new HashSet<>();
-        if (CollectionUtils.isNotEmpty(schemaIndexList)) {
-            for (Object obj : schemaIndexList) {
-                if (obj instanceof RexDynamicParam) {
-                    String schemaName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    schemaNames.add(schemaName.toLowerCase());
-                } else if (obj instanceof RexLiteral) {
-                    String schemaName = ((RexLiteral) obj).getValueAs(String.class);
-                    schemaNames.add(schemaName.toLowerCase());
-                }
-            }
-        }
-
-        return schemaNames;
+        return virtualView.getEqualsFilterValues(InformationSchemaGlobalIndexes.getTableSchemaIndex(), params);
     }
 
     /**
@@ -320,36 +297,8 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
      * @return empty set if no table names specified in conditions
      */
     Set<String> getEqualTableNames(VirtualView virtualView, ExecutionContext executionContext) {
-        InformationSchemaGlobalIndexes informationSchemaGlobalIndexes = (InformationSchemaGlobalIndexes) virtualView;
-        // get schema indexes in filter condition, objects in {schemaIndexList} are like '?0', '?1'
-        List<Object> tableIndexList = virtualView.getIndex()
-            .get(informationSchemaGlobalIndexes.getTableNameIndex());
-
-        // use parameters to map the objects in {tableIndexList} to table names: '?0' -> 'db1'
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
-
-        Set<String> tableNames = new HashSet<>();
-        if (CollectionUtils.isNotEmpty(tableIndexList)) {
-            for (Object obj : tableIndexList) {
-                if (obj instanceof RexDynamicParam) {
-                    if (params.get(((RexDynamicParam) obj).getIndex() + 1).getValue() instanceof RawString) {
-                        RawString rawString = (RawString) params.get(((RexDynamicParam) obj).getIndex() + 1).getValue();
-                        for (Object o : rawString.getObjList()) {
-                            tableNames.add(String.valueOf(o).toLowerCase());
-                        }
-                    } else {
-                        String tableName =
-                            String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                        tableNames.add(tableName.toLowerCase());
-                    }
-                } else if (obj instanceof RexLiteral) {
-                    String tableName = ((RexLiteral) obj).getValueAs(String.class);
-                    tableNames.add(tableName.toLowerCase());
-                }
-            }
-        }
-
-        return tableNames;
+        return virtualView.getEqualsFilterValues(InformationSchemaGlobalIndexes.getTableNameIndex(), params);
     }
 
     private List<IndexesRecord> queryGsiStatisticsByCondition(Set<String> schemaNames, Set<String> tableNames,

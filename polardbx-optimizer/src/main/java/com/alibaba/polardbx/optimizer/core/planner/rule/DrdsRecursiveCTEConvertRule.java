@@ -18,23 +18,29 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.google.common.base.Predicates;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.core.RecursiveCTE;
-import org.apache.calcite.rel.core.RelFactories;
 
 public class DrdsRecursiveCTEConvertRule extends ConverterRule {
-    public static final DrdsRecursiveCTEConvertRule INSTANCE = new DrdsRecursiveCTEConvertRule();
+    public static final DrdsRecursiveCTEConvertRule SMP_INSTANCE =
+        new DrdsRecursiveCTEConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsRecursiveCTEConvertRule() {
-        super(RecursiveCTE.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsRecursiveCTEConvertRule");
+    public static final DrdsRecursiveCTEConvertRule COL_INSTANCE =
+        new DrdsRecursiveCTEConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsRecursiveCTEConvertRule(Convention outConvention) {
+        super(RecursiveCTE.class, Convention.NONE, outConvention, "DrdsRecursiveCTEConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
@@ -42,11 +48,11 @@ public class DrdsRecursiveCTEConvertRule extends ConverterRule {
         final RecursiveCTE recursiveCTE = (RecursiveCTE) rel;
         rel.getCluster().getPlanner().getContext().unwrap(PlannerContext.class).setHasRecursiveCte(true);
         return new RecursiveCTE(recursiveCTE.getCluster(),
-            recursiveCTE.getTraitSet().simplify().replace(DrdsConvention.INSTANCE),
+            recursiveCTE.getTraitSet().simplify().replace(outConvention),
             convert(recursiveCTE.getLeft(), recursiveCTE.getLeft().getTraitSet().simplify()
-                .replace(DrdsConvention.INSTANCE)),
+                .replace(outConvention)),
             convert(recursiveCTE.getRight(), recursiveCTE.getRight().getTraitSet().simplify()
-                .replace(DrdsConvention.INSTANCE)),
+                .replace(outConvention)),
             recursiveCTE.getCteName(),
             recursiveCTE.getOffset(),
             recursiveCTE.getFetch());

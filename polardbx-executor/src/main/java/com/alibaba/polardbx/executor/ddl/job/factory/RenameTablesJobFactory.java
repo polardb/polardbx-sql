@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesCdcSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesUpdateDataIdTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesUpdateMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableListDataIdSyncTask;
@@ -79,12 +80,18 @@ public class RenameTablesJobFactory extends DdlJobFactory {
                 enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS,
                 oldNames, newNames, preparedData.getCollate(), preparedData.getCdcMetas(),
                 preparedData.getNewTableTopologies());
-        TableListDataIdSyncTask tableListDataIdSyncTask = new TableListDataIdSyncTask(schemaName);
+        RenameTablesUpdateDataIdTask dataIdTask = new RenameTablesUpdateDataIdTask(schemaName, oldNames, newNames);
+        TableListDataIdSyncTask tableListDataIdSyncTask =
+            new TableListDataIdSyncTask(schemaName, preparedData.getDistinctNames());
+        TableListDataIdSyncTask tableListDataIdSyncTask0 =
+            new TableListDataIdSyncTask(schemaName, preparedData.getDistinctNames());
 
         taskList.add(validateTask);
+        taskList.add(tableListDataIdSyncTask0);
         taskList.add(metaTask);
         // lock + cdc + sync + unlock
         taskList.add(cdcSyncTask);
+        taskList.add(dataIdTask);
         taskList.add(tableListDataIdSyncTask);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();

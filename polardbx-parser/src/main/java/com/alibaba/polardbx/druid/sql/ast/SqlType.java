@@ -27,6 +27,7 @@ public enum SqlType {
     SHOW(11),
     EXPLAIN(16),
     DESC(18),
+    SHOW_CONVERT_TABLE_MODE(19),
 
     /**
      * insert select

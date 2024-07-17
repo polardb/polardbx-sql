@@ -1,0 +1,36 @@
+t_order1:
+  CREATE TABLE `t_order1` (
+  `id` bigint(11) NOT NULL,
+  `order_id` varchar(20) DEFAULT NULL,
+  `buyer_id` varchar(20) DEFAULT NULL,
+  `seller_id` varchar(20) DEFAULT NULL,
+  `order_snapshot` blob,
+  `order_detail` longtext,
+  `order_date` datetime,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+  GLOBAL INDEX `g_i_buyer`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) DBPARTITION BY HASH(`buyer_id`) TBPARTITION BY HASH(`buyer_id`) TBPARTITIONS 3,
+  UNIQUE GLOBAL KEY `g_i_seller` (`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`) DBPARTITION BY HASH(`seller_id`) TBPARTITION BY HASH(`seller_id`) TBPARTITIONS 3,
+  key(id,order_id,order_snapshot,order_date),
+  key(order_detail,buyer_id),
+  key(order_id,buyer_id,order_date),
+  unique key(order_id,buyer_id,id)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 CHARSET = utf8 dbpartition by hash(`order_id`) TBPARTITION BY HASH(`order_id`) TBPARTITIONS 3,
+
+t_order2:
+  CREATE TABLE `t_order2` (
+  `id` bigint(11) NOT NULL,
+  `order_id` varchar(20) NOT NULL,
+  `buyer_id` varchar(20) DEFAULT NULL,
+  `seller_id` varchar(20) DEFAULT NULL,
+  `order_snapshot` blob,
+  `order_detail` longtext,
+  `order_date` datetime,
+  PRIMARY KEY (`order_date`,`id`, `order_id`),
+  KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+  GLOBAL INDEX `g_i_buyer1`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) DBPARTITION BY HASH(`buyer_id`) TBPARTITION BY HASH(`buyer_id`) TBPARTITIONS 3,
+  GLOBAL INDEX `g_i_seller_id`(`seller_id`) COVERING (`id`, `order_id`) DBPARTITION BY HASH(`seller_id`) TBPARTITION BY HASH(`seller_id`) TBPARTITIONS 3,
+  key(order_id,buyer_id,id,order_date),
+  key(order_date,buyer_id,id),
+  key(order_id,buyer_id,seller_id,order_snapshot,order_date)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 5182880 DEFAULT CHARSET = utf8  dbpartition by hash(`order_id`)

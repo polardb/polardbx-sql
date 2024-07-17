@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.executor.operator.spill;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.executor.chunk.Chunk;
 
 import java.io.Closeable;
 import java.util.Iterator;
@@ -55,9 +55,11 @@ public interface SingleStreamSpiller extends Closeable {
     /**
      * 返回的Iterator最多读取maxChunkNum个Chunk
      */
-    default Iterator<Chunk> getSpilledChunks(long maxChunkNum){
+    default Iterator<Chunk> getSpilledChunks(long maxChunkNum) {
         throw new NotSupportException();
-    };
+    }
+
+    ;
 
     /**
      * Initiates read of previously spilled pages. The returned {@link Future} will be complete once all pages are read.

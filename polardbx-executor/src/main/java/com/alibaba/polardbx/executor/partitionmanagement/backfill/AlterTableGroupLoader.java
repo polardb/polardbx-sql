@@ -16,13 +16,14 @@
 
 package com.alibaba.polardbx.executor.partitionmanagement.backfill;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.gsi.InsertIndexExecutor;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
@@ -44,11 +45,14 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
+
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
 
 /**
  * Created by luoyanxin.
@@ -64,9 +68,10 @@ public class AlterTableGroupLoader extends Loader {
                                     int[] checkerParamMapping,
                                     BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                     Map<String, Pair<String, String>> physicalTableGroupMap,
-                                    boolean mirrorCopy) {
+                                    boolean mirrorCopy,
+                                    String backfillReturning) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc, mirrorCopy);
+            executeFunc, mirrorCopy, backfillReturning);
         this.physicalTableGroupMap = physicalTableGroupMap;
     }
 
@@ -75,6 +80,8 @@ public class AlterTableGroupLoader extends Loader {
                                 boolean useHint, ExecutionContext ec,
                                 Map<String, Pair<String, String>> physicalTableGroupMap, boolean mirrorCopy) {
         final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+
+        boolean canUseReturning = canUseBackfillReturning(ec, schemaName);
 
         // Construct target table
         final SqlNode targetTableParam = BuildPlanUtils.buildTargetTable();
@@ -127,7 +134,8 @@ public class AlterTableGroupLoader extends Loader {
         final TddlRuleManager tddlRuleManager = optimizerContext.getRuleManager();
         final Set<String> filterColumns = Sets.newTreeSet(String::compareToIgnoreCase);
         final Set<String> primaryKeys = Sets.newTreeSet(String::compareToIgnoreCase);
-        primaryKeys.addAll(GlobalIndexMeta.getPrimaryKeys(primaryTableMeta));
+        final List<String> pkList = Extractor.getPrimaryKeys(primaryTableMeta, ec);
+        primaryKeys.addAll(pkList);
         filterColumns.addAll(primaryKeys);
         filterColumns.addAll(tddlRuleManager.getSharedColumns(primaryTable));
         filterColumns.addAll(tddlRuleManager.getSharedColumns(indexTable));
@@ -163,7 +171,8 @@ public class AlterTableGroupLoader extends Loader {
             checkerParamMapping,
             executeFunc,
             physicalTableGroupMap,
-            mirrorCopy);
+            mirrorCopy,
+            canUseReturning ? String.join(",", pkList) : null);
     }
 
     @Override
@@ -178,8 +187,11 @@ public class AlterTableGroupLoader extends Loader {
                 targetGroup = groupPair.getValue();
             }
         }
-        return InsertIndexExecutor
+        List<Map<Integer, ParameterContext>> returningRes = new ArrayList<>();
+        int affectRows = InsertIndexExecutor
             .backfillIntoPartitionedTable(null, sqlInsert, tableMeta, schemaName, executionContext, executeFunc, false,
-                newPartInfo, targetGroup, phyTableName, this.mirrorCopy);
+                newPartInfo, targetGroup, phyTableName, this.mirrorCopy, usingBackfillReturning, returningRes);
+
+        return usingBackfillReturning ? getReturningAffectRows(returningRes, executionContext) : affectRows;
     }
 }

@@ -444,7 +444,7 @@ public class MetaDbConnectionProxy implements IConnection {
         }
         try {
             if (conn.isWrapperFor(XConnection.class)) {
-                conn.unwrap(XConnection.class).setLastException(new Exception("discard"));
+                conn.unwrap(XConnection.class).setLastException(new Exception("discard"), true);
             } else {
                 // Discard pooled connection.
                 DruidPooledConnection druidConn = conn.unwrap(DruidPooledConnection.class);
@@ -458,6 +458,17 @@ public class MetaDbConnectionProxy implements IConnection {
             }
         } catch (Throwable ex) {
             log.error("Failed to discard connection on group METADB", ex);
+        }
+    }
+
+    @Override
+    public void forceRollback() throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("ROLLBACK");
+        } catch (Throwable e) {
+            log.error("Cleanup readonly transaction branch failed on METADB", e);
+            discard(e);
+            throw e;
         }
     }
 

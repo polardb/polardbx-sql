@@ -1014,4 +1014,53 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
 
         // checkGsi(tddlConnection, gsiName);
     }
+
+    @Test
+    public void broadcastJsonUpdate() {
+        final String tableName = "update_test_tb_broadcast_json";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        final String mysqlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "\t`id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
+            + "\t`a` varchar(32) DEFAULT NULL,\n"
+            + "\t`c` varchar(32) DEFAULT NULL,\n"
+            + "\t`b` json DEFAULT NULL,\n"
+            + "\t`update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "\tPRIMARY KEY (`id`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4";
+        final String tddlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "\t`id` bigint(20) NOT NULL AUTO_INCREMENT BY GROUP,\n"
+            + "\t`a` varchar(32) DEFAULT NULL,\n"
+            + "\t`c` varchar(32) DEFAULT NULL,\n"
+            + "\t`b` json DEFAULT NULL,\n"
+            + "\t`update_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "\tPRIMARY KEY (`id`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 broadcast";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, tddlCreatTable);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, mysqlCreatTable);
+
+        final String insert =
+            "insert into " + tableName
+                + "(a,c,b) values(\"hehe\", \"ccc\", '{\"a\": {\"b\":5, \"c\":\"d\"}}');";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+
+        final String updateStringSame =
+            "update " + tableName + " set b='{\"a\": {\"b\": 5, \"c\": \"d\"}}' where a=\"hehe\" and c=\"ccc\"";
+        final String updateStringNotSame =
+            "update " + tableName + " set b='{\"a\":{\"b\":5, \"c\":\"d\"}}' where a=\"hehe\" and c=\"ccc\"";
+        final String hint = "/*+TDDL: cmd_extra(DML_CHECK_JSON_BY_STRING_COMPARE=FALSE)*/";
+
+        // should good compare and affected rows when same formatted json string
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateStringSame, updateStringSame, null, true);
+
+        // should fail with hint
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + updateStringSame,
+            "json类型不支持直接比较 not support yet!");
+
+        // success but not equal returned rows when use affected rows
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, updateStringNotSame, updateStringNotSame, null,
+            !useAffectedRows);
+    }
 }

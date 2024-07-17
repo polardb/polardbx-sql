@@ -29,6 +29,8 @@
  */
 package com.alibaba.polardbx.optimizer.spill;
 
+import com.alibaba.polardbx.common.properties.FileConfig;
+import com.alibaba.polardbx.common.properties.SpillConfig;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.Closer;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -46,11 +48,6 @@ public class QuerySpillSpaceMonitor extends SpillSpaceMonitor {
 
     private long spillCnt;
 
-    @VisibleForTesting
-    public QuerySpillSpaceMonitor() {
-        this.tag = "Test";
-    }
-
     public QuerySpillSpaceMonitor(String tag) {
         this.tag = tag;
     }
@@ -62,16 +59,8 @@ public class QuerySpillSpaceMonitor extends SpillSpaceMonitor {
     }
 
     @Override
-    public synchronized long getCurrentMaxSpillBytes() {
-        if (MppConfig.getInstance().getMaxQuerySpillSpaceThreshold() != querySpillSpaceThreshold ||
-            MppConfig.getInstance().getMaxSpillSpaceThreshold() != totalSpillSpaceThreshold) {
-            long totalSpaceBytes = getTotalSpillSpace();
-            this.totalSpillSpaceThreshold = MppConfig.getInstance().getMaxSpillSpaceThreshold();
-            this.querySpillSpaceThreshold = MppConfig.getInstance().getMaxQuerySpillSpaceThreshold();
-            maxSpillBytes =
-                Double.valueOf(totalSpaceBytes * totalSpillSpaceThreshold * querySpillSpaceThreshold).longValue();
-        }
-        return maxSpillBytes;
+    public long getCurrentMaxSpillBytes() {
+        return FileConfig.getInstance().getSpillConfig().getMaxQuerySpillSpaceThreshold().toBytes();
     }
 
     @Override

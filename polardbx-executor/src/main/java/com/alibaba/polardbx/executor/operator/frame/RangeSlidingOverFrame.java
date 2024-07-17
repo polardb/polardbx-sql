@@ -20,10 +20,11 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * The range sliding window frame calculates frames with the following SQL form:
@@ -91,18 +92,20 @@ public class RangeSlidingOverFrame extends SlidingOverFrame {
     }
 
     @Override
-    public void processData(int index) {
+    public List<Object> processData(int index) {
         Object currentValue = chunksIndex.rowAt(index).getObject(orderByColIndex);
         if (currentValue == null) {
             if (!isNullVisit) {
-                process(index, getNullRowsRight(index));
+                return process(index, getNullRowsRight(index));
             }
-            return;
+            return aggregators.stream().map(t -> t.value()).collect(Collectors.toList());
         }
-        if (!(lastProcessedValue != null && lastProcessedValue.equals(currentValue))) {
+        if (lastProcessedValue != null && lastProcessedValue.equals(currentValue)) {
+            return aggregators.stream().map(t -> t.value()).collect(Collectors.toList());
+        } else {
             int[] indexes = getBound(index);
             lastProcessedValue = currentValue;
-            process(indexes[0], indexes[1]);
+            return process(indexes[0], indexes[1]);
         }
     }
 

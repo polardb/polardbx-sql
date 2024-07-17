@@ -16,15 +16,15 @@
 
 package com.alibaba.polardbx.planner.common;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.google.common.collect.Maps;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.google.common.collect.Maps;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTable;
@@ -75,7 +75,9 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
 
         final Set<String> indexColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexColumnSet.addAll(indexColumnMap.keySet());
-        if (!containsAllShardingColumns(indexColumnSet, indexPartitionInfo)) {
+        // Columnar index do not force using index column as partition column
+        final boolean isColumnar = indexDef.isColumnar();
+        if (!isColumnar && !containsAllShardingColumns(indexColumnSet, indexPartitionInfo)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_INDEX_AND_SHARDING_COLUMNS_NOT_MATCH);
         }
 
@@ -83,8 +85,9 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
          * check single/broadcast table
          */
         if (null != primaryPartitionInfo) {
-            if (forceAllowGsi == false && (primaryPartitionInfo.isBroadcastTable() || primaryPartitionInfo
-                .isSingleTable())) {
+            if (!forceAllowGsi
+                && !isColumnar
+                && (primaryPartitionInfo.isBroadcastTable() || primaryPartitionInfo.isSingleTable())) {
                 throw new TddlRuntimeException(
                     ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
                     "Does not support create Global Secondary Index on single or broadcast table");
@@ -132,14 +135,16 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
 
         final Set<String> indexColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexColumnSet.addAll(indexColumnMap.keySet());
-        if (!containsAllShardingColumns(indexColumnSet, indexPartitionInfo)) {
+        // Columnar index do not force using index column as partition column
+        final boolean isColumnar = sqlCreateIndex.createCci();
+        if (!isColumnar && !containsAllShardingColumns(indexColumnSet, indexPartitionInfo)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_INDEX_AND_SHARDING_COLUMNS_NOT_MATCH);
         }
 
         /**
          * check single/broadcast table
          */
-        if (null != primaryPartitionInfo) {
+        if (null != primaryPartitionInfo && !isColumnar) {
             if (primaryPartitionInfo.isBroadcastTable() || primaryPartitionInfo.isSingleTable()) {
                 throw new TddlRuntimeException(
                     ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,

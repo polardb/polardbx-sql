@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.sync;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 

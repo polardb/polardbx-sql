@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.vectorized.binding;
 import org.junit.Test;
 
 public class ControlFlowOperatorBindingTest extends BindingTestBase {
+
     @Test
     public void testCoalesce() {
         testProject("select coalesce(integer_test, 1, varchar_test) from test")

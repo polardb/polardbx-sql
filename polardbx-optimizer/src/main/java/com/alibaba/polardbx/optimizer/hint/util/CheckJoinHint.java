@@ -20,12 +20,16 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.alibaba.polardbx.optimizer.hint.operator.HintType;
 import com.alibaba.polardbx.optimizer.hint.operator.JoinHint;
 import com.alibaba.polardbx.optimizer.view.DrdsViewTable;
 import org.apache.calcite.plan.RelOptCost;
+import org.apache.calcite.plan.volcano.RelSubset;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rex.RexTableInputRef;
+import org.apache.calcite.util.Util;
 
 import java.util.List;
 import java.util.Set;
@@ -93,13 +97,72 @@ public class CheckJoinHint {
         return null;
     }
 
-    private static Set<String> converToTableNameSet(Set<RexTableInputRef.RelTableRef> refs) {
+    /**
+     * return true if use join hint, otherwise false
+     */
+    public static boolean sameJoinHint(RelNode node) {
+        if (!useJoinHint(PlannerContext.getPlannerContext(node))) {
+            return false;
+        }
+        RelNode rootNode = node;
+        while (!(rootNode instanceof Join)) {
+            if (rootNode instanceof RelSubset) {
+                rootNode = Util.first(((RelSubset) rootNode).getBest(), ((RelSubset) rootNode).getOriginal());
+                continue;
+            }
+            if (rootNode.getInputs().size() != 1) {
+                return false;
+            }
+            if (rootNode instanceof HashAgg) {
+                if (((HashAgg) rootNode).isPartial()) {
+                    return false;
+                }
+            }
+            rootNode = rootNode.getInput(0);
+        }
+
+        List<JoinHint> joinHints =
+            (List<JoinHint>) PlannerContext.getPlannerContext(node).getExtraCmds().get(ConnectionProperties.JOIN_HINT);
+
+        Set<String> leftTables;
+        Set<String> rightTables;
+        if (!joinHints.isEmpty()) {
+            Join join = (Join) rootNode;
+            leftTables = converToTableNameSet(join.getCluster().getMetadataQuery().getTableReferences(join.getLeft()));
+            rightTables =
+                converToTableNameSet(join.getCluster().getMetadataQuery().getTableReferences(join.getRight()));
+            for (JoinHint joinHint : joinHints) {
+                if (!joinHint.getLeft().isEmpty() && !joinHint.getRight().isEmpty()) {
+                    if (leftTables.equals(joinHint.getLeft()) && rightTables.equals(joinHint.getRight())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * return true if use join hint, otherwise false
+     */
+    public static boolean useJoinHint(PlannerContext plannerContext) {
+        Object obj = plannerContext.getExtraCmds().get(ConnectionProperties.JOIN_HINT);
+        if (obj == null) {
+            return false;
+        }
+        if (!(obj instanceof List) || ((List) obj).isEmpty() || !(((List) obj).get(0) instanceof JoinHint)) {
+            return false;
+        }
+        return true;
+    }
+
+    public static Set<String> converToTableNameSet(Set<RexTableInputRef.RelTableRef> refs) {
         Set<String> set = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (RexTableInputRef.RelTableRef ref : refs) {
             TableMeta tableMeta = CBOUtil.getTableMeta(ref.getTable());
             DrdsViewTable drdsViewTable = CBOUtil.getDrdsViewTable(ref.getTable());
             if (tableMeta != null) {
-                set.add(tableMeta.getTableName());
+                set.add(tableMeta.isColumnar() ? tableMeta.columnarOriginTable() : tableMeta.getTableName());
             } else if (drdsViewTable != null) {
                 set.add(drdsViewTable.getRow().getViewName());
             }

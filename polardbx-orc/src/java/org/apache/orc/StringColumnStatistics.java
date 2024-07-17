@@ -54,4 +54,11 @@ public interface StringColumnStatistics extends ColumnStatistics {
    * @return the sum (total length)
    */
   long getSum();
+
+  String getFirst();
+  String getLatest();
+
+  String getFirstBound();
+  String getLatestBound();
+
 }

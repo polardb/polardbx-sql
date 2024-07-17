@@ -50,6 +50,17 @@ public class GsiMetaChanger {
             .changeTablesExtType(metaDbConnection, schemaName, indexName, GsiMetaManager.TableType.GSI.getValue());
     }
 
+    public static void changeTableToColumnar(Connection metaDbConnection,
+                                             String schemaName,
+                                             String indexName) {
+
+        ExecutorContext
+            .getContext(schemaName)
+            .getGsiManager()
+            .getGsiMetaManager()
+            .changeTablesExtType(metaDbConnection, schemaName, indexName, GsiMetaManager.TableType.COLUMNAR.getValue());
+    }
+
     public static void updateIndexStatus(Connection metaDbConnection,
                                          String schemaName,
                                          String primaryTableName,

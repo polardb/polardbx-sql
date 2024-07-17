@@ -1,0 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+use polardbx;
+/*+TDDL:scan()*/select database(),'ok' from dual order by database() limit 1;
+DATABASE(),ok
+polardbx,ok

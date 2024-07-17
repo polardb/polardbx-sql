@@ -134,10 +134,8 @@ public class IndexBuilderHelper {
             String dropIndexSql =
                 "DROP INDEX " + SqlIdentifier.surroundWithBacktick(localIndexNameString)
                     + " ON " + SqlIdentifier.surroundWithBacktick(dropIndex.getOriginTableName().getLastName());
-            SqlAlterTableDropIndex newDropIndex =
-                new SqlAlterTableDropIndex(dropIndex.getOriginTableName(), localIndexName, dropIndexSql,
-                    SqlParserPos.ZERO);
-            newAlter = newDropIndex;
+            newAlter = SqlDdlNodes.alterTableDropIndex(dropIndex.getOriginTableName(), localIndexName, dropIndexSql,
+                SqlParserPos.ZERO);
         } else {
             throw new UnsupportedOperationException("not supported");
         }
@@ -197,6 +195,8 @@ public class IndexBuilderHelper {
         def.setTbPartitions(null);
         def.setPartitioning(null);
         def.setCovering(Collections.emptyList());
+        def.setWithImplicitTablegroup(false);
+        def.setTableGroup(null);
     }
 
 }

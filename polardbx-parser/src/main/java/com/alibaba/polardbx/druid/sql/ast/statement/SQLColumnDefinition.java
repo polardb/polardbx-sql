@@ -89,6 +89,8 @@ public class SQLColumnDefinition extends SQLObjectImpl
 
     private boolean defaultExprHasLp = false;
 
+    private SQLIdentifierExpr securedWith;
+
     public SQLColumnDefinition() {
 
     }
@@ -844,4 +846,11 @@ public class SQLColumnDefinition extends SQLObjectImpl
         return colProperties;
     }
 
+    public SQLIdentifierExpr getSecuredWith() {
+        return securedWith;
+    }
+
+    public void setSecuredWith(SQLIdentifierExpr securedWith) {
+        this.securedWith = securedWith;
+    }
 }

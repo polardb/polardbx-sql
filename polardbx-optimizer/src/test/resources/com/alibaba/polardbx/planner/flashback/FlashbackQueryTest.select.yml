@@ -4,21 +4,21 @@
 
   plan: |
 
-    logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `create_time` from `test_hash_ta` as of timestamp ? as `test_hash_ta` where (`id` = ?)")
+    phytableoperation(tables="optest_0001.[test_hash_ta]", sql="select `test_hash_ta`.`id`, `test_hash_ta`.`name`, `test_hash_ta`.`create_time` from ? as of timestamp ? as `test_hash_ta` where (`test_hash_ta`.`id` = ?)", params="1,2022-02-17 14:40:40")
 
 - sql: |
     select a.* from test_hash_ta a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
 
   plan: |
 
-    logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `create_time` from `test_hash_ta` as of timestamp ? as `test_hash_ta` where (`id` = ?)")
+    phytableoperation(tables="optest_0001.[test_hash_ta]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time` from ? as of timestamp ? as `a` where (`a`.`id` = ?)", params="1,2022-02-17 14:40:40")
 
 - sql: |
     select a.* from test_hash_ta as of timestamp "2022-02-17 14:40:40" a force index(auto_shard_key_ID) where a.id = 1;
 
   plan: |
 
-    logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `create_time` from `test_hash_ta` as of timestamp ? as `test_hash_ta` force index(auto_shard_key_id) where (`id` = ?)")
+    phytableoperation(tables="optest_0001.[test_hash_ta]", sql="select `a`.`id`, `a`.`name`, `a`.`create_time` from ? as of timestamp ? as `a` force index(auto_shard_key_id) where (`a`.`id` = ?)", params="1,2022-02-17 14:40:40")
 
 - sql: |
     select a.* from test_single a as of timestamp "2022-02-17 14:40:40" where a.id = 1;

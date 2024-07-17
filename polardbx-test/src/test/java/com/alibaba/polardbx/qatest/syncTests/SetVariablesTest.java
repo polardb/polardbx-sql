@@ -65,8 +65,8 @@ public class SetVariablesTest extends ReadBaseTestCase {
 
     @Test
     public void testPreventSettingGlobalOnMetaDb() throws Exception {
-        ConfigDataMode.setConfigServerMode(ConfigDataMode.Mode.GMS);
         // sync 实验室配置了 gms_in_dn0=false，因此可以跑。本地需要 GMS 和 DN 分离的环境才可以跑
+        ConfigDataMode.setMode(ConfigDataMode.Mode.GMS);
         String testVariableName = "innodb_lock_wait_timeout";
         enableSetGlobal();
 
@@ -103,6 +103,19 @@ public class SetVariablesTest extends ReadBaseTestCase {
         Assert.assertTrue(count2 == 2649);
 //        Assert.assertNotEquals(count1, count2);
 
+    }
+
+    @Test
+    public void setVariablesUdfTest() throws Exception {
+        enableSetGlobal();
+        String sql = "SET GLOBAL ENABLE_JAVA_UDF = true";
+        try {
+            execute(tddlConnection, sql);
+        } catch (Exception e) {
+            //ignore
+            return;
+        }
+        Assert.fail("Don't allow set ENABLE_JAVA_UDF");
     }
 
     private void setGlobalVariableSingleTest(String variableName, String variableValue) throws Exception {
@@ -176,7 +189,6 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("allow_loose_alter_column_with_gsi", "false", true));
         variableAssignmentList.add(new AssignmentItem("allow_simple_sequence", "false", true));
         variableAssignmentList.add(new AssignmentItem("always_rebuild_plan", "false", true));
-        variableAssignmentList.add(new AssignmentItem("analyze_table_speed_limitation", "500000", true));
         variableAssignmentList.add(new AssignmentItem("auto_analyze_all_column_table_limit", "10000", true));
         variableAssignmentList.add(new AssignmentItem("auto_analyze_period_in_hours", "168", true));
         variableAssignmentList.add(new AssignmentItem("auto_analyze_table_sleep_mills", "1", true));
@@ -412,7 +424,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("lookup_join_parallelism_factor", "4", true));
         variableAssignmentList.add(new AssignmentItem("master_read_weight", "-1", true));
         variableAssignmentList.add(new AssignmentItem("materialized_items_limit", "20000", true));
-//        variableAssignmentList.add(new AssignmentItem("max_allowed_packet", "16777216", true));
+        variableAssignmentList.add(new AssignmentItem("max_allowed_packet", "16777216", true));
         variableAssignmentList.add(new AssignmentItem("max_batch_insert_sql_length", "256", true));
         variableAssignmentList.add(new AssignmentItem("max_cache_params", "10000", true));
         variableAssignmentList.add(new AssignmentItem("max_execute_memory", "200", true));
@@ -445,7 +457,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("mpp_tablescan_connection_strategy", "0", true));
         variableAssignmentList.add(new AssignmentItem("mpp_task_local_buffer_enabled", "true", true));
         variableAssignmentList.add(new AssignmentItem("mpp_task_local_max_buffer_size", "8000000", true));
-        variableAssignmentList.add(new AssignmentItem("mpp_task_output_max_buffer_size", "32000000", true));
+        variableAssignmentList.add(new AssignmentItem("mpp_output_max_buffer_size", "32000000", true));
         variableAssignmentList.add(new AssignmentItem("mysql_join_reorder_exhaustive_depth", "4", true));
         variableAssignmentList.add(new AssignmentItem("num_of_job_schedulers", "64", true));
         variableAssignmentList.add(new AssignmentItem("parallelism", "-1", true));
@@ -539,7 +551,6 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("wait_bloom_filter_timeout_ms", "60000", true));
         variableAssignmentList.add(new AssignmentItem("wait_runtime_filter_for_scan", "true", true));
         variableAssignmentList.add(new AssignmentItem("window_func_optimize", "true", true));
-        variableAssignmentList.add(new AssignmentItem("window_func_reorder_join", "false", true));
         variableAssignmentList.add(new AssignmentItem("window_func_subquery_condition", "false", true));
         variableAssignmentList.add(new AssignmentItem("workload_io_threshold", "15000", true));
         variableAssignmentList.add(new AssignmentItem("workload_type", "NULL", true));
@@ -560,6 +571,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
 
     public void set80DnGlobalVariableTest() throws Exception {
         enableSetGlobal();
+        enableSetServerIdGlobal();
 
         List<AssignmentItem> variableAssignmentList = new LinkedList<>();
         // TODO:
@@ -574,15 +586,12 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("binlog_rows_query_log_events", "ON", true));
         variableAssignmentList.add(new AssignmentItem("block_encryption_mode", "aes-128-ecb", true));
         variableAssignmentList.add(new AssignmentItem("bulk_insert_buffer_size", "8388608", true));
-        variableAssignmentList.add(new AssignmentItem("character_set_client", "utf8", true));
-        variableAssignmentList.add(new AssignmentItem("character_set_connection", "utf8", true));
-        variableAssignmentList.add(new AssignmentItem("character_set_database", "utf8", true));
+        variableAssignmentList.add(new AssignmentItem("character_set_database", "utf8mb3", true));
         variableAssignmentList.add(new AssignmentItem("character_set_filesystem", "binary", true));
-        variableAssignmentList.add(new AssignmentItem("character_set_results", "utf8", true));
-        variableAssignmentList.add(new AssignmentItem("character_set_server", "utf8", true));
-        variableAssignmentList.add(new AssignmentItem("collation_connection", "utf8_general_ci", true));
-        variableAssignmentList.add(new AssignmentItem("collation_database", "utf8_general_ci", true));
-        variableAssignmentList.add(new AssignmentItem("collation_server", "utf8_general_ci", true));
+        variableAssignmentList.add(new AssignmentItem("character_set_server", "utf8mb3", true));
+        variableAssignmentList.add(new AssignmentItem("collation_connection", "utf8mb3_general_ci", true));
+        variableAssignmentList.add(new AssignmentItem("collation_database", "utf8mb3_general_ci", true));
+        variableAssignmentList.add(new AssignmentItem("collation_server", "utf8mb3_general_ci", true));
         variableAssignmentList.add(new AssignmentItem("completion_type", "NO_CHAIN", true));
         variableAssignmentList.add(new AssignmentItem("cte_max_recursion_depth", "1000", true));
         variableAssignmentList.add(new AssignmentItem("default_collation_for_utf8mb4", "utf8mb4_0900_ai_ci", true));
@@ -595,7 +604,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("eq_range_index_dive_limit", "200", true));
         variableAssignmentList.add(new AssignmentItem("explicit_defaults_for_timestamp", "OFF", true));
         variableAssignmentList.add(new AssignmentItem("force_revise", "OFF", true));
-        variableAssignmentList.add(new AssignmentItem("foreign_key_checks", "ON", true));
+        variableAssignmentList.add(new AssignmentItem("foreign_key_checks", "true", true));
         variableAssignmentList.add(new AssignmentItem("generated_random_password_length", "20", true));
         variableAssignmentList.add(new AssignmentItem("global_query_wait_timeout", "31536000", true));
         /* Not supported yet: group_concat_max_len */
@@ -645,7 +654,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("optimizer_prune_level", "1", true));
         variableAssignmentList.add(new AssignmentItem("optimizer_search_depth", "62", true));
         variableAssignmentList.add(new AssignmentItem("optimizer_switch",
-            "index_merge=on,index_merge_union=on,index_merge_sort_union=on,index_merge_intersection=on,engine_condition_pushdown=on,index_condition_pushdown=on,mrr=on,mrr_cost_based=on,block_nested_loop=on,batched_key_access=off,materialization=on,semijoin=on,loosescan=on,firstmatch=on,duplicateweedout=on,subquery_materialization_cost_based=on,use_index_extensions=on,condition_fanout_filter=on,derived_merge=on,use_invisible_indexes=off,skip_scan=on,hash_join=on",
+            "index_merge=on,index_merge_union=on,index_merge_sort_union=on,index_merge_intersection=on,engine_condition_pushdown=on,index_condition_pushdown=on,mrr=on,mrr_cost_based=on,block_nested_loop=on,batched_key_access=off,materialization=on,semijoin=on,loosescan=on,firstmatch=on,duplicateweedout=on,subquery_materialization_cost_based=on,use_index_extensions=on,condition_fanout_filter=on,derived_merge=on,use_invisible_indexes=off,skip_scan=on,hash_join=on,subquery_to_derived=off,prefer_ordering_index=on,hypergraph_optimizer=off,derived_condition_pushdown=on",
             true));
         variableAssignmentList.add(new AssignmentItem("optimizer_trace", "enabled=off,one_line=off", true));
         variableAssignmentList.add(new AssignmentItem("optimizer_trace_features",
@@ -688,7 +697,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("sql_quote_show_create", "ON", true));
         variableAssignmentList.add(new AssignmentItem("sql_require_primary_key", "OFF", true));
         variableAssignmentList.add(new AssignmentItem("sql_safe_updates", "OFF", true));
-        variableAssignmentList.add(new AssignmentItem("sql_select_limit", "18446744073709551615", true));
+//        variableAssignmentList.add(new AssignmentItem("sql_select_limit", "18446744073709551615", true));
         variableAssignmentList.add(new AssignmentItem("sql_warnings", "OFF", true));
         variableAssignmentList.add(new AssignmentItem("time_zone", "+08:00", true));
         variableAssignmentList.add(new AssignmentItem("tmp_table_size", "16777216", true));
@@ -926,18 +935,15 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("log_timestamps", "SYSTEM", true));
         variableAssignmentList.add(new AssignmentItem("master_info_repository", "TABLE", true));
         variableAssignmentList.add(new AssignmentItem("master_verify_checksum", "OFF", true));
-        /* Not supported yet: max_allowed_packet */
-//        variableAssignmentList.add(new AssignmentItem("max_allowed_packet", "1073741824", true));
+        variableAssignmentList.add(new AssignmentItem("max_allowed_packet", "1073741824", true));
         variableAssignmentList.add(new AssignmentItem("max_binlog_cache_size", "2147483648", true));
         variableAssignmentList.add(new AssignmentItem("max_binlog_size", "524288000", true));
         variableAssignmentList.add(new AssignmentItem("max_binlog_stmt_cache_size", "18446744073709547520", true));
         variableAssignmentList.add(new AssignmentItem("max_connect_errors", "65536", true));
-        // TODO:
-//        variableAssignmentList.add(new AssignmentItem("max_connections", "65535", true));
+        variableAssignmentList.add(new AssignmentItem("max_connections", "65535", true));
         variableAssignmentList.add(new AssignmentItem("max_prepared_stmt_count", "16382", true));
         variableAssignmentList.add(new AssignmentItem("max_relay_log_size", "524288000", true));
-        // TODO:
-//        variableAssignmentList.add(new AssignmentItem("max_user_connections", "65535", true));
+        //variableAssignmentList.add(new AssignmentItem("max_user_connections", "65535", true));
         variableAssignmentList.add(new AssignmentItem("max_write_lock_count", "18446744073709551615", true));
         variableAssignmentList.add(new AssignmentItem("myisam_data_pointer_size", "6", true));
         variableAssignmentList.add(new AssignmentItem("myisam_max_sort_file_size", "9223372036853727232", true));
@@ -1049,10 +1055,10 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("slow_query_log", "OFF", true));
         variableAssignmentList.add(new AssignmentItem("slow_query_log_file", "/data/mysql/log/slow.log", true));
         variableAssignmentList.add(new AssignmentItem("sql_slave_skip_counter", "0", true));
-        variableAssignmentList.add(new AssignmentItem("ssl_ca", "ca.pem", true));
-        variableAssignmentList.add(new AssignmentItem("ssl_cert", "server-cert.pem", true));
+//        variableAssignmentList.add(new AssignmentItem("ssl_ca", "ca.pem", true));
+//        variableAssignmentList.add(new AssignmentItem("ssl_cert", "server-cert.pem", true));
         variableAssignmentList.add(new AssignmentItem("ssl_fips_mode", "OFF", true));
-        variableAssignmentList.add(new AssignmentItem("ssl_key", "server-key.pem", true));
+//        variableAssignmentList.add(new AssignmentItem("ssl_key", "server-key.pem", true));
         variableAssignmentList.add(new AssignmentItem("stored_program_cache", "256", true));
         variableAssignmentList.add(new AssignmentItem("stored_program_definition_cache", "256", true));
         variableAssignmentList.add(new AssignmentItem("super_read_only", "OFF", true));
@@ -1075,6 +1081,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
 
     public void set57DnGlobalVariableTest() throws Exception {
         enableSetGlobal();
+        enableSetServerIdGlobal();
 
         List<AssignmentItem> variableAssignmentList = new LinkedList<>();
 //        variableAssignmentList.add(new AssignmentItem("auto_increment_increment", "1", true));
@@ -1388,11 +1395,11 @@ public class SetVariablesTest extends ReadBaseTestCase {
 //            new AssignmentItem("master-info-file", "/u01/chenmo.cm/my3434/log/master.info", true));
         variableAssignmentList.add(new AssignmentItem("master_info_repository", "TABLE", true));
         variableAssignmentList.add(new AssignmentItem("master_verify_checksum", "OFF", true));
-//        variableAssignmentList.add(new AssignmentItem("max_allowed_packet", "1073741824", true));
+        variableAssignmentList.add(new AssignmentItem("max_allowed_packet", "1073741824", true));
         variableAssignmentList.add(new AssignmentItem("max_binlog_cache_size", "18446744073709547520", true));
         variableAssignmentList.add(new AssignmentItem("max_binlog_stmt_cache_size", "18446744073709547520", true));
         variableAssignmentList.add(new AssignmentItem("max_connect_errors", "100", true));
-//        variableAssignmentList.add(new AssignmentItem("max_connections", "5532", true));
+        variableAssignmentList.add(new AssignmentItem("max_connections", "5532", true));
         variableAssignmentList.add(new AssignmentItem("max_error_count", "64", true));
         variableAssignmentList.add(new AssignmentItem("max_execution_time", "0", true));
         variableAssignmentList.add(new AssignmentItem("max_heap_table_size", "67108864", true));
@@ -1403,7 +1410,7 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("max_seeks_for_key", "18446744073709551615", true));
         variableAssignmentList.add(new AssignmentItem("max_sort_length", "1024", true));
         variableAssignmentList.add(new AssignmentItem("max_sp_recursion_depth", "0", true));
-//        variableAssignmentList.add(new AssignmentItem("max_user_connections", "5000", true));
+        //variableAssignmentList.add(new AssignmentItem("max_user_connections", "5000", true));
         variableAssignmentList.add(new AssignmentItem("max_write_lock_count", "102400", true));
         variableAssignmentList.add(new AssignmentItem("metadata_locks_cache_size", "1024", true));
         variableAssignmentList.add(new AssignmentItem("min_examined_row_limit", "0", true));
@@ -1631,6 +1638,11 @@ public class SetVariablesTest extends ReadBaseTestCase {
 
     private void enableSetGlobal() throws SQLException {
         String sql = "SET ENABLE_SET_GLOBAL=true";
+        execute(tddlConnection, sql);
+    }
+
+    private void enableSetServerIdGlobal() throws SQLException {
+        String sql = "SET enable_set_global_server_id=true";
         execute(tddlConnection, sql);
     }
 

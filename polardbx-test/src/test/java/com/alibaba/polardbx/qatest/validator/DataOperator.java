@@ -55,12 +55,16 @@ public class DataOperator {
             preparedStatement.execute();
             Assert.fail(sql);
         } catch (Exception e) {
-            // log.error(e.getMessage(), e);
+            Throwable t = e;
+            if (e.getMessage().equals(JdbcUtil.READ_ONLY_EXCEPTION_MSG)) {
+                t = e.getCause();
+            }
             try {
-                assertThat(e.getMessage()).contains(expectErrorMess);
+                assertThat(t.getMessage()).contains(expectErrorMess);
             } catch (Throwable e2) {
+                e2.printStackTrace();
                 // 统一大小写，再检查一次
-                assertThat(e.getMessage().toUpperCase()).contains(expectErrorMess.toUpperCase());
+                assertThat(t.getMessage().toUpperCase()).contains(expectErrorMess.toUpperCase());
             }
         } finally {
             JdbcUtil.close(preparedStatement);

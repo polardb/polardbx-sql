@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.collect.Ordering;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -31,6 +30,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolListener;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPool;
+import com.google.common.collect.Ordering;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;

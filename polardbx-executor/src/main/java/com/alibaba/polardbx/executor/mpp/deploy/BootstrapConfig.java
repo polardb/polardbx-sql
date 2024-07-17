@@ -24,6 +24,7 @@ public class BootstrapConfig {
     public static final String CONFIG_KEY_NODE_ID = "node.id";
     public static final String CONFIG_KEY_HTTP_PORT = "http-server.http.port";
     public static final String CONFIG_KEY_HTTP_SERVER_LOG_ENABLED = "http-server.log.enabled";
+    public static final String CONFIG_KEY_HTTP_SERVER_ADMIN_ENABLED = "http-server.admin.enabled";
 
     public static final String CONFIG_KEY_HTTP_SERVER_MAX_THREADS = "http-server.threads.max"; //200
     public static final String CONFIG_KEY_HTTP_SERVER_MIN_THREADS = "http-server.threads.min"; //2

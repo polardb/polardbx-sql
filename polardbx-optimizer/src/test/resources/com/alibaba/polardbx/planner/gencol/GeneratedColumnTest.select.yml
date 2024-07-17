@@ -19,7 +19,7 @@
     /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` where a+1=10
 
   plan: |
-    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+    phytableoperation(tables="optest_0002.[gc_test_tbl_1]", sql="select `gc_test_tbl_1`.`a`, `gc_test_tbl_1`.`b` from ? as `gc_test_tbl_1` where (`gc_test_tbl_1`.`b` = ?)", params="10,1")
     
 
 - sql: |
@@ -66,14 +66,14 @@
     /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/ select * from `gc_test_tbl_2` where a+1=10
 
   plan: |
-    logicalview(tables="optest_0002.gc_test_tbl_2", sql="select `a`, `b` from `gc_test_tbl_2` as `gc_test_tbl_2` where (`b` = ?)")
+    phytableoperation(tables="optest_0002.[gc_test_tbl_2]", sql="select `gc_test_tbl_2`.`a`, `gc_test_tbl_2`.`b` from ? as `gc_test_tbl_2` where (`gc_test_tbl_2`.`b` = ?)", params="10,1")
 
 
 - sql: |
     /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from `gc_test_tbl_1` as t1 where a+1=10
 
   plan: |
-    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+    phytableoperation(tables="optest_0002.[gc_test_tbl_1]", sql="select `t1`.`a`, `t1`.`b` from ? as `t1` where (`t1`.`b` = ?)", params="10,1")
 
 
 - sql: |
@@ -96,7 +96,7 @@
     /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from (select * from gc_test_tbl_1 where a+1=10) as gc_test_tbl_2 where a+1=10
 
   plan: |
-    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` = ?) and ((`a` + ?) = ?))")
+    phytableoperation(tables="optest_0002.[gc_test_tbl_1]", sql="select `gc_test_tbl_2`.`a`, `gc_test_tbl_2`.`b` from (select `gc_test_tbl_1`.`a`, `gc_test_tbl_1`.`b` from ? as `gc_test_tbl_1` where (`gc_test_tbl_1`.`b` = ?)) as `gc_test_tbl_2` where ((`gc_test_tbl_2`.`a` + ?) = ?)", params="10,10,1,1")
 
 
 - sql: |
@@ -114,7 +114,7 @@
     /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from (select * from `gc_test_tbl_1` where gc_test_tbl_1.a+1=10) as gc_test_tbl_1 where gc_test_tbl_1.a+1=10;
 
   plan: |
-    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where ((`b` = ?) and ((`a` + ?) = ?))")
+    phytableoperation(tables="optest_0002.[gc_test_tbl_1]", sql="select `gc_test_tbl_1`.`a`, `gc_test_tbl_1`.`b` from (select `gc_test_tbl_1`.`a`, `gc_test_tbl_1`.`b` from ? as `gc_test_tbl_1` where (`gc_test_tbl_1`.`b` = ?)) as `gc_test_tbl_1` where ((`gc_test_tbl_1`.`a` + ?) = ?)", params="10,10,1,1")
 
 
 - sql: |
@@ -283,7 +283,7 @@
     /*+TDDL:CMD_EXTRA(GEN_COL_SUBSTITUTION=TRUE,GEN_COL_SUBSTITUTION_CHECK_TYPE=FALSE)*/  select * from gc_test_tbl_1 where a+1=10
 
   plan: |
-    logicalview(tables="optest_0002.gc_test_tbl_1", sql="select `a`, `b` from `gc_test_tbl_1` as `gc_test_tbl_1` where (`b` = ?)")
+    phytableoperation(tables="optest_0002.[gc_test_tbl_1]", sql="select `gc_test_tbl_1`.`a`, `gc_test_tbl_1`.`b` from ? as `gc_test_tbl_1` where (`gc_test_tbl_1`.`b` = ?)", params="10,1")
 
 
 - sql: |

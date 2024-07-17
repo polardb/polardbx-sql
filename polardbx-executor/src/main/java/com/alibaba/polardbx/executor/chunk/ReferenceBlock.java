@@ -33,7 +33,7 @@ public class ReferenceBlock<T> extends AbstractBlock {
 
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(ReferenceBlock.class).instanceSize();
 
-    private Object[] values;
+    protected Object[] values;
 
     public ReferenceBlock(DataType<T> dataType, int slotLen) {
         super(dataType, slotLen);
@@ -44,7 +44,7 @@ public class ReferenceBlock<T> extends AbstractBlock {
     public ReferenceBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, Object[] values,
                           DataType<T> dataType) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
-        this.values = Preconditions.checkNotNull(values);
+        this.values = values;
         updateSizeInfo();
     }
 
@@ -52,7 +52,7 @@ public class ReferenceBlock<T> extends AbstractBlock {
                           DataType<T> dataType,
                           boolean hasNull) {
         super(dataType, positionCount, valueIsNull, hasNull);
-        this.values = Preconditions.checkNotNull(values);
+        this.values = values;
         updateSizeInfo();
     }
 
@@ -72,7 +72,7 @@ public class ReferenceBlock<T> extends AbstractBlock {
             return false;
         }
         if (otherBlock instanceof ReferenceBlock) {
-            return getReference(position).equals(((ReferenceBlock) otherBlock).getReference(otherPosition));
+            return getReference(position).equals((otherBlock.cast(ReferenceBlock.class)).getReference(otherPosition));
         } else if (otherBlock instanceof ReferenceBlockBuilder) {
             return getReference(position).equals(((ReferenceBlockBuilder) otherBlock).getReference(otherPosition));
         } else {
@@ -82,6 +82,9 @@ public class ReferenceBlock<T> extends AbstractBlock {
 
     @Override
     public T getObject(int position) {
+        if (isNull(position)) {
+            return null;
+        }
         return getReference(position);
     }
 
@@ -99,9 +102,14 @@ public class ReferenceBlock<T> extends AbstractBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int position) {
+        return hashCode(position);
+    }
+
+    @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof ReferenceBlock) {
-            ReferenceBlock outputVectorSlot = (ReferenceBlock) output;
+            ReferenceBlock outputVectorSlot = output.cast(ReferenceBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -122,7 +130,7 @@ public class ReferenceBlock<T> extends AbstractBlock {
         if (!(another instanceof ReferenceBlock)) {
             GeneralUtil.nestedException("cannot shallow copy to " + another == null ? null : another.toString());
         }
-        ReferenceBlock vectorSlot = (ReferenceBlock) another;
+        ReferenceBlock vectorSlot = another.cast(ReferenceBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }
@@ -134,9 +142,13 @@ public class ReferenceBlock<T> extends AbstractBlock {
 
     @Override
     public void setElementAt(int position, Object element) {
-        super.updateElementAt(position, element, e -> values[position] = e);
-
-        //TODO updateSizeInfo() should be called when we are able to estimated the size of Object[]
+        if (element != null) {
+            isNull[position] = false;
+            values[position] = element;
+        } else {
+            isNull[position] = true;
+            hasNull = true;
+        }
     }
 
     public Object[] objectArray() {
@@ -149,8 +161,10 @@ public class ReferenceBlock<T> extends AbstractBlock {
      * @param context Evaluation Context
      * @return Type-specific block.
      */
-    public Block toTypeSpecificBlock(EvaluationContext context) {
-        BlockBuilder blockBuilder = BlockBuilders.create(dataType, context.getExecutionContext(), positionCount);
+    public Block toTypeSpecificBlock(EvaluationContext context, DataType resultType) {
+        DataType targetType = resultType == null ? dataType : resultType;
+        boolean shouldConvert = resultType != null && !resultType.equalDeeply(dataType);
+        BlockBuilder blockBuilder = BlockBuilders.create(targetType, context.getExecutionContext(), positionCount);
 
         int batchSize = context.getPreAllocatedChunk().batchSize();
         boolean isSelectionInUse = context.getPreAllocatedChunk().isSelectionInUse();
@@ -159,11 +173,17 @@ public class ReferenceBlock<T> extends AbstractBlock {
             for (int i = 0; i < batchSize; i++) {
                 int j = selection[i];
                 Object value = isNull[j] ? null : values[j];
+                if (shouldConvert) {
+                    value = targetType.convertFrom(value);
+                }
                 blockBuilder.writeObject(value);
             }
         } else {
             for (int i = 0; i < batchSize; i++) {
                 Object value = isNull[i] ? null : values[i];
+                if (shouldConvert) {
+                    value = targetType.convertFrom(value);
+                }
                 blockBuilder.writeObject(value);
             }
         }

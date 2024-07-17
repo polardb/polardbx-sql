@@ -32,7 +32,7 @@ EXPLAIN SELECT *
 FROM tbl
 WHERE a = 40;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl[p1]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?)", params="40")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a < 5;
@@ -73,7 +73,7 @@ FROM tbl
 WHERE a = '1999-10-01 10:10:10'
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="1999-10-01 10:10:10")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a < '2000-10-01 10:10:10'

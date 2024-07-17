@@ -48,8 +48,8 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.alibaba.polardbx.executor.mpp.execution.QueryState.FAILED;
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
 public class SqlQueryManager implements QueryManager {

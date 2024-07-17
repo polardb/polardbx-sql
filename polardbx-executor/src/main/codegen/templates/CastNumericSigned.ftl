@@ -38,28 +38,28 @@ public class ${className} extends AbstractVectorizedExpression {
 
     @Override
     public void eval(EvaluationContext ctx) {
-        super.evalChildren(ctx);
+		super.evalChildren(ctx);
 
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType}[] input = ((${type.inputVectorType}) inputVectorSlot).${type.inputType}Array();
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        ${type.inputType}[] input = (inputVectorSlot.cast(${type.inputVectorType}.class)).${type.inputType}Array();
+		long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
-        // handle nulls
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
+		// handle nulls
+		VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
 
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                <#if type.inputType == "float" || type.inputType == "double">
-                output[j] = (long) Math.rint(input[j]);
-                </#if>
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+        <#if type.inputType == "float" || type.inputType == "double">
+			output[j] = (long) Math.rint(input[j]);
+        </#if>
                 <#if type.inputType != "float" && type.inputType != "double">
                 output[j] = input[j];
                 </#if>

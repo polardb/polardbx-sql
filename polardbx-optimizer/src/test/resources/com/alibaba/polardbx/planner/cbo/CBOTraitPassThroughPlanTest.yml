@@ -31,7 +31,7 @@
     select * from (select * from lineitem order by l_suppkey) where exists (select * from orders where l_orderkey = o_orderkey);
 
   plan: |
-    semihashjoin(condition="l_orderkey = o_orderkey", type="semi")
+    semihashjoin(condition="l_orderkey = o_orderkey", type="semi", build="inner")
       gather(concurrent=true)
         logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem` as `lineitem`")
       gather(concurrent=true)
@@ -282,7 +282,7 @@
   plan: |
     limit(offset=0, fetch=10)
       exchange(distribution=single, collation=[0 asc-nulls-first])
-        sortagg(group="o_custkey", count(*)="__first_value(count(*))")
+        project(o_custkey="o_custkey", count(*)="count(*)")
           filter(condition="o_custkey + $f2 > 10")
             sortagg(group="o_custkey", count(*)="count()", $f2="__first_value(c_custkey)")
               project(c_custkey="c_custkey", o_custkey="o_custkey")
@@ -291,8 +291,6 @@
                     logicalview(tables="[0000-0003].orders_[00-15]", shardcount=16, sql="select `o_custkey` from `orders` as `orders` order by `o_custkey`")
                   exchange(distribution=hash[0], collation=[])
                     logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey` from `customer` as `customer`")
-
-
 - sql: |
     /*+TDDL:cmd_extra(cbo_agg_join_transpose_limit=0,enable_broadcast_join=false,workload_type=ap,enable_mpp=true)*/
     select c_custkey, count(*) from customer where exists( select o_custkey from orders where c_custkey = o_custkey) group by c_custkey order by c_custkey  limit 10;
@@ -301,7 +299,7 @@
     limit(offset=0, fetch=10)
       exchange(distribution=single, collation=[0 asc-nulls-first])
         sortagg(group="c_custkey", count(*)="count()")
-          semihashjoin(condition="c_custkey = o_custkey", type="semi")
+          semihashjoin(condition="c_custkey = o_custkey", type="semi", build="inner")
             exchange(distribution=hash[0], collation=[0 asc-nulls-first])
               logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey` from `customer` as `customer` order by `c_custkey`")
             exchange(distribution=hash[0], collation=[])
@@ -441,7 +439,7 @@
       exchange(distribution=single, collation=[])
         limit(fetch=10)
           hashagg(group="o_custkey", count(*)="count()")
-            semihashjoin(condition="n_nationkey = c_nationkey", type="semi")
+            semihashjoin(condition="n_nationkey = c_nationkey", type="semi", build="inner")
               project(c_custkey="c_custkey", c_nationkey="c_nationkey", o_custkey="o_custkey")
                 hashjoin(condition="o_custkey = c_custkey", type="inner")
                   exchange(distribution=hash[0], collation=[])
@@ -462,16 +460,15 @@
       exchange(distribution=single, collation=[])
         limit(fetch=10)
           hashagg(group="o_custkey", count(*)="count()")
-            project(c_custkey="c_custkey", c_nationkey="c_nationkey", o_custkey="o_custkey")
-              seminljoin(condition="n_nationkey = c_nationkey", type="semi")
+            seminljoin(condition="n_nationkey = c_nationkey", type="semi")
+              project(c_custkey="c_custkey", c_nationkey="c_nationkey", o_custkey="o_custkey")
                 hashjoin(condition="o_custkey = c_custkey", type="inner")
                   exchange(distribution=hash[0], collation=[])
                     logicalview(tables="[0000-0003].orders_[00-15]", shardcount=16, sql="select `o_custkey` from `orders` as `orders`")
                   exchange(distribution=hash[0], collation=[])
                     logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey`, `c_nationkey` from `customer` as `customer`")
-                exchange(distribution=broadcast, collation=[])
-                  logicalview(tables="optest_0000.nation", sql="select `n_nationkey` from `nation` as `nation`")
-
+              exchange(distribution=broadcast, collation=[])
+                logicalview(tables="optest_0000.nation", sql="select `n_nationkey` from `nation` as `nation`")
 - sql: |
     /*+TDDL:cmd_extra(cbo_agg_join_transpose_limit=0,enable_push_join=false,enable_cbo_push_join=false,workload_type=ap,enable_mpp=true) HASH_JOIN(customer,orders) NL_JOIN((customer,orders),nation)*/
     select o_custkey, count(*) from customer join orders on c_custkey = o_custkey join nation  on n_nationkey = c_nationkey group by o_custkey order by o_custkey desc limit 10;
@@ -516,7 +513,7 @@
             logicalview(tables="[0000-0003].customer_[00-15]", shardcount=16, sql="select `c_custkey` from `customer` as `customer`")
 
 - sql: |
-    /*+TDDL:cmd_extra(enable_semi_hash_join=false,enable_sort_agg=false,cbo_agg_join_transpose_limit=0,enable_push_join=false,enable_cbo_push_join=false,workload_type=ap,enable_mpp=true) HASH_JOIN(customer,orders) SEMI_SORT_MERGE_JOIN((orders,     customer), nation) NO_JOIN(orders,nation) NO_JOIN(customer,nation)*/
+    /*+TDDL:cmd_extra(enable_nl_join=false,enable_bka_join=false,ENABLE_MATERIALIZED_SEMI_JOIN=false,ENABLE_SEMI_BKA_JOIN=false,ENABLE_SEMI_NL_JOIN=false,enable_semi_hash_join=false,enable_sort_agg=false,cbo_agg_join_transpose_limit=0,enable_push_join=false,enable_cbo_push_join=false,workload_type=ap,enable_mpp=true) HASH_JOIN(customer,orders) SEMI_SORT_MERGE_JOIN((orders,     customer), nation)*/
     select o_custkey, count(*) from customer join orders on c_custkey = o_custkey where exists ( select n_nationkey from nation  where n_nationkey = c_nationkey) group by o_custkey limit 10;
 
   plan: |

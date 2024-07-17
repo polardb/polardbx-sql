@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.Threads;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.DataSize;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -36,12 +36,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
+import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferResult.emptyResults;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
-import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferResult.emptyResults;
 import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 

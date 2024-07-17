@@ -64,11 +64,12 @@ public class AlterTableGroupSplitPartitionPreparedData extends AlterTableGroupBa
                 for (SqlNode sqlNode : sqlPartition.getSubPartitions()) {
                     String subPartitionName = ((SqlIdentifier) ((SqlSubPartition) sqlNode).getName()).getSimple();
                     newPartitionNames.add(subPartitionName);
+                    newPartitionLocalities.put(subPartitionName, sqlPartition.getLocality());
                 }
             } else {
                 newPartitionNames.add(partitionName);
+                newPartitionLocalities.put(sqlPartition.getName().toString(), sqlPartition.getLocality());
             }
-            newPartitionLocalities.put(sqlPartition.getName().toString(), sqlPartition.getLocality());
         }
         setNewPartitionNames(newPartitionNames);
         setNewPartitionLocalities(newPartitionLocalities);

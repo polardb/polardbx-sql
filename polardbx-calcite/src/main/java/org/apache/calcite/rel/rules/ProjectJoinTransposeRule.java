@@ -45,6 +45,7 @@ public class ProjectJoinTransposeRule extends RelOptRule {
           PushProjector.ExprCondition.TRUE,
           RelFactories.LOGICAL_BUILDER);
 
+
   //~ Instance fields --------------------------------------------------------
 
   /**
@@ -68,6 +69,15 @@ public class ProjectJoinTransposeRule extends RelOptRule {
             operand(Join.class, any())),
         relFactory, null);
     this.preserveExprCondition = preserveExprCondition;
+  }
+
+  public ProjectJoinTransposeRule(int inputRefThreshold) {
+    super(
+        operand(Project.class,
+            operand(Join.class, any())),
+        RelFactories.LOGICAL_BUILDER, null);
+
+    this.preserveExprCondition = new PushProjector.InputRefExprCondition(inputRefThreshold);
   }
 
   //~ Methods ----------------------------------------------------------------

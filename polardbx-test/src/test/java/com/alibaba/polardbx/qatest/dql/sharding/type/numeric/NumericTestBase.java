@@ -33,21 +33,21 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnM
 public abstract class NumericTestBase extends CrudBasedLockTestCase {
     protected static final int BATCH_SIZE = 1 << 10;
 
-    protected static final String DECIMAL_TEST_LOW = "decimal_test_low";
-    protected static final String DECIMAL_TEST_HIGH = "decimal_test_high";
-    protected static final String TINYINT_TEST = "tinyint_test";
-    protected static final String UTINYINT_TEST = "utinyint_test";
-    protected static final String SMALLINT_TEST = "smallint_test";
-    protected static final String USMALLINT_TEST = "usmallint_test";
-    protected static final String MEDIUMINT_TEST = "mediumint_test";
-    protected static final String UMEDIUMINT_TEST = "umediumint_test";
-    protected static final String INT_TEST = "int_test";
-    protected static final String UINT_TEST = "uint_test";
-    protected static final String BIGINT_TEST = "bigint_test";
-    protected static final String UBIGINT_TEST = "ubigint_test";
-    protected static final String LONG_NUMBER_TEST = "long_number_test";
-    protected static final String VARCHAR_TEST = "varchar_test";
-    protected static final String CHAR_TEST = "char_test";
+    public static final String DECIMAL_TEST_LOW = "decimal_test_low";
+    public static final String DECIMAL_TEST_HIGH = "decimal_test_high";
+    public static final String TINYINT_TEST = "tinyint_test";
+    public static final String UTINYINT_TEST = "utinyint_test";
+    public static final String SMALLINT_TEST = "smallint_test";
+    public static final String USMALLINT_TEST = "usmallint_test";
+    public static final String MEDIUMINT_TEST = "mediumint_test";
+    public static final String UMEDIUMINT_TEST = "umediumint_test";
+    public static final String INT_TEST = "int_test";
+    public static final String UINT_TEST = "uint_test";
+    public static final String BIGINT_TEST = "bigint_test";
+    public static final String UBIGINT_TEST = "ubigint_test";
+    public static final String LONG_NUMBER_TEST = "long_number_test";
+    public static final String VARCHAR_TEST = "varchar_test";
+    public static final String CHAR_TEST = "char_test";
 
     protected static final String INSERT_SQL_FORMAT = "insert into %s (%s) values (?)";
     protected static final String INSERT_SQL_FORMAT_2 = "insert into %s (%s, %s) values (?, ?)";

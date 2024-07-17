@@ -39,6 +39,7 @@ public class CacheStats {
     private final AtomicLong hit = new AtomicLong();
     private final AtomicLong miss = new AtomicLong();
     private final AtomicLong quotaExceed = new AtomicLong();
+    private final AtomicLong unavailable = new AtomicLong();
 
     public void incrementCacheHit() {
         hit.getAndIncrement();
@@ -46,6 +47,10 @@ public class CacheStats {
 
     public void incrementCacheMiss() {
         miss.getAndIncrement();
+    }
+
+    public void incrementCacheUnavailable() {
+        unavailable.getAndIncrement();
     }
 
     public void incrementQuotaExceed() {
@@ -70,5 +75,28 @@ public class CacheStats {
 
     public long getQuotaExceed() {
         return quotaExceed.get();
+    }
+
+    public long getCacheUnavailable() {
+        return unavailable.get();
+    }
+
+    public void reset() {
+        inMemoryRetainedBytes.set(0);
+        hit.set(0);
+        miss.set(0);
+        quotaExceed.set(0);
+        unavailable.set(0);
+    }
+
+    @Override
+    public String toString() {
+        return "CacheStats{" +
+            "inMemoryRetainedBytes=" + inMemoryRetainedBytes +
+            ", hit=" + hit +
+            ", miss=" + miss +
+            ", quotaExceed=" + quotaExceed +
+            ", unavailable=" + unavailable +
+            '}';
     }
 }

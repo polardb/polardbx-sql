@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.planner.common;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.gms.metadb.table.JavaFunctionMetaRecord;
 import com.alibaba.polardbx.gms.metadb.table.JavaFunctionRecord;
 import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
@@ -44,6 +44,7 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
@@ -206,7 +207,7 @@ public abstract class BasePlannerTest {
 
     private FastsqlParser parser = new FastsqlParser();
     protected RelOptCluster cluster;
-    private boolean modeSimple = false;
+    protected boolean ignoreBaseTest = false;
     protected ExecutionContext ec = new ExecutionContext();
     protected boolean useNewPartDb = false;
     private int corMaxNum = 10;
@@ -221,7 +222,7 @@ public abstract class BasePlannerTest {
         }
         initBasePlannerTestEnv();
         initAppNameConfig(dbname);
-        modeSimple = true;
+        ignoreBaseTest = true;
     }
 
     /**
@@ -235,6 +236,17 @@ public abstract class BasePlannerTest {
 
     public BasePlannerTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
         this.caseName = caseName;
+        this.sqlIndex = sqlIndex;
+        this.sql = sql;
+        this.expectedPlan = expectedPlan;
+        this.lineNum = lineNum;
+        initTestEnv();
+    }
+
+    public BasePlannerTest(String caseName, String targetEnvFile, int sqlIndex, String sql, String expectedPlan,
+                           String lineNum) {
+        this.caseName = caseName;
+        this.targetEnvFile = targetEnvFile;
         this.sqlIndex = sqlIndex;
         this.sql = sql;
         this.expectedPlan = expectedPlan;
@@ -280,7 +292,7 @@ public abstract class BasePlannerTest {
     protected void initBasePlannerTestEnv() {
     }
 
-    private static int caseNum = 0;
+    protected static int caseNum = 0;
 
     public static List<Object[]> loadSqls(Class clazz) {
 
@@ -506,7 +518,7 @@ public abstract class BasePlannerTest {
                                           Map<String, TableRule> gsiTableRules,
                                           Map<String, SqlIndexDefinition> gsiIndexDefs) {
         ExecutionContext ec = new ExecutionContext();
-        ec.setRandomPhyTableEnabled(false);
+        ec.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
         TableRule tableRule = TableRuleUtil.buildShardingTableRule(indexTableName,
             tableToSchema,
             indexDef.getDbPartitionBy(),
@@ -658,8 +670,6 @@ public abstract class BasePlannerTest {
                                                          String logicalTableName,
                                                          PartitionTableType tblType,
                                                          PlannerContext plannerContext) {
-        ConfigDataMode.Mode mode = ConfigDataMode.getMode();
-        ConfigDataMode.setConfigServerMode(ConfigDataMode.Mode.GMS);
         LogicalCreateTable logicalCreateTable;
         SqlConverter converter = SqlConverter.getInstance(appName, ec);
         SqlNode validatedNode = converter.validate(sqlCreateTable);
@@ -685,7 +695,6 @@ public abstract class BasePlannerTest {
             new PartitionInfoManager.PartInfoCtx(partitionInfoManager, logicalTableName.toLowerCase(),
                 partitionInfo.getTableGroupId(),
                 partitionInfo));
-        ConfigDataMode.setConfigServerMode(mode);
         return logicalCreateTable;
     }
 
@@ -694,7 +703,6 @@ public abstract class BasePlannerTest {
                                                          String logicalTableName,
                                                          PlannerContext plannerContext) {
         ConfigDataMode.Mode mode = ConfigDataMode.getMode();
-        ConfigDataMode.setConfigServerMode(ConfigDataMode.Mode.GMS);
         LogicalCreateTable logicalCreateTable;
         SqlConverter converter = SqlConverter.getInstance(appName, ec);
         SqlNode validatedNode = converter.validate(sqlCreateTable);
@@ -706,8 +714,6 @@ public abstract class BasePlannerTest {
         RelNode drdsRelNode = relNode.accept(toDrdsRelVisitor);
         logicalCreateTable = (LogicalCreateTable) drdsRelNode;
         logicalCreateTable.prepareData(new ExecutionContext());
-
-        ConfigDataMode.setConfigServerMode(mode);
 
         return logicalCreateTable;
     }
@@ -815,7 +821,7 @@ public abstract class BasePlannerTest {
                 List<ColumnMeta> pkColMetas = new ArrayList<>(primaryTbMeta.getPrimaryKey());
                 primaryTbMeta.setSchemaName(schema);
                 PartitionInfo indexPartitionInfo = PartitionInfoBuilder
-                    .buildPartitionInfoByPartDefAst(schema, indexTableName, null, null,
+                    .buildPartitionInfoByPartDefAst(schema, indexTableName, null, false, null,
                         (SqlPartitionBy) createGlobalIndexPreparedData.getIndexDefinition().getPartitioning(),
                         createGlobalIndexPreparedData.getPartBoundExprInfo(),
                         pkColMetas, allColMetas, PartitionTableType.GSI_TABLE,
@@ -906,7 +912,7 @@ public abstract class BasePlannerTest {
         if (sqlCreateTable.isBroadCast()) {
             tr = TableRuleUtil.buildBroadcastTableRuleWithoutRandomPhyTableName(logicalTableName, tm);
         } else if (sqlCreateTable.getDbpartitionBy() != null || sqlCreateTable.getTbpartitionBy() != null) {
-            ec.setRandomPhyTableEnabled(false);
+            ec.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
             tr = TableRuleUtil.buildShardingTableRule(logicalTableName,
                 tm,
                 sqlCreateTable.getDbpartitionBy(),
@@ -939,7 +945,7 @@ public abstract class BasePlannerTest {
         return ddlFlag.contains(fileName);
     }
 
-    private void prepareSchemaByDdl() {
+    protected void prepareSchemaByDdl() {
         if (isDDLInit()) {
             return;
         }
@@ -1104,6 +1110,7 @@ public abstract class BasePlannerTest {
         keywords.add("null_count");
         keywords.add("sample_rate");
         keywords.add("composite_cardinality");
+        keywords.add("extend_field");
         for (Map.Entry<String, Object> entry : statisticMaps.entrySet()) {
             // it is assumed four cases in the name, we classify the name according to the number of '.'
             // 1:table 2:schema.table 3:table.columns.xxx 4:schema.table.columns.xxx
@@ -1162,7 +1169,7 @@ public abstract class BasePlannerTest {
         StatisticManager.getInstance().clearAndReloadData();
     }
 
-    private static List<Map<String, String>> loadSqls(String fileName, Class clazz) {
+    protected static List<Map<String, String>> loadSqls(String fileName, Class clazz) {
         String content = readToString(clazz.getResource(fileName).getPath());
         caseContent.put(fileName, content);
         casePath.put(fileName, clazz.getResource(fileName).getPath());
@@ -1437,7 +1444,7 @@ public abstract class BasePlannerTest {
 
     @Test
     public void testSql() {
-        if (modeSimple) {
+        if (ignoreBaseTest) {
             return;
         }
         doPlanTest();
@@ -1476,9 +1483,14 @@ public abstract class BasePlannerTest {
         pkColMetas = new ArrayList<>(tableMeta.getPrimaryKey());
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
-                null,
+                false, null,
                 (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(), pkColMetas,
                 allColMetas, tblType, executionContext);
+
+        if (preparedData.getLocality() != null) {
+            partitionInfo.setTableGroupId(Long.valueOf(preparedData.getLocality().toString().hashCode()));
+            partitionInfo.setLocality(preparedData.getLocality().toString());
+        }
 
         // Set auto partition flag only on primary table.
         if (tblType == PartitionTableType.PARTITION_TABLE) {

@@ -32,6 +32,10 @@ public abstract class SQLTableSourceImpl extends SQLObjectImpl implements SQLTab
     protected String alias;
     protected List<SQLHint> hints;
     protected SQLExpr flashback;
+    /**
+     * 标识flashback，是否是as of tso
+     */
+    protected boolean flashbackWithTso;
     protected long aliasHashCode64;
 
     public SQLTableSourceImpl() {
@@ -110,6 +114,14 @@ public abstract class SQLTableSourceImpl extends SQLObjectImpl implements SQLTab
             flashback.setParent(this);
         }
         this.flashback = flashback;
+    }
+
+    public boolean isFlashbackWithTso() {
+        return flashbackWithTso;
+    }
+
+    public void setFlashbackWithTso(boolean flashbackWithTso) {
+        this.flashbackWithTso = flashbackWithTso;
     }
 
     public boolean containsAlias(String alias) {

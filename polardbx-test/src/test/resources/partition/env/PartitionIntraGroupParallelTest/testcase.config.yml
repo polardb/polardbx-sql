@@ -1,3 +1,4 @@
+test_intra_group_write_parallel
 test_intra_group_autocommit2
 test_intra_group_xa_rc
 test_intra_group_xa_rc2

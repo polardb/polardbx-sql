@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * DESCRIPTION
@@ -80,6 +81,9 @@ public class SqlAlterTable extends SqlCreate {
     private List<String> physicalReferencedTables = null;
 
     private Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel;
+
+    private String targetImplicitTableGroupName;
+    private Map<String, String> indexTableGroupMap = new TreeMap<>();
 
     /**
      * Creates a SqlCreateIndex.
@@ -147,11 +151,11 @@ public class SqlAlterTable extends SqlCreate {
             name.unparse(writer, leftPrec, rightPrec);
         }
 
+        SqlUtil.wrapSqlNodeList(alters).unparse(writer, 0, 0);
+
         if (null != tableOptions) {
             tableOptions.unparse(writer, leftPrec, rightPrec);
         }
-
-        SqlUtil.wrapSqlNodeList(alters).unparse(writer, 0, 0);
 
         writer.endList(frame);
     }
@@ -217,8 +221,9 @@ public class SqlAlterTable extends SqlCreate {
                 final int leftPrec = getOperator().getLeftPrec();
                 final int rightPrec = getOperator().getRightPrec();
                 alters.clear();
-                alters.add(new SqlAlterTableDropIndex(dropForeignKey.getOriginTableName(), dropForeignKey.getIndexName(),
-                    dropForeignKey.getSourceSql(), SqlParserPos.ZERO));
+                alters.add(
+                    SqlDdlNodes.alterTableDropIndex(dropForeignKey.getOriginTableName(), dropForeignKey.getIndexName(),
+                        dropForeignKey.getSourceSql(), SqlParserPos.ZERO));
                 unparse(writer, leftPrec, rightPrec, true);
                 sqlForExecute = writer.toSqlString().getSql();
                 alters.clear();
@@ -349,6 +354,11 @@ public class SqlAlterTable extends SqlCreate {
     @Override
     public boolean createGsi() {
         return addIndex() && ((SqlAddIndex) alters.get(0)).indexDef.isGlobal();
+    }
+
+    @Override
+    public boolean createCci() {
+        return addIndex() && ((SqlAddIndex) alters.get(0)).indexDef.isColumnar();
     }
 
     public boolean isAllocateLocalPartition() {
@@ -538,5 +548,21 @@ public class SqlAlterTable extends SqlCreate {
 
     public void setAlterIndexName(SqlNode alterIndexName) {
         this.alterIndexName = alterIndexName;
+    }
+
+    public String getTargetImplicitTableGroupName() {
+        return targetImplicitTableGroupName;
+    }
+
+    public void setTargetImplicitTableGroupName(String targetImplicitTableGroupName) {
+        this.targetImplicitTableGroupName = targetImplicitTableGroupName;
+    }
+
+    public Map<String, String> getIndexTableGroupMap() {
+        return indexTableGroupMap;
+    }
+
+    public void addIndexTableGroup(String index, String tableGroupName) {
+        this.indexTableGroupMap.put(index, tableGroupName);
     }
 }

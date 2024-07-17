@@ -1,0 +1,406 @@
+SQL:
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where id=1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "primary","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "id","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+        /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_char='1';
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_char_c_int_32_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_char","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_int_32=1;
+    plan: |
+      null
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_varchar='1';
+    plan: |
+      null
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_int_32=1 and c_varchar='1';
+    plan: |
+      null
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_datetime='2023-01-01';
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_datetime_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},"value": {"type": "v_string","v_string": {"value": "2023-01-01","collation": 45}}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 3},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "2023-01-01","collation": 45}}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where `c_char`='1' and `c_int_32` = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_char_c_int_32_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_char","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}},{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where `c_char`='1' and `c_int_32` = 1 and c_int_32_un=1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_char_c_int_32_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_char","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}},{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}},{"field": {"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 0},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where `c_char`='1' and `c_int_32` = 1 and c_int_32_un=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "primary","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "id","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 0},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_int_32=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "primary","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "id","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(c_int_32_c_varchar_idx) where c_int_32=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_int_32_c_varchar_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(c_int_32_c_varchar_c_char_c_int_32_un_idx) where c_int_32=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_int_32_c_varchar_c_char_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(primary) where c_int_32=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "primary","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "id","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(primary) where c_int_32=1 and `c_char`='1';
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_char_c_int_32_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_char","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}},{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(c_char_c_int_32_c_int_32_un_idx) where c_int_32=1 and `c_char`='1';
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_char_c_int_32_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_char","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}},{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(primay) where `c_char`='1' and `c_int_32` = 1 and c_int_32_un=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "primary","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "id","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 0},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(primary) where `c_char`='1' and `c_int_32` = 1 and c_int_32_un=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "primary","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "id","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 0},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+  - sql: |
+      /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan force index(c_char_c_int_32_c_int_32_un_idx) where `c_char`='1' and `c_int_32` = 1 and c_int_32_un=1 and id = 1;
+    plan: |
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_char_c_int_32_c_int_32_un_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_char","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}},{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}},{"field": {"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 2},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 0},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 1},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
+DDL:
+  xplan:
+    CREATE TABLE `xplan` ( 	`c_int_32_un` int(32) UNSIGNED DEFAULT NULL, 	`c_char` char(10) DEFAULT NULL, 	`id` bigint(20) NOT NULL AUTO_INCREMENT, 	`c_datetime` datetime DEFAULT NULL, 	`c_varchar` varchar(10) DEFAULT NULL, 	`c_int_32` int(32) NOT NULL DEFAULT '0', 	PRIMARY KEY (`id`), 	LOCAL KEY `c_datetime_idx` (`c_datetime`), 	LOCAL KEY `c_int_32_c_varchar_idx` (`c_int_32`, `c_varchar`), 	LOCAL KEY `c_int_32_c_varchar_c_char_c_int_32_un_idx` (`c_int_32`, `c_varchar`, `c_char`, `c_int_32_un`), 	LOCAL KEY `c_char_c_int_32_c_int_32_un_idx` (`c_char`, `c_int_32`, `c_int_32_un`) ) partition by key(id) partitions 16 ENGINE = InnoDB AUTO_INCREMENT = 1000001 DEFAULT CHARSET = utf8mb4;
+STATISTICS:
+  xplan:
+    1163968
+  xplan.c_char.TOPN:
+    {"countArr":[155,144,183,176,159,202,220,333,509,170,143,172,222,267],"valueArr":["0f48dc7b8b","1a4dad9967","3158cdd647","3735291e2e","4025723672","58785fe0ee","5a1d6b5c7a","5adf51cdf1","6b2e576e58","861e0b0c5c","a8a37bcfe2","d1a69e50a9","ee16039e31","fcec13daab"],"type":"String","sampleRate":0.8668226931911759}
+  xplan.c_char.cardinality:
+    10171
+  xplan.c_char.histogram:
+    {"buckets":[{"ndv":141,"upper":"03fff6892a","lower":"00092d1ccf","count":1515,"preSum":0},{"ndv":163,"upper":"07aad32d85","lower":"0401227956","count":1516,"preSum":1515},{"ndv":144,"upper":"0b371f1a70","lower":"07b5b2b3be","count":1520,"preSum":3031},{"ndv":159,"upper":"0f1a62fb2d","lower":"0b38573dc7","count":1516,"preSum":4551},{"ndv":174,"upper":"1339c2d2b7","lower":"0f2621790b","count":1519,"preSum":6067},{"ndv":159,"upper":"17cdfac551","lower":"133a7feee4","count":1521,"preSum":7586},{"ndv":150,"upper":"1b52578474","lower":"17ce7b67be","count":1520,"preSum":9107},{"ndv":172,"upper":"1fe5c8d29d","lower":"1b562aa394","count":1553,"preSum":10627},{"ndv":158,"upper":"23d7e4a803","lower":"1fefec6ea9","count":1520,"preSum":12180},{"ndv":163,"upper":"28258299d7","lower":"23e225f689","count":1518,"preSum":13700},{"ndv":155,"upper":"2c928eb93e","lower":"282bda3561","count":1516,"preSum":15218},{"ndv":154,"upper":"314628cf42","lower":"2cbe303b20","count":1530,"preSum":16734},{"ndv":162,"upper":"358c01b42e","lower":"314ac1c38e","count":1524,"preSum":18264},{"ndv":155,"upper":"39474a8faa","lower":"359fa085c9","count":1525,"preSum":19788},{"ndv":136,"upper":"3c72da6a4d","lower":"39554987f9","count":1521,"preSum":21313},{"ndv":165,"upper":"40f835454a","lower":"3c76bc8011","count":1544,"preSum":22834},{"ndv":145,"upper":"442a8d2c7d","lower":"40fd6a5193","count":1516,"preSum":24378},{"ndv":141,"upper":"47ec36db85","lower":"4431298b96","count":1518,"preSum":25894},{"ndv":168,"upper":"4bf8e4ee70","lower":"47f9f98279","count":1525,"preSum":27412},{"ndv":145,"upper":"4f91be6a5b","lower":"4bfa7af145","count":1520,"preSum":28937},{"ndv":151,"upper":"533c8abc1c","lower":"4f9573652e","count":1521,"preSum":30457},{"ndv":148,"upper":"56e08d9942","lower":"53467ee540","count":1516,"preSum":31978},{"ndv":149,"upper":"5a23628ae9","lower":"56e45fcb6f","count":1520,"preSum":33494},{"ndv":172,"upper":"5ecca3c6dd","lower":"5a23d530a0","count":1520,"preSum":35014},{"ndv":162,"upper":"62cf3b2259","lower":"5eccd03b9f","count":1517,"preSum":36534},{"ndv":139,"upper":"667230cd04","lower":"62d2cbb1e5","count":1529,"preSum":38051},{"ndv":170,"upper":"6a8595e699","lower":"66857811b6","count":1516,"preSum":39580},{"ndv":165,"upper":"6ec0386333","lower":"6a8742522f","count":1546,"preSum":41096},{"ndv":151,"upper":"722fc3b863","lower":"6ecb2812ff","count":1515,"preSum":42642},{"ndv":142,"upper":"75cf4dcae6","lower":"722fce3568","count":1563,"preSum":44157},{"ndv":149,"upper":"7951108cc6","lower":"75d7f72522","count":1516,"preSum":45720},{"ndv":166,"upper":"7dac917a67","lower":"7956c15e9f","count":1524,"preSum":47236},{"ndv":147,"upper":"81c69030d8","lower":"7db1ed93b1","count":1518,"preSum":48760},{"ndv":148,"upper":"8642b41185","lower":"81cd5067c0","count":1537,"preSum":50278},{"ndv":169,"upper":"8ac4164afd","lower":"864435cbff","count":1516,"preSum":51815},{"ndv":157,"upper":"8e1eccf368","lower":"8ac94d379f","count":1518,"preSum":53331},{"ndv":151,"upper":"926db8e56e","lower":"8e36267c47","count":1516,"preSum":54849},{"ndv":159,"upper":"968cfa5ace","lower":"9273241436","count":1515,"preSum":56365},{"ndv":154,"upper":"9abe83eaef","lower":"969a0541d0","count":1536,"preSum":57880},{"ndv":137,"upper":"9e1a6d9f39","lower":"9ac012091f","count":1517,"preSum":59416},{"ndv":166,"upper":"a26e61c711","lower":"9e1b8b47aa","count":1520,"preSum":60933},{"ndv":145,"upper":"a6647851b2","lower":"a2750e5ac2","count":1520,"preSum":62453},{"ndv":151,"upper":"aa2f61badc","lower":"a665ab9f2e","count":1517,"preSum":63973},{"ndv":160,"upper":"ae718f90b2","lower":"aa390bb06b","count":1529,"preSum":65490},{"ndv":151,"upper":"b2c64c04d6","lower":"ae7595dd3d","count":1524,"preSum":67019},{"ndv":166,"upper":"b6f94931fc","lower":"b2d618520d","count":1519,"preSum":68543},{"ndv":145,"upper":"bb13a00d1a","lower":"b7025bdc7b","count":1520,"preSum":70062},{"ndv":164,"upper":"bf2628b9c4","lower":"bb1872f7a8","count":1517,"preSum":71582},{"ndv":182,"upper":"c442bbfa19","lower":"bf2d7a60fb","count":1519,"preSum":73099},{"ndv":138,"upper":"c86e64a957","lower":"c44e47687e","count":1516,"preSum":74618},{"ndv":163,"upper":"cd2085066a","lower":"c86fe0a5c2","count":1530,"preSum":76134},{"ndv":141,"upper":"d0a654c5c0","lower":"cd3ec9e3fc","count":1522,"preSum":77664},{"ndv":160,"upper":"d4715f7efe","lower":"d0bfaf3cbe","count":1639,"preSum":79186},{"ndv":167,"upper":"d87c8b7711","lower":"d487ff7ee2","count":1523,"preSum":80825},{"ndv":176,"upper":"dd52ba4919","lower":"d88c85ba89","count":1519,"preSum":82348},{"ndv":157,"upper":"e1aaee3c70","lower":"dd61a929e3","count":1525,"preSum":83867},{"ndv":163,"upper":"e5dddaa66e","lower":"e1accca868","count":1517,"preSum":85392},{"ndv":173,"upper":"ea178916c5","lower":"e5e21d27dd","count":1519,"preSum":86909},{"ndv":150,"upper":"ee0e8cf59b","lower":"ea21d77302","count":1515,"preSum":88428},{"ndv":154,"upper":"f1c211603d","lower":"ee111babe6","count":1571,"preSum":89943},{"ndv":151,"upper":"f5451eae48","lower":"f1d3338808","count":1532,"preSum":91514},{"ndv":165,"upper":"f92aa74f8b","lower":"f545baa996","count":1523,"preSum":93046},{"ndv":172,"upper":"fd1fcccb80","lower":"f93753dc28","count":1527,"preSum":94569},{"ndv":109,"upper":"fffeac72d8","lower":"fd266d0d21","count":850,"preSum":96096}],"maxBucketSize":64,"type":"String","sampleRate":0.8668227}
+  xplan.c_char.null_count:
+    0
+  xplan.c_char.sample_rate:
+    0.09911353
+  xplan.c_char.extend_field:
+    { "SKEW_COLS": [ [ "c_varchar","c_int_32" ] ] }
+  xplan.c_datetime.TOPN:
+    {"countArr":[7,7,7,7,7,7,7,7],"valueArr":[1849825343553142784,1849858270232051712,1850261680907354112,1850328987172077568,1850548487783972864,1850571266428239872,1850605893545099264,1850606698331373568],"type":"Datetime","sampleRate":0.8668226931911759}
+  xplan.c_datetime.cardinality:
+    190463
+  xplan.c_datetime.histogram:
+    {"buckets":[{"ndv":972,"upper":"1849797101291044864","lower":"1849785377674493952","count":1562,"preSum":0},{"ndv":996,"upper":"1849809847831232512","lower":"1849797103220424704","count":1563,"preSum":1562},{"ndv":979,"upper":"1849821686992470016","lower":"1849809856303726592","count":1564,"preSum":3125},{"ndv":1005,"upper":"1849834897271685120","lower":"1849821687378345984","count":1562,"preSum":4689},{"ndv":1010,"upper":"1849847849299214336","lower":"1849834897556897792","count":1562,"preSum":6251},{"ndv":980,"upper":"1849862739514621952","lower":"1849847850020634624","count":1562,"preSum":7813},{"ndv":997,"upper":"1849875614987714560","lower":"1849862769361289216","count":1564,"preSum":9375},{"ndv":972,"upper":"1849887955787710464","lower":"1849875624299069440","count":1562,"preSum":10939},{"ndv":983,"upper":"1849900957912006656","lower":"1849887976490795008","count":1562,"preSum":12501},{"ndv":985,"upper":"1849913000731869184","lower":"1849900974034911232","count":1562,"preSum":14063},{"ndv":983,"upper":"1849933930023616512","lower":"1849913009774788608","count":1562,"preSum":15625},{"ndv":1003,"upper":"1849947032341446656","lower":"1849933930560487424","count":1562,"preSum":17187},{"ndv":1018,"upper":"1849960014651850752","lower":"1849947040310624256","count":1563,"preSum":18749},{"ndv":988,"upper":"1849973018671972352","lower":"1849960046629224448","count":1562,"preSum":20312},{"ndv":1000,"upper":"1849985652116946944","lower":"1849973024845987840","count":1562,"preSum":21874},{"ndv":981,"upper":"1850000088223449088","lower":"1849985670924206080","count":1563,"preSum":23436},{"ndv":990,"upper":"1850012790387900416","lower":"1850000088525438976","count":1562,"preSum":24999},{"ndv":1004,"upper":"1850025442287812608","lower":"1850012793323913216","count":1562,"preSum":26561},{"ndv":986,"upper":"1850038276455399424","lower":"1850025455340486656","count":1562,"preSum":28123},{"ndv":980,"upper":"1850050293203468288","lower":"1850038281639559168","count":1562,"preSum":29685},{"ndv":971,"upper":"1850067047518568448","lower":"1850050295652941824","count":1562,"preSum":31247},{"ndv":990,"upper":"1850078633545170944","lower":"1850067067785445376","count":1562,"preSum":32809},{"ndv":1016,"upper":"1850091210702585856","lower":"1850078653560389632","count":1563,"preSum":34371},{"ndv":990,"upper":"1850104420763697152","lower":"1850091219997163520","count":1563,"preSum":35934},{"ndv":972,"upper":"1850116223484821504","lower":"1850104433514381312","count":1562,"preSum":37497},{"ndv":1009,"upper":"1850129087499075584","lower":"1850116223736479744","count":1562,"preSum":39059},{"ndv":968,"upper":"1850143829420670976","lower":"1850129090904850432","count":1564,"preSum":40621},{"ndv":1015,"upper":"1850157334509125632","lower":"1850143831316496384","count":1563,"preSum":42185},{"ndv":998,"upper":"1850169451635277824","lower":"1850157340985131008","count":1563,"preSum":43748},{"ndv":969,"upper":"1850181970928074752","lower":"1850169452574801920","count":1562,"preSum":45311},{"ndv":978,"upper":"1850193688035065856","lower":"1850181971464945664","count":1563,"preSum":46873},{"ndv":977,"upper":"1850210516086030336","lower":"1850193695148605440","count":1562,"preSum":48436},{"ndv":984,"upper":"1850223318427238400","lower":"1850210521270190080","count":1563,"preSum":49998},{"ndv":1007,"upper":"1850235206091407360","lower":"1850223338778001408","count":1563,"preSum":51561},{"ndv":982,"upper":"1850247626096640000","lower":"1850235231290785792","count":1562,"preSum":53124},{"ndv":986,"upper":"1850260928650543104","lower":"1850247629905068032","count":1563,"preSum":54686},{"ndv":994,"upper":"1850272998162956288","lower":"1850260943766814720","count":1562,"preSum":56249},{"ndv":992,"upper":"1850288112840736768","lower":"1850273005310050304","count":1565,"preSum":57811},{"ndv":996,"upper":"1850300947561971712","lower":"1850288119350296576","count":1562,"preSum":59376},{"ndv":983,"upper":"1850313206304604160","lower":"1850300948082065408","count":1562,"preSum":60938},{"ndv":973,"upper":"1850324878415101952","lower":"1850313232594501632","count":1562,"preSum":62500},{"ndv":972,"upper":"1850336462797537280","lower":"1850324878884864000","count":1563,"preSum":64062},{"ndv":1000,"upper":"1850351709763665920","lower":"1850336467126059008","count":1562,"preSum":65625},{"ndv":981,"upper":"1850364293749407744","lower":"1850351710317314048","count":1562,"preSum":67187},{"ndv":996,"upper":"1850376333348044800","lower":"1850364295729119232","count":1562,"preSum":68749},{"ndv":992,"upper":"1850390189784956928","lower":"1850376344991432704","count":1562,"preSum":70311},{"ndv":980,"upper":"1850401874008604672","lower":"1850390199985504256","count":1562,"preSum":71873},{"ndv":998,"upper":"1850419136371359744","lower":"1850401878504898560","count":1562,"preSum":73435},{"ndv":999,"upper":"1850432014243594240","lower":"1850419147964416000","count":1562,"preSum":74997},{"ndv":980,"upper":"1850444426480975872","lower":"1850432022414098432","count":1562,"preSum":76559},{"ndv":982,"upper":"1850457224174895104","lower":"1850444473725616128","count":1563,"preSum":78121},{"ndv":972,"upper":"1850470144728367104","lower":"1850457233637244928","count":1562,"preSum":79684},{"ndv":998,"upper":"1850482619410546688","lower":"1850470147295281152","count":1563,"preSum":81246},{"ndv":1006,"upper":"1850498009888980992","lower":"1850482634895917056","count":1562,"preSum":82809},{"ndv":983,"upper":"1850510357668298752","lower":"1850498023210090496","count":1563,"preSum":84371},{"ndv":968,"upper":"1850522771130417152","lower":"1850510369546567680","count":1562,"preSum":85934},{"ndv":987,"upper":"1850535501245710336","lower":"1850522774418751488","count":1562,"preSum":87496},{"ndv":971,"upper":"1850547836475670528","lower":"1850535503141535744","count":1563,"preSum":89058},{"ndv":1007,"upper":"1850566195934134272","lower":"1850547841290731520","count":1564,"preSum":90621},{"ndv":1007,"upper":"1850578520258904064","lower":"1850566198517825536","count":1562,"preSum":92185},{"ndv":1001,"upper":"1850590586533314560","lower":"1850578528999833600","count":1563,"preSum":93747},{"ndv":1006,"upper":"1850602856919334912","lower":"1850590587187625984","count":1562,"preSum":95310},{"ndv":985,"upper":"1850615390757978112","lower":"1850603421824974848","count":1562,"preSum":96872},{"ndv":977,"upper":"1850627028273856512","lower":"1850615448270274560","count":1511,"preSum":98434}],"maxBucketSize":64,"type":"Datetime","sampleRate":0.8668227}
+  xplan.c_datetime.null_count:
+    0
+  xplan.c_datetime.sample_rate:
+    0.09911353
+  xplan.c_datetime.extend_field:
+    { "SKEW_COLS": [ [ "c_varchar","c_int_32" ] ] }
+  xplan.c_int_32.TOPN:
+    {"countArr":[633,1128,2782,779,1379,4078,786,2054,1199,8233,904,588,662,1662],"valueArr":[-1950109280,-1454132371,-1411218759,-498516975,-287760748,-246972714,779759734,823794465,1197681779,1481320050,1555199915,1739700646,1917688469,2049312391],"type":"Int","sampleRate":0.8668226931911759}
+  xplan.c_int_32.cardinality:
+    86079
+  xplan.c_int_32.histogram:
+    {"buckets":[{"ndv":415,"upper":-2072136840,"lower":-2147047762,"count":1144,"preSum":0},{"ndv":398,"upper":-1999817654,"lower":-2071799843,"count":1227,"preSum":1144},{"ndv":355,"upper":-1942041597,"lower":-1999665569,"count":1217,"preSum":2371},{"ndv":430,"upper":-1855653012,"lower":-1941817101,"count":1216,"preSum":3588},{"ndv":447,"upper":-1778123522,"lower":-1855524080,"count":1160,"preSum":4804},{"ndv":460,"upper":-1702730543,"lower":-1778116614,"count":1230,"preSum":5964},{"ndv":202,"upper":-1671687889,"lower":-1702493821,"count":1167,"preSum":7194},{"ndv":478,"upper":-1591367944,"lower":-1671132779,"count":1143,"preSum":8361},{"ndv":469,"upper":-1503179859,"lower":-1590979671,"count":1143,"preSum":9504},{"ndv":441,"upper":-1419062748,"lower":-1502792485,"count":1143,"preSum":10647},{"ndv":220,"upper":-1384857086,"lower":-1419031428,"count":1147,"preSum":11790},{"ndv":382,"upper":-1315969812,"lower":-1384538675,"count":1176,"preSum":12937},{"ndv":489,"upper":-1227913197,"lower":-1315805674,"count":1146,"preSum":14113},{"ndv":488,"upper":-1140136565,"lower":-1227666501,"count":1143,"preSum":15259},{"ndv":469,"upper":-1060517682,"lower":-1140071431,"count":1146,"preSum":16402},{"ndv":255,"upper":-1011897074,"lower":-1060511216,"count":1143,"preSum":17548},{"ndv":347,"upper":-945564868,"lower":-1011655998,"count":1144,"preSum":18691},{"ndv":264,"upper":-901052025,"lower":-945519512,"count":1144,"preSum":19835},{"ndv":377,"upper":-832255397,"lower":-900932943,"count":1149,"preSum":20979},{"ndv":530,"upper":-734229872,"lower":-832164795,"count":1153,"preSum":22128},{"ndv":566,"upper":-630441966,"lower":-733945498,"count":1143,"preSum":23281},{"ndv":456,"upper":-551722651,"lower":-630434670,"count":1144,"preSum":24424},{"ndv":457,"upper":-471684966,"lower":-551529568,"count":1153,"preSum":25568},{"ndv":325,"upper":-412226910,"lower":-471548369,"count":1143,"preSum":26721},{"ndv":187,"upper":-377541822,"lower":-412016201,"count":1143,"preSum":27864},{"ndv":470,"upper":-294711905,"lower":-377125662,"count":1143,"preSum":29007},{"ndv":537,"upper":-201915471,"lower":-294661954,"count":1254,"preSum":30150},{"ndv":445,"upper":-117788164,"lower":-201721584,"count":1623,"preSum":31404},{"ndv":424,"upper":-47794227,"lower":-117679782,"count":1310,"preSum":33027},{"ndv":232,"upper":-5533214,"lower":-47732609,"count":1192,"preSum":34337},{"ndv":286,"upper":45423029,"lower":-5507636,"count":1143,"preSum":35529},{"ndv":477,"upper":127430735,"lower":45502466,"count":1364,"preSum":36672},{"ndv":103,"upper":145277773,"lower":127764174,"count":1143,"preSum":38036},{"ndv":302,"upper":196944446,"lower":145394400,"count":1144,"preSum":39179},{"ndv":452,"upper":274901643,"lower":196983172,"count":1211,"preSum":40323},{"ndv":459,"upper":357852766,"lower":275513434,"count":1335,"preSum":41534},{"ndv":405,"upper":428152672,"lower":358085292,"count":1143,"preSum":42869},{"ndv":347,"upper":488202526,"lower":428208311,"count":1282,"preSum":44012},{"ndv":416,"upper":558727120,"lower":488257407,"count":1155,"preSum":45294},{"ndv":507,"upper":650274930,"lower":559008235,"count":1143,"preSum":46449},{"ndv":291,"upper":701742104,"lower":650346008,"count":1150,"preSum":47592},{"ndv":441,"upper":772482089,"lower":701911673,"count":1225,"preSum":48742},{"ndv":192,"upper":803884122,"lower":772562069,"count":1143,"preSum":49967},{"ndv":452,"upper":880190329,"lower":803974439,"count":1143,"preSum":51110},{"ndv":390,"upper":950751785,"lower":880386692,"count":1179,"preSum":52253},{"ndv":402,"upper":1026747201,"lower":950788773,"count":1143,"preSum":53432},{"ndv":364,"upper":1089169064,"lower":1026753304,"count":1198,"preSum":54575},{"ndv":318,"upper":1145460031,"lower":1089432220,"count":1149,"preSum":55773},{"ndv":495,"upper":1225076920,"lower":1145481757,"count":1143,"preSum":56922},{"ndv":133,"upper":1249028369,"lower":1225112807,"count":1146,"preSum":58065},{"ndv":371,"upper":1321844857,"lower":1249168252,"count":1143,"preSum":59211},{"ndv":411,"upper":1397006300,"lower":1322191468,"count":1144,"preSum":60354},{"ndv":480,"upper":1480173774,"lower":1397683058,"count":1143,"preSum":61498},{"ndv":420,"upper":1553810488,"lower":1480241994,"count":1146,"preSum":62641},{"ndv":402,"upper":1616528185,"lower":1554075965,"count":1155,"preSum":63787},{"ndv":346,"upper":1678331551,"lower":1616579588,"count":1151,"preSum":64942},{"ndv":396,"upper":1749366358,"lower":1678535515,"count":1185,"preSum":66093},{"ndv":367,"upper":1817732756,"lower":1749537561,"count":1202,"preSum":67278},{"ndv":551,"upper":1912960101,"lower":1817982995,"count":1143,"preSum":68480},{"ndv":509,"upper":1999435920,"lower":1913063945,"count":1143,"preSum":69623},{"ndv":415,"upper":2074514846,"lower":1999493648,"count":1164,"preSum":70766},{"ndv":366,"upper":2139904650,"lower":2074788522,"count":1143,"preSum":71930},{"ndv":40,"upper":2147212158,"lower":2139914878,"count":61,"preSum":73073}],"maxBucketSize":64,"type":"Int","sampleRate":0.8668227}
+  xplan.c_int_32.null_count:
+    0
+  xplan.c_int_32.sample_rate:
+    0.09911353
+  xplan.c_int_32.extend_field:
+    { "SKEW_COLS": [ [ "c_varchar","c_int_32" ] ] }
+  xplan.c_int_32_un.TOPN:
+    {"countArr":[910,1637,5236,1080,3762,1914,19584,1448,1217,834,2424,8534,1005,2827],"valueArr":[197374368,693351277,736264889,779759734,823794465,1197681779,1481320050,1555199915,1648966673,1739700646,1859722900,1900510934,1917688469,2049312391],"type":"unsigned_int","sampleRate":0.8668226931911759}
+  xplan.c_int_32_un.cardinality:
+    40280
+  xplan.c_int_32_un.histogram:
+    {"buckets":[{"ndv":47,"upper":10900377,"lower":277858,"count":787,"preSum":0},{"ndv":228,"upper":56934202,"lower":11163491,"count":762,"preSum":787},{"ndv":261,"upper":107560566,"lower":57344447,"count":745,"preSum":1549},{"ndv":124,"upper":131617274,"lower":108103113,"count":780,"preSum":2294},{"ndv":66,"upper":144593284,"lower":131670538,"count":1312,"preSum":3074},{"ndv":77,"upper":158412014,"lower":144648412,"count":941,"preSum":4386},{"ndv":197,"upper":189410282,"lower":158588179,"count":744,"preSum":5327},{"ndv":216,"upper":229980499,"lower":189469517,"count":758,"preSum":6071},{"ndv":287,"upper":286542115,"lower":229990705,"count":744,"preSum":6829},{"ndv":102,"upper":305958556,"lower":286913151,"count":759,"preSum":7573},{"ndv":289,"upper":357852766,"lower":306167324,"count":970,"preSum":8332},{"ndv":196,"upper":393619066,"lower":357867557,"count":746,"preSum":9302},{"ndv":267,"upper":444753105,"lower":393826989,"count":819,"preSum":10048},{"ndv":167,"upper":473699441,"lower":444872607,"count":786,"preSum":10867},{"ndv":25,"upper":476707588,"lower":473796880,"count":829,"preSum":11653},{"ndv":197,"upper":515896917,"lower":476892663,"count":763,"preSum":12482},{"ndv":270,"upper":570107454,"lower":516362996,"count":746,"preSum":13245},{"ndv":250,"upper":625754760,"lower":570132799,"count":871,"preSum":13991},{"ndv":231,"upper":676282176,"lower":625964181,"count":744,"preSum":14862},{"ndv":162,"upper":704522319,"lower":676322612,"count":745,"preSum":15606},{"ndv":214,"upper":743807219,"lower":704578723,"count":744,"preSum":16351},{"ndv":111,"upper":763698601,"lower":744278514,"count":744,"preSum":17095},{"ndv":142,"upper":791502717,"lower":763939304,"count":1104,"preSum":17839},{"ndv":156,"upper":816087964,"lower":791529202,"count":803,"preSum":18943},{"ndv":238,"upper":862091570,"lower":816230065,"count":744,"preSum":19746},{"ndv":255,"upper":910282941,"lower":862419775,"count":746,"preSum":20490},{"ndv":192,"upper":942440999,"lower":910293653,"count":752,"preSum":21236},{"ndv":256,"upper":988004296,"lower":942810180,"count":745,"preSum":21988},{"ndv":210,"upper":1032857241,"lower":988703632,"count":755,"preSum":22733},{"ndv":192,"upper":1072603033,"lower":1032874419,"count":746,"preSum":23488},{"ndv":206,"upper":1109258625,"lower":1072643392,"count":744,"preSum":24234},{"ndv":56,"upper":1117537680,"lower":1109513398,"count":829,"preSum":24978},{"ndv":154,"upper":1147905769,"lower":1117590427,"count":745,"preSum":25807},{"ndv":197,"upper":1190956201,"lower":1148002659,"count":955,"preSum":26552},{"ndv":214,"upper":1230209926,"lower":1190962396,"count":779,"preSum":27507},{"ndv":52,"upper":1242223523,"lower":1230863462,"count":851,"preSum":28286},{"ndv":34,"upper":1249028369,"lower":1242343684,"count":936,"preSum":29137},{"ndv":195,"upper":1286984104,"lower":1249055369,"count":814,"preSum":30073},{"ndv":263,"upper":1338404024,"lower":1287318945,"count":755,"preSum":30887},{"ndv":292,"upper":1394768172,"lower":1338415164,"count":745,"preSum":31642},{"ndv":247,"upper":1445407799,"lower":1394804417,"count":744,"preSum":32387},{"ndv":306,"upper":1506488852,"lower":1445450981,"count":744,"preSum":33131},{"ndv":222,"upper":1547837398,"lower":1506802685,"count":745,"preSum":33875},{"ndv":208,"upper":1589585237,"lower":1547855073,"count":835,"preSum":34620},{"ndv":228,"upper":1631182842,"lower":1589804888,"count":744,"preSum":35455},{"ndv":212,"upper":1676536735,"lower":1631226444,"count":999,"preSum":36199},{"ndv":207,"upper":1717207411,"lower":1676795405,"count":745,"preSum":37198},{"ndv":89,"upper":1735467447,"lower":1717348408,"count":749,"preSum":37943},{"ndv":45,"upper":1742755157,"lower":1735803909,"count":744,"preSum":38692},{"ndv":167,"upper":1777484855,"lower":1742857914,"count":754,"preSum":39436},{"ndv":179,"upper":1817732756,"lower":1777679167,"count":750,"preSum":40190},{"ndv":342,"upper":1888752610,"lower":1817738703,"count":765,"preSum":40940},{"ndv":318,"upper":1945568177,"lower":1888978532,"count":851,"preSum":41705},{"ndv":274,"upper":1996434386,"lower":1945600838,"count":744,"preSum":42556},{"ndv":168,"upper":2029695484,"lower":1996686477,"count":1152,"preSum":43300},{"ndv":237,"upper":2071700919,"lower":2029846033,"count":764,"preSum":44452},{"ndv":144,"upper":2099689421,"lower":2071769713,"count":859,"preSum":45216},{"ndv":81,"upper":2117419134,"lower":2099756585,"count":927,"preSum":46075},{"ndv":173,"upper":2147341785,"lower":2117585227,"count":587,"preSum":47002}],"maxBucketSize":64,"type":"unsigned_int","sampleRate":0.8668227}
+  xplan.c_int_32_un.null_count:
+    0
+  xplan.c_int_32_un.sample_rate:
+    0.09911353
+  xplan.c_int_32_un.extend_field:
+    { "SKEW_COLS": [ [ "c_varchar","c_int_32" ] ] }
+  xplan.c_varchar.TOPN:
+    {"countArr":[766,623,935,1321,2489,43902,1104,4714,1549,2006,728,7505,3284,14669],"valueArr":["002493f608","13cd48aa","1a","3735291e2e","4","58cb","72cd1a150","7aa686","a8a37","a9d333ed8","ca8a5323","ee16039e31","ee599","f1c7fe56"],"type":"String","sampleRate":0.8668226931911759}
+  xplan.c_varchar.cardinality:
+    5236
+  xplan.c_varchar.histogram:
+    {"buckets":[{"ndv":1,"upper":"0","lower":"0","count":312,"preSum":0},{"ndv":6,"upper":"00793","lower":"00","count":244,"preSum":312},{"ndv":37,"upper":"071","lower":"00bc675a9","count":377,"preSum":556},{"ndv":15,"upper":"09f1ac6e8","lower":"072b00e50","count":230,"preSum":933},{"ndv":30,"upper":"0d","lower":"0a","count":230,"preSum":1163},{"ndv":49,"upper":"14a493e","lower":"0d3403","count":242,"preSum":1393},{"ndv":60,"upper":"1ce97b84c4","lower":"14c22d","count":519,"preSum":1635},{"ndv":68,"upper":"2659","lower":"1d215d312","count":245,"preSum":2154},{"ndv":50,"upper":"2e8","lower":"2669e5fb0b","count":231,"preSum":2399},{"ndv":13,"upper":"30","lower":"2ec411","count":234,"preSum":2630},{"ndv":24,"upper":"32dd","lower":"302121f","count":227,"preSum":2864},{"ndv":42,"upper":"3883","lower":"33","count":316,"preSum":3091},{"ndv":38,"upper":"3dd3f8b8","lower":"3894bc2f4b","count":227,"preSum":3407},{"ndv":25,"upper":"42f28de","lower":"3e571bbb1a","count":226,"preSum":3634},{"ndv":45,"upper":"4a","lower":"42f37a76","count":634,"preSum":3860},{"ndv":7,"upper":"4af","lower":"4a0","count":369,"preSum":4494},{"ndv":36,"upper":"5","lower":"4b","count":686,"preSum":4863},{"ndv":56,"upper":"588e8624e","lower":"503c71","count":241,"preSum":5549},{"ndv":58,"upper":"61ffd80518","lower":"58b50a7d46","count":226,"preSum":5790},{"ndv":11,"upper":"636d6","lower":"621da","count":262,"preSum":6016},{"ndv":34,"upper":"68ad11d","lower":"63a16a2","count":237,"preSum":6278},{"ndv":70,"upper":"730","lower":"68e36e696","count":363,"preSum":6515},{"ndv":33,"upper":"7812ce47","lower":"7359468e","count":528,"preSum":6878},{"ndv":25,"upper":"7c1a187dae","lower":"78209","count":291,"preSum":7406},{"ndv":27,"upper":"8123c","lower":"7c45","count":226,"preSum":7697},{"ndv":44,"upper":"884db4ca","lower":"812c97b","count":263,"preSum":7923},{"ndv":37,"upper":"8cbe4c835","lower":"885e817","count":228,"preSum":8186},{"ndv":61,"upper":"9626d3396","lower":"8d26a1","count":226,"preSum":8414},{"ndv":31,"upper":"999","lower":"962eee2df","count":250,"preSum":8640},{"ndv":23,"upper":"9c947d219","lower":"9a03b82996","count":367,"preSum":8890},{"ndv":30,"upper":"9fd372","lower":"9ca0","count":328,"preSum":9257},{"ndv":49,"upper":"a974b0","lower":"a","count":236,"preSum":9585},{"ndv":38,"upper":"af","lower":"a9d","count":233,"preSum":9821},{"ndv":19,"upper":"b20be31c7","lower":"af3","count":237,"preSum":10054},{"ndv":19,"upper":"b5de","lower":"b23b8","count":236,"preSum":10291},{"ndv":34,"upper":"bbf3","lower":"b5f08116f","count":226,"preSum":10527},{"ndv":31,"upper":"c","lower":"bbf67","count":259,"preSum":10753},{"ndv":23,"upper":"c2bb9622","lower":"c0","count":662,"preSum":11012},{"ndv":14,"upper":"c50c","lower":"c2bf21afc","count":585,"preSum":11674},{"ndv":61,"upper":"ce41a","lower":"c51b2b306a","count":229,"preSum":12259},{"ndv":9,"upper":"d","lower":"ceadcd50d","count":232,"preSum":12488},{"ndv":88,"upper":"dd2657f","lower":"d0","count":226,"preSum":12720},{"ndv":65,"upper":"e66bfd2","lower":"dd2b368","count":294,"preSum":12946},{"ndv":52,"upper":"ee0b","lower":"e670ba949","count":401,"preSum":13240},{"ndv":19,"upper":"f13","lower":"ee1772de1","count":240,"preSum":13641},{"ndv":21,"upper":"f37783316","lower":"f136dc","count":249,"preSum":13881},{"ndv":81,"upper":"ff2b116","lower":"f37a841e1","count":271,"preSum":14130},{"ndv":3,"upper":"fffc91387","lower":"ff697ac7","count":5,"preSum":14401}],"maxBucketSize":64,"type":"String","sampleRate":0.8668227}
+  xplan.c_varchar.null_count:
+    0
+  xplan.c_varchar.sample_rate:
+    0.09911353
+  xplan.c_varchar.extend_field:
+    { "SKEW_COLS": [ [ "c_varchar","c_int_32" ] ] }
+  xplan.id.TOPN:
+    null
+  xplan.id.cardinality:
+    997011
+  xplan.id.histogram:
+    {"buckets":[{"ndv":1563,"upper":1795,"lower":1,"count":1563,"preSum":0},{"ndv":1563,"upper":3595,"lower":1796,"count":1563,"preSum":1563},{"ndv":1563,"upper":5414,"lower":3596,"count":1563,"preSum":3126},{"ndv":1563,"upper":7237,"lower":5415,"count":1563,"preSum":4689},{"ndv":1563,"upper":13679,"lower":7239,"count":1563,"preSum":6252},{"ndv":1563,"upper":27513,"lower":13683,"count":1563,"preSum":7815},{"ndv":1563,"upper":42454,"lower":27514,"count":1563,"preSum":9378},{"ndv":1563,"upper":55303,"lower":42457,"count":1563,"preSum":10941},{"ndv":1563,"upper":72742,"lower":55306,"count":1563,"preSum":12504},{"ndv":1563,"upper":85640,"lower":72750,"count":1563,"preSum":14067},{"ndv":1563,"upper":104872,"lower":85642,"count":1563,"preSum":15630},{"ndv":1563,"upper":119061,"lower":104882,"count":1563,"preSum":17193},{"ndv":1563,"upper":139753,"lower":119068,"count":1563,"preSum":18756},{"ndv":1563,"upper":148822,"lower":139754,"count":1563,"preSum":20319},{"ndv":1563,"upper":161391,"lower":148834,"count":1563,"preSum":21882},{"ndv":1563,"upper":171501,"lower":161394,"count":1563,"preSum":23445},{"ndv":1563,"upper":184605,"lower":171502,"count":1563,"preSum":25008},{"ndv":1563,"upper":196849,"lower":184611,"count":1563,"preSum":26571},{"ndv":1563,"upper":220275,"lower":196850,"count":1563,"preSum":28134},{"ndv":1563,"upper":233112,"lower":220287,"count":1563,"preSum":29697},{"ndv":1563,"upper":246070,"lower":233125,"count":1563,"preSum":31260},{"ndv":1563,"upper":257578,"lower":246071,"count":1563,"preSum":32823},{"ndv":1563,"upper":277219,"lower":257584,"count":1563,"preSum":34386},{"ndv":1563,"upper":294895,"lower":277221,"count":1563,"preSum":35949},{"ndv":1563,"upper":305860,"lower":294897,"count":1563,"preSum":37512},{"ndv":1563,"upper":325778,"lower":305861,"count":1563,"preSum":39075},{"ndv":1563,"upper":348429,"lower":325786,"count":1563,"preSum":40638},{"ndv":1563,"upper":366618,"lower":348430,"count":1563,"preSum":42201},{"ndv":1563,"upper":384665,"lower":366634,"count":1563,"preSum":43764},{"ndv":1563,"upper":394623,"lower":384671,"count":1563,"preSum":45327},{"ndv":1563,"upper":409668,"lower":394646,"count":1563,"preSum":46890},{"ndv":1563,"upper":437550,"lower":409685,"count":1563,"preSum":48453},{"ndv":1563,"upper":458341,"lower":437561,"count":1563,"preSum":50016},{"ndv":1563,"upper":470576,"lower":458350,"count":1563,"preSum":51579},{"ndv":1563,"upper":481433,"lower":470579,"count":1563,"preSum":53142},{"ndv":1563,"upper":496403,"lower":481438,"count":1563,"preSum":54705},{"ndv":1563,"upper":512611,"lower":496406,"count":1563,"preSum":56268},{"ndv":1563,"upper":529088,"lower":512615,"count":1563,"preSum":57831},{"ndv":1563,"upper":548973,"lower":529089,"count":1563,"preSum":59394},{"ndv":1563,"upper":572915,"lower":548975,"count":1563,"preSum":60957},{"ndv":1563,"upper":588324,"lower":572916,"count":1563,"preSum":62520},{"ndv":1563,"upper":607343,"lower":588339,"count":1563,"preSum":64083},{"ndv":1563,"upper":616591,"lower":607348,"count":1563,"preSum":65646},{"ndv":1563,"upper":631328,"lower":616613,"count":1563,"preSum":67209},{"ndv":1563,"upper":639699,"lower":631331,"count":1563,"preSum":68772},{"ndv":1563,"upper":659947,"lower":639720,"count":1563,"preSum":70335},{"ndv":1563,"upper":675154,"lower":659959,"count":1563,"preSum":71898},{"ndv":1563,"upper":693090,"lower":675186,"count":1563,"preSum":73461},{"ndv":1563,"upper":715964,"lower":693110,"count":1563,"preSum":75024},{"ndv":1563,"upper":743614,"lower":715972,"count":1563,"preSum":76587},{"ndv":1563,"upper":756576,"lower":743615,"count":1563,"preSum":78150},{"ndv":1563,"upper":773941,"lower":756577,"count":1563,"preSum":79713},{"ndv":1563,"upper":782265,"lower":773947,"count":1563,"preSum":81276},{"ndv":1563,"upper":791996,"lower":782271,"count":1563,"preSum":82839},{"ndv":1563,"upper":808707,"lower":792016,"count":1563,"preSum":84402},{"ndv":1563,"upper":827581,"lower":808732,"count":1563,"preSum":85965},{"ndv":1563,"upper":845783,"lower":827613,"count":1563,"preSum":87528},{"ndv":1563,"upper":867944,"lower":845785,"count":1563,"preSum":89091},{"ndv":1563,"upper":889699,"lower":867947,"count":1563,"preSum":90654},{"ndv":1563,"upper":907189,"lower":889709,"count":1563,"preSum":92217},{"ndv":1563,"upper":936098,"lower":907198,"count":1563,"preSum":93780},{"ndv":1563,"upper":961360,"lower":936099,"count":1563,"preSum":95343},{"ndv":1563,"upper":978878,"lower":961392,"count":1563,"preSum":96906},{"ndv":1532,"upper":999982,"lower":978887,"count":1532,"preSum":98469}],"maxBucketSize":64,"type":"Int","sampleRate":0.8668227}
+  xplan.id.null_count:
+    0
+  xplan.id.sample_rate:
+    0.09911353
+  xplan.id.extend_field:
+    {"SKEW_COLS":[["c_varchar","c_int_32"]]}
+  xplan.c_char.composite_cardinality:
+    1982
+  xplan.c_char,c_int_32.composite_cardinality:
+    158978
+  xplan.c_char,c_int_32,c_int_32_un.composite_cardinality:
+    195605
+  xplan.c_char,c_int_32,c_int_32_un,c_varchar.composite_cardinality:
+    197495
+  xplan.c_char,c_int_32,c_varchar.composite_cardinality:
+    182478
+  xplan.c_datetime.composite_cardinality:
+    86656
+  xplan.c_int_32.composite_cardinality:
+    38590
+  xplan.c_int_32,c_varchar.composite_cardinality:
+    80285
+  xplan.c_int_32_un.composite_cardinality:
+    18136
+  xplan.c_varchar.composite_cardinality:
+    2247
+  xplan.id.composite_cardinality:
+    200726
+CONFIG:
+  ENABLE_BKA_JOIN:
+    true
+  MPP_METRIC_LEVEL:
+    0
+  ENABLE_SPM_HOT_EVOLUTION:
+    true
+  ENABLE_SPM:
+    TRUE
+  ENABLE_AUTO_USE_COLUMNS_PARTITION:
+    true
+  CONN_POOL_XPROTO_PURE_ASYNC_MPP:
+    true
+  OPTIMIZER_ALERT_LOG_INTERVAL:
+    600000
+  RECORD_SQL:
+    TRUE
+  CONN_POOL_XPROTO_CHUNK_RESULT:
+    true
+  ENABLE_SCALE_OUT_FEATURE:
+    true
+  ENABLE_OR_OPT:
+    true
+  MAX_PHYSICAL_PARTITION_COUNT:
+    8192
+  FORBID_EXECUTE_DML_ALL:
+    FALSE
+  AUTO_PARTITION_PARTITIONS:
+    3
+  GROUP_SEQ_CHECK_INTERVAL:
+    5
+  CONN_POOL_XPROTO_SLOW_THRESH:
+    1000
+  COMMIT_TIMEOUT:
+    180000
+  GROUP_PARALLELISM:
+    8
+  MPP_RPC_LOCAL_ENABLED:
+    false
+  MAINTENANCE_TIME_END:
+    20:09
+  CONN_POOL_MAX_POOL_SIZE:
+    60
+  SQL_DELAY_CUTOFF:
+    2
+  CONN_POOL_PROPERTIES:
+    connectTimeout=5000;characterEncoding=utf8;autoReconnect=true;failOverReadOnly=false;socketTimeout=12000;rewriteBatchedStatements=true;useServerPrepStmts=false;useSSL=false
+  PARTITIONS_HEATMAP_COLLECTION_MAX_SINGLE_LOGIC_SCHEMA_COUNT:
+    500
+  CONN_POOL_XPROTO_MAX_PACKET_SIZE:
+    67108864
+  CONN_POOL_XPROTO_DIRECT_WRITE:
+    false
+  CONN_POOL_XPROTO_MAX_SESSION_PER_CLIENT:
+    1024
+  STATISTIC_COLLECTOR_FROM_RULE:
+    true
+  ALLOW_MOVING_BALANCED_SINGLE_TABLE:
+    false
+  CONN_POOL_BLOCK_TIMEOUT:
+    5000
+  MPP_TABLESCAN_CONNECTION_STRATEGY:
+    0
+  CONN_POOL_IDLE_TIMEOUT:
+    60
+  CONN_POOL_XPROTO_XPLAN_EXPEND_STAR:
+    true
+  CONN_POOL_XPROTO_STORAGE_DB_PORT:
+    0
+  MAX_PARTITION_COLUMN_COUNT:
+    5
+  PROCESS_AUTO_INCREMENT_BY_SEQUENCE:
+    true
+  ALLOW_SIMPLE_SEQUENCE:
+    false
+  PURGE_TRANS_BEFORE:
+    604801
+  PER_QUERY_MEMORY_LIMIT:
+    2147483648
+  SHOW_TABLE_GROUP_NAME:
+    false
+  ENABLE_CONST_EXPR_EVAL_CACHE:
+    true
+  SOCKET_TIMEOUT:
+    900000
+  ENABLE_INTERVAL_ENUMERATION_IN_PRUNING:
+    true
+  CONN_POOL_XPROTO_META_DB_PORT:
+    0
+  CONN_POOL_MIN_POOL_SIZE:
+    5
+  ENABLE_ALTER_DDL:
+    true
+  CONN_POOL_XPROTO_PLAN_CACHE:
+    true
+  MAX_ENUMERABLE_INTERVAL_LENGTH:
+    32
+  CONN_POOL_XPROTO_MAX_CLIENT_PER_INST:
+    32
+  ENABLE_SELF_CROSS_JOIN:
+    true
+  CONN_POOL_XPROTO_FLAG:
+    0
+  USE_CHUNK_EXECUTOR:
+    AUTO
+  SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE:
+    false
+  FORCE_APPLY_CACHE:
+    TRUE
+  CONN_POOL_XPROTO_XPLAN_TABLE_SCAN:
+    false
+  ENABLE_MPP:
+    true
+  CONN_POOL_MAX_WAIT_THREAD_COUNT:
+    0
+  CONN_POOL_XPROTO_CONFIG:
+
+  CONN_POOL_XPROTO_MAX_POOLED_SESSION_PER_INST:
+    512
+  CONN_POOL_XPROTO_SESSION_AGING_TIME:
+    600000
+  DATABASE_DEFAULT_SINGLE:
+    false
+  CONN_POOL_XPROTO_MIN_POOLED_SESSION_PER_INST:
+    32
+  SQL_SIMPLE_MAX_LENGTH:
+    1005
+  ENABLE_CDC_META_BUILD_SNAPSHOT:
+    true
+  SCAN_TIMEOUT_INTERVAL:
+    121
+  CHOOSE_STREAMING:
+    true
+  ENABLE_DELETE_WITH_LIMIT:
+    TRUE
+  ENABLE_RUNTIME_FILTER:
+    true
+  ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING:
+    true
+  ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW:
+    true
+  ENABLE_XPLAN_FEEDBACK:
+    true
+  MAX_IN_SUBQUERY_PRUNING_SIZE:
+    8192
+  CONN_POOL_XPROTO_QUERY_TOKEN:
+    10000
+  HINT_PARSER_FLAG:
+    TRUE
+  ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX:
+    false
+  GET_TSO_TIMEOUT:
+    5000
+  LOGICAL_DB_TIME_ZONE:
+    +08:00
+  STORAGE_SUPPORTS_BLOOM_FILTER:
+    true
+  TRUE:
+    FALSE
+  ENABLE_SIMPLE_SEQUENCE:
+    TRUE
+  INIT_CONCURRENT_POOL_EVERY_CONNECTION:
+    false
+  COLLATION_SERVER:
+    utf8mb4_general_ci
+  SINGLE_GROUP_STORAGE_INST_LIST:
+    polardbx-storage-0-master
+  CONN_POOL_XPROTO_CHECKER:
+    true
+  ENABLE_RUNTIME_FILTER_XXHASH:
+    true
+  ENABLE_UPDATE_PARTITION_KEY:
+    false
+  USE_FAST_SINGLE_POINT_INTERVAL_MERGING:
+    false
+  CONN_POOL_XPROTO_AUTH:
+    true
+  ENABLE_UPDATE_WITH_LIMIT:
+    TRUE
+  ENABLE_LOWER_CASE_TABLE_NAMES:
+    false
+  ENABLE_CBO:
+    TRUE
+  SERVER_ID:
+    1
+  ENABLE_DDL:
+    TRUE
+  DEFAULT_PARTITION_MODE:
+    drds
+  CONN_POOL_XPROTO_PIPE_BUFFER_SIZE:
+    268435456
+  PURGE_TRANS_INTERVAL:
+    86401
+  CONN_POOL_XPROTO_FEEDBACK:
+    true
+  CONN_POOL_XPROTO_MESSAGE_TIMESTAMP:
+    true
+  PARALLELISM:
+    -1
+  PARTITION_PRUNING_STEP_COUNT_LIMIT:
+    1024
+  ENABLE_FORBID_PUSH_DML_WITH_HINT:
+    FALSE
+  ENABLE_HLL:
+    false
+  ENABLE_MASTER_MPP:
+    true
+  MAINTENANCE_TIME_START:
+    19:04
+  SHARD_DB_COUNT_EACH_STORAGE_INST:
+    2
+  PLAN_EXTERNALIZE_TEST:
+    TRUE
+  NET_WRITE_TIMEOUT:
+    28800
+  CONN_POOL_XPROTO_XPLAN:
+    true
+  INIT_WORKER:
+    FALSE
+  CDC_STARTUP_MODE:
+    1
+  CONN_POOL_XPROTO_TRX_LEAK_CHECK:
+    false
+  RETRY_ERROR_SQL_ON_OLD_SERVER:
+    true
+  MAX_LOGICAL_DB_COUNT:
+    2048
+  CONN_POOL_XPROTO_AUTO_COMMIT_OPTIMIZE:
+    true
+  SHOW_HASH_PARTITIONS_BY_RANGE:
+    false
+  defaltxxAPPName.isNew:
+    true

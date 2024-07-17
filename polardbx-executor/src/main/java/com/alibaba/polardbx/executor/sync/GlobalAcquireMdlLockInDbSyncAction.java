@@ -31,7 +31,6 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
-import lombok.Setter;
 
 import java.text.MessageFormat;
 import java.util.List;

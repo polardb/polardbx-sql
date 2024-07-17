@@ -27,6 +27,6 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
 public class NoFoundPartitionsException extends TddlRuntimeException {
 
     public NoFoundPartitionsException() {
-        super(ErrorCode.ERR_PARTITION_NO_FOUND, "Table has no partition for value from column_list");
+        super(ErrorCode.ERR_PARTITION_NO_FOUND, "Table has no partition for the values");
     }
 }

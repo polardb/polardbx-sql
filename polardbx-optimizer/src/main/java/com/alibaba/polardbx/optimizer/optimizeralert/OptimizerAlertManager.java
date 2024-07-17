@@ -105,6 +105,11 @@ public class OptimizerAlertManager extends AbstractLifecycle {
         optimizerAlertLoggers.put(OptimizerAlertType.PLAN_CACHE_FULL, new OptimizerAlertLoggerPlanCacheImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.TP_SLOW, new OptimizerAlertLoggerTpImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_MISS, new OptimizerAlertLoggerStatisticImpl());
+        optimizerAlertLoggers.put(OptimizerAlertType.PRUNING_SLOW, new OptimizerAlertLoggerPruningSlowImpl());
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_JOB_INTERRUPT,
+            new OptimizerAlertLoggerStatisticJobInterruptImpl());
+        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_INCONSISTENT,
+            new OptimizerAlertLoggerStatisticInconsistentImpl());
 
         return optimizerAlertLoggers.build();
     }

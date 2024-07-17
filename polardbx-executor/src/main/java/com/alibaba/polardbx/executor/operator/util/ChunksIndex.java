@@ -45,9 +45,68 @@ public final class ChunksIndex {
         offsets.add(0);
     }
 
+    // type-specific
+    protected TypedListHandle typedListHandle;
+    protected TypedList[] typedLists = null;
+    protected int dataTypeSize = 0;
+
+    public void merge(List<ChunksIndex> chunksIndexList) {
+        for (int i = 0; i < chunksIndexList.size(); i++) {
+            ChunksIndex other = chunksIndexList.get(i);
+            if (other.getPositionCount() == 0) {
+                continue;
+            }
+
+            // merge chunks
+            chunks.addAll(other.chunks);
+
+            // merge offsets
+            final int currentPositionCount = getPositionCount();
+            for (int j = 1; j < other.offsets.size(); j++) {
+                offsets.add(other.offsets.getInt(j) + currentPositionCount);
+            }
+        }
+    }
+
+    public void setTypedHashTable(TypedListHandle typedListHandle) {
+        this.typedListHandle = typedListHandle;
+    }
+
+    public long estimateTypedListSizeInBytes() {
+        if (typedListHandle != null) {
+            final int positionCount = getPositionCount();
+            return typedListHandle.estimatedSize(positionCount);
+        }
+        return 0L;
+    }
+
+    public void openTypedHashTable() {
+        if (typedListHandle != null) {
+            int positionCount = getPositionCount();
+            this.typedLists = typedListHandle.getTypedLists(positionCount);
+            this.dataTypeSize = typedLists.length;
+        }
+    }
+
+    public void addChunkToTypedList(int chunkId) {
+        if (typedListHandle != null) {
+            Chunk chunk = getChunk(chunkId);
+            int sourceIndex = getChunkOffset(chunkId);
+            typedListHandle.consume(chunk, sourceIndex);
+        }
+    }
+
     public void addChunk(Chunk chunk) {
         chunks.add(chunk);
         offsets.add(getPositionCount() + chunk.getPositionCount());
+    }
+
+    public long getLong(int col, int position) {
+        return typedLists[col].getLong(position);
+    }
+
+    public int getInt(int col, int position) {
+        return typedLists[col].getInt(position);
     }
 
     public final long getAddress(int position) {
@@ -75,6 +134,21 @@ public final class ChunksIndex {
         Block block = getChunk(SyntheticAddress.decodeIndex(address)).getBlock(columnIndex);
 
         block.writePositionTo(SyntheticAddress.decodeOffset(address), blockBuilder);
+    }
+
+    public void writePositionTo(int chunkId, int positionInChunk, int columnIndex, BlockBuilder blockBuilder) {
+        Block block = getChunk(chunkId).getBlock(columnIndex);
+        block.writePositionTo(positionInChunk, blockBuilder);
+    }
+
+    public void getAddress(int[] positions, int[] chunkIds, int[] positionsInChunk, int positionCount) {
+        for (int i = 0; i < positionCount; i++) {
+            int position = positions[i];
+            int chunkId = upperBound(offsets, position) - 1;
+            int positionInChunk = position - offsets.getInt(chunkId);
+            chunkIds[i] = chunkId;
+            positionsInChunk[i] = positionInChunk;
+        }
     }
 
     public Chunk.ChunkRow rowAt(int position) {
@@ -160,5 +234,13 @@ public final class ChunksIndex {
                 return getChunk(chunkCounter++);
             }
         };
+    }
+
+    public synchronized void close() {
+        if (typedLists != null) {
+            for (TypedList typedList : typedLists) {
+                typedList.close();
+            }
+        }
     }
 }

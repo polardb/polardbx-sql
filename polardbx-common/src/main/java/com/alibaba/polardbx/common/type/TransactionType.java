@@ -17,5 +17,13 @@
 package com.alibaba.polardbx.common.type;
 
 public enum TransactionType {
-    XA, BED, TSO, TSO_RO, TSO_SSR, TSO_MPP, AUTO_COMMIT, ALLOW_READ, COBAR_STYLE, TSO_2PC_OPT
+    XA,
+    BED,
+    TSO,
+    TSO_RO,
+    TSO_SSR,
+    TSO_MPP,
+    AUTO_COMMIT,
+    ALLOW_READ,
+    COBAR_STYLE, TSO_2PC_OPT
 }

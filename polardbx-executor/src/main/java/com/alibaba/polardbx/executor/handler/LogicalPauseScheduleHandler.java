@@ -47,10 +47,11 @@ public class LogicalPauseScheduleHandler extends HandlerCommon {
         long scheduleId = pauseSchedule.getScheduleId();
 
         ScheduledJobsRecord record = ScheduledJobsManager.queryScheduledJobById(scheduleId);
-        if(record == null){
+        if (record == null) {
             return new AffectRowCursor(0);
         }
-        PolarPrivilegeUtils.checkPrivilege(record.getTableSchema(), record.getTableName(), PrivilegePoint.ALTER, executionContext);
+        PolarPrivilegeUtils.checkPrivilege(record.getTableSchema(), record.getTableName(), PrivilegePoint.ALTER,
+            executionContext);
 
         logger.info(String.format("pause scheduled job:[%s]", scheduleId));
         int row = ScheduledJobsManager.pauseScheduledJob(scheduleId);

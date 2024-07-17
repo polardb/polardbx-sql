@@ -46,13 +46,13 @@ public class StoragePoolInfoAccessor extends AbstractAccessor {
         "SELECT " + ALL_COLUMNS + " FROM `" + STORAGE_POOL_INFO_TABLE + "` ORDER BY id";
 
     protected static final String INSERT_STORAGE_POOL =
-        "INSERT INTO " + STORAGE_POOL_INFO_TABLE + "(`name`, `dn_ids`, `undeletable_dn_id`)" + "VALUES(?,?,?)";
+        "INSERT IGNORE INTO " + STORAGE_POOL_INFO_TABLE + "(`name`, `dn_ids`, `undeletable_dn_id`)" + "VALUES(?,?,?)";
 
     protected static final String DELETE_STORAGE_INFO =
         "DELETE FROM " + STORAGE_POOL_INFO_TABLE + " where `name` = ?";
 
     protected static final String TRUNCATE_STORAGEPOOL_INFO =
-        "DELETE FROM " + STORAGE_POOL_INFO_TABLE + " where 1 = ?";
+        "DELETE FROM " + STORAGE_POOL_INFO_TABLE + " where `name` not in (?, ?)";
     protected static final String UPDATE_STORAGE_POOL =
         "UPDATE " + STORAGE_POOL_INFO_TABLE + " set `dn_ids` = ?, `undeletable_dn_id` = ? " + " WHERE `name` = ?";
 
@@ -106,10 +106,11 @@ public class StoragePoolInfoAccessor extends AbstractAccessor {
         }
     }
 
-    public void truncateStoragePoolInfo() {
+    public void truncateStoragePoolInfo(String defaultStoragePoolName, String recycleStoragePoolName) {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>();
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, 1);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, defaultStoragePoolName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, recycleStoragePoolName);
             MetaDbUtil.update(TRUNCATE_STORAGEPOOL_INFO, params, connection);
         } catch (Exception e) {
             logger.error("Failed to query system table " + STORAGE_POOL_INFO_TABLE, e);

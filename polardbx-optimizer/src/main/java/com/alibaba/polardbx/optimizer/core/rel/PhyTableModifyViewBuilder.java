@@ -18,9 +18,13 @@ package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
@@ -59,6 +63,20 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
     private final String schemaName;
     private boolean buildForPushDownOneShardOnly = false;
 
+    protected Map<Pair<String, List<String>>, Parameters> prunedParameters;
+
+    public PhyTableModifyViewBuilder(SqlNode sqlTemplate,
+                                     Map<String, List<List<String>>> targetTables,
+                                     Map<Integer, ParameterContext> params,
+                                     RelNode parent,
+                                     DbType dbType,
+                                     List<String> logicalTableNames,
+                                     String schemaName,
+                                     Map<Pair<String, List<String>>, Parameters> prunedParameters) {
+        this(sqlTemplate, targetTables, params, parent, dbType, logicalTableNames, schemaName);
+        this.prunedParameters = prunedParameters;
+    }
+
     public PhyTableModifyViewBuilder(SqlNode sqlTemplate,
                                      Map<String, List<List<String>>> targetTables,
                                      Map<Integer, ParameterContext> params,
@@ -90,6 +108,7 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
             long phyOpMemSize = shardPlanMemoryContext.phyOpMemSize;
             maOfPlanBuildingPool.allocateReservedMemory(phyOpMemSize * shardPlanMemoryContext.allShardCount);
         }
+
         List<RelNode> phyTableScans = new ArrayList<>();
         for (Map.Entry<String, List<List<String>>> t : targetTables.entrySet()) {
             String group = t.getKey();
@@ -99,7 +118,8 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
                     maOfPlanBuildingPool,
                     phyTableScans,
                     group,
-                    subTableNames);
+                    subTableNames,
+                    prunedParameters != null ? prunedParameters.get(Pair.of(group, subTableNames)) : null);
             }
         }
         if (buildForPushDownOneShardOnly && phyTableScans.size() > 1) {
@@ -113,14 +133,15 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
     /**
      * 构建 SQL 对应的参数信息
      */
-    private Map<Integer, ParameterContext> buildParams(List<String> tableNames) {
+    private Map<Integer, ParameterContext> buildParams(List<String> tableNames, Parameters pruned) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
-        return PlannerUtils.buildParam(tableNames, this.params, paramIndex);
+        return PlannerUtils.buildParam(tableNames, pruned == null ? this.params : pruned.getCurrentParameter(),
+            paramIndex);
     }
 
     private void buildOnePhyTableOperatorForModify(BytesSql sqlTemplateStr, MemoryAllocatorCtx maOfPlanBuildingPool,
                                                    List<RelNode> phyTableScans, String group,
-                                                   List<String> subTableNames) {
+                                                   List<String> subTableNames, Parameters pruned) {
 
 //        PhyTableOperation phyTableModify =
 //            new PhyTableOperation(parent.getCluster(), parent.getTraitSet(), parent.getRowType(), null, parent);
@@ -156,7 +177,7 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
 
         buildParams.setBytesSql(sqlTemplateStr);
         buildParams.setDbType(dbType);
-        buildParams.setDynamicParams(buildParams(subTableNames));
+        buildParams.setDynamicParams(buildParams(subTableNames, pruned));
         buildParams.setBatchParameters(null);
 
         PhyTableOperation phyTableModify = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);

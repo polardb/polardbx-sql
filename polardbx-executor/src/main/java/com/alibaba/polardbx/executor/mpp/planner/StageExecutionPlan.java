@@ -29,9 +29,9 @@
  */
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.google.common.collect.ImmutableList;
 
 import java.util.List;
 
@@ -39,17 +39,17 @@ import static java.util.Objects.requireNonNull;
 
 public class StageExecutionPlan {
     private final PlanFragment fragment;
-    private final SplitInfo splitInfo;
+    private final List<SplitInfo> splitInfos;
     private final List<SplitInfo> expandSplitInfos;
     private final List<StageExecutionPlan> subStages;
 
     public StageExecutionPlan(
         PlanFragment fragment,
-        SplitInfo splitInfo,
+        List<SplitInfo> splitInfos,
         List<SplitInfo> expandSplitInfos,
         List<StageExecutionPlan> subStages) {
         this.fragment = requireNonNull(fragment, "fragment is null");
-        this.splitInfo = splitInfo;
+        this.splitInfos = splitInfos;
         this.expandSplitInfos = expandSplitInfos;
         this.subStages = ImmutableList.copyOf(requireNonNull(subStages, "dependencies is null"));
     }
@@ -58,8 +58,8 @@ public class StageExecutionPlan {
         return fragment;
     }
 
-    public SplitInfo getSplitInfo() {
-        return splitInfo;
+    public List<SplitInfo> getSplitInfos() {
+        return splitInfos;
     }
 
     public List<SplitInfo> getExpandInfo() {

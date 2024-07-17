@@ -66,6 +66,8 @@ public abstract class RuntimeStat implements CpuCollector {
 
     public abstract void addPhyConnTimecost(long phyConnTimecost);
 
+    public abstract void addColumnarSnapshotTimecost(long columnarSnapshotTimecost);
+
     public abstract void setSqlType(SqlType sqlType);
 
     public abstract void setRunningWithCpuProfile(boolean runningWithCpuProfile);

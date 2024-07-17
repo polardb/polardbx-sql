@@ -98,7 +98,7 @@ public final class ShowThreadPool {
         List<ServerThreadPool> executors = getExecutors();
         for (ServerThreadPool exec : executors) {
             if (exec != null) {
-                RowDataPacket row = getRow(exec, c.getCharset());
+                RowDataPacket row = getRow(exec, c.getResultSetCharset());
                 row.packetId = ++packetId;
                 proxy = row.write(proxy);
             }
@@ -107,11 +107,13 @@ public final class ShowThreadPool {
         if (ServiceProvider.getInstance().getServer() != null) {
             TaskExecutor priorityExecutor =
                 ServiceProvider.getInstance().getServer().getTaskExecutor();
-            RowDataPacket lowRow = getPriorityExecutorInfo(priorityExecutor.getLowPriorityInfo(), c.getCharset());
+            RowDataPacket lowRow =
+                getPriorityExecutorInfo(priorityExecutor.getLowPriorityInfo(), c.getResultSetCharset());
             lowRow.packetId = ++packetId;
             proxy = lowRow.write(proxy);
 
-            RowDataPacket highRow = getPriorityExecutorInfo(priorityExecutor.getHighPriorityInfo(), c.getCharset());
+            RowDataPacket highRow =
+                getPriorityExecutorInfo(priorityExecutor.getHighPriorityInfo(), c.getResultSetCharset());
             highRow.packetId = ++packetId;
             proxy = highRow.write(proxy);
         }

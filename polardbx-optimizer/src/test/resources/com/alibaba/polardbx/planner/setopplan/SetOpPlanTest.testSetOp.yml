@@ -10,7 +10,7 @@
       from test_single_tb2 b
     );
   plan: |
-    semihashjoin(condition="int_test <=> int_test", type="semi")
+    semihashjoin(condition="int_test <=> int_test", type="semi", build="inner")
       logicalview(tables="optest_0000.test_single_tb1", sql="select `int_test` from `test_single_tb1` as `test_single_tb1` group by `int_test`")
       logicalview(tables="optest_0000.test_single_tb2", sql="select `int_test` from `test_single_tb2` as `test_single_tb2`")
 
@@ -27,7 +27,7 @@
     );
 
   plan: |
-    semihashjoin(condition="int_test <=> int_test", type="anti")
+    semihashjoin(condition="int_test <=> int_test", type="anti", build="inner")
       logicalview(tables="optest_0000.test_single_tb1", sql="select `int_test` from `test_single_tb1` as `test_single_tb1` group by `int_test`")
       logicalview(tables="optest_0000.test_single_tb2", sql="select `int_test` from `test_single_tb2` as `test_single_tb2`")
 
@@ -44,7 +44,7 @@
     );
 
   plan: |
-    semihashjoin(condition="int_test <=> int_test", type="semi")
+    semihashjoin(condition="int_test <=> int_test", type="semi", build="inner")
       hashagg(group="int_test")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
@@ -64,7 +64,7 @@
     );
 
   plan: |
-    semihashjoin(condition="int_test <=> int_test", type="anti")
+    semihashjoin(condition="int_test <=> int_test", type="anti", build="inner")
       hashagg(group="int_test")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
@@ -84,7 +84,7 @@
     );
 
   plan: |
-    semihashjoin(condition="int_test <=> double_test", type="semi")
+    semihashjoin(condition="int_test <=> double_test", type="semi", build="inner")
       project(int_test="cast(int_test)")
         hashagg(group="int_test")
           gather(concurrent=true)
@@ -105,7 +105,7 @@
     );
 
   plan: |
-    semihashjoin(condition="int_test <=> double_test", type="anti")
+    semihashjoin(condition="int_test <=> double_test", type="anti", build="inner")
       project(int_test="cast(int_test)")
         hashagg(group="int_test")
           gather(concurrent=true)
@@ -126,7 +126,7 @@
     );
 
   plan: |
-    semihashjoin(condition="double_test <=> int_test", type="semi")
+    semihashjoin(condition="double_test <=> int_test", type="semi", build="inner")
       hashagg(group="double_test")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `double_test` from `test_hash_tb1` as `test_hash_tb1` group by `double_test`")
@@ -146,7 +146,7 @@
     );
 
   plan: |
-    semihashjoin(condition="double_test <=> int_test", type="anti")
+    semihashjoin(condition="double_test <=> int_test", type="anti", build="inner")
       hashagg(group="double_test")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `double_test` from `test_hash_tb1` as `test_hash_tb1` group by `double_test`")
@@ -164,7 +164,7 @@
 
   plan: |
     memsort(sort="int_test asc")
-      semihashjoin(condition="int_test <=> int_test", type="semi")
+      semihashjoin(condition="int_test <=> int_test", type="semi", build="inner")
         hashagg(group="int_test")
           gather(concurrent=true)
             logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test`")
@@ -181,7 +181,7 @@
     order by int_test;
 
   plan: |
-    semihashjoin(condition="int_test <=> int_test", type="anti")
+    semihashjoin(condition="int_test <=> int_test", type="anti", build="inner")
       sortagg(group="int_test")
         mergesort(sort="int_test asc")
           logicalview(tables="[0000-0003].test_hash_tb1", shardcount=4, sql="select `int_test` from `test_hash_tb1` as `test_hash_tb1` group by `int_test` order by `int_test`")

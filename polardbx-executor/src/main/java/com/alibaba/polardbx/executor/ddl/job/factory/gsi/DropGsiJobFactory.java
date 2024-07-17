@@ -126,8 +126,8 @@ public class DropGsiJobFactory extends DdlJobFactory {
             TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
             if (!tableMeta.isAutoPartition()) {
                 CdcGsiDdlMarkTask cdcGsiDdlMarkTask =
-                    new CdcGsiDdlMarkTask(schemaName, physicalPlanData,
-                        primaryTableName, executionContext.getOriginSql());
+                    new CdcGsiDdlMarkTask(schemaName, physicalPlanData, primaryTableName,
+                        executionContext.getOriginSql());
                 taskList.add(cdcGsiDdlMarkTask);
             }
         }

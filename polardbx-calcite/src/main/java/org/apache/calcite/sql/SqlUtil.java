@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
@@ -68,6 +69,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import static org.apache.calcite.sql.validate.SqlValidatorImpl.isImplicitKey;
 import static org.apache.calcite.util.Static.RESOURCE;
 
 /**
@@ -1185,6 +1187,15 @@ public abstract class SqlUtil {
         }
 
         return false;
+    }
+
+    public static boolean hasExplicitPrimaryKey(SqlCreateTable node) {
+        final boolean withPk = SqlUtil.hasPrimaryKey(node);
+        final boolean usingImplicitPk =
+            node.getPrimaryKey() != null
+                && node.getPrimaryKey().getColumns().stream().anyMatch(c -> isImplicitKey(c.getColumnNameStr()));
+
+        return withPk && !usingImplicitPk;
     }
 
     //~ Inner Classes ----------------------------------------------------------

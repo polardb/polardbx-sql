@@ -41,7 +41,6 @@ public class RenameTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
-        checkTableNamePatternForRename(schemaName, physicalPlanData.getLogicalTableName(), executionContext);
         super.executeImpl(executionContext);
     }
 
@@ -49,40 +48,4 @@ public class RenameTablePhyDdlTask extends BasePhyDdlTask {
     protected List<RelNode> genRollbackPhysicalPlans(ExecutionContext executionContext) {
         return getPhysicalPlans(executionContext);
     }
-
-    private void checkTableNamePatternForRename(String schemaName, String logicalTableName,
-                                                ExecutionContext executionContext) {
-        boolean hasRandomSuffixInTableNamePattern = true;
-
-        try {
-            TableRule tableRule =
-                OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(logicalTableName);
-            FailPoint.injectRandomExceptionFromHint(executionContext);
-            FailPoint.injectRandomSuspendFromHint(executionContext);
-            if (tableRule != null && executionContext.isRandomPhyTableEnabled()) {
-                String tableNamePattern = tableRule.getTbNamePattern();
-                if (TStringUtil.isEmpty(tableNamePattern)
-                    || tableNamePattern.length() <= RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME) {
-                    // Must be single or broadcast table.
-                    hasRandomSuffixInTableNamePattern = false;
-                } else if (TStringUtil.startsWithIgnoreCase(tableNamePattern, logicalTableName)) {
-                    // Not renamed yet.
-                    String randomSuffix = tableRule.extractRandomSuffix();
-                    hasRandomSuffixInTableNamePattern = TStringUtil.isNotEmpty(randomSuffix);
-                } else {
-                    // The table may have been renamed when logical table name
-                    // is supported, so that the table name pattern's prefix is
-                    // not the logical table name, so it should be safe to
-                    // contain random string.
-                    hasRandomSuffixInTableNamePattern = true;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-
-        if (executionContext.isRandomPhyTableEnabled() && hasRandomSuffixInTableNamePattern) {
-            executionContext.setPhyTableRenamed(false);
-        }
-    }
-
 }

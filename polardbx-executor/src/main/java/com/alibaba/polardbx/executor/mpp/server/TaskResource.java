@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.server;
 
-import com.google.common.reflect.TypeToken;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -32,6 +29,9 @@ import com.alibaba.polardbx.executor.mpp.execution.TaskState;
 import com.alibaba.polardbx.executor.mpp.execution.TaskStatus;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.BufferResult;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
+import com.google.common.reflect.TypeToken;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;

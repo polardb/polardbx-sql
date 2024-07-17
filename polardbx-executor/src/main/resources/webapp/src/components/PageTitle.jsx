@@ -111,7 +111,7 @@ export class PageTitle extends React.Component<Props, State> {
                                 <tbody>
                                 <tr>
                                     <td>
-                                        <a href="/ui/"><img src="assets/logo.png"/></a>
+                                        <a href="/ui/"><img src="assets/favicon.png"/></a>
                                     </td>
                                     <td>
                                         <span className="navbar-brand">{this.props.title}</span>
@@ -132,12 +132,12 @@ export class PageTitle extends React.Component<Props, State> {
                                 <li>
                                     <span className="navbar-cluster-info">
                                         <span className="uppercase">Environment</span><br/>
-                                        <span className="text uppercase" id="environment">{info.environment}</span>
+                                        <span className="text uppercase" id="environment">PolarDB-X</span>
                                     </span>
                                 </li>
                                 <li>
                                     <span className="navbar-cluster-info">
-                                        <span className="uppercase">CoordinatorId</span><br/>
+                                        <span className="uppercase">Node</span><br/>
                                             <span className="text uppercase" id="workerId">{info.workerId}</span>
                                     </span>
                                 </li>

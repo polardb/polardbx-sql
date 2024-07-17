@@ -171,7 +171,7 @@ t_order2,CREATE PARTITION TABLE `t_order2` (
 		PARTITIONS #@#,
 	UNIQUE LOCAL KEY `_local_idx_order2` (`order_id`),
 	LOCAL KEY `_local_idx_seller2` (`seller_id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
 PARTITIONS #@#
 /* tablegroup = `tg` */

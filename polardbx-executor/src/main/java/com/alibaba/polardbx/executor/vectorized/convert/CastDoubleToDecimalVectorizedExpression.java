@@ -34,10 +34,12 @@ import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMOR
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
 @SuppressWarnings("unused")
-@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Double"}, argumentKinds = {Variable})
+@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Double"},
+    argumentKinds = {Variable})
 public class CastDoubleToDecimalVectorizedExpression extends AbstractVectorizedExpression {
 
-    public CastDoubleToDecimalVectorizedExpression(DataType<?> outputDataType, int outputIndex, VectorizedExpression[] children) {
+    public CastDoubleToDecimalVectorizedExpression(DataType<?> outputDataType, int outputIndex,
+                                                   VectorizedExpression[] children) {
         super(outputDataType, outputIndex, children);
     }
 
@@ -53,8 +55,8 @@ public class CastDoubleToDecimalVectorizedExpression extends AbstractVectorizedE
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        double[] input = ((DoubleBlock) inputVectorSlot).doubleArray();
-        Slice output = ((DecimalBlock) outputVectorSlot).getMemorySegments();
+        double[] input = inputVectorSlot.cast(DoubleBlock.class).doubleArray();
+        Slice output = (outputVectorSlot.cast(DecimalBlock.class)).getMemorySegments();
 
         DecimalStructure tmpDecimal = new DecimalStructure();
         int precision = outputDataType.getPrecision();
@@ -101,5 +103,6 @@ public class CastDoubleToDecimalVectorizedExpression extends AbstractVectorizedE
                 DecimalConverter.rescale(tmpDecimal, toValue, precision, scale, isUnsigned);
             }
         }
+        outputVectorSlot.cast(DecimalBlock.class).setFullState();
     }
 }

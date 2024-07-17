@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.mpp.metadata;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.annotations.VisibleForTesting;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.TaskId;
 import com.alibaba.polardbx.gms.node.NodeServer;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.annotations.VisibleForTesting;
 
 import java.io.Serializable;
 import java.net.URI;

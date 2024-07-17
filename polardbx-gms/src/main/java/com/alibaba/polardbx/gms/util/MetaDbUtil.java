@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import java.sql.Connection;
@@ -36,12 +37,17 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.TreeMap;
 import java.util.function.Function;
 
 public class MetaDbUtil {
+
+    public static final String POLARDB_VERSION_SQL =
+        "SELECT @@polardbx_engine_version as version, @@polardbx_release_date as release_date";
 
     public static Connection getConnection() {
         if (MetaDbDataSource.getInstance() == null) {
@@ -118,9 +124,9 @@ public class MetaDbUtil {
         return executeBatch(insertSql, paramsBatch, connection);
     }
 
-    public static Long insertAndRetureLastInsertId(String insertSql, List<Map<Integer, ParameterContext>> paramsBatch,
+    public static Long insertAndReturnLastInsertId(String insertSql, List<Map<Integer, ParameterContext>> paramsBatch,
                                                    Connection connection) throws SQLException {
-        return executeInsertAndRetureLastInsertId(insertSql, paramsBatch, connection);
+        return executeInsertAndReturnLastInsertId(insertSql, paramsBatch, connection);
     }
 
     public static int update(String updateSql, Map<Integer, ParameterContext> params, Connection connection)
@@ -204,7 +210,7 @@ public class MetaDbUtil {
         }
     }
 
-    public static Long executeInsertAndRetureLastInsertId(String sql, List<Map<Integer, ParameterContext>> paramsBatch,
+    public static Long executeInsertAndReturnLastInsertId(String sql, List<Map<Integer, ParameterContext>> paramsBatch,
                                                           Connection connection) throws SQLException {
         validate(sql, paramsBatch);
         try (PreparedStatement ps = connection.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
@@ -238,6 +244,16 @@ public class MetaDbUtil {
                                      final Object[] values) {
         for (int i = 0; i < values.length; i++) {
             setParameter(i + 1, params, method, values[i]);
+        }
+    }
+
+    public static <T> void setParameters(final Map<Integer, ParameterContext> params, final ParameterMethod method,
+                                         final Iterable<T> values) {
+        final Iterator<T> iterator = values.iterator();
+        int i = 1;
+        while (iterator.hasNext()) {
+            setParameter(i, params, method, iterator.next());
+            i++;
         }
     }
 
@@ -305,7 +321,7 @@ public class MetaDbUtil {
             }
             if (conn instanceof XConnection) {
                 try {
-                    ((XConnection) conn).setLastException(ex);
+                    ((XConnection) conn).setLastException(ex, true);
                 } catch (SQLException throwables) {
                     if (logger != null) {
                         logger.error("setLastException error", throwables);
@@ -372,19 +388,24 @@ public class MetaDbUtil {
         }
     }
 
-    public static String getGmsPolardbVersion() {
+    /**
+     * version: select @@polardbx_engine_version as version
+     * releaseDate: select @@polardbx_release_date as release_date
+     *
+     * @return {Version}-{ReleaseDate}
+     */
+    public static String getGmsPolardbVersion() throws Exception {
+        String sql = POLARDB_VERSION_SQL;
+        String dnPolardbxVersion = null;
+        String dnReleaseDate = null;
         try (Connection metaDbConn = MetaDbUtil.getConnection();
             Statement stmt = metaDbConn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT @@polardb_version")) {
-            String version = null;
+            ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) {
-                version = rs.getString(1);
+                dnPolardbxVersion = rs.getString(1);
+                dnReleaseDate = rs.getString(2);
             }
-            return version;
-        } catch (SQLException e) {
-            MetaDbLogUtil.META_DB_LOG.error(e);
-            // ignore
-            return null;
+            return String.format("%s-%s", dnPolardbxVersion, dnReleaseDate);
         }
     }
 
@@ -402,6 +423,51 @@ public class MetaDbUtil {
         } catch (SQLException ex) {
             MetaDbLogUtil.META_DB_LOG.error(ex);
             throw ex;
+        }
+    }
+
+    public static void setGlobal(Properties properties) throws SQLException {
+        try (Connection metaDbConn = getConnection()) {
+            InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
+            instConfigAccessor.setConnection(metaDbConn);
+            instConfigAccessor.updateInstConfigValue(InstIdUtil.getInstId(), properties);
+        }
+    }
+
+    public static boolean hasTable(String tableName) throws SQLException {
+        String sql = String.format("SHOW TABLES LIKE '%s'", tableName);
+
+        try (Connection metaDbConn = MetaDbUtil.getConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                return true;
+            }
+            return false;
+        } catch (SQLException ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw ex;
+        }
+    }
+
+    public static boolean tryGetLock(Connection conn, String lockObj, long timeout) {
+        try (Statement statement = conn.createStatement();
+            ResultSet lockRs = statement.executeQuery(
+                String.format("SELECT GET_LOCK('" + lockObj + "', %d) ", timeout))) {
+            return lockRs.next() && lockRs.getInt(1) == 1;
+        } catch (Throwable e) {
+            MetaDbLogUtil.META_DB_LOG.error("tryGetLock error", e);
+            return false;
+        }
+    }
+
+    public static boolean releaseLock(Connection conn, String lockObj) {
+        try (Statement statement = conn.createStatement();
+            ResultSet lockRs = statement.executeQuery("SELECT RELEASE_LOCK('" + lockObj + "') ")) {
+            return lockRs.next() && lockRs.getInt(1) == 1;
+        } catch (Exception e) {
+            MetaDbLogUtil.META_DB_LOG.error("releaseLock error", e);
+            return false;
         }
     }
 }

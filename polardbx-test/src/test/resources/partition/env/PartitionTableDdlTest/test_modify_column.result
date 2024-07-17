@@ -1,0 +1,40 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL
+)
+PARTITION BY KEY (order_id);
+ALTER TABLE t_order
+	MODIFY COLUMN seller_id varchar(20) COLLATE utf8mb4_bin COMMENT '抖音卖家';
+SHOW CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '抖音卖家',
+	KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+ALTER TABLE t_order
+	CHARSET = utf8;
+SHOW CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) CHARACTER SET utf8mb4 DEFAULT NULL,
+	`seller_id` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '抖音卖家',
+	KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+ALTER TABLE t_order
+	ADD COLUMN tmp_id varchar(20) COLLATE utf8mb4_general_ci COMMENT 'test-test';
+SHOW CREATE TABLE t_order;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`order_id` varchar(20) CHARACTER SET utf8mb4 DEFAULT NULL,
+	`seller_id` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '抖音卖家',
+	`tmp_id` varchar(20) CHARACTER SET utf8mb4 DEFAULT NULL COMMENT 'test-test',
+	KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3

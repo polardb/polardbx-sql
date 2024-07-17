@@ -1,0 +1,12 @@
+drop table if exists `tb1`;
+
+CREATE TABLE tb1 (
+a INTEGER NOT NULL PRIMARY KEY,
+b CHAR(18) NOT NULL
+) MAX_ROWS = 1000000000 AVG_ROW_LENGTH = 32;
+
+show create table tb1;
+
+ALTER TABLE tb1 MAX_ROWS=1000000000 AVG_ROW_LENGTH=15000;
+
+show create table tb1;

@@ -27,8 +27,6 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBe
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
-import com.clearspring.analytics.util.Lists;
-import com.google.common.collect.Collections2;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
@@ -39,7 +37,6 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -342,12 +339,15 @@ public class MetaUtils {
         public final Map<String, List<Set<String>>> gsiUniqueKeys;
         public final Map<String, Set<String>> gsiIndexColumns;
         public final Map<String, Set<String>> gsiCoveringColumns;
+        public final Map<String, Set<String>> columnarShardingKeys;
+        public final Map<String, Set<String>> columnarIndexColumns;
 
         private TableColumns(Set<String> primaryKeys, Set<String> shardingKeys, Set<String> actualPartitionKeys,
                              List<Set<String>> localIndexKeys, List<Set<String>> localUniqueKeys,
                              Map<String, Set<String>> gsiShardingKeys, Map<String, Set<String>> gsiActualPartitionKeys,
                              Map<String, List<Set<String>>> gsiUniqueKeys, Map<String, Set<String>> gsiIndexColumns,
-                             Map<String, Set<String>> gsiCoveringColumns) {
+                             Map<String, Set<String>> gsiCoveringColumns, Map<String, Set<String>> columnarShardingKeys,
+                             Map<String, Set<String>> columnarIndexColumns) {
             this.primaryKeys = primaryKeys;
             this.shardingKeys = shardingKeys;
             this.actualPartitionKeys = actualPartitionKeys;
@@ -358,6 +358,8 @@ public class MetaUtils {
             this.gsiUniqueKeys = gsiUniqueKeys;
             this.gsiIndexColumns = gsiIndexColumns;
             this.gsiCoveringColumns = gsiCoveringColumns;
+            this.columnarShardingKeys = columnarShardingKeys;
+            this.columnarIndexColumns = columnarIndexColumns;
         }
 
         private static TableColumns buildDRDSTableColumns(TableMeta tableMeta) {
@@ -438,13 +440,15 @@ public class MetaUtils {
                 null,
                 gsiUniqueKeys,
                 gsiIndexColumns,
-                gsiCoveringColumns);
+                gsiCoveringColumns,
+                null,
+                null);
         }
 
         private static TableColumns buildPartitionTableColumns(TableMeta tableMeta) {
             final Set<String> primaryKeys = new HashSet<>();
-            final Set<String> shardingKeys = new HashSet<>();
-            final Set<String> actualPartitionKeys = new HashSet<>();
+            final Set<String> shardingKeys = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            final Set<String> actualPartitionKeys = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
             final List<Set<String>> localIndexKeys = new LinkedList<>();
             final List<Set<String>> localUniqueKeys = new LinkedList<>();
             final Map<String, Set<String>> gsiShardingKeys = new HashMap<>();
@@ -452,6 +456,8 @@ public class MetaUtils {
             final Map<String, List<Set<String>>> gsiUniqueKeys = new HashMap<>();
             final Map<String, Set<String>> gsiIndexColumns = new HashMap<>();
             final Map<String, Set<String>> gsiCoveringColumns = new HashMap<>();
+            final Map<String, Set<String>> columnarShardingKeys = new HashMap<>();
+            final Map<String, Set<String>> columnarIndexColumns = new HashMap<>();
 
             final String schema = tableMeta.getSchemaName();
             final String tableName = tableMeta.getTableName();
@@ -506,14 +512,27 @@ public class MetaUtils {
                     }
 
                     final GsiIndexMetaBean indexMeta = gsiEntry.getValue();
-                    gsiIndexColumns.put(indexTableName,
-                        indexMeta.indexColumns.stream().map(s -> s.columnName).collect(Collectors.toSet()));
+                    if (!indexMeta.columnarIndex) {
+                        gsiIndexColumns.put(indexTableName,
+                            indexMeta.indexColumns.stream().map(s -> s.columnName).collect(Collectors.toSet()));
 
-                    gsiCoveringColumns.put(indexTableName, new HashSet<>());
-                    if (null != indexMeta.coveringColumns) {
-                        gsiCoveringColumns.get(indexTableName).addAll(indexMeta.coveringColumns.stream()
-                            .map(s -> s.columnName)
-                            .collect(Collectors.toSet()));
+                        gsiCoveringColumns.put(indexTableName, new HashSet<>());
+
+                        if (null != indexMeta.coveringColumns) {
+                            gsiCoveringColumns.get(indexTableName).addAll(indexMeta.coveringColumns.stream()
+                                .map(s -> s.columnName)
+                                .collect(Collectors.toSet()));
+                        }
+                    }
+
+                    if (indexTableMeta.isColumnar()) {
+                        columnarShardingKeys.put(indexTableName, new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));
+                        if (null != indexTablePartitionInfo.getPartitionColumns()) {
+                            columnarShardingKeys.get(indexTableName)
+                                .addAll(indexTablePartitionInfo.getPartitionColumnsNotReorder());
+                        }
+                        columnarIndexColumns.put(indexTableName,
+                            indexMeta.indexColumns.stream().map(s -> s.columnName).collect(Collectors.toSet()));
                     }
                 }
             }
@@ -527,7 +546,9 @@ public class MetaUtils {
                 gsiActualPartitionKeys,
                 gsiUniqueKeys,
                 gsiIndexColumns,
-                gsiCoveringColumns);
+                gsiCoveringColumns,
+                columnarShardingKeys,
+                columnarIndexColumns);
         }
 
         public static TableColumns build(TableMeta tableMeta) {
@@ -609,6 +630,42 @@ public class MetaUtils {
                 }
             }
             return allGsiShardingKey.contains(columnName.toLowerCase());
+        }
+
+        public boolean isColumnarPrimaryKey(String columnName) {
+            Set<String> allColumnarPrimaryKeys = new HashSet<>();
+            if (GeneralUtil.isNotEmpty(primaryKeys)) {
+                for (String c : primaryKeys) {
+                    allColumnarPrimaryKeys.add(c.toLowerCase());
+                }
+            }
+            return allColumnarPrimaryKeys.contains(columnName.toLowerCase());
+        }
+
+        public boolean isColumnarIndexColumn(String columnName) {
+            Set<String> allColumnarIndexColumns = new HashSet<>();
+            if (GeneralUtil.isNotEmpty(columnarIndexColumns) &&
+                GeneralUtil.isNotEmpty(columnarIndexColumns.values())) {
+                for (Set<String> cset : columnarIndexColumns.values()) {
+                    for (String c : cset) {
+                        allColumnarIndexColumns.add(c.toLowerCase());
+                    }
+                }
+            }
+            return allColumnarIndexColumns.contains(columnName.toLowerCase());
+        }
+
+        public boolean isColumnarShardingKey(String columnName) {
+            Set<String> allColumnarShardingKey = new HashSet<>();
+            if (GeneralUtil.isNotEmpty(columnarShardingKeys) &&
+                GeneralUtil.isNotEmpty(columnarShardingKeys.values())) {
+                for (Set<String> cset : columnarShardingKeys.values()) {
+                    for (String c : cset) {
+                        allColumnarShardingKey.add(c.toLowerCase());
+                    }
+                }
+            }
+            return allColumnarShardingKey.contains(columnName.toLowerCase());
         }
 
         public boolean isActualShardingKey(String columnName) {

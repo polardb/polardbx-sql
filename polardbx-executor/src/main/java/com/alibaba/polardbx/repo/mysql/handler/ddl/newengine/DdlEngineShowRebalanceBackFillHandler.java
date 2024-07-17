@@ -16,18 +16,23 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlPlanManager;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRebalanceProgressHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
+import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.collections.CollectionUtils;
 
 import javax.validation.constraints.NotNull;
@@ -48,7 +53,7 @@ public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler 
 
     @Override
     protected Cursor doHandle(LogicalDal logicalPlan, ExecutionContext executionContext) {
-        List<Map<String, Object>> result = DdlHelper.getServerConfigManager().executeQuerySql(
+        List<Map<String, Object>> logicBackfillResult = DdlHelper.getServerConfigManager().executeQuerySql(
             "SELECT " +
                 "T1.DDL_JOB_ID, " +
                 "SUM(T1.`CURRENT_SPEED(ROWS/SEC)`) AS `CURRENT_SPEED(ROWS/SEC)`," +
@@ -62,39 +67,47 @@ public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler 
             DEFAULT_DB_NAME,
             null
         );
-        ArrayResultCursor cursor = buildResultCursor();
-        if (CollectionUtils.isEmpty(result)) {
-            return cursor;
-        }
-        for (Map<String, Object> map : result) {
-            if (map.get(DDL_JOB_ID) == null) {
-                continue;
-            }
-            final long jobId = parseLong(map.get(DDL_JOB_ID));
-            final Optional<DdlPlanRecord> ddlPlanRecordOptional = planManager.getDdlPlanByJobId(jobId);
-            long previousFinishedRows = 0L;
-            if (ddlPlanRecordOptional.isPresent()) {
-                CostEstimableDdlTask.CostInfo costInfo =
-                    TaskHelper.decodeCostInfo(ddlPlanRecordOptional.get().getExtras());
-                if (costInfo != null) {
-                    previousFinishedRows += costInfo.rows;
+        ArrayResultCursor logicalBackfillResultCursor = buildLogicalBackfillResultCursor();
+        boolean logicalBackfillProgress = false;
+        if (CollectionUtils.isNotEmpty(logicBackfillResult)) {
+            for (Map<String, Object> map : logicBackfillResult) {
+                if (map.get(DDL_JOB_ID) == null) {
+                    continue;
                 }
-            }
-
-            long finishedRows = parseLong(map.get(FINISHED_ROWS));
-            long approximateTotalRows = parseLong(map.get(APPROXIMATE_TOTAL_ROWS));
-
-            cursor.addRow(
-                new Object[] {
-                    map.get(DDL_JOB_ID),
-                    map.get(CURRENT_SPEED),
-                    map.get(AVERAGE_SPEED),
-                    finishedRows + previousFinishedRows,
-                    approximateTotalRows + previousFinishedRows
+                logicalBackfillProgress = true;
+                final long jobId = parseLong(map.get(DDL_JOB_ID));
+                final Optional<DdlPlanRecord> ddlPlanRecordOptional = planManager.getDdlPlanByJobId(jobId);
+                long previousFinishedRows = 0L;
+                if (ddlPlanRecordOptional.isPresent()) {
+                    CostEstimableDdlTask.CostInfo costInfo =
+                        TaskHelper.decodeCostInfo(ddlPlanRecordOptional.get().getExtras());
+                    if (costInfo != null) {
+                        previousFinishedRows += costInfo.rows;
+                    }
                 }
-            );
+
+                long finishedRows = parseLong(map.get(FINISHED_ROWS));
+                long approximateTotalRows = parseLong(map.get(APPROXIMATE_TOTAL_ROWS));
+
+                logicalBackfillResultCursor.addRow(
+                    new Object[] {
+                        map.get(DDL_JOB_ID),
+                        map.get(CURRENT_SPEED),
+                        map.get(AVERAGE_SPEED),
+                        finishedRows + previousFinishedRows,
+                        approximateTotalRows + previousFinishedRows
+                    }
+                );
+            }
         }
-        return cursor;
+        if (!logicalBackfillProgress) {
+            ArrayResultCursor physicalBackfillResultCursor = buildPhysicalBackfillResultCursor();
+            InformationSchemaRebalanceProgressHandler.buildRebalanceBackFillView(physicalBackfillResultCursor);
+            if (GeneralUtil.isNotEmpty(physicalBackfillResultCursor.getRows())) {
+                return physicalBackfillResultCursor;
+            }
+        }
+        return logicalBackfillResultCursor;
     }
 
     private long parseLong(@NotNull Object val) {
@@ -105,7 +118,7 @@ public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler 
         return String.valueOf(DataTypeUtil.toJavaObject(null, val));
     }
 
-    private ArrayResultCursor buildResultCursor() {
+    private ArrayResultCursor buildLogicalBackfillResultCursor() {
         ArrayResultCursor resultCursor = new ArrayResultCursor("REBALANCE_BACKFILL");
         resultCursor.addColumn(DDL_JOB_ID, DataTypes.StringType);
         resultCursor.addColumn(CURRENT_SPEED, DataTypes.StringType);
@@ -116,4 +129,25 @@ public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler 
         return resultCursor;
     }
 
+    private ArrayResultCursor buildPhysicalBackfillResultCursor() {
+        ArrayResultCursor resultCursor = new ArrayResultCursor("REBALANCE_PROOGRESS");
+        int i = 0;
+        resultCursor.addColumn("JOB_ID", DataTypes.StringType);
+        resultCursor.addColumn("TABLE_SCHEMA", DataTypes.StringType);
+        resultCursor.addColumn("STAGE", DataTypes.StringType);
+        resultCursor.addColumn("STATE", DataTypes.StringType);
+        resultCursor.addColumn("PROGRESS", DataTypes.DoubleType);
+        resultCursor.addColumn("TOTAL_TASK", DataTypes.IntegerType);
+        resultCursor.addColumn("FINISHED_TASK", DataTypes.IntegerType);
+        resultCursor.addColumn("RUNNING_TASK", DataTypes.IntegerType);
+        resultCursor.addColumn("NOTSTARTED_TASK", DataTypes.IntegerType);
+        resultCursor.addColumn("FAILED_TASK", DataTypes.IntegerType);
+        resultCursor.addColumn("INFO", DataTypes.StringType);
+        resultCursor.addColumn("START_TIME", DataTypes.TimestampType);
+        resultCursor.addColumn("LAST_UPDATE_TIME", DataTypes.TimestampType);
+        resultCursor.addColumn("DDL_STMT", DataTypes.StringType);
+
+        resultCursor.initMeta();
+        return resultCursor;
+    }
 }

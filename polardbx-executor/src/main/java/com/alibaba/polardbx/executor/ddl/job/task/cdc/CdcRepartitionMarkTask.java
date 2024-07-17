@@ -17,17 +17,20 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.util.Map;
@@ -43,12 +46,15 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 public class CdcRepartitionMarkTask extends BaseDdlTask {
     private String logicalTableName;
     private SqlKind sqlKind;
+    private CdcDdlMarkVisibility CdcDdlMarkVisibility;
 
     @JSONCreator
-    public CdcRepartitionMarkTask(String schemaName, String logicalTableName, SqlKind sqlKind) {
+    public CdcRepartitionMarkTask(String schemaName, String logicalTableName, SqlKind sqlKind,
+                                  CdcDdlMarkVisibility CdcDdlMarkVisibility) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.sqlKind = sqlKind;
+        this.CdcDdlMarkVisibility = CdcDdlMarkVisibility;
     }
 
     @Override
@@ -58,6 +64,16 @@ public class CdcRepartitionMarkTask extends BaseDdlTask {
     }
 
     private void mark4RepartitionTable(ExecutionContext executionContext) {
+        if (CBOUtil.isGsi(schemaName, logicalTableName)) {
+            return;
+        }
+
+        final String skipCutover =
+            executionContext.getParamManager().getString(ConnectionParams.REPARTITION_SKIP_CUTOVER);
+        if (StringUtils.equalsIgnoreCase(skipCutover, Boolean.TRUE.toString())) {
+            return;
+        }
+
         // 主表和目标表之间已经完成了物理表的Switch操作，目标表以GSI的形式存在，依靠分布式事务，双边数据是强一致的
         // 需要在job结束前和Gsi被clean前，进行打标
         DdlContext ddlContext = executionContext.getDdlContext();
@@ -67,6 +83,6 @@ public class CdcRepartitionMarkTask extends BaseDdlTask {
         FailPoint.injectRandomSuspendFromHint(executionContext);
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlContext.getDdlStmt(),
-                ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Private, param);
+                ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility, param);
     }
 }

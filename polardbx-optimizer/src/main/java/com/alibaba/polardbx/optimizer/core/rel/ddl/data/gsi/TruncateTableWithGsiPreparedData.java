@@ -32,6 +32,8 @@ public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
     protected String tmpTableSuffix;
     protected Map<String, String> tmpIndexTableMap;
 
+    protected boolean hasColumnarIndex;
+
     public TruncateTablePreparedData getPrimaryTablePreparedData() {
         return primaryTablePreparedData;
     }
@@ -90,4 +92,11 @@ public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
         return indexTablePreparedDataMap.size() > 0;
     }
 
+    public boolean isHasColumnarIndex() {
+        return hasColumnarIndex;
+    }
+
+    public void setHasColumnarIndex(boolean hasColumnarIndex) {
+        this.hasColumnarIndex = hasColumnarIndex;
+    }
 }

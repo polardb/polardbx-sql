@@ -29,10 +29,16 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
+import com.alibaba.polardbx.gms.node.GmsNodeManager;
+import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
@@ -40,6 +46,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.repo.mysql.handler.LogicalShowProcesslistHandler;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slice;
+import lombok.Data;
 import org.apache.calcite.sql.SqlShowDdlJobs;
 import org.apache.calcite.sql.SqlShowProcesslist;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -50,6 +57,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ENGINE_TYPE_DAG;
@@ -105,18 +113,51 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         ArrayResultCursor resultCursor = buildResultCursor(isFull);
         if (CollectionUtils.isNotEmpty(records)) {
             gsiBackfillManager = new GsiBackfillManager(executionContext.getSchemaName());
+
+            List<Long> ddlJobIds = records.stream().map(DdlEngineRecord::getJobId).collect(Collectors.toList());
+
+            //handle fastchecker info
+            Map<Long, FastCheckerThreadPool.FastCheckerInfo> mergedResult = new TreeMap<>();
+            FastCheckerInfoSyncAction syncAction = new FastCheckerInfoSyncAction(ddlJobIds);
+            GmsSyncManagerHelper.sync(syncAction, executionContext.getSchemaName(), SyncScope.MASTER_ONLY, results -> {
+                if (results == null) {
+                    return;
+                }
+
+                for (Pair<GmsNodeManager.GmsNode, List<Map<String, Object>>> result : results) {
+                    if (CollectionUtils.isEmpty(result.getValue())) {
+                        continue;
+                    }
+                    for (Map<String, Object> row : result.getValue()) {
+                        long jobId = DataTypes.LongType.convertFrom(row.get("DDL_JOB_ID"));
+                        long taskSum = DataTypes.LongType.convertFrom(row.get("TASK_SUM"));
+                        long taskFinished = DataTypes.LongType.convertFrom(row.get("TASK_FINISHED"));
+
+                        mergedResult.putIfAbsent(jobId, new FastCheckerThreadPool.FastCheckerInfo());
+                        mergedResult.get(jobId).getPhyTaskSum().addAndGet((int) taskSum);
+                        mergedResult.get(jobId).getPhyTaskFinished().addAndGet((int) taskFinished);
+                    }
+                }
+            });
+
             // If the jobs on new DDL engine, then show them.
             for (DdlEngineRecord record : records) {
                 if (!isFull && record.isSubJob()) {
                     continue;
                 }
+
+                FastCheckerThreadPool.FastCheckerInfo fcInfo = Optional.ofNullable(mergedResult.get(record.jobId))
+                    .orElse(new FastCheckerThreadPool.FastCheckerInfo());
                 if (record.ddlType.equalsIgnoreCase("CREATE_DATABASE_LIKE_AS")) {
-                    List<Object[]> createDatabaseRows = processCreateDatabaseLikeAsJob(record, isFull);
+                    List<Object[]> createDatabaseRows = processCreateDatabaseLikeAsJob(record, isFull, fcInfo);
                     createDatabaseRows.forEach(
                         row -> resultCursor.addRow(row)
                     );
                 } else {
-                    resultCursor.addRow(buildRow(record, isFull));
+                    resultCursor.addRow(buildRow(record,
+                        isFull,
+                        fcInfo
+                    ));
                 }
             }
         }
@@ -136,6 +177,8 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         resultCursor.addColumn("TOTAL_BACKFILL_PROGRESS", DataTypes.StringType);
         resultCursor.addColumn("CURRENT_PHY_DDL_PROGRESS", DataTypes.StringType);
         resultCursor.addColumn("PROGRESS", DataTypes.StringType);
+        resultCursor.addColumn("FASTCHECKER_TASK_NUM", DataTypes.StringType);
+        resultCursor.addColumn("FASTCHECKER_TASK_FINISHED", DataTypes.StringType);
         resultCursor.addColumn("START_TIME", DataTypes.StringType);
         resultCursor.addColumn("END_TIME", DataTypes.StringType);
         resultCursor.addColumn("ELAPSED_TIME(MS)", DataTypes.StringType);
@@ -158,7 +201,8 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
 
     private static int MAX_SHOW_LEN = 5000;
 
-    private Object[] buildRow(DdlEngineRecord record, boolean isFull) {
+    private Object[] buildRow(DdlEngineRecord record, boolean isFull,
+                              FastCheckerThreadPool.FastCheckerInfo fastCheckerInfo) {
         String phyProcess = checkPhyProcess(record);
         if (phyProcess != null && phyProcess != StringUtils.EMPTY) {
             phyProcess = phyProcess.substring(0, Math.min(phyProcess.length(), MAX_SHOW_LEN));
@@ -189,6 +233,8 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
                 backfillProgress,
                 record.progress + PERCENTAGE,
                 totalProgress,
+                fastCheckerInfo.getPhyTaskSum().get(),
+                fastCheckerInfo.getPhyTaskFinished().get(),
                 gmtCreated, gmtModified, elapsedTime, phyProcess,
                 cancelable,
                 NONE, record.responseNode, record.executionNode, record.traceId, record.ddlStmt, ddlResult, NONE
@@ -199,12 +245,15 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
                 backfillProgress,
                 record.progress + PERCENTAGE,
                 totalProgress,
+                fastCheckerInfo.getPhyTaskSum().get(),
+                fastCheckerInfo.getPhyTaskFinished().get(),
                 gmtCreated, gmtModified, elapsedTime, phyProcess, cancelable
             };
         }
     }
 
-    private List<Object[]> processCreateDatabaseLikeAsJob(DdlEngineRecord record, boolean isFull) {
+    private List<Object[]> processCreateDatabaseLikeAsJob(DdlEngineRecord record, boolean isFull,
+                                                          FastCheckerThreadPool.FastCheckerInfo fcInfo) {
         int i = 0;
         final Map<String, Integer> columnIndexForShowFull =
             ImmutableMap.<String, Integer>builder()
@@ -233,7 +282,7 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
 
         List<Object[]> result = new ArrayList<>();
         if (!isFull) {
-            Object[] baseRow = buildRow(record, isFull);
+            Object[] baseRow = buildRow(record, isFull, fcInfo);
             List<Map<String, Object>> createDatabaseResult = queryCreateDatabaseTaskResultFromViewByJobId(record.jobId);
             String schemaSrc = null, schemaDst = null;
             for (Map<String, Object> createDatabaseResultItem : createDatabaseResult) {
@@ -258,7 +307,7 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         }
 
         List<Map<String, Object>> createDatabaseResult = queryCreateDatabaseTaskResultFromViewByJobId(record.jobId);
-        Object[] baseRow = buildRow(record, isFull);
+        Object[] baseRow = buildRow(record, isFull, fcInfo);
         String schemaSrc = null, schemaDst = null;
         for (Map<String, Object> createDatabaseResultItem : createDatabaseResult) {
             Object[] subRow = baseRow.clone();
@@ -464,6 +513,34 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         } catch (Exception e) {
             LOGGER.error("parse backfill progress error. str:" + str, e);
             return 0L;
+        }
+    }
+
+    @Data
+    public static class FastCheckerInfoSyncAction implements IGmsSyncAction {
+        List<Long> ddlJobsId;
+
+        public FastCheckerInfoSyncAction(List<Long> ddlJobsId) {
+            this.ddlJobsId = ddlJobsId;
+        }
+
+        @Override
+        public Object sync() {
+            ArrayResultCursor resultCursor = new ArrayResultCursor("FASTCHECKER");
+            resultCursor.addColumn("DDL_JOB_ID", DataTypes.LongType);
+            resultCursor.addColumn("TASK_SUM", DataTypes.LongType);
+            resultCursor.addColumn("TASK_FINISHED", DataTypes.LongType);
+
+            for (Long jobId : ddlJobsId) {
+                FastCheckerThreadPool.FastCheckerInfo checkerInfo = FastCheckerThreadPool.getInstance()
+                    .queryCheckTaskInfo(jobId);
+                if (checkerInfo != null) {
+                    resultCursor.addRow(
+                        new Object[] {jobId, checkerInfo.getPhyTaskSum().get(), checkerInfo.getPhyTaskFinished().get()}
+                    );
+                }
+            }
+            return resultCursor;
         }
     }
 

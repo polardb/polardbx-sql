@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.scheduler.SchedulePolicy;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -96,7 +98,7 @@ public class ScheduleJobStarter {
                     logger.warn("Scheduled Job For STATISTIC_HLL_SKETCH Has Exist");
                     return 0;
                 }
-                return scheduledJobsAccessor.insert(scheduledJobsRecord);
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
             }
         }.execute();
         logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
@@ -214,13 +216,14 @@ public class ScheduleJobStarter {
                     logger.warn("Scheduled Job For OPTIMIZER_ALERT Has Exist");
                     return 0;
                 }
-                return scheduledJobsAccessor.insert(scheduledJobsRecord);
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
             }
         }.execute();
         logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
     }
 
     private static void initCleanLogTableJob() {
+        // Delete old clean job.
         String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
         String tableName = VisualConstants.DUAL_TABLE_NAME;
         String cronExpr = "0 45 * * * ? ";
@@ -239,11 +242,40 @@ public class ScheduleJobStarter {
             protected Integer invoke() {
                 List<ScheduledJobsRecord> list =
                     scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
-                if (list.size() > 0) {
-                    logger.warn("Scheduled Job For CLEAN_LOG_TABLE Has Exist");
+                if (list.isEmpty()) {
+                    logger.warn("Scheduled Job For CLEAN_LOG_TABLE not exists. Ignore deleting.");
                     return 0;
                 }
-                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
+                return scheduledJobsAccessor.deleteById(list.get(0).getScheduleId());
+            }
+        }.execute();
+        logger.info(String.format("Delete %s Success %s", scheduledJobsRecord.getExecutorType(), count));
+        if (count > 1) {
+            EventLogger.log(EventType.TRX_LOG_ERR, "Delete old CLEAN_LOG_TABLE.");
+        }
+
+        // Init new clean job.
+        cronExpr = "0 0/1 * * * ? ";
+        timeZone = "+08:00";
+        ScheduledJobsRecord scheduledJobsRecordV2 = ScheduledJobsManager.createQuartzCronJob(
+            tableSchema,
+            null,
+            tableName,
+            ScheduledJobExecutorType.CLEAN_LOG_TABLE_V2,
+            cronExpr,
+            timeZone,
+            SchedulePolicy.SKIP
+        );
+        count = new ScheduledJobsAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                List<ScheduledJobsRecord> list =
+                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecordV2.getExecutorType());
+                if (list.size() > 0) {
+                    logger.warn("Scheduled Job For CLEAN_LOG_TABLE_V2 Has Exist");
+                    return 0;
+                }
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecordV2);
             }
         }.execute();
         logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));

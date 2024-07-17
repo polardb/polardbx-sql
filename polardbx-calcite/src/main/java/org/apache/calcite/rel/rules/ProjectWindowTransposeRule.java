@@ -93,6 +93,15 @@ public class ProjectWindowTransposeRule extends RelOptRule {
       builder.add(relDataTypeField);
     }
 
+    // if there is no reference, use the first column
+    if (beReferred.isEmpty()) {
+      if (windowInputColumn > 1) {
+        final RelDataTypeField relDataTypeField = rowTypeWindowInput.get(0);
+        exps.add(new RexInputRef(0, relDataTypeField.getType()));
+        builder.add(relDataTypeField);
+      }
+    }
+
     final LogicalProject projectBelowWindow =
         new LogicalProject(cluster, window.getTraitSet(),
             window.getInput(), exps, builder.build());
@@ -241,7 +250,7 @@ public class ProjectWindowTransposeRule extends RelOptRule {
   private int getAdjustedIndex(final int initIndex,
       final ImmutableBitSet beReferred, final int windowInputColumn) {
     if (initIndex >= windowInputColumn) {
-      return beReferred.cardinality() + (initIndex - windowInputColumn);
+      return Math.max(beReferred.cardinality(), 1) + (initIndex - windowInputColumn);
     } else {
       return beReferred.get(0, initIndex).cardinality();
     }

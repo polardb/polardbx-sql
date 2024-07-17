@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.ddl.auto.localpartition;
 
 import com.alibaba.polardbx.common.scheduler.SchedulerJobStatus;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
@@ -26,6 +27,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+@BinlogIgnore(ignoreReason = "drop local partition的动作目前无法透传给下游，导致binlog实验室上下游数据不一致，暂时忽略")
 public abstract class LocalPartitionBaseTest extends DDLBaseNewDBTestCase {
 
     @Override

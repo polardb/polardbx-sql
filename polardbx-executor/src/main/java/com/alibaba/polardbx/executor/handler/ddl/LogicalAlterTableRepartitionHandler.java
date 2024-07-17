@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -81,12 +82,13 @@ public class LogicalAlterTableRepartitionHandler extends LogicalCommonDdlHandler
 
         SqlAlterTableRepartition ast = (SqlAlterTableRepartition) logicalAlterTableRepartition.relDdl.sqlNode;
 
+        String schemaName = logicalDdlPlan.getSchemaName();
+        String tableName = logicalAlterTableRepartition.getTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
+
+        boolean repartitionGsi = false;
         if (ast.isAlignToTableGroup()) {
-            String schemaName = logicalDdlPlan.getSchemaName();
-            String tableName = logicalAlterTableRepartition.getTableName();
-
-            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
-
+            repartitionGsi = tableMeta.isGsi();
             String tableGroup = ast.getTableGroupName().getLastName();
             TableGroupInfoManager tgInfoManager = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
             TableGroupConfig tableGroupConfig = tgInfoManager.getTableGroupConfigByName(tableGroup);
@@ -100,7 +102,7 @@ public class LogicalAlterTableRepartitionHandler extends LogicalCommonDdlHandler
                     String.format("the tablegroup:[%s] is empty, it's not expected", tableGroup));
             }
 
-            String firstTbInTg = tableGroupConfig.getTables().get(0).getTableName();
+            String firstTbInTg = tableGroupConfig.getTables().get(0);
             TableMeta refTableMeta = executionContext.getSchemaManager(schemaName).getTable(firstTbInTg);
 
             SqlPartitionBy sqlPartitionBy = AlterRepartitionUtils.generateSqlPartitionBy(tableName, tableGroup,
@@ -136,11 +138,13 @@ public class LogicalAlterTableRepartitionHandler extends LogicalCommonDdlHandler
         // prepare data for local indexes
         logicalAlterTableRepartition.prepareLocalIndexData();
         RepartitionPrepareData repartitionPrepareData = logicalAlterTableRepartition.getRepartitionPrepareData();
+        repartitionPrepareData.setRepartitionGsi(repartitionGsi);
         globalIndexPreparedData.setRepartitionPrepareData(repartitionPrepareData);
 
         DdlPhyPlanBuilder builder = CreateGlobalIndexBuilder.create(
             logicalAlterTableRepartition.relDdl,
             globalIndexPreparedData,
+            null,
             executionContext).build();
 
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();
@@ -162,10 +166,10 @@ public class LogicalAlterTableRepartitionHandler extends LogicalCommonDdlHandler
             return new TransientDdlJob();
         }
 
+        final Long versionId = DdlUtils.generateVersionId(executionContext);
+        logicalAlterTableRepartition.setDdlVersionId(versionId);
+
         // get foreign keys
-        String schemaName = logicalDdlPlan.getSchemaName();
-        String tableName = logicalAlterTableRepartition.getTableName();
-        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
         logicalAlterTableRepartition.prepareForeignKeyData(tableMeta, ast);
 
         return new RepartitionJobFactory(
@@ -204,28 +208,6 @@ public class LogicalAlterTableRepartitionHandler extends LogicalCommonDdlHandler
             new SqlAddIndex(SqlParserPos.ZERO, e.getIndexName(), e)
         ).collect(Collectors.toList());
         ast.getAlters().addAll(sqlAddIndexList);
-    }
-
-    private SqlPartitionBy generateSqlPartitionBy(String schemaName, String tableName,
-                                                  PartitionInfo referPartitionInfo) {
-        SqlPartitionBy sqlPartitionBy;
-        switch (referPartitionInfo.getPartitionBy().getStrategy()) {
-        case HASH:
-            sqlPartitionBy = new SqlPartitionByHash(false, false, SqlParserPos.ZERO);
-            break;
-        case KEY:
-            sqlPartitionBy = new SqlPartitionByHash(true, false, SqlParserPos.ZERO);
-            break;
-        case RANGE:
-        case RANGE_COLUMNS:
-            sqlPartitionBy = new SqlPartitionByRange(SqlParserPos.ZERO);
-            break;
-        case LIST:
-        case LIST_COLUMNS:
-            sqlPartitionBy = new SqlPartitionByList(SqlParserPos.ZERO);
-            break;
-        }
-        return null;
     }
 
     @Override

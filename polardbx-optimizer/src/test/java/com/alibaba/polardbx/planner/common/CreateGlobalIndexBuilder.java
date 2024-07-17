@@ -39,6 +39,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.utils.GsiUtils;
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -166,7 +167,9 @@ public class CreateGlobalIndexBuilder {
 
         final Set<String> indexColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexColumnSet.addAll(indexColumnMap.keySet());
-        if (!containsAllShardingColumns(indexColumnSet, indexRule)) {
+        // Columnar index do not force using index column as partition column
+        final boolean isColumnar = indexDef.isColumnar();
+        if (!isColumnar && !containsAllShardingColumns(indexColumnSet, indexRule)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_INDEX_AND_SHARDING_COLUMNS_NOT_MATCH);
         }
 
@@ -176,7 +179,7 @@ public class CreateGlobalIndexBuilder {
         if (null != primaryRule) {
             final boolean singleTable = GeneralUtil.isEmpty(primaryRule.getDbShardRules())
                 && GeneralUtil.isEmpty(primaryRule.getTbShardRules());
-            if (forceAllowGsi == false && (primaryRule.isBroadcast() || singleTable)) {
+            if (!forceAllowGsi && !isColumnar && (primaryRule.isBroadcast() || singleTable)) {
                 throw new TddlRuntimeException(
                     ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
                     "Does not support create Global Secondary Index on single or broadcast table");
@@ -223,7 +226,9 @@ public class CreateGlobalIndexBuilder {
 
         final Set<String> indexColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexColumnSet.addAll(indexColumnMap.keySet());
-        if (!containsAllShardingColumns(indexColumnSet, indexRule)) {
+        // Columnar index do not force using index column as partition column
+        final boolean isColumnar = sqlCreateIndex.createCci();
+        if (!isColumnar && !containsAllShardingColumns(indexColumnSet, indexRule)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_INDEX_AND_SHARDING_COLUMNS_NOT_MATCH);
         }
 
@@ -233,7 +238,7 @@ public class CreateGlobalIndexBuilder {
         if (null != primaryRule) {
             final boolean singleTable = GeneralUtil.isEmpty(primaryRule.getDbShardRules())
                 && GeneralUtil.isEmpty(primaryRule.getTbShardRules());
-            if (primaryRule.isBroadcast() || singleTable) {
+            if (!isColumnar && (primaryRule.isBroadcast() || singleTable)) {
                 throw new TddlRuntimeException(
                     ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
                     "Does not support create Global Secondary Index on single or broadcast table");
@@ -352,6 +357,8 @@ public class CreateGlobalIndexBuilder {
         String duplicatedIndexName = null;
         List<SQLSelectOrderByItem> pkList = new ArrayList<>();
 
+        boolean isColumnar = GsiUtils.isAddCci(relDdl.getSqlNode(), sqlAlterTable);
+
         /**
          * <pre>
          *     1. remove columns not included in sharding key or covering columns
@@ -394,7 +401,7 @@ public class CreateGlobalIndexBuilder {
                             final SQLColumnConstraint constraint = constraintIt.next();
                             if (constraint instanceof SQLColumnPrimaryKey) {
                                 withoutPk = false;
-                                if (!pkList.isEmpty()) {
+                                if (!pkList.isEmpty() && !isColumnar) {
                                     throw new TddlRuntimeException(
                                         ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
                                         "multiple primary key definition");
@@ -425,7 +432,7 @@ public class CreateGlobalIndexBuilder {
                 if (gsiPreparedData.getPrimaryPartitionInfo() != null &&
                     gsiPreparedData.getIndexPartitionInfo() != null) {
                     final MySqlPrimaryKey primaryKey = (MySqlPrimaryKey) tableElement;
-                    if (!pkList.isEmpty()) {
+                    if (!pkList.isEmpty() && !isColumnar) {
                         throw new TddlRuntimeException(
                             ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
                             "multiple primary key definition");

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -617,7 +618,8 @@ public class PartitionTupleRouteInfoBuilder {
 //                }
 //            }
 
-            partColMeta = partByDef.getPartitionFieldList().get(keyIdx);
+            List<ColumnMeta> partColMetas = partByDef.getPartitionFieldList();
+            partColMeta = partColMetas.get(keyIdx);
             RexNode constVal = partClauseInfo.getConstExpr();
             boolean isAlwaysNull = partClauseInfo.isNull();
             ExprContextProvider exprCxtProvider = new ExprContextProvider();
@@ -635,7 +637,7 @@ public class PartitionTupleRouteInfoBuilder {
             PartitionIntFunction partIntFunc = null;
             SqlCall partFuncCall = PartitionFunctionBuilder.getPartFuncCall(level, keyIdx, partInfo);
             if (partFuncCall != null) {
-                partIntFunc = PartitionFunctionBuilder.createPartFuncByPartFuncCal(partFuncCall);
+                partIntFunc = PartitionFunctionBuilder.createPartFuncByPartFuncCal(partFuncCall, partColMetas);
             }
 
             PartClauseExprExec targetExprExecInfo = new PartClauseExprExec(PartitionBoundValueKind.DATUM_NORMAL_VALUE);

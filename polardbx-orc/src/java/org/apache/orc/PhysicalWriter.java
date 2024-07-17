@@ -77,6 +77,8 @@ public interface PhysicalWriter {
   void writeBloomFilter(StreamName name,
                         OrcProto.BloomFilterIndex.Builder bloom) throws IOException;
 
+  void writeBitmap(StreamName name, OrcProto.BitmapIndex.Builder bitmap) throws IOException;
+
   /**
    * Flushes the data in all the streams, spills them to disk, write out stripe
    * footer.

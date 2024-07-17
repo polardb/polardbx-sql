@@ -29,6 +29,8 @@ import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelPartitionWise;
+import org.apache.calcite.rel.RelPartitionWises;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.type.RelDataType;
@@ -60,14 +62,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Utilities for converting {@link org.apache.calcite.rel.RelNode}
  * into JSON format.
  */
 public class RelJson {
-  protected final Map<String, Constructor> constructorMap =
-      new HashMap<String, Constructor>();
+  protected static final Map<String, Constructor> constructorMap = new ConcurrentHashMap<>();
   protected final JsonBuilder jsonBuilder;
 
   public static final List<String> PACKAGES =
@@ -194,6 +196,10 @@ public class RelJson {
 
   public RelDistribution toDistribution(Map<String, Object> map) {
     return RelDistributions.ANY; // TODO:
+  }
+
+  public RelPartitionWise toPartitionWise(Map<String, Object> map) {
+    return RelPartitionWises.ANY;
   }
 
   public RelDataType toType(RelDataTypeFactory typeFactory, Object o) {

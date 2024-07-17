@@ -47,14 +47,22 @@ class BroadcastOutputBufferManager
     private final Consumer<OutputBuffers> outputBufferTarget;
     private final Map<Integer, Boolean> outputNoMoreBuffers;
 
+    /**
+     * required child output size under remote partition wise join
+     * otherwise, zero
+     */
+    private final int bufferCount;
+
     @GuardedBy("this")
     private OutputBuffers outputBuffers =
         OutputBuffers.createInitialEmptyOutputBuffers(OutputBuffers.BufferType.BROADCAST);
 
     public BroadcastOutputBufferManager(Map<Integer, Boolean> outputNoMoreBuffers,
+                                        int bufferCount,
                                         Consumer<OutputBuffers> outputBufferTarget) {
         this.outputBufferTarget = requireNonNull(outputBufferTarget, "outputBufferTarget is null");
         this.outputNoMoreBuffers = requireNonNull(outputNoMoreBuffers, "outputNoMoreBuffers is null");
+        this.bufferCount = bufferCount;
         outputBufferTarget.accept(outputBuffers);
     }
 
@@ -101,5 +109,9 @@ class BroadcastOutputBufferManager
             newOutputBuffers = this.outputBuffers;
         }
         outputBufferTarget.accept(newOutputBuffers);
+    }
+
+    public int getBufferCount() {
+        return bufferCount;
     }
 }

@@ -33,27 +33,27 @@ public class ${className} extends AbstractVectorizedExpression {
     }
 
     @Override
-    public void eval(EvaluationContext ctx) {
-        children[0].eval(ctx);
+		public void eval(EvaluationContext ctx) {
+		children[0].eval(ctx);
 
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
 
-        int newSize = 0;
+		int newSize = 0;
         <#if operator.classHeader != "SEQ">
-        newSize = VectorizedExpressionUtils.filterNulls(leftInputVectorSlot, isSelectionInUse, sel, batchSize);
-        if(newSize < batchSize) {
-            chunk.setBatchSize(newSize);
-            chunk.setSelectionInUse(true);
-            batchSize = newSize;
-            isSelectionInUse = true;
-        }
+			newSize = VectorizedExpressionUtils.filterNulls(leftInputVectorSlot, isSelectionInUse, sel, batchSize);
+			if(newSize < batchSize) {
+			chunk.setBatchSize(newSize);
+			chunk.setSelectionInUse(true);
+			batchSize = newSize;
+			isSelectionInUse = true;
+			}
 
         newSize = 0;
         if (isSelectionInUse) {

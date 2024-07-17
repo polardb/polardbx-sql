@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -89,7 +89,7 @@ public class HashAgg extends Aggregate {
             relInput.getBitSet("group"),
             relInput.getBitSetList("groups"),
             relInput.getAggregateCalls("aggs"));
-        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE);
+        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE).replace(relInput.getPartitionWise());
         this.partial = relInput.getBoolean("partial", false);
         this.passive = relInput.getBoolean("passive", false);
         this.isPushDown = relInput.getBoolean("isPushDown", false);
@@ -99,6 +99,14 @@ public class HashAgg extends Aggregate {
                                  ImmutableBitSet groupSet, List<ImmutableBitSet> groupSets,
                                  List<AggregateCall> aggCalls) {
         return create(traitSet, input, false, groupSet, groupSets, aggCalls, false);
+    }
+
+    public static HashAgg createPartial(RelTraitSet traitSet, final RelNode input,
+                                        ImmutableBitSet groupSet, List<ImmutableBitSet> groupSets,
+                                        List<AggregateCall> aggCalls) {
+        final RelOptCluster cluster = input.getCluster();
+        return new HashAgg(cluster, traitSet, input, false, groupSet,
+            groupSets, aggCalls, true, false, false);
     }
 
     private static HashAgg create(RelTraitSet traitSet, final RelNode input,
@@ -157,6 +165,7 @@ public class HashAgg extends Aggregate {
             aggCalls.get(i - groupCount).accept(visitor);
             pw.item(rowType.getFieldList().get(i).getKey(), visitor.toSqlString());
         }
+        pw.itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
         return pw;
     }
 
@@ -183,7 +192,9 @@ public class HashAgg extends Aggregate {
         return super.explainTerms(pw)
             .itemIf("partial", partial, partial)
             .itemIf("passive", passive, passive)
-            .itemIf("isPushDown", isPushDown, isPushDown);
+            .itemIf("isPushDown", isPushDown, isPushDown)
+            .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop());
+
     }
 
     public boolean isPartial() {

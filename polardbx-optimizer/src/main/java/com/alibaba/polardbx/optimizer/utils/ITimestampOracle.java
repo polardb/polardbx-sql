@@ -42,4 +42,8 @@ public interface ITimestampOracle extends Lifecycle {
     static String toString(final long logicalClock) {
         return format(new StringBuilder(20), logicalClock).toString();
     }
+
+    static long getTimeMillis(long tso) {
+        return (tso & (-1L << BITS_LOGICAL_TIME)) >>> BITS_LOGICAL_TIME;
+    }
 }

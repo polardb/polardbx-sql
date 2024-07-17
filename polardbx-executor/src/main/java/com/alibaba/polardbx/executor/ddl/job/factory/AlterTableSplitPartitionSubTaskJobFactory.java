@@ -25,11 +25,9 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePrepa
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;

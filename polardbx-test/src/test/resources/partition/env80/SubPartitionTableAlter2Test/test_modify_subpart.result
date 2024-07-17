@@ -43,7 +43,7 @@ my_rc_lc_tp1,CREATE TABLE `my_rc_lc_tp1` (
 	`e` varchar(16) NOT NULL,
 	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`c`,`d`)
 SUBPARTITION BY LIST COLUMNS(`a`,`b`)
 (SUBPARTITION sp1 VALUES IN ((1000,2000)),
@@ -61,7 +61,7 @@ my_rc_lc_tp2,CREATE TABLE `my_rc_lc_tp2` (
 	`e` varchar(16) NOT NULL,
 	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`c`,`d`)
 SUBPARTITION BY LIST COLUMNS(`a`,`b`)
 (SUBPARTITION sp1 VALUES IN ((1000,2000)),

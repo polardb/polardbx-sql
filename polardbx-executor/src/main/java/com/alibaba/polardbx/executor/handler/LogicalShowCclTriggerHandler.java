@@ -17,12 +17,11 @@
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -33,6 +32,7 @@ import com.alibaba.polardbx.optimizer.ccl.common.CclCondition;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalCcl;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlDal;
 import org.apache.calcite.sql.SqlShowCclTrigger;

@@ -24,10 +24,20 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
-import com.alibaba.polardbx.executor.balancer.action.*;
+import com.alibaba.polardbx.executor.balancer.action.ActionInitPartitionDb;
+import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
+import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroup;
+import com.alibaba.polardbx.executor.balancer.action.ActionMoveGroups;
+import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
+import com.alibaba.polardbx.executor.balancer.action.ActionMovePartitions;
+import com.alibaba.polardbx.executor.balancer.action.ActionMoveTablePartition;
+import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
+import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
+import com.alibaba.polardbx.executor.balancer.action.ActionWriteDataDistLog;
+import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
 import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
-import com.alibaba.polardbx.executor.balancer.solver.Solution;
 import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
+import com.alibaba.polardbx.executor.balancer.solver.Solution;
 import com.alibaba.polardbx.executor.balancer.solver.SolverExample;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
@@ -48,15 +58,28 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.calcite.sql.SqlRebalance;
 import org.apache.commons.collections.CollectionUtils;
 
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_UNIT_SIZE;
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyUtils.getGroupDetails;
 
 /**
@@ -89,6 +112,13 @@ public class PolicyPartitionBalance implements BalancePolicy {
         }
 
         List<GroupStats.GroupsOfStorage> groupList = stats.getGroups();
+        if (StoragePoolManager.getInstance().isTriggered()) {
+            List<String> storageInsts =
+                StoragePoolManager.getInstance().getStoragePoolInfo(StoragePoolManager.DEFAULT_STORAGE_POOL_NAME)
+                    .getDnLists();
+            groupList =
+                groupList.stream().filter(o -> storageInsts.contains(o.storageInst)).collect(Collectors.toList());
+        }
         if (CollectionUtils.isEmpty(groupList)) {
             return Collections.emptyList();
         }
@@ -760,11 +790,15 @@ public class PolicyPartitionBalance implements BalancePolicy {
 //        Map<String, List<MoveInfo>> movesGroupByTg = moves.stream().collect(
 //            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
 //        );
+        long maxTaskUnitSize = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_SIZE);
+        if (maxTaskUnitSize < 1024) {
+            maxTaskUnitSize = options.maxTaskUnitSize;
+        }
         for (int i = 0; i < moves.size(); ) {
             Long sumMoveSize = 0L;
             int j = i;
             int nextI;
-            for (; j < moves.size() && sumMoveSize <= options.maxTaskUnitSize * 1024 * 1024; j++) {
+            for (; j < moves.size() && sumMoveSize <= maxTaskUnitSize * 1024 * 1024; j++) {
                 sumMoveSize += moves.get(j).dataSize;
             }
             nextI = j;

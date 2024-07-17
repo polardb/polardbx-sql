@@ -47,4 +47,3 @@ public class MppLogicalViewConvertRule extends ConverterRule {
         return newLogicalView;
     }
 }
-

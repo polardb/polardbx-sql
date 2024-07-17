@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.MathUtils;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
@@ -30,19 +31,14 @@ import com.alibaba.polardbx.executor.operator.lookup.LookupConditionBuilder;
 import com.alibaba.polardbx.executor.operator.lookup.ShardingLookupConditionBuilder;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartLookupPruningCache;
-import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.SqlBasicCall;
@@ -60,11 +56,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTE_ON_MYSQL;
-import static com.alibaba.polardbx.common.utils.GeneralUtil.buildPhysicalQuery;
 
 public class LookupTableScanExec extends TableScanExec implements LookupTableExec {
 
@@ -411,8 +404,10 @@ public class LookupTableScanExec extends TableScanExec implements LookupTableExe
                 }
                 for (SqlNode condition : lookupConditions) {
                     if (condition != null) {
-                        query = StringUtils.replace(query, "'bka_magic' = 'bka_magic'",
-                            RelUtils.toNativeSql(condition), 1);
+                        String conditionSql = RelUtils.toNativeSql(condition);
+                        // escape condition sql using mysql escape char '\'
+                        String dialectSql = TStringUtil.escape(conditionSql, '\\', '\\');
+                        query = StringUtils.replace(query, "'bka_magic' = 'bka_magic'", dialectSql, 1);
                     }
                 }
                 hintSql = query;

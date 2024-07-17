@@ -94,6 +94,7 @@ public class LogicalCheckGsi extends BaseDdlOperation {
         final long speedMin = ec.getParamManager().getLong(ConnectionParams.GSI_CHECK_SPEED_MIN);
         final long parallelism = ec.getParamManager().getLong(ConnectionParams.GSI_CHECK_PARALLELISM);
         final long earlyFailNumber = ec.getParamManager().getLong(ConnectionParams.GSI_EARLY_FAIL_NUMBER);
+        final boolean useBinary = ec.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY);
         final Pair<SqlSelect.LockMode, SqlSelect.LockMode> lockMode = prepareLockMode();
 
         final String extraCmd = StringUtils.defaultIfEmpty(sqlNode.getExtraCmd(), "");
@@ -106,7 +107,8 @@ public class LogicalCheckGsi extends BaseDdlOperation {
             speedLimit,
             speedMin,
             parallelism,
-            earlyFailNumber
+            earlyFailNumber,
+            useBinary
         );
         this.prepareData.setSchemaName(schemaName);
         this.prepareData.setTableName(tableName);

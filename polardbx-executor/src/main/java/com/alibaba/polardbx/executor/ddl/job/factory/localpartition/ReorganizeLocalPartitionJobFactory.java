@@ -28,6 +28,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -51,6 +52,7 @@ import org.apache.calcite.sql.SqlPhyDdlWrapper;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -134,12 +136,17 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
         alterTableStatement.setDbType(DbType.mysql);
         final String phySql = alterTableStatement.toString();
 
+        Map<String, Long> versionMap = new HashMap<>();
+        versionMap.put(primaryTableName, primaryTableMeta.getVersion());
+        ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, versionMap);
+
         LocalPartitionValidateTask localPartitionValidateTask =
             new LocalPartitionValidateTask(schemaName, primaryTableName);
         Map<String, GsiMetaManager.GsiIndexMetaBean> publishedGsi = primaryTableMeta.getGsiPublished();
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
+        taskList.add(validateTableVersionTask);
         taskList.add(localPartitionValidateTask);
         taskList.add(genPhyDdlTask(schemaName, primaryTableName, phySql));
         if (publishedGsi != null) {

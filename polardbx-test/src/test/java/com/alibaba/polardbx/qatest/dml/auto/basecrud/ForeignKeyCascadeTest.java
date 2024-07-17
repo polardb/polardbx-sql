@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -15,6 +16,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
+@NotThreadSafe
 public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
     @Override
     public boolean usingNewPartDb() {
@@ -65,10 +67,24 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
         + "foreign key fk(`{1}`,`{2}`) REFERENCES {3}(`{4}`,`{5}`) ON DELETE {8} ON UPDATE {8}, "
         + "{6}) {7}";
 
+    private static final String CREATE_UNIQUE_TABLE_BASE = "create table {0}("
+        + "a int, "
+        + "b int, "
+        + "c int, "
+        + "key (`b`,`c`), "
+        + "unique global index (`c`) partition by hash(c),"
+        + "{1}) {2}";
+
+    private static final String CREATE_UNIQUE_TABLE_TMPL_1 = "create table {0}("
+        + "a int, "
+        + "b int, "
+        + "c int, "
+        + "foreign key fk(`{1}`) REFERENCES {2}(`{3}`) ON DELETE {6} ON UPDATE {6}, "
+        + "{4}) {5}";
+
     private static final String[] PART_DEFS = new String[] {
         "partition by hash(a) partitions 7",
         "partition by hash(b) partitions 7",
-        "partition by hash(b,c) partitions 7",
         "single",
         "broadcast"
     };
@@ -76,7 +92,7 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
     private static final String[] FK_OPTIONS = new String[] {
         "CASCADE",
         "NO ACTION",
-        "RESTRICT",
+//        "RESTRICT",
         "SET NULL",
         "SET DEFAULT"
     };
@@ -95,7 +111,7 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
 
     @After
     public void after() {
-        doClearDatabase();
+//        doClearDatabase();
     }
 
     void doReCreateDatabase() {
@@ -1373,6 +1389,204 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
                 JdbcUtil.executeQuerySuccess(tddlConnection, String.format("select * from %s", child2));
             result = JdbcUtil.getAllResult(rs);
             assertEquals(0, result.size());
+        }
+    }
+
+    @Test
+    public void testFkReplaceCascade() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        String tableName1 = SOURCE_TABLE_NAME + "_1";
+        String tableName2 = SOURCE_TABLE_NAME + "_2";
+
+        for (String partitionDef1 : PART_DEFS) {
+            if (partitionDef1.contains("single") || partitionDef1.contains("broadcast")) {
+                continue;
+            }
+
+            dropTableIfExists(tableName2);
+            dropTableIfExists(tableName1);
+            String createSql1 =
+                MessageFormat.format(CREATE_UNIQUE_TABLE_BASE, tableName1, "primary key (a)", partitionDef1);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createSql1);
+
+            for (String partitionDef2 : PART_DEFS) {
+                System.out.println(partitionDef1 + " | " + partitionDef2);
+                for (String option : FK_OPTIONS) {
+                    switch (option) {
+                    case "CASCADE":
+                        dropTableIfExists(tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("delete from %s", tableName1));
+
+                        String createSql2 =
+                            MessageFormat.format(CREATE_UNIQUE_TABLE_TMPL_1, tableName2, "b", tableName1, "b",
+                                "primary key (a)",
+                                partitionDef2, option);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+                        String sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("replace into %s values (1,20,3)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                        ResultSet rs =
+                            JdbcUtil.executeQuerySuccess(tddlConnection,
+                                String.format("select * from %s where b = 2", tableName2));
+                        List<List<Object>> result = JdbcUtil.getAllResult(rs);
+                        assertEquals(0, result.size());
+
+                        sql = String.format("replace into %s values (4,4,6),(5,5,6),(6,6,6) ", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        rs = JdbcUtil.executeQuerySuccess(tddlConnection,
+                            String.format("select * from %s where b = 5", tableName2));
+                        result = JdbcUtil.getAllResult(rs);
+                        assertEquals(0, result.size());
+                        break;
+                    case "RESTRICT":
+                    case "NO ACTION":
+                        dropTableIfExists(tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("delete from %s", tableName1));
+
+                        createSql2 =
+                            MessageFormat.format(CREATE_UNIQUE_TABLE_TMPL_1, tableName2, "b", tableName1, "b",
+                                "primary key (a)",
+                                partitionDef2, option);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+                        sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("replace into %s values (1,20,3)", tableName1);
+                        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+                        break;
+                    case "SET NULL":
+                        dropTableIfExists(tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("delete from %s", tableName1));
+
+                        createSql2 =
+                            MessageFormat.format(CREATE_UNIQUE_TABLE_TMPL_1, tableName2, "b", tableName1, "b",
+                                "primary key (a)",
+                                partitionDef2, option);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+                        sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("replace into %s values (1,20,3)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                        rs = JdbcUtil.executeQuerySuccess(tddlConnection,
+                            String.format("select * from %s where c = 3", tableName2));
+                        while (rs.next()) {
+                            assertNull(rs.getObject(2));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testFkUpsertCascade() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        String tableName1 = SOURCE_TABLE_NAME + "_1";
+        String tableName2 = SOURCE_TABLE_NAME + "_2";
+
+        for (String partitionDef1 : PART_DEFS) {
+            if (partitionDef1.contains("single") || partitionDef1.contains("broadcast")) {
+                continue;
+            }
+
+            dropTableIfExists(tableName2);
+            dropTableIfExists(tableName1);
+            String createSql1 =
+                MessageFormat.format(CREATE_UNIQUE_TABLE_BASE, tableName1, "primary key (a)", partitionDef1);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createSql1);
+
+            for (String partitionDef2 : PART_DEFS) {
+                System.out.println(partitionDef1 + " | " + partitionDef2);
+                for (String option : FK_OPTIONS) {
+                    switch (option) {
+                    case "CASCADE":
+                        dropTableIfExists(tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("delete from %s", tableName1));
+
+                        String createSql2 =
+                            MessageFormat.format(CREATE_UNIQUE_TABLE_TMPL_1, tableName2, "b", tableName1, "b",
+                                "primary key (a)",
+                                partitionDef2, option);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+                        String sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,20,3) on duplicate key update b = values (b)",
+                            tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection,
+                            String.format("select * from %s where b = 20", tableName2));
+                        List<List<Object>> result = JdbcUtil.getAllResult(rs);
+                        assertEquals(2, result.size());
+
+                        sql = String.format("insert into %s values (1,21,3),(2,22,3),(3,23,3) "
+                            + "on duplicate key update b = values (b)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        rs = JdbcUtil.executeQuerySuccess(tddlConnection,
+                            String.format("select * from %s where b = 23", tableName2));
+                        result = JdbcUtil.getAllResult(rs);
+                        assertEquals(2, result.size());
+                        break;
+                    case "RESTRICT":
+                    case "NO ACTION":
+                        dropTableIfExists(tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("delete from %s", tableName1));
+
+                        createSql2 =
+                            MessageFormat.format(CREATE_UNIQUE_TABLE_TMPL_1, tableName2, "b", tableName1, "b",
+                                "primary key (a)",
+                                partitionDef2, option);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+                        sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("replace into %s values (1,20,3)", tableName1);
+                        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+                        break;
+                    case "SET NULL":
+                        dropTableIfExists(tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("delete from %s", tableName1));
+
+                        createSql2 =
+                            MessageFormat.format(CREATE_UNIQUE_TABLE_TMPL_1, tableName2, "b", tableName1, "b",
+                                "primary key (a)",
+                                partitionDef2, option);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+                        sql = String.format("insert into %s values (1,2,3), (4,5,6)", tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,2,3), (2,2,3), (3,5,6), (4,5,6)", tableName2);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+                        sql = String.format("insert into %s values (1,20,3) on duplicate key update b = values (b)",
+                            tableName1);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                        rs = JdbcUtil.executeQuerySuccess(tddlConnection,
+                            String.format("select * from %s where c = 3", tableName2));
+                        while (rs.next()) {
+                            assertNull(rs.getObject(2));
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -80,3 +80,14 @@ show create table t3_jyc;
 create table t4_jyc(test_2 varchar(8) character set utf8) select * from t2_jyc;
 show create table t4_jyc;
 
+CREATE TABLE tv1 SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v;
+select * from tv1 order by column_0;
+
+CREATE TABLE tv2 SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v(x,y,z);
+select * from tv2 order by x;
+
+CREATE TABLE tv3 (a INT, b INT, c INT)  SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v(x,y,z);
+select * from tv3 order by x;
+
+CREATE TABLE tv4 (a INT, b INT, c INT)  SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6) order by column_1 desc limit 1) AS v(x,y,z);
+select * from tv4 order by x;

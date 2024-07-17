@@ -29,32 +29,35 @@
  */
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListeningExecutorService;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeFactory;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.spill.LocalSpillMonitor;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import org.apache.calcite.sql.OutFileParams;
 
 import javax.annotation.PostConstruct;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileStore;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
-import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_OUT_OF_SPILL_SPACE;
+import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static java.lang.String.format;
 import static java.nio.file.Files.createDirectories;
-import static java.nio.file.Files.delete;
 import static java.nio.file.Files.getFileStore;
 import static java.nio.file.Files.newDirectoryStream;
 import static java.util.Objects.requireNonNull;
@@ -74,11 +77,11 @@ public class FileSingleStreamSpillerFactory implements SingleStreamSpillerFactor
         FileCleaner fileCleaner) {
         this(
             listeningDecorator(newFixedThreadPool(
-                MppConfig.getInstance().getMaxSpillThreads(),
+                FileConfig.getInstance().getSpillConfig().getMaxSpillThreads(),
                 Threads.daemonThreadsNamed("binary-spiller"))),
             fileCleaner,
-            MppConfig.getInstance().getSpillPaths(),
-            MppConfig.getInstance().getAvaliableSpillSpaceThreshold());
+            ImmutableList.of(FileConfig.getInstance().getSpillerTempPath()),
+            FileConfig.getInstance().getSpillConfig().getAvaliableSpillSpaceThreshold());
     }
 
     @VisibleForTesting
@@ -127,17 +130,29 @@ public class FileSingleStreamSpillerFactory implements SingleStreamSpillerFactor
 
     @PostConstruct
     public SingleStreamSpillerFactory cleanupOldSpillFiles() {
-        spillPaths.forEach(FileSingleStreamSpillerFactory::cleanupOldSpillFiles);
+        for (Path path : spillPaths) {
+            log.warn("Deleting old spill file in path: " + path);
+            // delete temp spill file
+            cleanupOldSpillFiles(path, SPILL_FILE_GLOB);
+        }
         return this;
     }
 
-    private static void cleanupOldSpillFiles(Path path) {
-        try (DirectoryStream<Path> stream = newDirectoryStream(path, SPILL_FILE_GLOB)) {
+    private static void cleanupOldSpillFiles(Path path, String fileGlob) {
+        try (DirectoryStream<Path> stream = newDirectoryStream(path, fileGlob)) {
             stream.forEach(spillFile -> {
                 try {
                     log.info("Deleting old spill file: " + spillFile);
                     // FIXME, do it async
-                    delete(spillFile);
+                    if (java.nio.file.Files.isDirectory(spillFile)) {
+                        try (Stream<Path> fileStream = java.nio.file.Files.walk(spillFile)) {
+                            fileStream.sorted(Comparator.reverseOrder())
+                                .map(Path::toFile)
+                                .forEach(File::delete);
+                        }
+                    } else {
+                        Files.delete(spillFile);
+                    }
                 } catch (Exception e) {
                     log.warn("Could not cleanup old spill file: " + spillFile);
                 }

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.balancer.policy;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDetailInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -31,14 +33,16 @@ import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -140,12 +144,34 @@ public class PolicyUtils {
             TableGroupConfig tableGroupConfig = TableGroupUtils.getTableGroupInfoByGroupName(schema, tableGroup);
             List<LocalityDetailInfoRecord> localityDetailInfoRecords = new ArrayList<>();
             int rowNum = 0;
-            PartitionGroupRecord partitionGroupRecord = tableGroupConfig.getPartitionGroupByName(partitionGroup);
-            String locality = (partitionGroupRecord == null)?"":partitionGroupRecord.getLocality();
+            String originalLocality = "";
+            PartitionSpec partitionSpec = null;
+            if (tableGroupConfig.getTables().size() > 0) {
+                String tableName = tableGroupConfig.getTables().get(0);
+                PartitionByDefinition subPartitionByDefinition =
+                    OptimizerContext.getContext(schema).getPartitionInfoManager().getPartitionInfo(tableName)
+                        .getPartitionBy().getSubPartitionBy();
+                if (subPartitionByDefinition != null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                        String.format(
+                            "invalid alter locality operation on partition! we don't support alter table group [%s] locality with secondary partition",
+                            tableGroup));
+                }
+                partitionSpec =
+                    OptimizerContext.getContext(schema).getPartitionInfoManager().getPartitionInfo(tableName)
+                        .getPartitionBy().getPartitionByPartName(partitionGroup);
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                    String.format(
+                        "invalid alter locality operation on partition! table group [%s] contains no table",
+                        tableGroup));
+            }
+            String locality = Optional.ofNullable(partitionSpec.getLocality()).orElse("");
             localityDetailInfoRecords.add(new LocalityDetailInfoRecord(rowNum++,
                 LocalityDetailInfoRecord.LOCALITY_TYPE_PARTITIONGROUP,
-                partitionGroupRecord.id,
-                partitionGroupRecord.partition_name,
+                // If with secondary partition, we must change it ourselvers.
+                tableGroupConfig.getPartitionGroupByName(partitionGroup).id,
+                partitionSpec.getName(),
                 locality));
             return localityDetailInfoRecords;
         } catch (SQLException e) {
@@ -158,7 +184,7 @@ public class PolicyUtils {
             TableGroupConfig tableGroupConfig = TableGroupUtils.getTableGroupInfoByGroupName(schema, tableGroup);
             TableInfoManager tableInfoManager = new TableInfoManager();
             List<String> tableNames =
-                tableGroupConfig.getTables().stream().map(table -> table.getTableName()).collect(Collectors.toList());
+                tableGroupConfig.getTables();
             PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schema).getPartitionInfoManager();
             tableInfoManager.setConnection(conn);
             List<TablesRecord> tableInfoList = tableInfoManager.queryTables(schema);

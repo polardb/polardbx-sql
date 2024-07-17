@@ -18,7 +18,9 @@ package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -27,14 +29,12 @@ import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.net.packet.MySQLPacket;
 import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext.ErrorMessage;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.LongUtil;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.matrix.jdbc.TConnection;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext.ErrorMessage;
 
 import java.util.List;
 import java.util.Map;
@@ -114,7 +114,7 @@ public final class ShowErrors {
 
         // write rows
         for (ErrorMessage msg : messages) {
-            RowDataPacket row = getRow(msg, c.getCharset());
+            RowDataPacket row = getRow(msg, c.getResultSetCharset());
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
@@ -134,7 +134,7 @@ public final class ShowErrors {
 
     private static RowDataPacket getRow(ErrorMessage msg, String charset) {
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        row.add(StringUtil.encode("Error", charset));
+        row.add(StringUtil.encode(ShowWarnings.LEVEL_ERROR, charset));
         row.add(LongUtil.toBytes(msg.getCode()));
         String messageText;
         if (TStringUtil.isEmpty(msg.getGroupName())) {

@@ -19,8 +19,8 @@ package com.alibaba.polardbx.executor.backfill;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
-import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
+import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 

@@ -38,13 +38,13 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.BigIntegerType;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Like;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTables;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.math.BigInteger;
@@ -79,82 +79,20 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
             return cursor;
         }
         InformationSchemaTables informationSchemaTables = (InformationSchemaTables) virtualView;
-        Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
 
-        List<Object> tableSchemaIndexValue =
-            virtualView.getIndex().get(informationSchemaTables.getTableSchemaIndex());
-
-        Object tableSchemaLikeValue =
-            virtualView.getLike().get(informationSchemaTables.getTableSchemaIndex());
-
-        List<Object> tableNameIndexValue =
-            virtualView.getIndex().get(informationSchemaTables.getTableNameIndex());
-
-        Object tableNameLikeValue =
-            virtualView.getLike().get(informationSchemaTables.getTableNameIndex());
-
+        final int schemaIndex = InformationSchemaTables.getTableSchemaIndex();
+        final int tableIndex = InformationSchemaTables.getTableNameIndex();
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
 
-        // schemaIndex
-        Set<String> indexSchemaNames = new HashSet<>();
-        if (tableSchemaIndexValue != null && !tableSchemaIndexValue.isEmpty()) {
-            for (Object obj : tableSchemaIndexValue) {
-                if (obj instanceof RexDynamicParam) {
-                    String schemaName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    indexSchemaNames.add(schemaName.toLowerCase());
-                } else if (obj instanceof RexLiteral) {
-                    String schemaName = ((RexLiteral) obj).getValueAs(String.class);
-                    indexSchemaNames.add(schemaName.toLowerCase());
-                }
-            }
-            schemaNames = schemaNames.stream()
-                .filter(schemaName -> indexSchemaNames.contains(schemaName.toLowerCase()))
-                .collect(Collectors.toSet());
-        }
-
-        // schemaLike
-        String schemaLike = null;
-        if (tableSchemaLikeValue != null) {
-            if (tableSchemaLikeValue instanceof RexDynamicParam) {
-                schemaLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableSchemaLikeValue).getIndex() + 1).getValue());
-            } else if (tableSchemaLikeValue instanceof RexLiteral) {
-                schemaLike = ((RexLiteral) tableSchemaLikeValue).getValueAs(String.class);
-            }
-            if (schemaLike != null) {
-                final String likeArg = schemaLike;
-                schemaNames =
-                    schemaNames.stream().filter(schemaName -> new Like(null, null).like(schemaName, likeArg)).collect(
-                        Collectors.toSet());
-            }
-        }
+        Set<String> schemaNames =
+            virtualView.applyFilters(schemaIndex, params, OptimizerContext.getActiveSchemaNames());
 
         // tableIndex
-        Set<String> indexTableNames = new HashSet<>();
-        if (tableNameIndexValue != null && !tableNameIndexValue.isEmpty()) {
-            for (Object obj : tableNameIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexSchemaNames);
-            }
-        }
-
+        Set<String> indexTableNames = virtualView.getEqualsFilterValues(tableIndex, params);
         // tableLike
-        String tableLike = null;
-        if (tableNameLikeValue != null) {
-            if (tableNameLikeValue instanceof RexDynamicParam) {
-                tableLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableNameLikeValue).getIndex() + 1).getValue());
-            } else if (tableNameLikeValue instanceof RexLiteral) {
-                tableLike = ((RexLiteral) tableNameLikeValue).getValueAs(String.class);
-            }
-        }
-
-        BigIntegerType bigIntegerType = new BigIntegerType();
+        String tableLike = virtualView.getLikeString(tableIndex, params);
 
         boolean once = true;
-
-        boolean enableLowerCase =
-            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES);
-
         for (String schemaName : schemaNames) {
             SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
 
@@ -280,8 +218,8 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
 
                         cursor.addRow(new Object[] {
                             rs.getObject("TABLE_CATALOG"),
-                            enableLowerCase ? StringUtils.lowerCase(tableSchema) : tableSchema,
-                            enableLowerCase ? StringUtils.lowerCase(logicalTableName) : logicalTableName,
+                            StringUtils.lowerCase(tableSchema),
+                            StringUtils.lowerCase(logicalTableName),
                             rs.getObject("TABLE_TYPE"),
                             rs.getObject("ENGINE"),
                             rs.getObject("VERSION"),

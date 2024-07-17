@@ -35,13 +35,16 @@ public class SqlAlterTableSetTableGroup extends SqlCreate {
     final String targetTableGroup;
     final List<SqlIdentifier> objectNames;
     final boolean force;
+    final boolean implicit;
 
-    public SqlAlterTableSetTableGroup(List<SqlIdentifier> objectNames, SqlIdentifier tableName, String targetTableGroup, String sql, SqlParserPos pos, boolean force){
+    public SqlAlterTableSetTableGroup(List<SqlIdentifier> objectNames, SqlIdentifier tableName, String targetTableGroup,
+                                      String sql, SqlParserPos pos, boolean implicit, boolean force) {
         super(OPERATOR, SqlParserPos.ZERO, false, false);
         this.name = tableName;
         this.sourceSql = sql;
         this.targetTableGroup = targetTableGroup;
         this.objectNames = objectNames;
+        this.implicit = implicit;
         this.force = force;
     }
 
@@ -59,6 +62,10 @@ public class SqlAlterTableSetTableGroup extends SqlCreate {
 
     public boolean isForce() {
         return force;
+    }
+
+    public boolean isImplicit() {
+        return implicit;
     }
 
     @Override

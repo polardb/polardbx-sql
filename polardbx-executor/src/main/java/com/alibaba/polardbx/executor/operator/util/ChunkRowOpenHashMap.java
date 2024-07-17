@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.HashCommon;
 import org.openjdk.jol.info.ClassLayout;

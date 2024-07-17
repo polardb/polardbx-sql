@@ -1,0 +1,29 @@
+DROP TABLE IF EXISTS `heavy_qps_table`;
+
+CREATE TABLE `heavy_qps_table` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`id`) PARTITIONS 3;
+
+# create cci on partition table without covering column
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE CLUSTERED COLUMNAR INDEX `heavy_qps_table_cci` ON `heavy_qps_table` (`id`) PARTITION BY HASH (id) PARTITIONS 4;
+SHOW FULL CREATE TABLE `heavy_qps_table`;
+Table,Create Table
+heavy_qps_table,CREATE TABLE `heavy_qps_table` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* heavy_qps_table_cci_$ */ `heavy_qps_table_cci` (`id`)
+		PARTITION BY HASH(`id`)
+		PARTITIONS 4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+CHECK COLUMNAR INDEX `heavy_qps_table_cci` ON `heavy_qps_table` meta;
+CCI,error_type,status,primary_key,details
+`heavy_qps_table_cci_$` ON `part_mtr`.`heavy_qps_table`,SUMMARY,--,--,OK (metadata of columnar index checked) Finish time: %
+
+DROP INDEX `heavy_qps_table_cci` ON `heavy_qps_table`;
+
+DROP TABLE IF EXISTS `heavy_qps_table`;

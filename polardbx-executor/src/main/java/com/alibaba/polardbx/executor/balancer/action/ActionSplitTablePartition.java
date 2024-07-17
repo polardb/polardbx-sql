@@ -161,7 +161,7 @@ public class ActionSplitTablePartition implements BalanceAction {
         }
 
         return ActionUtils.convertToDelegatorJob(schema, sql,
-            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize, null));
     }
 
     @Override

@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.ClearSeqCacheSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import org.apache.calcite.sql.SqlClearSeqCache;
@@ -46,7 +47,7 @@ public class ClearSeqCacheHandler extends AbstractDalHandler {
         String seqName = names.get(names.size() - 1);
         boolean isAll = "ALL".equalsIgnoreCase(seqName);
 
-        SyncManagerHelper.sync(new ClearSeqCacheSyncAction(schemaName, seqName, isAll, true));
+        SyncManagerHelper.sync(new ClearSeqCacheSyncAction(schemaName, seqName, isAll, true), SyncScope.ALL);
 
         return new AffectRowCursor(isAll ? 0 : 1);
     }

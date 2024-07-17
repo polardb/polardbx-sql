@@ -364,6 +364,20 @@ public class SqlTypeNameTest {
         null,
         tn);
   }
+
+  @Test public void testSigned() {
+    SqlTypeName tn = SqlTypeName.get("SIGNED");
+    assertEquals(SqlTypeName.SIGNED, tn);
+
+    tn = SqlTypeName.get("SIGNED INTEGER");
+    assertEquals(SqlTypeName.SIGNED, tn);
+
+    tn = SqlTypeName.get("UNSIGNED");
+    assertEquals(SqlTypeName.UNSIGNED, tn);
+
+    tn = SqlTypeName.get("UNSIGNED INTEGER");
+    assertEquals(SqlTypeName.UNSIGNED, tn);
+  }
 }
 
 // End SqlTypeNameTest.java

@@ -17,11 +17,14 @@
 package com.alibaba.polardbx.executor.ddl.job.task.storagepool;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.ddl.job.factory.storagepool.StoragePoolUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.AlterStoragePoolSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoExtraFieldJSON;
@@ -38,6 +41,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.executor.ddl.job.factory.storagepool.StoragePoolUtils.RECYCLE_STORAGE_POOL;
+
 @Getter
 @TaskName(name = "AppendStorageInfoTask")
 // here is add meta to complex_task_outline table, no need to update tableVersion,
@@ -50,18 +55,19 @@ public class AppendStorageInfoTask extends BaseDdlTask {
 
     List<String> dnIds;
 
-    List<String> originalStoragePoolName;
+    Map<String, StorageInfoRecord> originalStorageInfoMap;
 
     String undeletableDnId;
     String storagePoolName;
 
     @JSONCreator
-    public AppendStorageInfoTask(String schemaName, String instId, List<String> originalStoragePoolName,
+    public AppendStorageInfoTask(String schemaName, String instId,
+                                 Map<String, StorageInfoRecord> originalStorageInfoMap,
                                  List<String> dnIds, String undeletableDnId, String storagePoolName) {
         super(schemaName);
         this.schemaName = schemaName;
         this.instId = instId;
-        this.originalStoragePoolName = originalStoragePoolName;
+        this.originalStorageInfoMap = originalStorageInfoMap;
         this.dnIds = dnIds;
         this.undeletableDnId = undeletableDnId;
         this.storagePoolName = storagePoolName;
@@ -74,24 +80,35 @@ public class AppendStorageInfoTask extends BaseDdlTask {
         List<StorageInfoRecord> originalStorageInfoRecords =
             storageInfoRecords.stream().filter(o -> dnIds.contains(o.storageInstId)).collect(Collectors.toList());
         Boolean shrinkRecycleStoragePool = false;
+        Boolean notifyStorageInfo = false;
         for (StorageInfoRecord record : originalStorageInfoRecords) {
+            int status = record.status;
             StorageInfoExtraFieldJSON extras =
                 Optional.ofNullable(record.extras).orElse(new StorageInfoExtraFieldJSON());
-            if (extras.storagePoolName.equalsIgnoreCase(StoragePoolUtils.RECYCLE_STORAGE_POOL)) {
+            if (extras.storagePoolName.equalsIgnoreCase(RECYCLE_STORAGE_POOL)) {
                 shrinkRecycleStoragePool = true;
+            }
+            if (status != StorageInfoRecord.STORAGE_STATUS_READY) {
+                notifyStorageInfo = true;
+                storageInfoAccessor.updateStorageStatus(record.storageInstId, StorageInfoRecord.STORAGE_STATUS_READY);
             }
             extras.setStoragePoolName(storagePoolName);
             storageInfoAccessor.updateStoragePoolName(record.storageInstId, extras);
         }
         StoragePoolManager storagePoolManager = StoragePoolManager.getInstance();
         String dnIdStr = StringUtils.join(this.dnIds, ",");
-        if (!storagePoolName.equalsIgnoreCase(StoragePoolUtils.RECYCLE_STORAGE_POOL) && StringUtils.isEmpty(
+        if (!storagePoolName.equalsIgnoreCase(RECYCLE_STORAGE_POOL) && StringUtils.isEmpty(
             undeletableDnId)) {
             undeletableDnId = dnIds.get(0);
         }
         storagePoolManager.appendStoragePool(storagePoolName, dnIdStr, undeletableDnId);
-        if (shrinkRecycleStoragePool) {
-            storagePoolManager.shrinkStoragePoolSimply(StoragePoolUtils.RECYCLE_STORAGE_POOL, dnIdStr);
+        if (shrinkRecycleStoragePool && !storagePoolName.equalsIgnoreCase(RECYCLE_STORAGE_POOL)) {
+            storagePoolManager.shrinkStoragePoolSimply(RECYCLE_STORAGE_POOL, dnIdStr);
+        }
+        if (notifyStorageInfo) {
+            // update op-version
+            MetaDbConfigManager.getInstance()
+                .notify(MetaDbDataIdBuilder.getStorageInfoDataId(instId), metaDbConnection);
         }
     }
 
@@ -103,27 +120,37 @@ public class AppendStorageInfoTask extends BaseDdlTask {
     @Override
     protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         //        executeImpl(metaDbConnection, executionContext);
-        Map<String, String> originalStoragePoolMap = new HashMap<>();
-        for (int i = 0; i < originalStoragePoolName.size(); i++) {
-            originalStoragePoolMap.put(dnIds.get(i), originalStoragePoolName.get(i));
-        }
         StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
         storageInfoAccessor.setConnection(metaDbConnection);
-        List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
-        List<StorageInfoRecord> originalStorageInfoRecords =
-            storageInfoRecords.stream().filter(o -> dnIds.contains(o.storageInstId)).collect(Collectors.toList());
-        for (StorageInfoRecord record : originalStorageInfoRecords) {
+        List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId)
+            .stream().filter(o -> dnIds.contains(o.storageInstId)).collect(Collectors.toList());
+        Boolean notifyStorageInfo = false;
+        for (StorageInfoRecord record : storageInfoRecords) {
             StorageInfoExtraFieldJSON extras =
                 Optional.ofNullable(record.extras).orElse(new StorageInfoExtraFieldJSON());
 //            String originalStoragePool = originalStoragePoolMap.get(record.storageInstId);
-            String originalStoragePool = StoragePoolUtils.RECYCLE_STORAGE_POOL;
+            StorageInfoRecord originalStorageInfoRecord = originalStorageInfoMap.get(record.storageInstId);
+            String originalStoragePool =
+                Optional.ofNullable(originalStorageInfoRecord.extras).orElse(new StorageInfoExtraFieldJSON())
+                    .getStoragePoolName();
+            int originalStatus = originalStorageInfoRecord.status;
             extras.setStoragePoolName(originalStoragePool);
             storageInfoAccessor.updateStoragePoolName(record.storageInstId, extras);
+            if (originalStatus != StorageInfoRecord.STORAGE_STATUS_READY) {
+                notifyStorageInfo = true;
+                storageInfoAccessor.updateStorageStatus(record.storageInstId, originalStatus);
+            }
 //            if(record.storageInstId.equals(undeletableDnId)){
 //                storageInfoAccessor.updateStorageInfoDeletable(undeletableDnId, false);
 //            }
         }
 
+        if (notifyStorageInfo) {
+            // update op-version
+            MetaDbConfigManager.getInstance()
+                .notify(MetaDbDataIdBuilder.getStorageInfoDataId(instId), metaDbConnection);
+
+        }
         StoragePoolManager storagePoolManager = StoragePoolManager.getInstance();
         String dnIdStr = StringUtils.join(this.dnIds, ",");
         storagePoolManager.shrinkStoragePool(storagePoolName, dnIdStr, undeletableDnId);
@@ -131,12 +158,12 @@ public class AppendStorageInfoTask extends BaseDdlTask {
 
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
 }

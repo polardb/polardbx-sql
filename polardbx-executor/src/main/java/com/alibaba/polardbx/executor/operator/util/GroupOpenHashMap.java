@@ -16,43 +16,35 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.utils.memory.ObjectSizeUtils;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.HashCommon;
-import it.unimi.dsi.fastutil.ints.Int2IntArrayMap;
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 
 import java.util.Arrays;
 import java.util.List;
 
 class GroupOpenHashMap implements GroupHashMap, Hash {
 
-    private static final int NOT_EXISTS = -1;
+    protected static final int NOT_EXISTS = -1;
 
-    final int expectedSize;
+    protected final int expectedSize;
 
-    final int chunkSize;
+    protected final int chunkSize;
 
     protected final DataType[] groupKeyType;
 
     protected TypedBuffer groupKeyBuffer;
 
-    private int groupCount;
-
-    private boolean useMap;
-
-    protected Int2IntOpenHashMap map;
+    protected int groupCount;
 
     /**
      * The array of keys (buckets)
      */
-    protected int[] keys;
+    private int[] keys;
     /**
      * The mask for wrapping a position counter
      */
@@ -74,6 +66,8 @@ class GroupOpenHashMap implements GroupHashMap, Hash {
      */
     private int maxFill;
 
+    protected float loadFactor;
+
     protected ExecutionContext context;
 
     public GroupOpenHashMap(DataType[] groupKeyType, int expectedSize, int chunkSize, ExecutionContext context) {
@@ -86,22 +80,16 @@ class GroupOpenHashMap implements GroupHashMap, Hash {
             "Load factor must be greater than 0 and smaller than or equal to 1");
         Preconditions.checkArgument(expectedSize >= 0, "The expected number of elements must be non-negative");
 
+        this.loadFactor = loadFactor;
         this.f = loadFactor;
         this.n = HashCommon.arraySize(expectedSize, loadFactor);
         this.mask = n - 1;
         this.maxFill = HashCommon.maxFill(n, loadFactor);
         this.size = 0;
 
-        this.useMap = context.getParamManager().getBoolean(ConnectionParams.ENABLE_UNIQUE_HASH_KEY);
-
-        if (useMap) {
-            this.map = new Int2IntOpenHashMap(expectedSize, loadFactor);
-            map.defaultReturnValue(NOT_EXISTS);
-        } else {
-            int[] keys = new int[n];
-            Arrays.fill(keys, NOT_EXISTS);
-            this.keys = keys;
-        }
+        int[] keys = new int[n];
+        Arrays.fill(keys, NOT_EXISTS);
+        this.keys = keys;
 
         this.groupKeyType = groupKeyType;
         this.groupKeyBuffer = TypedBuffer.create(groupKeyType, chunkSize, context);
@@ -114,32 +102,6 @@ class GroupOpenHashMap implements GroupHashMap, Hash {
      * @param groupId if groupId == -1 means need to generate a new groupid
      */
     int innerPut(Chunk chunk, int position, int groupId) {
-        if (useMap) {
-            return doInnerPutMap(chunk, position, groupId);
-        } else {
-            return doInnerPutArray(chunk, position, groupId);
-        }
-    }
-
-    private int doInnerPutMap(Chunk chunk, int position, int groupId) {
-        int uniqueKey = chunk.hashCode(position);
-
-        int value;
-        if ((value = map.get(uniqueKey)) != NOT_EXISTS) {
-            return value;
-        }
-
-        if (groupId == -1) {
-            groupId = appendGroup(chunk, position);
-        }
-
-        // otherwise, insert this position
-        map.put(uniqueKey, groupId);
-
-        return groupId;
-    }
-
-    private int doInnerPutArray(Chunk chunk, int position, int groupId) {
         int h = HashCommon.mix(chunk.hashCode(position)) & mask;
         int k = keys[h];
 
@@ -168,7 +130,7 @@ class GroupOpenHashMap implements GroupHashMap, Hash {
         return groupId;
     }
 
-    private void rehash() {
+    protected void rehash() {
         this.n *= 2;
         this.mask = n - 1;
         this.maxFill = HashCommon.maxFill(n, this.f);
@@ -196,7 +158,6 @@ class GroupOpenHashMap implements GroupHashMap, Hash {
 
         // set null to deallocate memory
         this.keys = null;
-        this.map = null;
         this.groupKeyBuffer = null;
 
         return chunks;
@@ -209,9 +170,7 @@ class GroupOpenHashMap implements GroupHashMap, Hash {
     @Override
     public long estimateSize() {
         long size = 0L;
-        if (useMap && map != null) {
-            size += map.size() * Integer.BYTES * 2;
-        } else if (!useMap && keys != null) {
+        if (keys != null) {
             size += keys.length * ObjectSizeUtils.SIZE_INTEGER;
         }
         if (groupKeyBuffer != null) {

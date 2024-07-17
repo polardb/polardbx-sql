@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.config.table.charset;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.optimizer.config.table.collation.UTF8mb4Zh0900AsCsCollationHandler;
 import com.alibaba.polardbx.optimizer.config.table.collation.Utf8mb40900AiCiCollationHandler;
 import com.alibaba.polardbx.optimizer.config.table.collation.Utf8mb4BinCollationHandler;
 import com.alibaba.polardbx.optimizer.config.table.collation.Utf8mb4GeneralCiCollationHandler;
@@ -44,6 +45,9 @@ public class Utf8mb4CharsetHandler extends AbstractCharsetHandler {
             break;
         case UTF8MB4_UNICODE_520_CI:
             this.collationHandler = new Utf8mb4Unicode520CiCollationHandler(this);
+            break;
+        case UTF8MB4_ZH_0900_AS_CS:
+            this.collationHandler = new UTF8mb4Zh0900AsCsCollationHandler(this);
             break;
         default:
             throw new UnsupportedOperationException();

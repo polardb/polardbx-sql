@@ -31,10 +31,10 @@ public class MySQLCharsetDDLValidator {
      * @return the validity
      */
     public static boolean checkCollation(String collationNameStr) {
-        return Optional.ofNullable(collationNameStr)
-            .map(String::toUpperCase)
-            .map(CollationName.COLLATION_NAME_MAP::containsKey)
-            .orElse(false);
+
+        CollationName collationName = CollationName.of(collationNameStr, false);
+
+        return collationName != null;
     }
 
     /**
@@ -56,10 +56,7 @@ public class MySQLCharsetDDLValidator {
      * @return TRUE if the name is valid and the collation match the charset.
      */
     public static boolean checkCharsetCollation(String charsetNameStr, String collationNameStr) {
-        boolean isCollationValid = Optional.ofNullable(collationNameStr)
-            .map(String::toUpperCase)
-            .map(CollationName.COLLATION_NAME_MAP::containsKey)
-            .orElse(false);
+        boolean isCollationValid = checkCollation(collationNameStr);
 
         boolean isCharsetValid = Optional.ofNullable(charsetNameStr)
             .map(String::toUpperCase)

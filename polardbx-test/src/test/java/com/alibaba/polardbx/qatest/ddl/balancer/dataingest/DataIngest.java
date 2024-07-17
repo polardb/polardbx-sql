@@ -30,6 +30,7 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public abstract class DataIngest {
 
+    public static int MOD_DIVISOR = 1000_000_007;
     protected String table;
     protected Connection connection;
 
@@ -54,6 +55,7 @@ public abstract class DataIngest {
 
     protected void prepareK(PreparedStatement ps, int k) throws SQLException {
         kSum += k;
+        kSum = kSum % MOD_DIVISOR;
         ps.setInt(2, k);
     }
 
@@ -94,13 +96,13 @@ public abstract class DataIngest {
     }
 
     protected void checkId() {
-        String checkIdSum = "select sum(id)  from " + this.table;
+        String checkIdSum = String.format("select mod(sum(id), %d)    from %s", MOD_DIVISOR, this.table);
         String result = JdbcUtil.executeQueryAndGetFirstStringResult(checkIdSum, connection);
         Assert.assertEquals(String.valueOf(this.idSum), result);
     }
 
     protected void checkK() {
-        String checkKSum = "select sum(k)   from " + this.table;
+        String checkKSum = String.format("select mod(sum(k), %d)    from %s", MOD_DIVISOR, this.table);
         String result = JdbcUtil.executeQueryAndGetFirstStringResult(checkKSum, connection);
         Assert.assertEquals(String.valueOf(this.kSum), result);
     }

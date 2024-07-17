@@ -28,33 +28,33 @@ public class ${className} extends AbstractVectorizedExpression {
 
         @Override
         public void eval(EvaluationContext ctx) {
-        super.evalChildren(ctx);
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		super.evalChildren(ctx);
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
-        boolean[] nulls1 = leftInputVectorSlot.nulls();
-        boolean leftInputHasNull = leftInputVectorSlot.hasNull();
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
-        boolean[] nulls2 = rightInputVectorSlot.nulls();
-        boolean rightInputHasNull = rightInputVectorSlot.hasNull();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
-        boolean[] outputNulls = outputVectorSlot.nulls();
-        outputVectorSlot.setHasNull(leftInputVectorSlot.hasNull() | rightInputVectorSlot.hasNull());
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
+		boolean[] nulls1 = leftInputVectorSlot.nulls();
+		boolean leftInputHasNull = leftInputVectorSlot.hasNull();
+        ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
+		boolean[] nulls2 = rightInputVectorSlot.nulls();
+		boolean rightInputHasNull = rightInputVectorSlot.hasNull();
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		outputVectorSlot.setHasNull(leftInputVectorSlot.hasNull() | rightInputVectorSlot.hasNull());
 
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                boolean null1 = !leftInputHasNull ? false : nulls1[j];
-                boolean null2 = !rightInputHasNull ? false : nulls2[j];
-                boolean b1 = (array1[j] != 0);
-                boolean b2 = (array2[j] != 0);
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		boolean null1 = !leftInputHasNull ? false : nulls1[j];
+		boolean null2 = !rightInputHasNull ? false : nulls2[j];
+		boolean b1 = (array1[j] != 0);
+		boolean b2 = (array2[j] != 0);
 
                 <#if operator.classHeader = "And">
                 outputNulls[j] = (null1 && null2) || (null1 && b2) || (null2 && b1);

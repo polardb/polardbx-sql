@@ -63,7 +63,7 @@
 
   plan: |
 
-    IndexScan(tables="g_i_buyer[p1]", sql="SELECT `id`, `order_snapshot` FROM `g_i_buyer` AS `g_i_buyer` WHERE ((`buyer_id` = 'b1') AND (`seller_id` = 's1'))")
+    phytableoperation(tables="g_i_buyer[p1]", sql="select `t_order`.`id`, `t_order`.`order_snapshot` from ? as `t_order` where ((`t_order`.`buyer_id` = 'b1') and (`t_order`.`seller_id` = 's1'))")
 
 -
   sql: |

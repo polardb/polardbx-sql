@@ -41,6 +41,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.TddlConstants.INFORMATION_SCHEMA;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.LESS_WAITING_TIME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MORE_WAITING_TIME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
@@ -102,6 +104,11 @@ public class DdlEngineRequester {
     }
 
     public void execute() {
+        if (StringUtils.equalsIgnoreCase(ddlContext.getSchemaName(), INFORMATION_SCHEMA)) {
+            throw DdlHelper.logAndThrowError(LOGGER,
+                "The DDL job can not be executed under the database 'information_schema'");
+        }
+
         ddlContext.setResources(ddlJob.getExcludeResources());
 
         // Create a new job and put it in the queue.
@@ -114,7 +121,7 @@ public class DdlEngineRequester {
         if (ddlContext.isAsyncMode()) {
             return;
         }
-        respond(ddlRequest, ddlJobManager, executionContext, true, false);
+        respond(ddlRequest, ddlJobManager, executionContext, true, false, ddlContext.isEnableTrace());
     }
 
     public static DdlRequest notifyLeader(String schemaName, List<Long> jobId) {
@@ -145,9 +152,11 @@ public class DdlEngineRequester {
                                DdlJobManager ddlJobManager,
                                ExecutionContext executionContext,
                                boolean checkResponseInMemory,
-                               boolean rollbackOpt) {
+                               boolean rollbackOpt,
+                               boolean forceCheckResInMemory) {
         DdlResponse ddlResponse =
-            waitForComplete(ddlRequest.getJobIds(), ddlJobManager, checkResponseInMemory, rollbackOpt);
+            waitForComplete(ddlRequest.getJobIds(), ddlJobManager, checkResponseInMemory, rollbackOpt,
+                forceCheckResInMemory);
 
         Response response = ddlResponse.getResponse(ddlRequest.getJobIds().get(0));
 
@@ -176,7 +185,8 @@ public class DdlEngineRequester {
     public static DdlResponse waitForComplete(List<Long> jobIds,
                                               DdlJobManager ddlJobManager,
                                               boolean checkResponseInMemory,
-                                              boolean rollbackOpt) {
+                                              boolean rollbackOpt,
+                                              boolean forceCheckResInMemory) {
         DdlResponse ddlResponse = new DdlResponse();
 
         // Wait until the response is received or the job(s) failed.
@@ -197,7 +207,7 @@ public class DdlEngineRequester {
 
             // Only a worker checks if the job(s) are paused or failed, but leader
             // wasn't able to respond to the worker.
-            if (totalWaitingTime > checkInterval) {
+            if (totalWaitingTime > checkInterval && !forceCheckResInMemory) {
                 // Check if the job(s) have been pended.
                 if (ddlJobManager.checkRecords(ddlResponse, jobIds, rollbackOpt)) {
                     // Double check to avoid miss message
@@ -249,43 +259,37 @@ public class DdlEngineRequester {
             return;
         }
         DdlJobManager ddlJobManager = new DdlJobManager();
-        List<DdlEngineRecord> records = ddlJobManager.fetchRecords(Lists.newArrayList(jobId));
-        if (CollectionUtils.isEmpty(records)) {
-            return;
-        }
-        pauseJobs(records, false, false, executionContext);
+        DdlEngineRecord record = ddlJobManager.fetchRecordByJobId(jobId);
+        pauseJob(record, false, false, executionContext);
     }
 
-    public static int pauseJobs(List<DdlEngineRecord> records, boolean enableOperateSubJob,
-                                boolean enableContinueRunningSubJob, ExecutionContext executionContext) {
-        int countDone = 0;
-        for (DdlEngineRecord record : records) {
-            if (record.isSubJob() && !enableOperateSubJob) {
-                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
-            }
-
-            List<Long> pausedJobs = new ArrayList<>();
-            List<String> traceIds = new ArrayList<>();
-
-            if (enableOperateSubJob && enableContinueRunningSubJob) {
-                pauseJobs(record, true, pausedJobs, traceIds, true, executionContext);
-            } else {
-                pauseJobs(record, true, pausedJobs, traceIds, false, executionContext);
-            }
-
-            Collections.reverse(pausedJobs);
-            DdlHelper.interruptJobs(record.schemaName, pausedJobs);
-            DdlHelper.killActivePhyDDLs(record.schemaName, traceIds);
-
-            DdlEngineRequester.notifyLeader(executionContext.getSchemaName(), pausedJobs);
-
-            countDone += pausedJobs.size();
+    public static int pauseJob(DdlEngineRecord record, boolean enableOperateSubJob,
+                               boolean enableContinueRunningSubJob, ExecutionContext executionContext) {
+        if (record == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "The ddl job does not exist");
         }
-        return countDone;
+
+        if (record.isSubJob() && !enableOperateSubJob) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
+        }
+
+        List<Long> pausedJobs = new ArrayList<>();
+        List<String> traceIds = new ArrayList<>();
+
+        if (enableOperateSubJob && enableContinueRunningSubJob) {
+            pauseJob(record, true, pausedJobs, traceIds, true, executionContext);
+        } else {
+            pauseJob(record, true, pausedJobs, traceIds, false, executionContext);
+        }
+
+        Collections.reverse(pausedJobs);
+        DdlEngineRequester.notifyLeader(executionContext.getSchemaName(), pausedJobs);
+
+        return pausedJobs.size();
     }
 
-    private static void pauseJobs(DdlEngineRecord record, boolean subJob, List<Long> pausedJobs, List<String> traceIds,
-                                  Boolean continueRunningSubJob, ExecutionContext executionContext) {
+    private static void pauseJob(DdlEngineRecord record, boolean subJob, List<Long> pausedJobs, List<String> traceIds,
+                                 Boolean continueRunningSubJob, ExecutionContext executionContext) {
         DdlState before = DdlState.valueOf(record.state);
         DdlState after = DdlState.PAUSE_JOB_STATE_TRANSFER.get(before);
 
@@ -313,6 +317,10 @@ public class DdlEngineRequester {
                 LOGGER.info(String.format("revert job %d", record.jobId));
                 pausedJobs.add(record.jobId);
                 traceIds.add(record.traceId);
+
+                // 中断子任务
+                DdlHelper.interruptJobs(record.schemaName, Collections.singletonList(record.jobId));
+                DdlHelper.killActivePhyDDLs(record.schemaName, record.traceId);
             }
             return;
         }
@@ -322,6 +330,10 @@ public class DdlEngineRequester {
 
             pausedJobs.add(record.jobId);
             traceIds.add(record.traceId);
+
+            // 先中断父任务
+            DdlHelper.interruptJobs(record.schemaName, Collections.singletonList(record.jobId));
+            DdlHelper.killActivePhyDDLs(record.schemaName, record.traceId);
 
             if (subJob) {
                 pauseSubJobs(record.jobId, pausedJobs, traceIds, continueRunningSubJob, executionContext);
@@ -343,7 +355,7 @@ public class DdlEngineRequester {
         List<DdlEngineRecord> records = schedulerManager.fetchRecords(subJobIds);
 
         for (DdlEngineRecord record : GeneralUtil.emptyIfNull(records)) {
-            pauseJobs(record, false, pausedJobs, traceIds, false, executionContext);
+            pauseJob(record, false, pausedJobs, traceIds, false, executionContext);
         }
     }
 

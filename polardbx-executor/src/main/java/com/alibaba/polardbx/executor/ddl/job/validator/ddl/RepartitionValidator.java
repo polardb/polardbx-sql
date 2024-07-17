@@ -34,7 +34,6 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
@@ -47,7 +46,6 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;

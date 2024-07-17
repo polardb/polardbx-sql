@@ -20,10 +20,12 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
@@ -32,6 +34,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionPreparedData;
@@ -59,6 +62,7 @@ import org.apache.calcite.util.Util;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -166,7 +170,8 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
             preparedData.setLogicalParts(logicalParts);
         }
 
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = curPartitionInfo.getPartitionBy().getSubPartitionBy() != null;
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
 
         SqlConverter sqlConverter = SqlConverter.getInstance(curPartitionInfo.getTableSchema(), ec);
         PlannerContext plannerContext = PlannerContext.getPlannerContext(this.getCluster());
@@ -174,49 +179,53 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
             sqlConverter.getRexInfoFromSqlAlterSpec(sqlAlterTable, ImmutableList.of(sqlAlterTableSplitPartition),
                 plannerContext);
         preparedData.getPartBoundExprInfo().putAll(partRexInfoCtx);
-
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
-        int newPartCount = newPartitionGroups.size();
-        if (ignoreNameAndLocality) {
-            for (int j = 0; j < newPartCount; j++) {
-                Pair<String, String> pair = new Pair<>("", "");
-                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, pair);
+        preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
+        if (preparedData.needFindCandidateTableGroup()) {
+            List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
+                new TreeMap<>(String::compareToIgnoreCase);
+            int newPartCount = newPartitionGroups.size();
+            if (ignoreNameAndLocality) {
+                for (int j = 0; j < newPartCount; j++) {
+                    Pair<String, String> pair = new Pair<>("", "");
+                    mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, pair);
+                }
+                flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
+            } else {
+                for (int j = 0; j < newPartCount; j++) {
+                    String mockTableName = "";
+                    mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name,
+                        new Pair<>(mockTableName,
+                            GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
+                }
             }
-            flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
-        } else {
-            for (int j = 0; j < newPartCount; j++) {
-                String mockTableName = "";
-                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
-                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
+
+            boolean changeFlag =
+                curPartitionInfo.getPartitionBy().getSubPartitionBy() != null && !preparedData.isUseTemplatePart()
+                    && !preparedData.isSplitSubPartition() && ((flag & IGNORE_PARTNAME_LOCALITY)
+                    != IGNORE_PARTNAME_LOCALITY) && !hasSubPartDef;
+
+            if (changeFlag) {
+                flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
             }
+
+            PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+                .getNewPartitionInfo(
+                    preparedData,
+                    curPartitionInfo,
+                    false,
+                    sqlAlterTableSplitPartition,
+                    preparedData.getOldPartitionNames(),
+                    preparedData.getNewPartitionNames(),
+                    preparedData.getTableGroupName(),
+                    splitPartitionName,
+                    preparedData.getInvisiblePartitionGroups(),
+                    mockOrderedTargetTableLocations,
+                    ec);
+
+            preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo,
+                sqlAlterTableSplitPartition.getNewPartitions(), partNamePrefix, flag, ec);
         }
-
-        boolean changeFlag =
-            curPartitionInfo.getPartitionBy().getSubPartitionBy() != null && !preparedData.isUseTemplatePart()
-                && !preparedData.isSplitSubPartition() && ((flag & IGNORE_PARTNAME_LOCALITY)
-                != IGNORE_PARTNAME_LOCALITY) && !hasSubPartDef;
-
-        if (changeFlag) {
-            flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
-        }
-
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfo(
-                preparedData,
-                curPartitionInfo,
-                false,
-                sqlAlterTableSplitPartition,
-                preparedData.getOldPartitionNames(),
-                preparedData.getNewPartitionNames(),
-                preparedData.getTableGroupName(),
-                splitPartitionName,
-                preparedData.getInvisiblePartitionGroups(),
-                mockOrderedTargetTableLocations,
-                ec);
-
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo,
-            sqlAlterTableSplitPartition.getNewPartitions(), partNamePrefix, flag, ec);
     }
 
     public void normalizeSqlSplitPartition(SqlAlterTableSplitPartition sqlAlterTableGroupSplitPartition,
@@ -226,7 +235,8 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
                                            ExecutionContext ec) {
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-
+        TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
+        PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         //for example, for key hash/key strategy partition split, alter table t1 split p1
         if (GeneralUtil.isEmpty(sqlAlterTableGroupSplitPartition.getNewPartitions())) {
@@ -242,8 +252,13 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
                 newPartitionNames =
                     PartitionNameUtil.autoGeneratePartitionNamesWithUserDefPrefix(partNamePrefix, newNameCount);
             } else {
+                TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+                List<String> partNames = new ArrayList<>();
+                List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+                PartitionInfoUtil.getPartitionName(partitionInfo, partNames, subPartNamePairs);
                 newPartitionNames =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, newNameCount,
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                        newNameCount,
                         new TreeSet<>(String::compareToIgnoreCase),
                         sqlAlterTableGroupSplitPartition.isSubPartitionsSplit());
             }
@@ -257,8 +272,6 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
 
         }
         if (!sqlAlterTableGroupSplitPartition.isSubPartitionsSplit() && StringUtils.isNotEmpty(logicalTableName)) {
-            TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
-            PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
             PartitionByDefinition subPartBy = partitionInfo.getPartitionBy().getSubPartitionBy();
             if (subPartBy == null) {
                 return;
@@ -267,8 +280,18 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
             //split logical partition, will inherit the same subPartition definition as the source logical partition
             if (!subPartBy.isUseSubPartTemplate()) {
                 for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+                    int subPartCntOfTargetPart = partitionSpec.getSubPartitions().size();
                     if (partitionSpec.getName().equalsIgnoreCase(splitPartitionName)) {
+
+                        /**
+                         * Fetch all the existed subPartNames of the target partitions to be split
+                         * by ast of ddl provided user
+                         */
                         Set<String> existsNames = new TreeSet<>(String::compareToIgnoreCase);
+                        /**
+                         * hasSubPartDefinition is stat that all the target partitions to be split
+                         * that contain subpartDefinitions
+                         */
                         int hasSubPartDefinition = 0;
                         for (SqlPartition sqlPartition : sqlAlterTableGroupSplitPartition.getNewPartitions()) {
                             for (SqlNode subPart : GeneralUtil.emptyIfNull(sqlPartition.getSubPartitions())) {
@@ -278,22 +301,118 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
                                 hasSubPartDefinition++;
                             }
                         }
+
                         if (hasSubPartDefinition < sqlAlterTableGroupSplitPartition.getNewPartitions().size()) {
-                            int subPartitionSize = partitionSpec.getSubPartitions().size();
+                            /**
+                             * Where hasSubPartDefinition < the size of all the parts of ddl ast to be split,
+                             * that means some 1st-level part of ddl ast has no explicit subpart bound definitions
+                             */
+
+                            List<Integer> newPartIdxListThatDefineSubPartBnds = new ArrayList<>();
+                            List<Integer> newPartIdxLIstThatDefineOnlySubPartCnt = new ArrayList<>();
+                            List<Integer> newPartIdxListThatHasNoAnySubPartDefines = new ArrayList<>();
+                            /**
+                             * key: newSplitPartIdx
+                             * Val: left:subPartCnt, right: hasBndDefinition
+                             */
+                            Map<Integer, Pair<Integer, Boolean>> newPartIdx2SubPartCntMapping = new HashMap<>();
+                            Set<Integer> newPartIdxSetOfCopySubPartDefineByTargetPart = new HashSet<>();
+                            List<SqlPartition> newSplitSqlPartAstList =
+                                sqlAlterTableGroupSplitPartition.getNewPartitions();
+                            for (int i = 0; i < newSplitSqlPartAstList.size(); i++) {
+                                SqlPartition partAst = newSplitSqlPartAstList.get(i);
+                                int subPartCntVal = 0;
+                                boolean hasBndDefinitions = false;
+                                SqlNode subPartCntAst = partAst.getSubPartitionCount();
+                                List<SqlNode> subPartBndList = partAst.getSubPartitions();
+                                if (subPartCntAst == null) {
+                                    if (subPartBndList == null || subPartBndList.isEmpty()) {
+                                        newPartIdxListThatHasNoAnySubPartDefines.add(i);
+                                    } else {
+                                        newPartIdxListThatDefineSubPartBnds.add(i);
+                                        subPartCntVal = subPartBndList.size();
+                                        hasBndDefinitions = true;
+                                    }
+                                } else {
+                                    if (subPartBndList == null || subPartBndList.isEmpty()) {
+                                        if (subPartCntAst instanceof SqlNumericLiteral) {
+                                            subPartCntVal = Integer.valueOf(subPartCntAst.toString());
+                                            if (subPartCntVal > 0) {
+                                                newPartIdxLIstThatDefineOnlySubPartCnt.add(i);
+                                            } else {
+                                                newPartIdxListThatHasNoAnySubPartDefines.add(i);
+                                            }
+                                        }
+                                    } else {
+                                        newPartIdxListThatDefineSubPartBnds.add(i);
+                                        subPartCntVal = subPartBndList.size();
+                                        hasBndDefinitions = true;
+                                    }
+                                }
+                                if (subPartCntVal == 0 && !hasBndDefinitions) {
+                                    /**
+                                     * all the part without any subpart defines
+                                     * use the same subpart definitions as target part
+                                     */
+                                    subPartCntVal = subPartCntOfTargetPart;
+                                    newPartIdxSetOfCopySubPartDefineByTargetPart.add(i);
+                                }
+                                Pair<Integer, Boolean> val = new Pair<>(subPartCntVal, hasBndDefinitions);
+                                newPartIdx2SubPartCntMapping.put(i, val);
+                            }
+
+                            int newSubPartCntToGen = 0;
+                            for (Map.Entry<Integer, Pair<Integer, Boolean>> item : newPartIdx2SubPartCntMapping.entrySet()) {
+                                Integer spCnt = item.getValue().getKey();
+                                newSubPartCntToGen += spCnt;
+                            }
+
+                            TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+                            List<String> partNames = new ArrayList<>();
+                            List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+                            /**
+                             * Fetch all the current partNames and subPartNames from partInfo
+                             */
+                            PartitionInfoUtil.getPartitionName(partitionInfo, partNames, subPartNamePairs);
+
                             List<String> newSubPartitionNames =
-                                PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
-                                    (sqlAlterTableGroupSplitPartition.getNewPartitions().size() - hasSubPartDefinition)
-                                        * subPartitionSize, existsNames, true);
+                                PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames,
+                                    subPartNamePairs, newSubPartCntToGen, existsNames, true);
+
                             int j = 0;
-                            for (SqlPartition sqlPartition : sqlAlterTableGroupSplitPartition.getNewPartitions()) {
-                                if (GeneralUtil.isEmpty(sqlPartition.getSubPartitions())) {
-                                    for (int i = 0; i < subPartitionSize; i++) {
-                                        PartitionSpec subPartitionSpec = partitionSpec.getSubPartitions().get(i);
+                            for (int i = 0; i < newSplitSqlPartAstList.size(); i++) {
+                                SqlPartition sqlPartAst = newSplitSqlPartAstList.get(i);
+                                List<SqlNode> subPartListOfPartAst = sqlPartAst.getSubPartitions();
+                                String newSplitPartName = ((SqlIdentifier) sqlPartAst.getName()).getLastName();
+                                Pair<Integer, Boolean> subPartCntStatItem = newPartIdx2SubPartCntMapping.get(i);
+                                Integer spCntVal = subPartCntStatItem.getKey();
+                                Boolean hasBnds = subPartCntStatItem.getValue();
+                                if (hasBnds) {
+                                    continue;
+                                }
+                                if (newPartIdxSetOfCopySubPartDefineByTargetPart.contains(i)) {
+                                    for (int k = 0; k < spCntVal; k++) {
+                                        String newGenSubPartName = newSubPartitionNames.get(j);
+                                        String realSubPartName =
+                                            PartitionNameUtil.autoBuildSubPartitionName(newSplitPartName,
+                                                newGenSubPartName);
+                                        PartitionSpec subPartitionSpec = partitionSpec.getSubPartitions().get(k);
                                         SqlSubPartition sqlSubPartition = new SqlSubPartition(SqlParserPos.ZERO,
-                                            new SqlIdentifier(newSubPartitionNames.get(j), SqlParserPos.ZERO),
+                                            new SqlIdentifier(realSubPartName, SqlParserPos.ZERO),
                                             (SqlPartitionValue) subPartitionSpec.getBoundSpec().getBoundRawValue()
                                                 .clone(SqlParserPos.ZERO));
-                                        sqlPartition.getSubPartitions().add(sqlSubPartition);
+                                        subPartListOfPartAst.add(sqlSubPartition);
+                                        j++;
+                                    }
+                                } else {
+                                    for (int k = 0; k < spCntVal; k++) {
+                                        String newGenSubPartName = newSubPartitionNames.get(j);
+                                        String realSubPartName =
+                                            PartitionNameUtil.autoBuildSubPartitionName(newSplitPartName,
+                                                newGenSubPartName);
+                                        SqlSubPartition sqlSubPartition = new SqlSubPartition(SqlParserPos.ZERO,
+                                            new SqlIdentifier(realSubPartName, SqlParserPos.ZERO), null);
+                                        subPartListOfPartAst.add(sqlSubPartition);
                                         j++;
                                     }
                                 }
@@ -307,9 +426,11 @@ public class LogicalAlterTableSplitPartition extends BaseDdlOperation {
                 for (SqlPartition sqlPartition : sqlAlterTableGroupSplitPartition.getNewPartitions()) {
                     String logicalPartName = ((SqlIdentifier) (sqlPartition.getName())).getSimple();
                     for (PartitionSpec subPartitionSpec : partitionSpec.getSubPartitions()) {
+                        String subPartTempName = subPartitionSpec.getTemplateName();
+                        String realSubPartName =
+                            PartitionNameUtil.autoBuildSubPartitionName(logicalPartName, subPartTempName);
                         SqlSubPartition sqlSubPartition = new SqlSubPartition(SqlParserPos.ZERO,
-                            new SqlIdentifier(PartitionNameUtil.autoBuildSubPartitionName(logicalPartName,
-                                subPartitionSpec.getTemplateName()), SqlParserPos.ZERO),
+                            new SqlIdentifier(realSubPartName, SqlParserPos.ZERO),
                             (SqlPartitionValue) subPartitionSpec.getBoundSpec().getBoundRawValue()
                                 .clone(SqlParserPos.ZERO));
                         sqlPartition.getSubPartitions().add(sqlSubPartition);

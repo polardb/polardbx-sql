@@ -1,0 +1,62 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists `t_bool_0`;
+CREATE TABLE `t_bool_0` (
+`a` int NOT NULL AUTO_INCREMENT,
+`b` bool DEFAULT NULL,
+`c` boolean DEFAULT NULL,
+PRIMARY KEY (a)
+);
+show create table `t_bool_0`;
+Table,Create Table
+t_bool_0,CREATE TABLE `t_bool_0` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` tinyint(1) DEFAULT NULL,
+	`c` tinyint(1) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+show full create table `t_bool_0`;
+Table,Create Table
+t_bool_0,CREATE PARTITION TABLE `t_bool_0` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` tinyint(1) DEFAULT NULL,
+	`c` tinyint(1) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+CREATE TABLE `t_bool_1` (
+`a` int NOT NULL AUTO_INCREMENT,
+`b` bool DEFAULT NULL,
+`c` int DEFAULT NULL,
+PRIMARY KEY (a)
+);
+alter table t_bool_1 modify column c bool;
+alter table t_bool_1 add column d bool;
+alter table t_bool_1 add column e bool;
+alter table t_bool_1 modify column e boolean;
+show create table `t_bool_1`;
+Table,Create Table
+t_bool_1,CREATE TABLE `t_bool_1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` tinyint(1) DEFAULT NULL,
+	`c` tinyint(1) DEFAULT NULL,
+	`d` tinyint(1) DEFAULT NULL,
+	`e` tinyint(1) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+show full create table `t_bool_1`;
+Table,Create Table
+t_bool_1,CREATE PARTITION TABLE `t_bool_1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` tinyint(1) DEFAULT NULL,
+	`c` tinyint(1) DEFAULT NULL,
+	`d` tinyint(1) DEFAULT NULL,
+	`e` tinyint(1) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+drop table if exists `t_bool_0`;
+drop table if exists `t_bool_1`;

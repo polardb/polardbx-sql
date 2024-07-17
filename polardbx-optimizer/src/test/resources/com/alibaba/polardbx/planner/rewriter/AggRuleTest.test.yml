@@ -1,4 +1,74 @@
 - sql: |
+    select c from test_tc group by b
+  plan: |
+    project(c="c")
+      logicalagg(group="b", c="__first_value(c)")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `b`, (`c`) as `c` from `test_tc` as `test_tc` group by `b`")
+- sql: |
+    select 1 from test_tc group by a,b
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select 1 as `1` from `test_tc` as `test_tc`")
+
+- sql: |
+    select c from test_tc group by a,b
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `c` from `test_tc` as `test_tc`")
+
+- sql: |
+    select 1 from test_tc group by a,b,c
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select 1 as `1` from `test_tc` as `test_tc`")
+
+- sql: |
+    select count(*) from test_tc group by a,b
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select count(*) as `count(*)` from `test_tc` as `test_tc` group by `a`, `b`")
+- sql: |
+    select 1 from test_tc group by c
+  plan: |
+    project(1="1")
+      logicalagg(group="c")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `c` from `test_tc` as `test_tc` group by `c`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.a group by x.a,x.b,x.c
+  plan: |
+    project(1="1")
+      logicaljoin(condition="b = a and b = a", type="inner")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc`")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.a group by x.a,x.b,y.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b,c")
+        logicaljoin(condition="b = a and b = a", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc`")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.a group by x.a,y.b,y.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b0,c")
+        logicaljoin(condition="b = a and b = a", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc`")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.b group by x.a,y.b,y.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b0,c")
+        logicaljoin(condition="b = a and b = b", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc` where (`a` = `b`)")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `b`, `c` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.b group by x.a,x.b,x.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b,c")
+        logicaljoin(condition="b = a and b = b", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc` where (`a` = `b`)")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `b` from `test_tc` as `test_tc`")
+- sql: |
     select count(userid) from user_log group by name, actionDate
 
   plan: |
@@ -18,23 +88,9 @@
     select count(distinct userid),group_concat(operation, ',') from user_log group by name, actionDate
 
   plan: |
-    Project(count(DISTINCT userid)="count(DISTINCT userid)", group_concat(operation, ',')="group_concat(operation, ',')")
-      LogicalAgg(group="name,actionDate", count(DISTINCT userid)="COUNT(userId) FILTER $4", group_concat(operation, ',')="MIN(group_concat(operation, ',')) FILTER $5")
-        Project(name="name", actionDate="actionDate", userId="userId", group_concat(operation, ',')="group_concat(operation, ',')", $g_0="CASE(=($3, 0), 0, 1) = 0", $g_1="CASE(=($3, 0), 0, 1) = 1")
-          LogicalAgg(group="name,actionDate,userId,$e", group_concat(operation, ',')="GROUP_CONCAT(operation, $f4)")
-            Expand(projects="{name=name, actionDate=actionDate, userId=userId, operation=operation, $f4=$f4, $e=0}, {name=name, actionDate=actionDate, userId=null, operation=operation, $f4=$f4, $e=1}")
-              LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, `userId`, `operation`, ',' AS `$f4` FROM `user_log` AS `user_log`")
-
-- sql: |
-    select count(distinct userid),group_concat(operation, ',') from user_log group by name, actionDate
-
-  plan: |
-    Project(count(DISTINCT userid)="count(DISTINCT userid)", group_concat(operation, ',')="group_concat(operation, ',')")
-      LogicalAgg(group="name,actionDate", count(DISTINCT userid)="COUNT(userId) FILTER $4", group_concat(operation, ',')="MIN(group_concat(operation, ',')) FILTER $5")
-        Project(name="name", actionDate="actionDate", userId="userId", group_concat(operation, ',')="group_concat(operation, ',')", $g_0="CASE(=($3, 0), 0, 1) = 0", $g_1="CASE(=($3, 0), 0, 1) = 1")
-          LogicalAgg(group="name,actionDate,userId,$e", group_concat(operation, ',')="GROUP_CONCAT(operation, $f4)")
-            Expand(projects="{name=name, actionDate=actionDate, userId=userId, operation=operation, $f4=$f4, $e=0}, {name=name, actionDate=actionDate, userId=null, operation=operation, $f4=$f4, $e=1}")
-              LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, `userId`, `operation`, ',' AS `$f4` FROM `user_log` AS `user_log`")
+    project(count(distinct userid)="count(distinct userid)", group_concat(operation, ',')="group_concat(operation, ',')")
+      logicalagg(group="name,actiondate", count(distinct userid)="sum(count(distinct userid))", group_concat(operation, ',')="group_concat(group_concat(operation, ','))")
+        logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `name`, `actiondate`, count(distinct `userid`) as `count(distinct userid)`, group_concat(`operation`, ','  ) as `group_concat(operation, ',')` from `user_log` as `user_log` group by `name`, `actiondate`")
 
 - sql: |
     select count(*) from user_log limit 1

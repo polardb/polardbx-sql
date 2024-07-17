@@ -19,8 +19,9 @@ public class SkipRebalanceSubjobAutoTest extends DDLBaseNewDBTestCase {
     private static final String SLOW_HINT = "GSI_DEBUG=\"slow\"";
     private static final String ENABLE_CHANGESET_HINT = "CN_ENABLE_CHANGESET=%s";
     private static final String ENABLE_OPERATE_SUBJOB_HINT = "ENABLE_OPERATE_SUBJOB=true";
-    private static final String ASYNC_PAUSE_HINT = "ASYNC_PAUSE=false";
+    private static final String ASYNC_PAUSE = " ASYNC=false";
     private static final String CHECK_RESPONSE_IN_MEM_HINT = "CHECK_RESPONSE_IN_MEM=false";
+    private static final String DROP_DB_HINT = "ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE=true";
 
     private static final int TABLE_COUNT = 4;
     static private final String DATABASE_NAME = "SkipRebalanceSubjobAutoTest";
@@ -85,17 +86,18 @@ public class SkipRebalanceSubjobAutoTest extends DDLBaseNewDBTestCase {
         Long subJobId = getRunningSubJobId(tddlConnection);
 
         if (subJobId != -1L) {
-            String subJobHint = buildCmdExtra(ENABLE_OPERATE_SUBJOB_HINT, ASYNC_PAUSE_HINT, CHECK_RESPONSE_IN_MEM_HINT);
+            String subJobHint = buildCmdExtra(ENABLE_OPERATE_SUBJOB_HINT, CHECK_RESPONSE_IN_MEM_HINT);
             // skip
-            JdbcUtil.executeUpdateSuccess(tddlConnection, subJobHint + "SKIP REBALANCE SUBJOB " + subJobId);
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                subJobHint + "SKIP REBALANCE SUBJOB " + subJobId + ASYNC_PAUSE);
 
             // check
             Thread.sleep(3000);
             Assert.assertTrue(checkDDLStats(tddlConnection, jobId, "PAUSED"));
             Assert.assertTrue(checkDDLStats(tddlConnection, subJobId, "PAUSED"));
 
-            JdbcUtil.executeUpdateSuccess(tddlConnection, subJobHint + "CONTINUE REBALANCE " + subJobId);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, subJobHint + "CONTINUE REBALANCE " + jobId);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, subJobHint + "CONTINUE REBALANCE " + subJobId + ASYNC_PAUSE);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, subJobHint + "CONTINUE REBALANCE " + jobId + ASYNC_PAUSE);
         }
 
         Assert.assertTrue(waitDDLJobFinish(tddlConnection));
@@ -255,7 +257,7 @@ public class SkipRebalanceSubjobAutoTest extends DDLBaseNewDBTestCase {
 
     void doClearDatabase() {
         JdbcUtil.executeUpdate(getTddlConnection1(), "use information_schema");
-        String tddlSql = "drop database if exists " + DATABASE_NAME;
+        String tddlSql = buildCmdExtra(DROP_DB_HINT) + "drop database if exists " + DATABASE_NAME;
         JdbcUtil.executeUpdate(getTddlConnection1(), tddlSql);
     }
 }

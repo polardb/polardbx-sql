@@ -25,7 +25,6 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.FirstThenOtherCursor;
 import com.alibaba.polardbx.executor.cursor.impl.GroupConcurrentUnionCursor;
 import com.alibaba.polardbx.executor.cursor.impl.LogicalViewResultCursor;
-import com.alibaba.polardbx.executor.cursor.impl.MultiCursorAdapter;
 import com.alibaba.polardbx.executor.cursor.impl.MyPhysicalCursor;
 import com.alibaba.polardbx.executor.mpp.execution.TaskId;
 import com.alibaba.polardbx.executor.mpp.execution.TaskStatus;
@@ -87,10 +86,12 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
 
     private RelNode planTree;
     private final String traceId;
-    private final Map<Integer, OperatorStatisticsGroup> relationToStatistics = new ConcurrentHashMap<>();
+    private final Map<Integer, OperatorStatisticsGroup> relationToStatistics =
+        new ConcurrentHashMap<>();
     private final Map<String, MemoryStatisticsGroup> memoryToStatistics = new ConcurrentHashMap<>();
     private final Map<Integer, RelNode> relationIdToNode = new HashMap<>();
-    private final WeakHashMap<Integer, RuntimeStatisticsSketch> mppOperatorStats = new WeakHashMap<>();
+    private final WeakHashMap<Integer, RuntimeStatisticsSketch> mppOperatorStats =
+        new WeakHashMap<>();
     private QuerySpillSpaceMonitor querySpillSpaceMonitor;
     private MemoryPool holdMemoryPool;
     private CpuStat sqlWholeStageCpuStat;
@@ -106,6 +107,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
     private AtomicLong totalPhyFetchRows = new AtomicLong(0L);
     private AtomicLong totalPhySqlTimecost = new AtomicLong(0L);
     private AtomicLong totalPhyConnTimecost = new AtomicLong(0L);
+    private AtomicLong columnarSnapshotTimecost = new AtomicLong(0L);
     private AtomicLong spillCnt = new AtomicLong(0L);
 
     /**
@@ -151,7 +153,9 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                     relationIdToNode.put(relation.getRelatedId(), relation);
                 }
                 if (logger.isDebugEnabled()) {
-                    logger.debug("register:" + relation.getRelatedId() + ":" + relation.getClass().getSimpleName());
+                    logger.debug(
+                        "register:" + relation.getRelatedId() + ":" + relation.getClass()
+                            .getSimpleName());
                 }
                 relationToStatistics.put(relation.getRelatedId(), sg);
             }
@@ -163,7 +167,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 sg.totalCount.addAndGet(1);
             }
         } catch (Throwable e) {
-            logger.warn("register cpu stat of executor failed for " + relation.getRelTypeName(), e);
+            logger.warn(
+                "register cpu stat of executor failed for " + relation.getRelTypeName(), e);
         }
     }
 
@@ -191,7 +196,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                     //FIXME mpp也会走到这个流程里，BKA的gather
                     if (logger.isDebugEnabled()) {
                         logger.debug(
-                            this + " register3:" + relation.getRelatedId() + ":" + relation.getClass().getSimpleName()
+                            this + " register3:" + relation.getRelatedId() + ":"
+                                + relation.getClass().getSimpleName()
                                 + "," + cursor.getClass().getSimpleName());
                     }
                     if (!relationIdToNode.containsKey(relation.getRelatedId())) {
@@ -202,7 +208,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 registerCursorToGroup(cursor, sg);
             }
         } catch (Throwable e) {
-            logger.warn("register cpu stat of cursor failed for " + relation.getRelTypeName(), e);
+            logger.warn(
+                "register cpu stat of cursor failed for " + relation.getRelTypeName(), e);
         }
     }
 
@@ -233,7 +240,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
      * the async task cpu time cost of Union is C1 + C2,
      * because C1 & C2 are also contributed to Union;
      * If the async task cpu time cost of LV3 is 0,
-     * then the async task cpu time cost of Join is C1 + C2, because C1 & C2 are also contributed to Join;
+     * then the async task cpu time cost of Join is C1 + C2,
+     * because C1 & C2 are also contributed to Join;
      *
      * </pre>
      */
@@ -284,26 +292,20 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         }
     }
 
-    public static void registerWaitLockCpuTime(OperatorStatisticsGroup targetPlanStatGroup, long waitLockDuration) {
+    public static void registerWaitLockCpuTime(OperatorStatisticsGroup targetPlanStatGroup,
+                                               long waitLockDuration) {
         if (targetPlanStatGroup != null) {
             targetPlanStatGroup.waitLockDuration.addAndGet(waitLockDuration);
         }
     }
 
     protected void registerCursorToGroup(Cursor cursor, OperatorStatisticsGroup sg) {
-        if (cursor instanceof MultiCursorAdapter) {
-            for (Cursor c : ((MultiCursorAdapter) cursor).getSubCursors()) {
-                initTargetPlanStatGroup(sg, c);
-            }
-        } else {
-            /**
-             * when the cursor is AdaptiveParallelCursor, it is no need to
-             * register its runtime stats to its relation, because its input
-             * cursors will be registered during their init process
-             */
-            initTargetPlanStatGroup(sg, cursor);
-
-        }
+        /**
+         * when the cursor is AdaptiveParallelCursor, it is no need to
+         * register its runtime stats to its relation, because its input
+         * cursors will be registered during their init process
+         */
+        initTargetPlanStatGroup(sg, cursor);
     }
 
     private void initTargetPlanStatGroup(OperatorStatisticsGroup sg, Cursor c) {
@@ -338,8 +340,10 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
     protected void initOperatorStats() {
         SimplePlanVisitor simplePlanVisitor = new SimplePlanVisitor();
         simplePlanVisitor.visit(this.planTree);
-        this.isSimpleLvPlan = simplePlanVisitor.isSamplePlan() && !(this.planTree instanceof Gather);
-        if (this.planTree instanceof PhyTableOperation || this.planTree instanceof SingleTableOperation) {
+        this.isSimpleLvPlan =
+            simplePlanVisitor.isSamplePlan() && !(this.planTree instanceof Gather);
+        if (this.planTree instanceof PhyTableOperation
+            || this.planTree instanceof SingleTableOperation) {
             isFromAllAtOnePhyTable = true;
             this.isSimpleLvPlan = true;
         }
@@ -374,7 +378,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         }
         relationToStatistics.put(targetRel.getRelatedId(), osg);
         if (logger.isDebugEnabled()) {
-            logger.debug("register2:" + targetRel.getRelatedId() + ":" + targetRel.getClass().getSimpleName());
+            logger.debug("register2:" + targetRel.getRelatedId() + ":" + targetRel.getClass()
+                .getSimpleName());
         }
         if (!isLvOrLm && !isFromAllAtOnePhyTable) {
             List<RelNode> inputRelList = targetRel.getInputs();
@@ -394,6 +399,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         totalPhySqlTimecost.set(0);
         sqlLogCpuTime.set(0);
         totalPhyConnTimecost.set(0);
+        columnarSnapshotTimecost.set(0);
     }
 
     public Map<Integer, OperatorStatisticsGroup> getRelationToStatistics() {
@@ -416,9 +422,11 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
     public Map<RelNode, RuntimeStatisticsSketch> toMppSketch() {
         final Map<RelNode, RuntimeStatisticsSketch> results = new IdentityHashMap<>();
         if (mppOperatorStats != null && mppOperatorStats.size() > 0) {
-            for (Map.Entry<Integer, RuntimeStatisticsSketch> operatorStats : mppOperatorStats.entrySet()) {
+            for (Map.Entry<Integer, RuntimeStatisticsSketch> operatorStats : mppOperatorStats
+                .entrySet()) {
                 if (relationIdToNode.containsKey(operatorStats.getKey())) {
-                    results.put(relationIdToNode.get(operatorStats.getKey()), operatorStats.getValue());
+                    results.put(relationIdToNode.get(operatorStats.getKey()),
+                        operatorStats.getValue());
                 }
             }
         }
@@ -431,8 +439,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             Map<Integer, RuntimeStatistics.OperatorStatisticsGroup> taskRuntimeStats =
                 taskStatus.getRuntimeStatistics();
             if (taskRuntimeStats != null) {
-                for (Map.Entry<Integer, RuntimeStatistics.OperatorStatisticsGroup> entry : taskRuntimeStats
-                    .entrySet()) {
+                for (Map.Entry<Integer, RuntimeStatistics.OperatorStatisticsGroup>
+                    entry : taskRuntimeStats.entrySet()) {
                     RuntimeStatistics.OperatorStatisticsGroup serverPointStatisticsGroup =
                         getRelationToStatistics().get(entry.getKey());
                     if (serverPointStatisticsGroup == null) {
@@ -446,21 +454,24 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                     serverPointStatisticsGroup.hasInputOperator = taskOperatorStat.hasInputOperator;
                     serverPointStatisticsGroup.statistics.addAll(taskOperatorStat.statistics);
 
-                    serverPointStatisticsGroup.createAndInitJdbcStmtDuration
-                        .addAndGet(taskOperatorStat.createAndInitJdbcStmtDuration.get());
-                    serverPointStatisticsGroup.prepareStmtEnvDuration
-                        .addAndGet(taskOperatorStat.prepareStmtEnvDuration.get());
-                    serverPointStatisticsGroup.createConnDuration.addAndGet(taskOperatorStat.createConnDuration.get());
-                    serverPointStatisticsGroup.initConnDuration.addAndGet(taskOperatorStat.initConnDuration.get());
-                    serverPointStatisticsGroup.waitConnDuration.addAndGet(taskOperatorStat.waitConnDuration.get());
-                    serverPointStatisticsGroup.createAndInitJdbcStmtDuration
-                        .addAndGet(taskOperatorStat.createAndInitJdbcStmtDuration.get());
-                    serverPointStatisticsGroup.execJdbcStmtDuration
-                        .addAndGet(taskOperatorStat.execJdbcStmtDuration.get());
-                    serverPointStatisticsGroup.fetchJdbcResultSetDuration
-                        .addAndGet(taskOperatorStat.fetchJdbcResultSetDuration.get());
-                    serverPointStatisticsGroup.closeAndClearJdbcEnv
-                        .addAndGet(taskOperatorStat.closeAndClearJdbcEnv.get());
+                    serverPointStatisticsGroup.createAndInitJdbcStmtDuration.addAndGet(
+                        taskOperatorStat.createAndInitJdbcStmtDuration.get());
+                    serverPointStatisticsGroup.prepareStmtEnvDuration.addAndGet(
+                        taskOperatorStat.prepareStmtEnvDuration.get());
+                    serverPointStatisticsGroup.createConnDuration.addAndGet(
+                        taskOperatorStat.createConnDuration.get());
+                    serverPointStatisticsGroup.initConnDuration.addAndGet(
+                        taskOperatorStat.initConnDuration.get());
+                    serverPointStatisticsGroup.waitConnDuration.addAndGet(
+                        taskOperatorStat.waitConnDuration.get());
+                    serverPointStatisticsGroup.createAndInitJdbcStmtDuration.addAndGet(
+                        taskOperatorStat.createAndInitJdbcStmtDuration.get());
+                    serverPointStatisticsGroup.execJdbcStmtDuration.addAndGet(
+                        taskOperatorStat.execJdbcStmtDuration.get());
+                    serverPointStatisticsGroup.fetchJdbcResultSetDuration.addAndGet(
+                        taskOperatorStat.fetchJdbcResultSetDuration.get());
+                    serverPointStatisticsGroup.closeAndClearJdbcEnv.addAndGet(
+                        taskOperatorStat.closeAndClearJdbcEnv.get());
                     //FIXME 需要确认下
                     addPhySqlTimecost(taskOperatorStat.execJdbcStmtDuration.get());
                 }
@@ -470,15 +481,17 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 MemoryStatisticsGroup nodeStatisticsGroup =
                     getMemoryToStatistics().get(taskStatus.getSelf().getNodeServer().toString());
                 if (nodeStatisticsGroup == null) {
-                    nodeStatisticsGroup = new MemoryStatisticsGroup(memoryStatistics.getQueryMemoryUsage(),
-                        memoryStatistics.getQueryMaxMemoryUsage(), 0);
+                    nodeStatisticsGroup =
+                        new MemoryStatisticsGroup(memoryStatistics.getQueryMemoryUsage(),
+                            memoryStatistics.getQueryMaxMemoryUsage(), 0);
                     nodeStatisticsGroup.setMemoryStatistics(new TreeMap<>());
-                    getMemoryToStatistics()
-                        .put(taskStatus.getSelf().getNodeServer().toString(), nodeStatisticsGroup);
+                    getMemoryToStatistics().put(taskStatus.getSelf().getNodeServer().toString(),
+                        nodeStatisticsGroup);
                 }
-                if (memoryStatistics.getQueryMaxMemoryUsage() > nodeStatisticsGroup
-                    .getMaxMemoryUsage()) {
-                    nodeStatisticsGroup.setMaxMemoryUsage(memoryStatistics.getQueryMaxMemoryUsage());
+                if (memoryStatistics.getQueryMaxMemoryUsage()
+                    > nodeStatisticsGroup.getMaxMemoryUsage()) {
+                    nodeStatisticsGroup.setMaxMemoryUsage(
+                        memoryStatistics.getQueryMaxMemoryUsage());
                 }
                 nodeStatisticsGroup.getMemoryStatistics()
                     .put("Task@" + taskStatus.getTaskId().toString(), memoryStatistics);
@@ -565,6 +578,9 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         // plan
         long phyConnTc = 0;
 
+        // the time cost of generate columnar snapshot in SplitManager
+        long columnarSnapshotTc = 0;
+
         long affectedPhyRows = 0;
 
         boolean isQuery = SqlTypeUtils.isSelectSqlType(sqlType);
@@ -585,8 +601,10 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         fetchRsTc = NOT_SUPPORT_VALUE;
         if (planTree != null && isQuery) {
             fetchRsTc = 0;
-            for (Map.Entry<Integer, OperatorStatisticsGroup> entry : relationToStatistics.entrySet()) {
-                final AbstractRelNode relation = (AbstractRelNode) relationIdToNode.get(entry.getKey());
+            for (Map.Entry<Integer, OperatorStatisticsGroup>
+                entry : relationToStatistics.entrySet()) {
+                final AbstractRelNode relation =
+                    (AbstractRelNode) relationIdToNode.get(entry.getKey());
                 OperatorStatisticsGroup operatorStatisticsGroup = entry.getValue();
                 if (relation instanceof LogicalView || relation instanceof LogicalInsert) {
 
@@ -606,6 +624,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         // ====== Cpu ========
         logCpuTc = this.sqlLogCpuTime.get();
         execSqlTc = this.totalPhySqlTimecost.get();
+        columnarSnapshotTc = this.columnarSnapshotTimecost.get();
         execPlanTc = logCpuTc - sqlToPlanTc;
         if (fetchRsTc > NOT_SUPPORT_VALUE) {
             phyCpuTc = execSqlTc + fetchRsTc;
@@ -624,7 +643,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             queryMem = queryPool.getMaxMemoryUsage();
             long globalMemLimit = MemoryManager.getInstance().getGlobalMemoryPool().getMaxLimit();
             BigDecimal queryMemPctVal = new BigDecimal(queryMem * 100 / globalMemLimit);
-            queryMemPct = queryMemPctVal.setScale(4, BigDecimal.ROUND_HALF_UP).doubleValue();
+            queryMemPct = queryMemPctVal.setScale(
+                4, BigDecimal.ROUND_HALF_UP).doubleValue();
 
             MemoryPool planMemoryPool = ((QueryMemoryPool) queryPool).getPlanMemPool();
             if (planMemoryPool != null) {
@@ -660,6 +680,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         metrics.execSqlTc = execSqlTc;
         metrics.fetchRsTc = fetchRsTc;
         metrics.phyConnTc = phyConnTc;
+        metrics.columnarSnapshotTc = columnarSnapshotTc;
 
         metrics.queryMemPct = queryMemPct;
         metrics.queryMem = queryMem;
@@ -715,7 +736,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         long maxMemUsage = memoryPool.getMaxMemoryUsage();
         long globalMemLimit = MemoryManager.getInstance().getGlobalMemoryPool().getMaxLimit();
         BigDecimal queryMemPctVal = new BigDecimal(maxMemUsage * 100 / globalMemLimit);
-        double queryMemPct = queryMemPctVal.setScale(4, BigDecimal.ROUND_HALF_UP).doubleValue();
+        double queryMemPct = queryMemPctVal.setScale(
+            4, BigDecimal.ROUND_HALF_UP).doubleValue();
         return queryMemPct;
 
     }
@@ -869,27 +891,28 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         }
 
         @JsonCreator
-        public OperatorStatisticsGroup(@JsonProperty("statistics") Set<OperatorStatistics> statistics,
-                                       @JsonProperty("hasInputOperator") boolean hasInputOperator,
-                                       @JsonProperty("finishCount") long finishCount,
-                                       @JsonProperty("totalCount") long totalCount,
-                                       @JsonProperty("childrenAsyncTaskCpuTime") long childrenAsyncTaskCpuTime,
-                                       @JsonProperty("selfAsyncTaskCpuTime") long selfAsyncTaskCpuTime,
-                                       @JsonProperty("selfAsyncTaskTimeCost") long selfAsyncTaskTimeCost,
-                                       @JsonProperty("processLvTimeCost") long processLvTimeCost,
-                                       @JsonProperty("waitLockDuration") long waitLockDuration,
-                                       @JsonProperty("createConnDuration") long createConnDuration,
-                                       @JsonProperty("waitConnDuration") long waitConnDuration,
-                                       @JsonProperty("initConnDuration") long initConnDuration,
-                                       @JsonProperty("prepareStmtEnvDuration") long prepareStmtEnvDuration,
-                                       @JsonProperty("createAndInitJdbcStmtDuration")
-                                       long createAndInitJdbcStmtDuration,
-                                       @JsonProperty("execJdbcStmtDuration") long execJdbcStmtDuration,
-                                       @JsonProperty("fetchJdbcResultSetDuration") long fetchJdbcResultSetDuration,
-                                       @JsonProperty("closeAndClearJdbcEnv") long closeAndClearJdbcEnv,
-                                       @JsonProperty("phyResultSetRowCount") long phyResultSetRowCount,
-                                       @JsonProperty("fetchJdbcResultSetParallelism")
-                                       int fetchJdbcResultSetParallelism) {
+        public OperatorStatisticsGroup(
+            @JsonProperty("statistics") Set<OperatorStatistics> statistics,
+            @JsonProperty("hasInputOperator") boolean hasInputOperator,
+            @JsonProperty("finishCount") long finishCount,
+            @JsonProperty("totalCount") long totalCount,
+            @JsonProperty("childrenAsyncTaskCpuTime") long childrenAsyncTaskCpuTime,
+            @JsonProperty("selfAsyncTaskCpuTime") long selfAsyncTaskCpuTime,
+            @JsonProperty("selfAsyncTaskTimeCost") long selfAsyncTaskTimeCost,
+            @JsonProperty("processLvTimeCost") long processLvTimeCost,
+            @JsonProperty("waitLockDuration") long waitLockDuration,
+            @JsonProperty("createConnDuration") long createConnDuration,
+            @JsonProperty("waitConnDuration") long waitConnDuration,
+            @JsonProperty("initConnDuration") long initConnDuration,
+            @JsonProperty("prepareStmtEnvDuration") long prepareStmtEnvDuration,
+            @JsonProperty("createAndInitJdbcStmtDuration")
+            long createAndInitJdbcStmtDuration,
+            @JsonProperty("execJdbcStmtDuration") long execJdbcStmtDuration,
+            @JsonProperty("fetchJdbcResultSetDuration") long fetchJdbcResultSetDuration,
+            @JsonProperty("closeAndClearJdbcEnv") long closeAndClearJdbcEnv,
+            @JsonProperty("phyResultSetRowCount") long phyResultSetRowCount,
+            @JsonProperty("fetchJdbcResultSetParallelism")
+            int fetchJdbcResultSetParallelism) {
             this.statistics = statistics;
             this.hasInputOperator = hasInputOperator;
             this.finishCount.set(finishCount);
@@ -921,6 +944,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             long startupDuration = 0;
             long duration = 0;
             long rowCount = 0;
+            long runtimeFilteredCount = 0;
             long memory = 0;
             int spillCnt = 0;
             long workerDuration = 0;
@@ -929,6 +953,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 startupDuration += statistic.getStartupDuration();
                 duration += statistic.getProcessDuration();
                 rowCount += statistic.getRowCount();
+                runtimeFilteredCount += statistic.getRuntimeFilteredCount();
                 memory += statistic.getMemory();
                 workerDuration += statistic.getWorkerDuration();
                 spillCnt += statistic.getSpillCnt();
@@ -942,14 +967,9 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 n = this.fetchJdbcResultSetParallelism;
             }
 
-            return new RuntimeStatisticsSketch(durationSeconds,
-                startupDurationSeconds,
-                workerDurationSeconds,
-                rowCount,
-                outputBytes,
-                memory,
-                n,
-                spillCnt);
+            return new RuntimeStatisticsSketch(durationSeconds, startupDurationSeconds,
+                workerDurationSeconds, rowCount, runtimeFilteredCount,
+                outputBytes, memory, n, spillCnt);
         }
 
         RuntimeStatisticsSketch toSketchExt() {
@@ -959,6 +979,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             long duration = 0;
             long closeDuration = 0;
             long rowCount = 0;
+            long runtimeFilteredCount = 0;
             long memory = 0;
             int spillCnt = 0;
             long outputBytes = 0;
@@ -981,6 +1002,7 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 duration += os.getProcessDuration();
                 closeDuration += os.getCloseDuration();
                 rowCount += os.getRowCount();
+                runtimeFilteredCount += os.getRuntimeFilteredCount();
                 memory += os.getMemory();
                 spillCnt += os.getSpillCnt();
             }
@@ -988,7 +1010,8 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             createConnDurationSum = this.createConnDuration.get();
             waitConnDurationSum = this.waitConnDuration.get();
             initConnDurationSum = this.initConnDuration.get();
-            totalGetConnDurationSum = initConnDurationSum + waitConnDurationSum + createConnDurationSum;
+            totalGetConnDurationSum =
+                initConnDurationSum + waitConnDurationSum + createConnDurationSum;
             createAndInitJdbcStmtDurationSum = this.createAndInitJdbcStmtDuration.get();
             execJdbcStmtDurationSum = this.execJdbcStmtDuration.get();
             fetchJdbcResultSetDurationSum = this.fetchJdbcResultSetDuration.get();
@@ -1007,7 +1030,9 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
                 duration = this.runtimeStat.sqlLogCpuTime.get() - sqlToPlanTc;
                 rowCount = this.phyResultSetRowCount.get();
             }
-            rsse = new RuntimeStatisticsSketchExt(startupDuration, duration, closeDuration, 0, rowCount, outputBytes,
+            rsse = new RuntimeStatisticsSketchExt(
+                startupDuration, duration, closeDuration, 0,
+                rowCount, runtimeFilteredCount, outputBytes,
                 memory, n, hasInputOperator, spillCnt);
 
             rsse.setCreateConnDurationNanoSum(createConnDurationSum);
@@ -1019,13 +1044,10 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
             rsse.setExecJdbcStmtDurationNanoSum(execJdbcStmtDurationSum);
             rsse.setFetchJdbcResultSetDurationNanoSum(fetchJdbcResultSetDurationSum);
             rsse.setCloseJdbcResultSetDurationNanoSum(closeJdbcResultSetDurationSum);
-
             rsse.setSubOperatorStatCount(statisticCount);
             rsse.setChildrenAsyncTaskDuration(childrenAsyncCpuTimeSum);
             rsse.setSelfAsyncTaskDuration(selfAsyncCpuTimeSum);
-
             return rsse;
-
         }
     }
 
@@ -1084,6 +1106,9 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
         // plan
         public long phyConnTc;
 
+        // the time cost of generate columnar snapshot in SplitManager
+        public long columnarSnapshotTc;
+
         // the sql template id of planCache key
         public String sqlTemplateId = "-";
 
@@ -1124,6 +1149,11 @@ public class RuntimeStatistics extends RuntimeStat implements CpuCollector {
     @Override
     public void addPhyConnTimecost(long totalPhyConnTimecost) {
         this.totalPhyConnTimecost.addAndGet(totalPhyConnTimecost);
+    }
+
+    @Override
+    public void addColumnarSnapshotTimecost(long columnarSnapshotTimecost) {
+        this.columnarSnapshotTimecost.addAndGet(columnarSnapshotTimecost);
     }
 
     @Override

@@ -16,28 +16,39 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.taobao.tddl.common.privilege.PrivilegePoint;
+import com.alibaba.polardbx.common.privilege.ColumnPrivilegeVerifyItem;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.gms.privilege.Permission;
 import com.alibaba.polardbx.gms.privilege.PermissionCheckContext;
+import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.gms.privilege.PrivilegeKind;
+import com.alibaba.polardbx.gms.lbac.LBACPrivilegeCheckUtils;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.lbac.LBACException;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
-import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
+import com.alibaba.polardbx.optimizer.parse.visitor.DrdsColumnAccessCollector;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.google.common.collect.Sets;
+import com.taobao.tddl.common.privilege.PrivilegePoint;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -50,6 +61,7 @@ public class PolarPrivilegeUtils {
 
     static {
         allowedSqlTypeOfDefaultDb.add(SqlType.SELECT);
+        allowedSqlTypeOfDefaultDb.add(SqlType.SHOW_CONVERT_TABLE_MODE);
     }
 
     public static void checkPrivilege(ExecutionPlan executionPlan, ExecutionContext executionContext) {
@@ -68,9 +80,44 @@ public class PolarPrivilegeUtils {
         }
     }
 
+    public static void checkLBACColumnAccess(ExecutionPlan executionPlan, ExecutionContext executionContext) {
+        if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LBAC)) {
+            return;
+        }
+
+        //检查所涉及的表是否有security policy
+        Set<Pair<String, String>> accessTables =
+            PlanManagerUtil.getTableSetFromAst(executionContext.getFinalPlan().getAst());
+        if (!LBACPrivilegeCheckUtils.isNeedLBACCheck(accessTables, executionContext.getSchemaName())) {
+            return;
+        }
+
+        List<SQLStatement> stmtList = FastsqlUtils.parseSql(executionContext.getSql().toString());
+        SQLStatement stmt = stmtList.get(0);
+        DrdsColumnAccessCollector collector = new DrdsColumnAccessCollector(executionContext.getSchemaName());
+        stmt.accept(collector);
+        PolarAccount account = executionContext.getPrivilegeContext().getPolarUserInfo().getAccount();
+        for (ColumnPrivilegeVerifyItem item : collector.getAccessColumnVerifyItems()) {
+            boolean success = LBACPrivilegeCheckUtils.checkColumnRW(
+                account, item.getDb(), item.getTable(), Collections.singleton(item.getColumn()),
+                item.getPrivilegePoint() == PrivilegePoint.SELECT);
+            if (!success) {
+                throw new LBACException("check lbac privilege failed on column");
+            }
+        }
+
+    }
+
     public static void checkPrivilege(String db, String tb, PrivilegePoint priv, ExecutionContext executionContext) {
         if (executionContext.isPrivilegeMode()) {
             verifyPrivilege(db, tb, priv, executionContext);
+        }
+    }
+
+    public static void checkInstancePrivilege(PrivilegePoint priv, ExecutionContext executionContext) {
+        if (executionContext.isPrivilegeMode()) {
+            executionContext.getPrivilegeContext().setSchema(null);
+            verifyPrivilege(null, null, priv, executionContext);
         }
     }
 

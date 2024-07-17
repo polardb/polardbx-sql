@@ -400,4 +400,11 @@ public class ManagerParserTest {
             0xff & ManagerParseClear.parse("clear @@SLOW where  DATANODE= d", 5));
     }
 
+    @Test
+    public void testShowDirectMemCommand() {
+        Assert.assertEquals(ManagerParseShow.DIRECT_MEM, 0xff & ManagerParseShow.parse("show @@direct_mem", 5));
+        Assert.assertEquals(ManagerParseShow.DIRECT_MEM, 0xff & ManagerParseShow.parse("SHOW @@DIRECT_MEM", 5));
+        Assert.assertEquals(ManagerParseShow.DIRECT_MEM, 0xff & ManagerParseShow.parse("show @@direct_MEM", 5));
+        Assert.assertNotEquals(ManagerParseShow.DIRECT_MEM, 0xff & ManagerParseShow.parse("show @@directMEM", 5));
+    }
 }

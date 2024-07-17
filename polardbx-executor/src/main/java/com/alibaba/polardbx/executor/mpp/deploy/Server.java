@@ -21,16 +21,12 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.discover.PolarDBXNodeStatusManager;
-import com.alibaba.polardbx.executor.mpp.execution.AdaptiveMemoryHandlerImpl;
-import com.alibaba.polardbx.executor.mpp.execution.MemoryKiller;
 import com.alibaba.polardbx.executor.mpp.execution.MemoryRevokingScheduler;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.executor.mpp.execution.TaskExecutor;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
-import com.alibaba.polardbx.optimizer.memory.AdaptiveMemoryHandler;
-import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 
 import java.util.concurrent.ScheduledExecutorService;
@@ -92,10 +88,6 @@ public abstract class Server {
             memoryRevokingScheduler = new MemoryRevokingScheduler(memoryManagementExecutor);
             memoryRevokingScheduler.start();
         }
-
-        AdaptiveMemoryHandler adaptiveMemoryHandlerImpl = new AdaptiveMemoryHandlerImpl(new MemoryKiller());
-        MemoryManager.getInstance().getApMemoryPool().setAdaptiveMemoryHandler(adaptiveMemoryHandlerImpl);
-        MemoryManager.getInstance().getTpMemoryPool().setAdaptiveMemoryHandler(adaptiveMemoryHandlerImpl);
     }
 
     public void stop() {

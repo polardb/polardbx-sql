@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndex;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
@@ -38,8 +39,10 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
@@ -68,15 +71,27 @@ import java.util.TreeSet;
 
 public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder {
 
+    Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap;
+    final boolean alignWithPrimaryTable;
+
     public CreatePartitionGlobalIndexBuilder(@Deprecated DDL ddl, CreateGlobalIndexPreparedData gsiPreparedData,
+                                             Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap,
+                                             boolean alignWithPrimaryTable,
                                              ExecutionContext executionContext) {
         super(ddl, gsiPreparedData, executionContext);
+        this.indexTablePreparedDataMap = indexTablePreparedDataMap;
+        this.alignWithPrimaryTable = alignWithPrimaryTable;
     }
 
     @Override
     public CreateGlobalIndexBuilder build() {
         buildTablePartitionInfoAndTopology();
-        buildPhysicalPlans();
+        if (gsiPreparedData.isColumnarIndex()) {
+            // Build sql template to generate covering columns
+            buildSqlTemplate();
+        } else {
+            buildPhysicalPlans();
+        }
         built = true;
         return this;
     }
@@ -94,22 +109,85 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
                 "DDL Kind '" + sqlDdl.getKind() + "' for GSI creation");
         }
 
-        indexTableBuilder = new CreatePartitionTableBuilder(relDdl, indexTablePreparedData, executionContext,
-            PartitionTableType.GSI_TABLE);
+        // Set table type to COLUMNAR_TABLE for columnar index,
+        // so that we can use COLUMNAR_DEFAULT_PARTITIONS as default partition count of columnar index
+        // in {@link com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder.autoDecideHashPartCountIfNeed}
+        indexTableBuilder = new CreatePartitionTableBuilder(
+            relDdl,
+            indexTablePreparedData,
+            executionContext,
+            gsiPreparedData.isColumnarIndex() ? PartitionTableType.COLUMNAR_TABLE : PartitionTableType.GSI_TABLE);
 
-        PartitionInfo indexPartInfo = indexTableBuilder.getPartitionInfo();
-        PartitionInfo primaryPartitionInfo = gsiPreparedData.getPrimaryPartitionInfo();
-        if (indexPartInfo.equals(primaryPartitionInfo)
-            && primaryPartitionInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID
-            && indexPartInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID) {
-            physicalLocationAlignWithPrimaryTable(primaryPartitionInfo, indexPartInfo);
-            gsiPreparedData.setIndexAlignWithPrimaryTableGroup(true);
-        }
+        alignWithTargetTable();
 
         indexTableBuilder.buildTableRuleAndTopology();
         this.gsiPreparedData.setIndexPartitionInfo(indexTableBuilder.getPartitionInfo());
         this.partitionInfo = indexTableBuilder.getPartitionInfo();
         this.tableTopology = indexTableBuilder.getTableTopology();
+    }
+
+    private void alignWithTargetTable() {
+        CreateTablePreparedData indexTablePreparedData = gsiPreparedData.getIndexTablePreparedData();
+        PartitionInfo indexPartInfo = indexTableBuilder.getPartitionInfo();
+        PartitionInfo targetPartInfo = gsiPreparedData.getPrimaryPartitionInfo();
+        if (indexTablePreparedData.isWithImplicitTableGroup()) {
+            if (alignWithPrimaryTable) {
+                boolean partInfoEqual = partitionInfoEqual(indexPartInfo, targetPartInfo);
+                if (partInfoEqual && targetPartInfo.getTableGroupId() == indexPartInfo.getTableGroupId()) {
+                    physicalLocationAlignWithPrimaryTable(targetPartInfo, indexPartInfo);
+                    gsiPreparedData.setTableGroupAlignWithTargetTable(targetPartInfo.getTableName());
+                    return;
+                }
+            }
+            if (GeneralUtil.isEmpty(indexTablePreparedDataMap)) {
+                return;
+            }
+            String tableGroupName = ((SqlIdentifier) indexTablePreparedData.getTableGroupName()).getLastName();
+            for (Map.Entry<String, CreateGlobalIndexPreparedData> indexTablePreparedDataEntry : indexTablePreparedDataMap.entrySet()) {
+                if (indexTablePreparedDataEntry.getValue().isWithImplicitTableGroup()) {
+                    String candicateTableGroupName =
+                        ((SqlIdentifier) indexTablePreparedDataEntry.getValue().getTableGroupName()).getLastName();
+                    if (tableGroupName.equalsIgnoreCase(candicateTableGroupName)) {
+                        targetPartInfo = indexTablePreparedDataEntry.getValue().getIndexPartitionInfo();
+                        boolean partInfoEqual = partitionInfoEqual(indexPartInfo, targetPartInfo);
+                        if (partInfoEqual) {
+                            physicalLocationAlignWithPrimaryTable(targetPartInfo, indexPartInfo);
+                            gsiPreparedData.setTableGroupAlignWithTargetTable(targetPartInfo.getTableName());
+                            return;
+                        } else {
+                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                                "the partition of table " + indexPartInfo.getTableName()
+                                    + " is not match with tablegroup " + tableGroupName);
+                        }
+                    }
+                }
+            }
+        } else {
+            boolean partInfoEqual = partitionInfoEqual(indexPartInfo, targetPartInfo);
+            ;
+            if (partInfoEqual && targetPartInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID
+                && indexPartInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID) {
+                physicalLocationAlignWithPrimaryTable(targetPartInfo, indexPartInfo);
+                gsiPreparedData.setTableGroupAlignWithTargetTable(targetPartInfo.getTableName());
+            } else {
+                if (GeneralUtil.isEmpty(indexTablePreparedDataMap)) {
+                    return;
+                }
+                for (Map.Entry<String, CreateGlobalIndexPreparedData> indexTablePreparedDataEntry : indexTablePreparedDataMap.entrySet()) {
+                    if (!indexTablePreparedDataEntry.getValue().isWithImplicitTableGroup()) {
+                        targetPartInfo = indexTablePreparedDataEntry.getValue().getIndexPartitionInfo();
+                        partInfoEqual = partitionInfoEqual(indexPartInfo, targetPartInfo);
+                        ;
+                        if (partInfoEqual && targetPartInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID
+                            && indexPartInfo.getTableGroupId() == TableGroupRecord.INVALID_TABLE_GROUP_ID) {
+                            physicalLocationAlignWithPrimaryTable(targetPartInfo, indexPartInfo);
+                            gsiPreparedData.setTableGroupAlignWithTargetTable(targetPartInfo.getTableName());
+                            return;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private void physicalLocationAlignWithPrimaryTable(PartitionInfo primaryPartitionInfo,
@@ -160,6 +238,7 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
     protected SqlNode buildIndexTableDefinition(final SqlAlterTable sqlAlterTable, final boolean forceAllowGsi) {
         final boolean uniqueIndex = sqlAlterTable.getAlters().get(0) instanceof SqlAddUniqueIndex;
         final SqlIndexDefinition indexDef = ((SqlAddIndex) sqlAlterTable.getAlters().get(0)).getIndexDef();
+        final boolean isColumnar = indexDef.isColumnar();
 
         /**
          * build global secondary index table
@@ -194,7 +273,8 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
             // Add PK in check set because simple index may concat PK as partition key.
             indexAndPkColumnSet.addAll(getPrimaryKeyNames(astCreateIndexTable));
         }
-        if (!containsAllShardingColumns(indexAndPkColumnSet, indexPartitionInfo)) {
+        // Columnar index do not force using index column as partition column
+        if (!isColumnar && !containsAllShardingColumns(indexAndPkColumnSet, indexPartitionInfo)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_INDEX_AND_SHARDING_COLUMNS_NOT_MATCH);
         }
 
@@ -202,8 +282,9 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
          * check single/broadcast table
          */
         if (null != primaryPartitionInfo) {
-            if (forceAllowGsi == false && (primaryPartitionInfo.isBroadcastTable() || primaryPartitionInfo
-                .isSingleTable())) {
+            if (!forceAllowGsi
+                && !isColumnar
+                && (primaryPartitionInfo.isBroadcastTable() || primaryPartitionInfo.isSingleTable())) {
                 throw new TddlRuntimeException(
                     ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
                     "Does not support create Global Secondary Index on single or broadcast table");
@@ -265,14 +346,17 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
             // Add PK in check set because simple index may concat PK as partition key.
             indexAndPkColumnSet.addAll(getPrimaryKeyNames(indexTableStmt));
         }
-        if (!containsAllShardingColumns(indexAndPkColumnSet, indexPartitionInfo)) {
+        final boolean isColumnar = sqlCreateIndex.createCci();
+        // Columnar index do not force using index column as partition column
+        if (!isColumnar && !containsAllShardingColumns(indexAndPkColumnSet, indexPartitionInfo)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_INDEX_AND_SHARDING_COLUMNS_NOT_MATCH);
         }
 
-        /**
+        /*
          * check single/broadcast table
+         * create cci on single/broadcast table is supported
          */
-        if (null != primaryPartitionInfo) {
+        if (null != primaryPartitionInfo && !isColumnar) {
             if (primaryPartitionInfo.isBroadcastTable() || primaryPartitionInfo.isSingleTable()) {
                 throw new TddlRuntimeException(
                     ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
@@ -357,49 +441,57 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
                                  boolean unique, boolean isGsi,
                                  List<SqlIndexOption> options) {
 
-//        final List<String> indexShardKey = gsiPreparedData.getShardColumnsNotReorder();
-//        if (indexShardKey != null && indexShardKey.size() > 0) {
-//            if (isRepartition()) {
-//                // like create table, look SqlCreateTable
-//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, options, false, indexShardKey);
-//            } else {
-//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, unique, options, isGsi, indexShardKey);
-//            }
-//        }
-
         List<List<String>> allLevelPartKeys = gsiPreparedData.getAllLevelPartColumns();
+        PartitionInfo gsiPartInfo = gsiPreparedData.getIndexPartitionInfo();
+
+        String partStrategy = gsiPartInfo.getPartitionBy().getStrategy().toString();
+        String subPartStrategy = gsiPartInfo.getPartitionBy().getSubPartitionBy() == null ? "" :
+            gsiPartInfo.getPartitionBy().getSubPartitionBy().getStrategy().toString();
+
+        boolean usePartBy = !partStrategy.isEmpty();
         boolean useSubPartBy = false;
         boolean subPartKeyContainAllPartKeyAsPrefixCols = false;
         List<String> partKeyList = allLevelPartKeys.get(0);
         List<String> subPartKeyList = null;
+        boolean addPartColIndexLater = false;
         if (allLevelPartKeys.size() > 1 && allLevelPartKeys.get(1).size() > 0) {
             useSubPartBy = true;
             subPartKeyList = allLevelPartKeys.get(1);
             subPartKeyContainAllPartKeyAsPrefixCols =
                 SqlCreateTable.checkIfContainPrefixPartCols(subPartKeyList, partKeyList);
+            addPartColIndexLater = SqlCreateTable.needAddPartColLocalIndexLater(partStrategy, subPartStrategy);
         }
-        if (!(useSubPartBy & subPartKeyContainAllPartKeyAsPrefixCols)) {
 
-//            if (partKeyList.size() == 1) {
-//                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, partKeyList);
-//            } else {
-//                SqlCreateTable.addIndex(indexColumnMap, indexTableStmt, unique, options, true, new ArrayList<>());
-//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, partKeyList);
-//            }
+        if (!(useSubPartBy && subPartKeyContainAllPartKeyAsPrefixCols)) {
+
+            if (addPartColIndexLater) {
+                if (useSubPartBy) {
+//            SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, ImmutableList.<SqlIndexOption>of(),
+//                false, subPartKeyList, false, "");
+                    SqlCreateTable.addCompositeIndexForAutoTbl(indexColumnMap, indexTableStmt, false,
+                        ImmutableList.<SqlIndexOption>of(), false, subPartStrategy, subPartKeyList, false, "");
+                }
+            }
 
             if (isRepartition()) {
                 // like create table, look SqlCreateTable
-                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, options, false, partKeyList,
-                    false, "");
+//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, options, false, partKeyList,
+//                    false, "");
+                SqlCreateTable.addCompositeIndexForAutoTbl(indexColumnMap, indexTableStmt, false, options, false,
+                    partStrategy, partKeyList, false, "");
             } else {
-                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, unique, options, isGsi, partKeyList,
-                    false, "");
+//                SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, unique, options, isGsi, partKeyList,
+//                    false, "");
+                SqlCreateTable.addCompositeIndexForAutoTbl(indexColumnMap, indexTableStmt, unique, options, isGsi,
+                    partStrategy, partKeyList, false, "");
             }
         }
 
-        if (useSubPartBy) {
-            SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, ImmutableList.<SqlIndexOption>of(),
-                false, subPartKeyList, false, "");
+        if (useSubPartBy && !addPartColIndexLater) {
+//            SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, false, ImmutableList.<SqlIndexOption>of(),
+//                false, subPartKeyList, false, "");
+            SqlCreateTable.addCompositeIndexForAutoTbl(indexColumnMap, indexTableStmt, false,
+                ImmutableList.<SqlIndexOption>of(), false, subPartStrategy, subPartKeyList, false, "");
         }
 
 //        SqlCreateTable.addLocalIndexForAutoTbl(indexColumnMap, indexTableStmt, unique, isGsi, options, gsiPreparedData.getAllLevelPartColumns(), isRepartition());
@@ -445,5 +537,13 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         uniqueIndex.getIndexDefinition().setParent(uniqueIndex);
         uniqueIndex.setParent(indexTableStmt);
         indexTableStmt.getTableElementList().add(uniqueIndex);
+    }
+
+    private boolean partitionInfoEqual(PartitionInfo partitionInfo1, PartitionInfo partitionInfo2) {
+        PartitionStrategy strategy = partitionInfo1.getPartitionBy().getStrategy();
+        boolean isVectorStrategy = (strategy == PartitionStrategy.KEY || strategy == PartitionStrategy.RANGE_COLUMNS);
+        return isVectorStrategy ? PartitionInfoUtil.actualPartColsEquals(partitionInfo1, partitionInfo2,
+            PartitionInfoUtil.fetchAllLevelMaxActualPartColsFromPartInfos(partitionInfo1,
+                partitionInfo2)) : partitionInfo1.equals(partitionInfo2);
     }
 }

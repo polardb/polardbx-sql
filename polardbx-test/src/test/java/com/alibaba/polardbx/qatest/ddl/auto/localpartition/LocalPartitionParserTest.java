@@ -24,11 +24,13 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import org.junit.Test;
 
 import java.time.LocalDate;
 import java.util.Optional;
 
+@BinlogIgnore(ignoreReason = "drop local partition的动作目前无法透传给下游，导致binlog实验室上下游数据不一致，暂时忽略")
 public class LocalPartitionParserTest {
 
     /**

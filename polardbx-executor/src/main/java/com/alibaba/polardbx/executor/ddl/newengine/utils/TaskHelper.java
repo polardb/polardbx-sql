@@ -88,14 +88,14 @@ public class TaskHelper {
 
     public static CostEstimableDdlTask.CostInfo decodeCostInfo(String str) {
         if (StringUtils.isEmpty(str)) {
-            return CostEstimableDdlTask.createCostInfo(0L, 0L);
+            return CostEstimableDdlTask.createCostInfo(0L, 0L, 0L);
         }
         return JSONObject.parseObject(str, CostEstimableDdlTask.CostInfo.class);
     }
 
     public static String encodeCostInfo(CostEstimableDdlTask.CostInfo costInfo) {
         if (costInfo == null) {
-            costInfo = CostEstimableDdlTask.createCostInfo(0L, 0L);
+            costInfo = CostEstimableDdlTask.createCostInfo(0L, 0L, 0L);
         }
         return JSONObject.toJSONString(costInfo);
     }

@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.metadb.record.CountRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import org.apache.commons.collections.CollectionUtils;
@@ -142,6 +143,10 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String ARCHIVE_SELECT =
         SELECT_FULL + " from " + DDL_ENGINE_TASK_TABLE_ARCHIVE + WHERE_JOB_ID + WITH_TASK_ID;
+
+    private static final String WHERE_TASK_NAME = " where `name` = ?";
+    private static final String EXISTS_PHYSICAL_BACKFILL_TASK =
+        "select 1 from " + DDL_ENGINE_TASK_TABLE + WHERE_TASK_NAME + " limit 1";
 
     public int insert(List<DdlEngineTaskRecord> recordList) {
         try {
@@ -443,6 +448,18 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
                 "Failed to query from " + (archive ? DDL_ENGINE_TASK_TABLE_ARCHIVE : DDL_ENGINE_TASK_TABLE),
                 "query from", e);
         }
+    }
+
+    public boolean existPhysicalBackfillTask() {
+        final Map<Integer, ParameterContext> params = new HashMap<>();
+        int i = 0;
+        MetaDbUtil.setParameter(++i, params, ParameterMethod.setString, "PhysicalBackfillTask");
+        List<CountRecord> records =
+            query(EXISTS_PHYSICAL_BACKFILL_TASK, DDL_ENGINE_TASK_TABLE, CountRecord.class, params);
+        if (records != null && records.size() > 0) {
+            return records.get(0).count > 0;
+        }
+        return false;
     }
 
     private TddlRuntimeException logAndThrow(String errMsg, String action, Exception e) {

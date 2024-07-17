@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 

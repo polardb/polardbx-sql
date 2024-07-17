@@ -40,6 +40,10 @@ public class StatisticResult {
         return value;
     }
 
+    public boolean getBooleanValue() {
+        return ((Boolean) value).booleanValue();
+    }
+
     public long getLongValue() {
         return ((Number) value).longValue();
     }

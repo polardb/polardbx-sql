@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.partitionmanagement.LocalPartitionManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionI
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +53,7 @@ public class LocalPartitionValidateTask extends BaseValidateTask {
     public void executeImpl(ExecutionContext executionContext) {
         final TableMeta primaryTableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+        TableValidator.validateTableWithCCI(schemaName, logicalTableName, executionContext, SqlKind.LOCAL_PARTITION);
         final LocalPartitionDefinitionInfo definitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
         if (definitionInfo == null) {
             throw new TddlNestableRuntimeException(String.format(

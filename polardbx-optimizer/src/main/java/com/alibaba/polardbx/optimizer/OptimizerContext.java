@@ -86,8 +86,8 @@ public class OptimizerContext {
 
     public static Set<String> getActiveSchemaNames() {
         return optimizerContextMap.keySet().stream()
-            .filter(x -> !x.equalsIgnoreCase(DefaultDbSchema.NAME))
-            .filter(x -> !x.equalsIgnoreCase(SystemDbHelper.CDC_DB_NAME))
+            .filter(x -> !x.equalsIgnoreCase(DefaultDbSchema.NAME) &&
+                !x.equalsIgnoreCase(SystemDbHelper.CDC_DB_NAME))
             .map(x -> getContext(x).getSchemaName())
             .collect(Collectors.toSet());
     }

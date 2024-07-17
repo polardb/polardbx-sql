@@ -69,7 +69,7 @@ public final class ShowMemoryPool {
 
     public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         return executeInternal(proxy, charset);
     }

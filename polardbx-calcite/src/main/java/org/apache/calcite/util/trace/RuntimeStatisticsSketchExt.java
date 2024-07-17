@@ -160,13 +160,13 @@ public class RuntimeStatisticsSketchExt extends RuntimeStatisticsSketch {
     protected boolean hasInputOperator;
 
     public RuntimeStatisticsSketchExt(long startupDurationNano, long durationNano, long closeDurationNano,
-                                      long workerDurationNano, long rowCount, long outputBytes, long memory,
+                                      long workerDurationNano, long rowCount, long runtimeFilteredCount, long outputBytes, long memory,
                                       int instances, boolean hasInputOperator, int spillCnt) {
 
         super((double) startupDurationNano / 1e9,
             (double) durationNano / 1e9,
             (double) workerDurationNano / 1e9,
-            rowCount,
+            rowCount, runtimeFilteredCount,
             outputBytes,
             memory,
             instances,

@@ -1363,6 +1363,7 @@ public final class SerializationUtils {
       case BLOOM_FILTER:
       case DATA:
       case DICTIONARY_DATA:
+      case BITMAP_INDEX:
       case BLOOM_FILTER_UTF8:
         options = options.copy().setData(CompressionCodec.DataKind.TEXT);
         if (strategy == OrcFile.CompressionStrategy.SPEED) {

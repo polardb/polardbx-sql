@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 
 public enum Engine {
+
     INNODB,
     MRG_MYISAM,
     BLACKHOLE,
@@ -31,8 +32,12 @@ public enum Engine {
     LOCAL_DISK,
     EXTERNAL_DISK,
     S3,
+    ABS,
     OSS,
-    NFS;
+    NFS,
+    MEMORY;
+
+    public static final Engine DEFAULT_COLUMNAR_ENGINE = OSS;
 
     public static Engine of(String engineName) {
         if (TStringUtil.isEmpty(engineName)) {
@@ -42,6 +47,22 @@ public enum Engine {
             return Engine.valueOf(engineName.toUpperCase());
         } catch (Throwable t) {
             throw GeneralUtil.nestedException("Unknown engine name:" + engineName);
+        }
+    }
+
+    public static boolean hasCache(Engine engine) {
+        if (engine == null) {
+            return false;
+        }
+        switch (engine) {
+        case OSS:
+        case EXTERNAL_DISK:
+        case NFS:
+        case S3:
+        case ABS:
+            return true;
+        default:
+            return false;
         }
     }
 
@@ -55,6 +76,24 @@ public enum Engine {
         case EXTERNAL_DISK:
         case S3:
         case NFS:
+        case ABS:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    public static boolean supportColumnar(Engine engine) {
+        if (engine == null) {
+            return false;
+        }
+        switch (engine) {
+        case OSS:
+        case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS:
+        case S3:
+        case ABS:
             return true;
         default:
             return false;

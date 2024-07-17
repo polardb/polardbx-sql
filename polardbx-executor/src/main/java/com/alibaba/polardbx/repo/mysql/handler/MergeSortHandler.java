@@ -19,8 +19,8 @@ package com.alibaba.polardbx.repo.mysql.handler;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
 import com.alibaba.polardbx.executor.cursor.impl.MergeSortCursor;
-import com.alibaba.polardbx.executor.cursor.impl.MultiCursorAdapter;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
@@ -31,8 +31,8 @@ import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
+import org.weakref.jmx.internal.guava.collect.Lists;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -71,16 +71,14 @@ public class MergeSortHandler extends HandlerCommon {
             }
         }
 
-        List<Cursor> inputCursors = new ArrayList<>();
-
         Cursor inputCursor = ExecutorHelper.executeByCursor(mergeSort.getInput(), executionContext, false);
 
-        if (inputCursor instanceof MultiCursorAdapter) {
-            inputCursors.addAll(((MultiCursorAdapter) inputCursor).getSubCursors());
+        if (inputCursor instanceof GatherCursor) {
+            return new MergeSortCursor(
+                executionContext, ((GatherCursor) inputCursor).getCursors(), orderBys, skip, fetch);
         } else {
-            inputCursors.add(inputCursor);
+            return new MergeSortCursor(
+                executionContext, Lists.newArrayList(inputCursor), orderBys, skip, fetch);
         }
-
-        return new MergeSortCursor(executionContext, inputCursors, orderBys, skip, fetch);
     }
 }

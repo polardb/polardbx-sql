@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Getter;
 
@@ -32,19 +33,26 @@ public class CreateTableValidateTask extends BaseValidateTask {
 
     private String logicalTableName;
     private TablesExtRecord tablesExtRecord;
+    private LikeTableInfo likeTableInfo;
 
     @JSONCreator
     public CreateTableValidateTask(String schemaName,
                                    String logicalTableName,
-                                   TablesExtRecord tablesExtRecord) {
+                                   TablesExtRecord tablesExtRecord,
+                                   LikeTableInfo likeTableInfo) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.tablesExtRecord = tablesExtRecord;
+        this.likeTableInfo = likeTableInfo;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableNonExistence(schemaName, logicalTableName, executionContext);
+        if (likeTableInfo != null) {
+            TableValidator.validateTableExistence(likeTableInfo.getSchemaName(), likeTableInfo.getTableName(),
+                executionContext);
+        }
 
         TableRule newTableRule = DdlJobDataConverter.buildTableRule(tablesExtRecord);
 

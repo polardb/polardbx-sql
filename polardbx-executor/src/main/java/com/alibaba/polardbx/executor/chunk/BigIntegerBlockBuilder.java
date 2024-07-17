@@ -30,7 +30,7 @@ public class BigIntegerBlockBuilder extends AbstractBlockBuilder {
 
     final ByteArrayList data;
 
-    private static byte[] emptyPacket = new byte[BigIntegerBlock.LENGTH];
+    private static final byte[] EMPTY_PACKET = new byte[BigIntegerBlock.LENGTH];
 
     public BigIntegerBlockBuilder(int capacity) {
         super(capacity);
@@ -57,7 +57,7 @@ public class BigIntegerBlockBuilder extends AbstractBlockBuilder {
     @Override
     public void appendNull() {
         appendNullInternal();
-        data.addElements(data.size(), emptyPacket);
+        data.addElements(data.size(), EMPTY_PACKET);
     }
 
     @Override

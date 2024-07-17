@@ -24,7 +24,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.SerializeUtils;
 import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
@@ -34,9 +33,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 
 import static com.google.common.base.MoreObjects.toStringHelper;

@@ -1,0 +1,77 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `ch_t1_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+CREATE TABLE `ch_t2_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+## point-select
+explain select * from ch_t1_f_f where user_id='12345678';
+explain select * from ch_t1_f_f where order_id='abcdefg12345678';
+explain select * from ch_t1_f_f where order_id='abcdefg12345678' or user_id='12345678';
+explain select * from ch_t1_f_f where order_id='abcdefg12345678' and user_id='12345678';
+explain select * from ch_t1_f_f where (order_id,user_id) = ('abcdefg12345678','12345678');
+explain select * from ch_t1_f_f where order_id in ('abcdefg12345678') and user_id in ('12345678');
+explain select * from ch_t1_f_f where (order_id,user_id) in (('abcdefg12345678','12345678'));
+
+## point-select2
+explain select * from ch_t1_f_f where user_id='12345679';
+explain select * from ch_t1_f_f where order_id='abcdefg12345678';
+explain select * from ch_t1_f_f where order_id='abcdefg12345678' or user_id='12345679';
+explain select * from ch_t1_f_f where order_id='abcdefg12345678' and user_id='12345679';
+explain select * from ch_t1_f_f where (order_id,user_id) = ('abcdefg12345678','12345679');
+explain select * from ch_t1_f_f where order_id in ('abcdefg12345678') and user_id in ('12345679');
+explain select * from ch_t1_f_f where (order_id,user_id) in (('abcdefg12345678','12345679'));
+
+## range-select
+explain select * from ch_t1_f_f where user_id>='12345678';
+explain select * from ch_t1_f_f where order_id<='abcdefg12345678';
+explain select * from ch_t1_f_f where order_id>='abcdefg12345678' or user_id<='12345678';
+explain select * from ch_t1_f_f where order_id<='abcdefg12345678' and user_id>='12345678';
+explain select * from ch_t1_f_f where (order_id,user_id) >= ('abcdefg12345678','12345678');
+
+# insert
+insert into ch_t1_f_f (id, order_id, user_id) values (null,'abcdefg12345678', '12345678');
+
+# insert2
+## error_msg: $# no partition #$
+insert into ch_t1_f_f (id, order_id, user_id) values (null,'abcdefg12345678', '12345679');
+
+# update1
+insert into ch_t1_f_f (id, order_id, user_id) values (null,'abcdefg12345678', '12345678');
+## update should set both user_id and order_id
+## error_msg: $# no partition #$
+update ch_t1_f_f set user_id='12345679',sid='mytest' where order_id='abcdefg12345678';
+select * from ch_t1_f_f where user_id='12345679';
+select * from ch_t1_f_f where order_id='abcdefg12345678';
+
+# update2
+insert into ch_t1_f_f (id, order_id, user_id) values (null,'abcdefg12345677', '12345677');
+update ch_t1_f_f set user_id='12345676', order_id='abcdefg12345676', sid='mytest2' where order_id='abcdefg12345677';
+select * from ch_t1_f_f where user_id='12345676';
+select * from ch_t1_f_f where order_id='abcdefg12345676';
+
+# join
+insert into ch_t1_f_f (id, order_id, user_id) values (null,'abcdefg12345677', '12345677');
+insert into ch_t2_f_f (id, order_id, user_id) values (null,'abcdefg12345677', '12345677');
+
+explain select * from ch_t1_f_f t1 join ch_t2_f_f t2 on t1.order_id=t2.order_id;
+explain select * from ch_t1_f_f t1 join ch_t2_f_f t2 on t1.user_id=t2.user_id;
+explain select * from ch_t1_f_f t1 join ch_t2_f_f t2 on t1.order_id=t2.order_id and t1.user_id=t2.user_id;
+

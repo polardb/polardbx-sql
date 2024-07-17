@@ -121,7 +121,7 @@ public class CheapestFractionalPlanReplacer {
             Limit limit = ((Limit) rel);
             Map<Integer, ParameterContext> params =
                 PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-            long skipPlusFetch = 0;
+            double skipPlusFetch = 0;
             if (limit.fetch != null) {
                 skipPlusFetch += CBOUtil.getRexParam(limit.fetch, params);
 
@@ -163,9 +163,18 @@ public class CheapestFractionalPlanReplacer {
                 result.add(fraction);
                 result.add(1.0);
             }
-        } else if (rel instanceof SemiNLJoin || rel instanceof SemiHashJoin) {
+        } else if (rel instanceof SemiNLJoin) {
             result.add(fraction);
             result.add(1.0);
+        } else if (rel instanceof SemiHashJoin) {
+            SemiHashJoin semiHashJoin = (SemiHashJoin) rel;
+            if (!semiHashJoin.isOuterBuild()) {
+                result.add(fraction);
+                result.add(1.0);
+            } else {
+                result.add(1.0);
+                result.add(fraction);
+            }
         } else if (rel instanceof TopN || rel instanceof MemSort || rel instanceof HashAgg
             || rel instanceof SortWindow || rel instanceof HashWindow || rel instanceof SortAgg) {
             result.add(1.0);

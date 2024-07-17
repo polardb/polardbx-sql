@@ -20,6 +20,7 @@ public class TerminateRebalanceAutoTest extends DDLBaseNewDBTestCase {
     private static final String SLOW_HINT = "GSI_DEBUG=\"slow\"";
     private static final String ASYNC_DDL_HINT = "ENABLE_ASYNC_DDL=true, PURE_ASYNC_DDL_MODE=true";
     private static final String ENABLE_CHANGESET_HINT = "CN_ENABLE_CHANGESET=%s";
+    private static final String DROP_DB_HINT = "ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE=true";
 
     private static final int TABLE_COUNT = 4;
     static private final String DATABASE_NAME = "TerminateRebalanceAutoTest";
@@ -108,7 +109,7 @@ public class TerminateRebalanceAutoTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "schedule " + command);
 
         // check
-        Thread.sleep(12000);
+        Thread.sleep(10500);
         Long jobId = getDDLJobId(tddlConnection);
         // Assert.assertTrue(checkRunningDDL(tddlConnection));
         if (!checkRunningDDL(tddlConnection)) {
@@ -140,7 +141,7 @@ public class TerminateRebalanceAutoTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "schedule rebalance database");
 
         // check
-        Thread.sleep(12000);
+        Thread.sleep(10500);
         Long jobId = getDDLJobId(tddlConnection);
         // Assert.assertTrue(checkRunningDDL(tddlConnection));
         if (!checkRunningDDL(tddlConnection)) {
@@ -282,7 +283,7 @@ public class TerminateRebalanceAutoTest extends DDLBaseNewDBTestCase {
 
     void doClearDatabase() {
         JdbcUtil.executeUpdate(getTddlConnection1(), "use information_schema");
-        String tddlSql = "drop database if exists " + DATABASE_NAME;
+        String tddlSql = buildCmdExtra(DROP_DB_HINT) + "drop database if exists " + DATABASE_NAME;
         JdbcUtil.executeUpdate(getTddlConnection1(), tddlSql);
     }
 }

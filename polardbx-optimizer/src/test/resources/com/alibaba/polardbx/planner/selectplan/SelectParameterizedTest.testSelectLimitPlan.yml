@@ -44,8 +44,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0000.random_groupby_12_tab1_00", sql="SELECT `col2` FROM (SELECT (- MIN(DISTINCT `col0`)) AS `col2` FROM `random_groupby_12_tab1` AS `random_groupby_12_tab1` WHERE (`col0` IS NULL) GROUP BY `col0`) AS `t1` GROUP BY `col2`")
-
+    phytableoperation(tables="optest_0000.[random_groupby_12_tab1_00]", sql="select distinct (- (+ min(distinct (+ (+ `cor0`.`col0`))))) as `col2` from ? as `cor0` group by `cor0`.`col0` having (`col0` is null)")
 
 -
   sql: |
@@ -53,4 +52,4 @@
 
   plan: |
 
-    LogicalView(tables="optest_0000.t_seller_00", sql="SELECT `col2` FROM (SELECT (- MIN(DISTINCT `id`)) AS `col2` FROM `t_seller` AS `t_seller` WHERE (`id` IS NULL) GROUP BY `id`) AS `t1` GROUP BY `col2`")
+    phytableoperation(tables="optest_0000.[t_seller_00]", sql="select distinct (- (+ min(distinct (+ (+ `cor0`.`id`))))) as `col2` from ? as `cor0` group by `cor0`.`id` having (`id` is null)")

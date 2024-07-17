@@ -17,30 +17,55 @@
 package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.NullValue;
 
 import java.math.BigDecimal;
+
+import static com.alibaba.polardbx.common.datatype.Decimal.MAX_128_BIT_PRECISION;
+import static com.alibaba.polardbx.common.datatype.Decimal.MAX_64_BIT_PRECISION;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DEFAULT_SCALE;
 
 /**
  * Decimal Type
  */
 public class DecimalType extends NumberType<Decimal> {
 
-    private static final Decimal MAX_VALUE = Decimal.fromString("1E66");
-    private static final Decimal MIN_VALUE = Decimal.fromString("-1E66");
-    private static final Decimal ZERO_VALUE = Decimal.ZERO;
+    static final Decimal MAX_VALUE = Decimal.fromString("1E66");
+    static final Decimal MIN_VALUE = Decimal.fromString("-1E66");
 
-    private int precision;
-    private int scale;
+    private final int precision;
+    private final int scale;
+
+    public static DecimalType decimal64WithScale(int scale) {
+        return new DecimalType(MAX_64_BIT_PRECISION, scale);
+    }
+
+    public static DecimalType decimal128WithScale(int scale) {
+        return new DecimalType(MAX_128_BIT_PRECISION, scale);
+    }
 
     public DecimalType() {
-        this(0, -1);
+        this(0, DEFAULT_SCALE);
     }
 
     public DecimalType(int precision, int scale) {
         this.precision = precision;
         this.scale = scale;
+    }
+
+    public boolean isDecimal64() {
+        return DecimalConverter.isDecimal64(precision) && scale >= 0;
+    }
+
+    public boolean isDecimal128() {
+        return DecimalConverter.isDecimal128(precision) && scale >= 0;
+    }
+
+    public boolean isDefaultScale() {
+        return precision == DecimalTypeBase.MAX_DECIMAL_PRECISION && scale == 0;
     }
 
     private final Calculator calculator = new AbstractDecimalCalculator() {

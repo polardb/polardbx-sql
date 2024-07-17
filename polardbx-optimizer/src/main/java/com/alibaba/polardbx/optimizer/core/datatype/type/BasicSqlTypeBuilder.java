@@ -19,7 +19,6 @@ package com.alibaba.polardbx.optimizer.core.datatype.type;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
-import org.apache.calcite.sql.type.BasicSqlType;
 
 public interface BasicSqlTypeBuilder {
     /**

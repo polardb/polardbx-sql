@@ -125,7 +125,7 @@ public class PartSpecSearcher {
     }
 
     public Long getPartIntraGroupConnKey(String grpIndex, String phyTb) {
-        if (this.tableType != PartitionTableType.PARTITION_TABLE && this.tableType != PartitionTableType.GSI_TABLE) {
+        if (!this.tableType.isA(PartitionTableType.PARTITIONED_TABLE)) {
             return FOUND_NON_PARTITIONED_TBL;
         }
         PartitionSpec pSpec = getPartSpec(grpIndex, phyTb);

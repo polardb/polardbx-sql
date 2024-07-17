@@ -2,8 +2,6 @@
 ## clear database
 drop database if exists `testConvertDrdsDb`;
 drop database if exists `testConvertDbAuto`;
-drop database if exists `testConvertDbAuto2`;
-drop database if exists `testConvertDbAuto3`;
 
 create database if not exists `testConvertDrdsDb` mode=drds;
 use testConvertDrdsDb;
@@ -51,3 +49,7 @@ show sequence where name = 'seq3';
 show sequence where name like '%tb1';
 show sequence where name like '%tb2';
 show sequence where name like '%tb4';
+
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;

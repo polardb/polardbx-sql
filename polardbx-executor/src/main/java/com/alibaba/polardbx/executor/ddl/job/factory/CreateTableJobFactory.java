@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateEntitySecurityAttrTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesExtMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
@@ -37,12 +39,16 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateSelect;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateTable;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityEntity;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.ArrayList;
 import java.sql.Connection;
 import java.util.Map;
 import java.util.Objects;
@@ -66,6 +72,8 @@ public class CreateTableJobFactory extends DdlJobFactory {
     protected final List<ForeignKeyData> addedForeignKeys;
     protected final boolean fromTruncateTable;
     protected String selectSql;
+    protected final Long versionId;
+    protected LikeTableInfo likeTableInfo;
 
     public CreateTableJobFactory(boolean autoPartition,
                                  boolean hasTimestampColumnDefault,
@@ -73,15 +81,19 @@ public class CreateTableJobFactory extends DdlJobFactory {
                                  Map<String, Long> specialDefaultValueFlags,
                                  List<ForeignKeyData> addedForeignKeys,
                                  PhysicalPlanData physicalPlanData,
-                                 ExecutionContext executionContext) {
+                                 Long versionId,
+                                 ExecutionContext executionContext,
+                                 LikeTableInfo likeTableInfo) {
         this(autoPartition,
             hasTimestampColumnDefault,
             specialDefaultValues,
             specialDefaultValueFlags,
             addedForeignKeys,
             physicalPlanData,
+            versionId,
             executionContext,
-            false);
+            false,
+            likeTableInfo);
     }
 
     public CreateTableJobFactory(boolean autoPartition,
@@ -90,8 +102,10 @@ public class CreateTableJobFactory extends DdlJobFactory {
                                  Map<String, Long> specialDefaultValueFlags,
                                  List<ForeignKeyData> addedForeignKeys,
                                  PhysicalPlanData physicalPlanData,
+                                 Long versionId,
                                  ExecutionContext executionContext,
-                                 boolean fromTruncateTable) {
+                                 boolean fromTruncateTable,
+                                 LikeTableInfo likeTableInfo) {
         this.autoPartition = autoPartition;
         this.hasTimestampColumnDefault = hasTimestampColumnDefault;
         this.physicalPlanData = physicalPlanData;
@@ -102,6 +116,8 @@ public class CreateTableJobFactory extends DdlJobFactory {
         this.specialDefaultValueFlags = specialDefaultValueFlags;
         this.addedForeignKeys = addedForeignKeys;
         this.fromTruncateTable = fromTruncateTable;
+        this.versionId = versionId;
+        this.likeTableInfo = likeTableInfo;
     }
 
     @Override
@@ -115,7 +131,8 @@ public class CreateTableJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         CreateTableValidateTask validateTask =
-            new CreateTableValidateTask(schemaName, logicalTableName, physicalPlanData.getTablesExtRecord());
+            new CreateTableValidateTask(schemaName, logicalTableName, physicalPlanData.getTablesExtRecord(),
+                likeTableInfo);
 
         CreateTableAddTablesExtMetaTask addExtMetaTask =
             new CreateTableAddTablesExtMetaTask(schemaName, logicalTableName, physicalPlanData.isTemporary(),
@@ -124,14 +141,16 @@ public class CreateTableJobFactory extends DdlJobFactory {
         CreateTablePhyDdlTask phyDdlTask = new CreateTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);
 
         CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, !fromTruncateTable,
-            CollectionUtils.isNotEmpty(addedForeignKeys));
-
+            CollectionUtils.isNotEmpty(addedForeignKeys), versionId);
+        cdcDdlMarkTask.setUseOriginalDDl(!fromTruncateTable);
         CreateTableAddTablesMetaTask addTableMetaTask =
             new CreateTableAddTablesMetaTask(schemaName, logicalTableName, physicalPlanData.getDefaultDbIndex(),
                 physicalPlanData.getDefaultPhyTableName(), physicalPlanData.getSequence(),
                 physicalPlanData.getTablesExtRecord(), physicalPlanData.isPartitioned(),
                 physicalPlanData.isIfNotExists(), physicalPlanData.getKind(), addedForeignKeys,
-                hasTimestampColumnDefault, specialDefaultValues, specialDefaultValueFlags);
+                hasTimestampColumnDefault, specialDefaultValues, specialDefaultValueFlags, null, null);
+
+        CreateEntitySecurityAttrTask cesaTask = createCESATask();
 
         //Renew this one.
         LocalityDesc locality = physicalPlanData.getLocalityDesc();
@@ -160,6 +179,7 @@ public class CreateTableJobFactory extends DdlJobFactory {
             cdcDdlMarkTask,
             showTableMetaTask,
             storeLocalityTask,
+            cesaTask,
             tableSyncTask);
 
         if (!GeneralUtil.isEmpty(addedForeignKeys)) {
@@ -207,9 +227,41 @@ public class CreateTableJobFactory extends DdlJobFactory {
         return result;
     }
 
+    protected CreateEntitySecurityAttrTask createCESATask() {
+        List<LBACSecurityEntity> esaList = new ArrayList<>();
+        if (physicalPlanData.getTableESA() != null) {
+            LBACSecurityManager.getInstance().validateSecurityEntity(physicalPlanData.getTableESA(),
+                physicalPlanData.getTableESA().getSecurityAttr());
+            esaList.add(physicalPlanData.getTableESA());
+            if (physicalPlanData.getColEsaList() != null) {
+                for (LBACSecurityEntity esa : physicalPlanData.getColEsaList()) {
+                    LBACSecurityManager.getInstance()
+                        .validateSecurityEntity(esa, physicalPlanData.getTableESA().getSecurityAttr());
+                    esaList.add(esa);
+                }
+            }
+        }
+        return esaList.isEmpty() ? null : new CreateEntitySecurityAttrTask(schemaName, logicalTableName, esaList);
+    }
+
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, logicalTableName));
+        if (likeTableInfo != null) {
+            resources.add(concatWithDot(likeTableInfo.getSchemaName(), likeTableInfo.getTableName()));
+        }
+
+        // exclude foreign key tables
+        if (!GeneralUtil.isEmpty(addedForeignKeys)) {
+            // sync foreign key table meta
+            for (ForeignKeyData addedForeignKey : addedForeignKeys) {
+                if (schemaName.equalsIgnoreCase(addedForeignKey.refSchema) &&
+                    logicalTableName.equalsIgnoreCase(addedForeignKey.refTableName)) {
+                    continue;
+                }
+                resources.add(concatWithDot(addedForeignKey.refSchema, addedForeignKey.refTableName));
+            }
+        }
     }
 
     @Override

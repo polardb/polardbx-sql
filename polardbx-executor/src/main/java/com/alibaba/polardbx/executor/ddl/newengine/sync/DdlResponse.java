@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.sync;
 
+import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
 
 import java.util.HashMap;
@@ -76,6 +77,25 @@ public class DdlResponse {
             this.ddlType = ddlType;
             this.responseType = responseType;
             this.responseContent = responseContent;
+        }
+
+        @JSONCreator
+        public Response(long jobId,
+                        String schemaName,
+                        String objectName,
+                        String ddlType,
+                        ResponseType responseType,
+                        String responseContent,
+                        Object warning,
+                        SQLTracer tracer) {
+            this.jobId = jobId;
+            this.schemaName = schemaName;
+            this.objectName = objectName;
+            this.ddlType = ddlType;
+            this.responseType = responseType;
+            this.responseContent = responseContent;
+            this.warning = warning;
+            this.tracer = tracer;
         }
 
         public long getJobId() {

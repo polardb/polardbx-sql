@@ -93,7 +93,7 @@ public class ExecuteTableName {
     public static String MULTI_DB_MUTIL_TB_BY_STRING_SUFFIX = "multi_db_multi_tb_by_string";
 
     /**
-     * 四中基本类型表
+     * 四种基本类型表
      */
     public static String[][] allBaseTypeOneTable(String tablePrefix) {
         // String tablePrefix = classNameChangeToTablePrefix(className);
@@ -116,7 +116,7 @@ public class ExecuteTableName {
     }
 
     /**
-     * 四中基本类型表
+     * 四种基本类型表
      */
     public static Object[][] renameTableOfAllBaseType(String tablePrefix) {
         final String beforeTablePrefix = tablePrefix + "_origin_";

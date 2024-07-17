@@ -22,7 +22,8 @@ public class ManualHotSpotDataGenerator implements DataGenerator {
 
     @Override
     public Object generateData(String fieldType) throws SQLException {
-        if (StringUtils.containsIgnoreCase(fieldType, "int")) {
+        if (StringUtils.startsWithIgnoreCase(fieldType, "int") || StringUtils.startsWithIgnoreCase(fieldType,
+            "bigint")) {
 
             //33%的概率在第一个分区
             if (randomDouble.uniformDistribution() < (1.0 / 3.0)) {
@@ -30,21 +31,21 @@ public class ManualHotSpotDataGenerator implements DataGenerator {
             }
             return randomInt.betaDistribution(100_0000, 0);
 
-        } else if (StringUtils.containsIgnoreCase(fieldType, "char")) {
+        } else if (StringUtils.startsWithIgnoreCase(fieldType, "char")) {
 
             if (randomDouble.uniformDistribution() < (1.0 / 3.0)) {
                 return 0;
             }
             return String.valueOf(randomInt.betaDistribution(100_0000, 0));
 
-        } else if (StringUtils.containsIgnoreCase(fieldType, "double")) {
+        } else if (StringUtils.startsWithIgnoreCase(fieldType, "double")) {
 
             if (randomDouble.uniformDistribution() < (1.0 / 3.0)) {
                 return 0;
             }
             return randomDouble.betaDistribution();
 
-        } else if (StringUtils.containsIgnoreCase(fieldType, "timestamp")) {
+        } else if (StringUtils.startsWithIgnoreCase(fieldType, "timestamp")) {
 
             return Timestamp.valueOf(
                 TimeStampGenerator.millisToZonedDateTime(timeStampGenerator.generateTs(1000 * 6000),

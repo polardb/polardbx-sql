@@ -34,6 +34,7 @@ public class ColumnsRecord extends ColumnsInfoSchemaRecord {
     public long version;
     public int status;
     public long flag;
+    public String columnMappingName;
 
     public static final long FLAG_FILL_DEFAULT = 0x1;
     public static final long FLAG_BINARY_DEFAULT = 0x2; // If default value is hex string
@@ -52,6 +53,7 @@ public class ColumnsRecord extends ColumnsInfoSchemaRecord {
         this.version = rs.getLong("version");
         this.status = rs.getInt("status");
         this.flag = rs.getLong("flag");
+        this.columnMappingName = rs.getString("column_mapping_name");
         return this;
     }
 
@@ -65,6 +67,7 @@ public class ColumnsRecord extends ColumnsInfoSchemaRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.version);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setInt, this.status);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.flag);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.columnMappingName);
         return params;
     }
 

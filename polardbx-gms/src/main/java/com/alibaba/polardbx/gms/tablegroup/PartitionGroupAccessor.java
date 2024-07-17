@@ -310,7 +310,7 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
             DdlMetaLogUtil.logSql(stmtStr, paramsBatch);
 
-            return MetaDbUtil.insertAndRetureLastInsertId(
+            return MetaDbUtil.insertAndReturnLastInsertId(
                 stmtStr, paramsBatch,
                 this.connection);
         } catch (Exception e) {
@@ -344,7 +344,7 @@ public class PartitionGroupAccessor extends AbstractAccessor {
 
             DdlMetaLogUtil.logSql(INSERT_INTO_PARTITION_GROUP_WITH_ID, paramsBatch);
 
-            return MetaDbUtil.insertAndRetureLastInsertId(
+            return MetaDbUtil.insertAndReturnLastInsertId(
                 INSERT_INTO_PARTITION_GROUP_WITH_ID, paramsBatch,
                 this.connection);
         } catch (Exception e) {

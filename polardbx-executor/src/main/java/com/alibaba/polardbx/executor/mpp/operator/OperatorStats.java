@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
 
 import javax.annotation.concurrent.Immutable;
@@ -32,6 +32,7 @@ public class OperatorStats {
     private final Optional<String> operatorType;
     private final int operatorId;
     private final long outputRowCount;
+    private final long runtimeFilteredCount;
     private final long outputBytes;
     private final double startupDuration;
     private final double duration;
@@ -42,32 +43,35 @@ public class OperatorStats {
     @JsonCreator
     public OperatorStats(
         @JsonProperty("stageId")
-            Optional<StageId> stageId,
+        Optional<StageId> stageId,
         @JsonProperty("pipelineId")
-            int pipelineId,
+        int pipelineId,
         @JsonProperty("operatorType")
-            Optional<String> operatorType,
+        Optional<String> operatorType,
         @JsonProperty("operatorId")
-            int operatorId,
+        int operatorId,
         @JsonProperty("outputRowCount")
-            long outputRowCount,
+        long outputRowCount,
+        @JsonProperty("runtimeFilteredCount")
+        long runtimeFilteredCount,
         @JsonProperty("outputBytes")
-            long outputBytes,
+        long outputBytes,
         @JsonProperty("startupDuration")
-            double startupDuration,
+        double startupDuration,
         @JsonProperty("duration")
-            double duration,
+        double duration,
         @JsonProperty("memory")
-            long memory,
+        long memory,
         @JsonProperty("instances")
-            int instances,
+        int instances,
         @JsonProperty("spillCnt")
-            int spillCnt) {
+        int spillCnt) {
         this.operatorType = operatorType;
         this.stageId = stageId;
         this.pipelineId = pipelineId;
         this.operatorId = operatorId;
         this.outputRowCount = outputRowCount;
+        this.runtimeFilteredCount = runtimeFilteredCount;
         this.outputBytes = outputBytes;
         this.startupDuration = startupDuration;
         this.duration = duration;
@@ -89,6 +93,11 @@ public class OperatorStats {
     @JsonProperty
     public long getOutputRowCount() {
         return outputRowCount;
+    }
+
+    @JsonProperty
+    public long getRuntimeFilteredCount() {
+        return runtimeFilteredCount;
     }
 
     @JsonProperty
@@ -137,6 +146,7 @@ public class OperatorStats {
 
     public OperatorStats add(Iterable<OperatorStats> operators) {
         long outputRowCount = this.outputRowCount;
+        long runtimeFilteredCount = this.runtimeFilteredCount;
         long outputBytes = this.outputBytes;
         double startupDuration = this.startupDuration;
         double duration = this.duration;
@@ -145,6 +155,7 @@ public class OperatorStats {
         int spillCnt = 0;
         for (OperatorStats operator : operators) {
             outputRowCount += operator.outputRowCount;
+            runtimeFilteredCount += operator.runtimeFilteredCount;
             outputBytes += operator.outputBytes;
             startupDuration += operator.startupDuration;
             duration += operator.duration;
@@ -152,12 +163,12 @@ public class OperatorStats {
             instances += operator.instances;
             spillCnt += operator.spillCnt;
         }
-        return new OperatorStats(stageId, pipelineId, operatorType, operatorId, outputRowCount, outputBytes,
-            startupDuration, duration, memory, instances, spillCnt);
+        return new OperatorStats(stageId, pipelineId, operatorType, operatorId, outputRowCount, runtimeFilteredCount,
+            outputBytes, startupDuration, duration, memory, instances, spillCnt);
     }
 
     public RuntimeStatisticsSketch toSketch() {
-        return new RuntimeStatisticsSketch(startupDuration, duration, 0, outputRowCount, outputBytes,
-            memory, instances, spillCnt);
+        return new RuntimeStatisticsSketch(startupDuration, duration, 0, outputRowCount, runtimeFilteredCount,
+            outputBytes, memory, instances, spillCnt);
     }
 }

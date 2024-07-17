@@ -71,11 +71,22 @@ public class SQLRecorderLogger {
     // Slow trans log
     public final static Logger slowTransLogger = LoggerFactory.getLogger("slow_trans");
 
+    // Inner sql executed by InnerConnection
+    public final static Logger innerSqlLogger = LoggerFactory.getLogger("inner_sql", true);
+    /**
+     * 0:sql#<br>
+     * 1:success(0 for success, 1 for fail)#<br>
+     * 2:time_cost
+     */
+    public final static MessageFormat innerSqlFormat = new MessageFormat("{0}#{1}#{2}");
+
+    public final static Logger cdcLogger = LoggerFactory.getLogger("cdc_log");
+
     // format_version#trace_id#trx_type#start_time#finish_time#duration_time#status#active_time#idle_time
     // #write_time#read_time#write_affect_rows#read_return_rows#mdl_wait_time#get_tso_time#prepare_time
-    // #trx_log_time#commit_time#rollback_time#sql_count#rw_sql_count#trx_template_id#
+    // #trx_log_time#commit_time#rollback_time#sql_count#rw_sql_count#trx_template_id#trx_log_type#
     public final static MessageFormat slowTransFormat =
         new MessageFormat(
-            "{0}#{1}#{2}#{3}#{4}#{5}#{6}#{7}#{8}#{9}#{10}#{11}#{12}#{13}#{14}#{15}#{16}#{17}#{18}#{19}#{20}#{21}#");
+            "{0}#{1}#{2}#{3}#{4}#{5}#{6}#{7}#{8}#{9}#{10}#{11}#{12}#{13}#{14}#{15}#{16}#{17}#{18}#{19}#{20}#{21}#{22}#");
 
 }

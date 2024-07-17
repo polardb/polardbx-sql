@@ -28,29 +28,29 @@ public class ${className} extends AbstractVectorizedExpression {
 
     @Override
     public void eval(EvaluationContext ctx) {
-        super.evalChildren(ctx);
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		super.evalChildren(ctx);
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
-        ${type.outputType}[] res = ((${type.outputVectorType}) outputVectorSlot).${type.outputType}Array();
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
+        ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
+        ${type.outputType}[] res = (outputVectorSlot.cast(${type.outputVectorType}.class)).${type.outputType}Array();
 
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(), children[1].getOutputIndex());
-        boolean[] outputNulls = outputVectorSlot.nulls();
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                ${type.outputType} right = (${type.outputType})array2[j];
-                <#if operator.classHeader == "Divide">
-                if (right == 0) {
-                    outputNulls[j] = true;
+		VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(), children[1].getOutputIndex());
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+        ${type.outputType} right = (${type.outputType})array2[j];
+        <#if operator.classHeader == "Divide">
+			if (right == 0) {
+			outputNulls[j] = true;
                 }
                 </#if>
                 <#if operator.classHeader == "Modulo">

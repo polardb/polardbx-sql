@@ -20,6 +20,9 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
 import com.alibaba.polardbx.gms.module.Module;
@@ -29,6 +32,8 @@ import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.server.ServerConnection;
 
@@ -37,7 +42,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sampleTable;
+import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
 import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
 
@@ -61,6 +67,10 @@ public class CollectStatistic {
             }
 
             Set<String> logicalTableSet = StatisticManager.getInstance().getTableNamesCollected(schema);
+            for (TableMeta tableMeta : OptimizerContext.getContext(schema).getLatestSchemaManager()
+                .getAllUserTables()) {
+                logicalTableSet.add(tableMeta.getTableName().toLowerCase());
+            }
             for (String logicalTableName : logicalTableSet) {
                 // check table if exists
                 if (OptimizerContext.getContext(schema).getLatestSchemaManager()
@@ -81,15 +91,7 @@ public class CollectStatistic {
                             schema + "," + logicalTableName
                         },
                         NORMAL);
-                sampleTable(schema, logicalTableName);
-                // persist
-                StatisticUtils.persistStatistic(schema, logicalTableName, true);
-                // sync other nodes
-                SyncManagerHelper.syncWithDefaultDB(
-                    new UpdateStatisticSyncAction(
-                        schema,
-                        logicalTableName,
-                        StatisticManager.getInstance().getCacheLine(schema, logicalTableName)));
+                StatisticUtils.sampleOneTable(schema, logicalTableName);
             }
         }
 

@@ -32,7 +32,11 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 @Getter
 @TaskName(name = "AlterTableGroupAddMetaTask")

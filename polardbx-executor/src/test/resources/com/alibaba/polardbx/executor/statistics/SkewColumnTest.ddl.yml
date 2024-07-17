@@ -1,0 +1,21 @@
+t_order1:
+  CREATE TABLE `t_order1` (
+  `id` bigint(11) NOT NULL,
+  `order_id` varchar(20) DEFAULT NULL,
+  `order_detail` longtext,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+  key(id,order_id,order_detail),
+  unique key(order_detail,order_id,id)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 CHARSET = utf8 dbpartition by hash(`order_id`) TBPARTITION BY HASH(`order_id`) TBPARTITIONS 3
+
+t_order2:
+  CREATE TABLE `t_order2` (
+  `id` bigint(11) NOT NULL,
+  `order_id` varchar(20) DEFAULT NULL,
+  `order_detail` longtext,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+  key(id,order_id,order_detail),
+  unique key(order_detail,order_id,id)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 CHARSET = utf8 dbpartition by hash(`order_id`) TBPARTITION BY HASH(`order_id`) TBPARTITIONS 3

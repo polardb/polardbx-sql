@@ -1,0 +1,30 @@
+drop table if exists tb1;
+
+create tablegroup if not exists `wumu_tg`;
+create table if not exists tb1 (
+a int not null,
+b int not null,
+c varchar(10) not null,
+primary key (`a`))
+partition by key(a) tablegroup = `wumu_tg`;
+
+insert into tb1 values (101, 101, 'a'),
+(102, 102, 'b'),
+(103, 103, 'c'),
+(201, 201, 'd'),
+(202, 202, 'e'),
+(203, 203, 'f');
+
+select * from tb1 order by a;
+
+alter table tb1 modify column c text, ALGORITHM=OMC;
+
+show full create table tb1;
+
+select * from tb1 order by a;
+
+alter table tb1 modify column a bigint;
+
+show full create table tb1;
+
+select * from tb1 order by a;

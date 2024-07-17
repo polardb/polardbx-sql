@@ -5,7 +5,8 @@
     <artifactId>polardbx</artifactId>
     <packaging>pom</packaging>
     <name>root module for polardbx ${project.version}</name>
-    <version>5.4.18-SNAPSHOT</version>
+    <version>${revision}</version>
+    <url>https://github.com/tddl/tddl</url>
     <!-- <parent> <groupId>org.sonatype.oss</groupId> <artifactId>oss-parent</artifactId>
         <version>7</version> </parent> -->
     <developers>
@@ -35,7 +36,7 @@
     <repositories>
         <repository>
             <id>java.net</id>
-            <url>http://download.java.net/maven/2/</url>
+            <url>https://download.java.net/maven/2/</url>
             <releases>
                 <enabled>true</enabled>
             </releases>
@@ -54,6 +55,9 @@
         <java_source_version>1.8</java_source_version>
         <java_target_version>1.8</java_target_version>
         <file_encoding>UTF-8</file_encoding>
+        <!-- Version -->
+        <polardbx.version>5.4.19</polardbx.version>
+        <revision>${polardbx.version}-SNAPSHOT</revision>
         <!-- Log libs -->
         <slf4j_version>1.7.21</slf4j_version>
         <jcl_version>1.1</jcl_version>
@@ -71,8 +75,9 @@
 
         <javax.servlet-api.version>3.1.0</javax.servlet-api.version>
         <stream.version>2.9.5</stream.version>
-<!--        <sum.tools.version>1.8</sum.tools.version>-->
+        <sum.tools.version>1.8</sum.tools.version>
         <snakeyaml.version>1.31</snakeyaml.version>
+        <unitrouter.version>1.0.11-SNAPSHOT</unitrouter.version>
         <java-ipv6.version>0.17</java-ipv6.version>
 
         <!-- mpp -->
@@ -90,8 +95,10 @@
         <codegen.compile.skip>false</codegen.compile.skip>
         <codegen.clean.skip>false</codegen.clean.skip>
         <codegen.phase>generate-sources</codegen.phase>
+        <org.roaringbitmap.version>0.9.31</org.roaringbitmap.version>
 
         <!-- calcite -->
+        <calcite.version>1.11.0-SNAPSHOT</calcite.version>
         <avatica.core.version>1.10.0</avatica.core.version>
         <calcite-linq4j.version>1.14.0</calcite-linq4j.version>
         <avatica-serve.version>1.9.0</avatica-serve.version>
@@ -113,6 +120,20 @@
         <hamcrest-core.version>1.3</hamcrest-core.version>
         <sqlline.version>1.1.9</sqlline.version>
         <esri-geometry-api.version>2.0.0</esri-geometry-api.version>
+        <arrow.version>11.0.0</arrow.version>
+        <metrics.version>4.2.18</metrics.version>
+
+        <!-- orc -->
+        <test.tmp.dir>${project.build.directory}/testing-tmp</test.tmp.dir>
+        <example.dir>${project.basedir}/../examples</example.dir>
+        <min.hadoop.version>2.7.3</min.hadoop.version>
+        <hadoop.version>3.2.2</hadoop.version>
+        <orc.version>1.6.9</orc.version>
+        <storage-api.version>2.7.1</storage-api.version>
+        <gson.version>2.9.0</gson.version>
+        <opencsv.version>5.9</opencsv.version>
+        <commons_cli.version>1.5.0</commons_cli.version>
+        <junit_jupiter_version>5.9.3</junit_jupiter_version>
 
         <!-- qatest -->
         <junit_version>4.12</junit_version>
@@ -125,10 +146,12 @@
         <hamcrest.version>2.2</hamcrest.version>
         <sshtester.version>0.2.8</sshtester.version>
         <xml-apis.version>1.4.01</xml-apis.version>
+
+        <mockito.verison>3.12.4</mockito.verison>
         <spring_version>2.5.6.SEC03</spring_version>
-        <mockito.verison>2.23.4</mockito.verison>
         <powermock.version>2.0.2</powermock.version>
-        <ibatis-sqlmap.version>2.3.4.726</ibatis-sqlmap.version>
+        <equalsverifier.version>3.16</equalsverifier.version>
+        <byte-buddy.version>1.9.3</byte-buddy.version>
 
         <!-- for common -->
         <commons-beanutils.version>1.9.4</commons-beanutils.version>
@@ -159,9 +182,11 @@
         <aliyun-sdk-oss.version>2.8.2</aliyun-sdk-oss.version>
         <odps-sdk-udf.version>0.17.3</odps-sdk-udf.version>
         <nfs-client.version>1.1.0</nfs-client.version>
+        <caffeine.version>2.9.3</caffeine.version>
 
         <!-- for ssl private key parser -->
-        <bouncycastle.version>1.69</bouncycastle.version>
+        <bouncycastle.version>1.70</bouncycastle.version>
+
     </properties>
 
     <modules>
@@ -177,6 +202,8 @@
         <module>polardbx-rpc</module>
         <module>polardbx-parser</module>
         <module>polardbx-orc</module>
+        <module>polardbx-orc-tools</module>
+        <!--        <module>tddl-qatest</module>-->
         <module>polardbx-test</module>
     </modules>
 
@@ -240,6 +267,25 @@
                 <groupId>org.codehaus.groovy</groupId>
                 <artifactId>groovy-all</artifactId>
                 <version>${groovy_version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cglib</groupId>
+                <artifactId>cglib-nodep</artifactId>
+                <version>${cglib-nodep.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.polardbx</groupId>
+                <artifactId>polardbx-calcite</artifactId>
+                <version>${calcite.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba.polardbx</groupId>
+                <artifactId>polardbx-calcite</artifactId>
+                <version>${calcite.version}</version>
+                <classifier>tests</classifier>
+                <scope>test</scope>
             </dependency>
             <!-- driver -->
             <dependency>
@@ -335,9 +381,25 @@
                 <version>${cronutils.version}</version>
             </dependency>
             <dependency>
+                <groupId>org.roaringbitmap</groupId>
+                <artifactId>RoaringBitmap</artifactId>
+                <version>${org.roaringbitmap.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>com.emc.ecs</groupId>
                 <artifactId>nfs-client</artifactId>
                 <version>${nfs-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-inline</artifactId>
+                <version>${mockito.verison}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${byte-buddy.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.hamcrest</groupId>
@@ -346,6 +408,40 @@
                 <scope>test</scope>
             </dependency>
 
+            <dependency>
+                <groupId>org.apache.arrow</groupId>
+                <artifactId>arrow-vector</artifactId>
+                <version>${arrow.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.arrow</groupId>
+                <artifactId>arrow-memory-netty</artifactId>
+                <version>${arrow.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.dropwizard.metrics</groupId>
+                <artifactId>metrics-core</artifactId>
+                <version>${metrics.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-inline</artifactId>
+                <version>${mockito.verison}</version>
+                <scope>test</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>net.bytebuddy</groupId>
+                <artifactId>byte-buddy-agent</artifactId>
+                <version>${byte-buddy.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -416,12 +512,17 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0-M4</version>
                 <configuration>
+                    <argLine>-javaagent:${project.basedir}/target/byte-buddy-agent-${byte-buddy.version}.jar</argLine>
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
                     <excludes>
                         <exclude>**/*NoRunTest.java</exclude>
                     </excludes>
+                    <systemPropertyVariables>
+                        <test.tmp.dir>${test.tmp.dir}</test.tmp.dir>
+                        <example.dir>${example.dir}</example.dir>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>
@@ -438,6 +539,71 @@
                         </file>
                     </additionalConfig>
                 </configuration>
+            </plugin>
+            <!-- for aone2 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.4</version>
+                <configuration>
+                    <finalName>corona-server</finalName>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <descriptors>
+                        <descriptor>assembly.xml</descriptor>
+                    </descriptors>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.1.0</version>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                        <configuration>
+                            <updatePomFile>true</updatePomFile>
+                            <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <inherited>true</inherited>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>net.bytebuddy</groupId>
+                                    <artifactId>byte-buddy-agent</artifactId>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
         <sourceDirectory>src/main/java</sourceDirectory>

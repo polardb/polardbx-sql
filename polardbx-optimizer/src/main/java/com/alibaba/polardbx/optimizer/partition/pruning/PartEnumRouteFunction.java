@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;

@@ -17,11 +17,8 @@
 package com.alibaba.polardbx.executor.handler.subhandler;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlPlanState;
-import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
-import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -29,30 +26,18 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanRecord;
-import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaDdlPlan;
-import com.alibaba.polardbx.optimizer.view.InformationSchemaMoveDatabase;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.NONE;
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.PERCENTAGE;
 
 /**
  * Created by luoyanxin.
@@ -67,7 +52,6 @@ public class InformationSchemaDdlPlanHandler extends BaseVirtualViewSubClassHand
     public InformationSchemaDdlPlanHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
     }
-
 
     @Override
     public boolean isSupport(VirtualView virtualView) {
@@ -89,9 +73,11 @@ public class InformationSchemaDdlPlanHandler extends BaseVirtualViewSubClassHand
                 if (jobId > 0 && !success) {
                     progress = getTaskProgress(jobId);
                 }
-                Object[] row = new Object[] {ddlPlanRecord.getId(), ddlPlanRecord.getPlanId(), ddlPlanRecord.getJobId(),
+                Object[] row = new Object[] {
+                    ddlPlanRecord.getId(), ddlPlanRecord.getPlanId(), ddlPlanRecord.getJobId(),
                     ddlPlanRecord.getTableSchema(), ddlPlanRecord.getDdlStmt(), ddlPlanRecord.getState(),
-                ddlPlanRecord.getDdlType(), progress, ddlPlanRecord.getRetryCount(), ddlPlanRecord.getResult(), ddlPlanRecord.getExtras(),
+                    ddlPlanRecord.getDdlType(), progress, ddlPlanRecord.getRetryCount(), ddlPlanRecord.getResult(),
+                    ddlPlanRecord.getExtras(),
                     ddlPlanRecord.getGmtCreate(), ddlPlanRecord.getGmtModified(), ddlPlanRecord.getResource()};
 
                 cursor.addRow(row);
@@ -117,11 +103,11 @@ public class InformationSchemaDdlPlanHandler extends BaseVirtualViewSubClassHand
                     finishedCount++;
                 }
             }
-            if(totalCount == 0){
+            if (totalCount == 0) {
                 return 0;
             }
             return finishedCount * 100 / totalCount;
-        }catch (Exception e){
+        } catch (Exception e) {
             LOGGER.error("get task progress error, jobId:" + jobId, e);
             return 0;
         }

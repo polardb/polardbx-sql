@@ -192,7 +192,7 @@ public class GsiStatisticsManager extends AbstractLifecycle {
         gsiRecorder.increase();
     }
 
-    public boolean enableGsiStatisticsCollection() {
+    public static boolean enableGsiStatisticsCollection() {
         String enable =
             MetaDbInstConfigManager.getInstance()
                 .getInstProperty(ConnectionProperties.GSI_STATISTICS_COLLECTION,

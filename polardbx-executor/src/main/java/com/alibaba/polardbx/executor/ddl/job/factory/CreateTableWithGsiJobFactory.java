@@ -21,23 +21,26 @@ import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateTableWithGsiBuild
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreateGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar.CreateColumnarIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateColumnarIndex;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateSelect;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateTable;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4InsertOverwrite;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import org.apache.calcite.rel.core.DDL;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -114,7 +117,8 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
                 primaryTableTopology,
                 primaryTablePhysicalPlans,
                 false,
-                isAutoPartition);
+                isAutoPartition,
+                executionContext);
         CreateTableJobFactory executableDdlJob4CreateTable = new CreateTableJobFactory(
             false,
             hasTimestampColumnDefault,
@@ -122,7 +126,10 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
             specialDefaultValueFlags,
             addedForeignKeys,
             physicalPlanData,
-            executionContext);
+            preparedData.getDdlVersionId(),
+            executionContext,
+            preparedData.getPrimaryTablePreparedData().getLikeTableInfo()
+        );
 //        executableDdlJob4CreateTable.setSelectSql(selectSql);
         ExecutableDdlJob4CreateTable createTableJob =
             (ExecutableDdlJob4CreateTable) executableDdlJob4CreateTable.create();
@@ -131,31 +138,57 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
             createTableJob.getCreateTableAddTablesMetaTask(),
             createTableJob.getCdcDdlMarkTask());
 
+        final Map<String, CreateGlobalIndexPreparedData> cciPreparedDataMap = new HashMap<>();
+
+        // Create global secondary index
         Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
         for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
-            final CreateGlobalIndexPreparedData gsiPreparedData = entry.getValue();
-            ExecutableDdlJob4CreateGsi gsiJob = (ExecutableDdlJob4CreateGsi)
-                CreateGsiJobFactory.create4CreateTableWithGsi(ddl, gsiPreparedData, executionContext);
-            DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
-                gsiPreparedData.getSchemaName(),
-                gsiPreparedData.getPrimaryTableName(),
-                gsiPreparedData.getIndexTableName(),
-                GsiStatisticsSyncAction.INSERT_RECORD,
-                null);
-            gsiJob.appendTask(gsiStatisticsInfoTask);
-            result.combineTasks(gsiJob);
-            result.removeTaskRelationship(
-                gsiJob.getCreateGsiValidateTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
-            result.addTaskRelationship(
-                createTableJob.getCreateTableAddTablesExtMetaTask(), gsiJob.getCreateGsiValidateTask());
-            result.addTaskRelationship(
-                gsiJob.getCreateGsiValidateTask(), createTableJob.getCreateTablePhyDdlTask());
-            result.removeTaskRelationship(
-                createTableJob.getCreateTableAddTablesExtMetaTask(), createTableJob.getCreateTablePhyDdlTask());
-            result.addTaskRelationship(
-                createTableJob.getCreateTableAddTablesMetaTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
-            result.addTaskRelationship(
-                gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
+            final CreateGlobalIndexPreparedData indexPreparedData = entry.getValue();
+            if (indexPreparedData.isColumnarIndex()) {
+                // Clustered columnar index
+                final ExecutableDdlJob4CreateColumnarIndex cciJob = (ExecutableDdlJob4CreateColumnarIndex)
+                    CreateColumnarIndexJobFactory.create4CreateCci(ddl, indexPreparedData, executionContext);
+                if (indexPreparedData.isNeedToGetTableGroupLock()) {
+                    return cciJob;
+                }
+                // Add cci tasks
+                result.combineTasks(cciJob);
+
+                // Add relationship with before tasks
+                result.addTaskRelationship(
+                    createTableJob.getCreateTableAddTablesMetaTask(),
+                    cciJob.getCreateColumnarIndexValidateTask()
+                );
+
+                // Add Relationship with after tasks
+                result.addTaskRelationship(cciJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
+
+                // Add exclusive resources
+                result.addExcludeResources(cciJob.getExcludeResources());
+            } else {
+                // Global secondary index
+                ExecutableDdlJob4CreateGsi gsiJob = (ExecutableDdlJob4CreateGsi)
+                    CreateGsiJobFactory.create4CreateTableWithGsi(ddl, indexPreparedData, executionContext);
+                DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
+                    indexPreparedData.getSchemaName(),
+                    indexPreparedData.getPrimaryTableName(),
+                    indexPreparedData.getIndexTableName(),
+                    GsiStatisticsSyncAction.INSERT_RECORD,
+                    null);
+                gsiJob.appendTask(gsiStatisticsInfoTask);
+                result.combineTasks(gsiJob);
+                result.removeTaskRelationship(
+                    gsiJob.getCreateGsiValidateTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
+                result.addTaskRelationship(
+                    createTableJob.getCreateTableAddTablesExtMetaTask(), gsiJob.getCreateGsiValidateTask());
+                result.addTaskRelationship(
+                    gsiJob.getCreateGsiValidateTask(), createTableJob.getCreateTablePhyDdlTask());
+                result.removeTaskRelationship(
+                    createTableJob.getCreateTableAddTablesExtMetaTask(), createTableJob.getCreateTablePhyDdlTask());
+                result.addTaskRelationship(
+                    createTableJob.getCreateTableAddTablesMetaTask(), gsiJob.getCreateTableAddTablesExtMetaTask());
+                result.addTaskRelationship(gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
+            }
         }
 
         result.setExceptionActionForAllSuccessor(
@@ -185,6 +218,11 @@ public class CreateTableWithGsiJobFactory extends DdlJobFactory {
             indexTableTopologyMap.keySet().forEach(indexTableName -> {
                 resources.add(concatWithDot(schemaName, indexTableName));
             });
+        }
+        if (preparedData.getPrimaryTablePreparedData() != null
+            && preparedData.getPrimaryTablePreparedData().getLikeTableInfo() != null) {
+            LikeTableInfo likeTableInfo = preparedData.getPrimaryTablePreparedData().getLikeTableInfo();
+            resources.add(concatWithDot(likeTableInfo.getSchemaName(), likeTableInfo.getTableName()));
         }
     }
 

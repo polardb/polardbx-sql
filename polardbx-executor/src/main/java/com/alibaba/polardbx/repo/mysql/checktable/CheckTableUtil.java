@@ -28,6 +28,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -52,28 +54,8 @@ public class CheckTableUtil {
 
     private static final Logger logger = LoggerFactory.getLogger(CheckTableUtil.class);
 
-    public static TAtomDataSource findMasterAtomForGroup(TGroupDataSource groupDs) {
-        TAtomDataSource targetAtom = null;
-        Weight targetAtomWeight = null;
-        boolean isFindMaster = false;
-        List<TAtomDataSource> atomList = groupDs.getAtomDataSources();
-        Map<TAtomDataSource, Weight> atomDsWeightMaps = groupDs.getAtomDataSourceWeights();
-        for (Map.Entry<TAtomDataSource, Weight> atomWeightItem : atomDsWeightMaps.entrySet()) {
-            targetAtom = atomWeightItem.getKey();
-            targetAtomWeight = atomWeightItem.getValue();
-            if (targetAtomWeight.w > 0) {
-                isFindMaster = true;
-                break;
-            }
-        }
-
-        if (isFindMaster) {
-            return targetAtom;
-        } else {
-            targetAtom = atomList.get(0);
-        }
-
-        return targetAtom;
+    private static String esapceStringInQuota(String input) {
+        return input.replace("'", "\\'");
     }
 
     public static Map<String, List<String>> getTableIndexColumns(String schemaName, String groupName,
@@ -84,14 +66,14 @@ public class CheckTableUtil {
                 .getGroupExecutor(groupName).getDataSource();
         List<Pair<String, String>> tableColumns = new ArrayList<>();
         List<String> tableNameStrs =
-            tableNames.stream().map(o -> String.format("'%s'", o)).collect(Collectors.toList());
+            tableNames.stream().map(o -> String.format("'%s'", esapceStringInQuota(o))).collect(Collectors.toList());
         String tableNameStr = StringUtils.join(tableNameStrs, ",");
 
         ResultSet rs = null;
         Throwable ex = null;
         String sql = String.format(
             "select table_name, index_name, column_name from information_schema.statistics where table_name in (%s) and table_schema = '%s' and index_name = '%s'",
-            tableNameStr, phyDbName, indexName);
+            tableNameStr, esapceStringInQuota(phyDbName), esapceStringInQuota(indexName));
         try (Connection conn = tGroupDataSource.getConnection()) {
             rs = conn.createStatement().executeQuery(sql);
             while (rs.next()) {
@@ -182,7 +164,7 @@ public class CheckTableUtil {
 
         Throwable ex = null;
         StringBuilder targetSql = new StringBuilder("describe ");
-        targetSql.append("`" + tableName + "`");
+        targetSql.append(SqlIdentifier.surroundWithBacktick(tableName));
         String sql = targetSql.toString();
         if (isShadow) {
             sql = "select * from information_schema.columns where table_name='" + tableName + "' and TABLE_SCHEMA='"

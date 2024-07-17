@@ -16,10 +16,9 @@
 
 package com.alibaba.polardbx.executor.accumulator.state;
 
-import com.alibaba.polardbx.common.OrderInvariantHasher;
-import com.alibaba.polardbx.optimizer.datastruct.BooleanSegmentArrayList;
-import com.alibaba.polardbx.optimizer.datastruct.ObjectWithClassSegmentArrayList;
-import com.alibaba.polardbx.optimizer.state.GroupState;
+import com.alibaba.polardbx.common.IOrderInvariantHash;
+import com.alibaba.polardbx.executor.accumulator.datastruct.BooleanSegmentArrayList;
+import com.alibaba.polardbx.executor.accumulator.datastruct.ObjectSegmentArrayList;
 import org.openjdk.jol.info.ClassLayout;
 
 public class NullableCheckSumGroupState implements GroupState {
@@ -33,16 +32,17 @@ public class NullableCheckSumGroupState implements GroupState {
     /**
      * Disaggregated stored decimal objects.
      */
-    private final ObjectWithClassSegmentArrayList<OrderInvariantHasher> hasherList;
+    private final ObjectSegmentArrayList<IOrderInvariantHash> hasherList;
 
     private final int capacity;
 
-    public NullableCheckSumGroupState(int capacity) {
+    public NullableCheckSumGroupState(int capacity, Class clazz) {
         this.capacity = capacity;
-        this.valueIsNull = new BooleanSegmentArrayList(capacity);        this.hasherList = new ObjectWithClassSegmentArrayList<>(capacity, OrderInvariantHasher.class);
+        this.valueIsNull = new BooleanSegmentArrayList(capacity);
+        this.hasherList = new ObjectSegmentArrayList(capacity, clazz);
     }
 
-    public void set(int groupId, OrderInvariantHasher value) {
+    public void set(int groupId, IOrderInvariantHash value) {
         valueIsNull.set(groupId, false);
         hasherList.set(groupId, value);
     }
@@ -60,7 +60,7 @@ public class NullableCheckSumGroupState implements GroupState {
         return hasherList.get(groupId).getResult();
     }
 
-    public OrderInvariantHasher getHasher(int groupId) {
+    public IOrderInvariantHash getHasher(int groupId) {
         return hasherList.get(groupId);
     }
 

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.gsi;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -29,6 +27,8 @@ import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDynamicParam;
@@ -232,7 +232,7 @@ public class BatchUpdateBuilder extends PhysicalPlanBuilder {
             }
             SqlCall call = (SqlCall) node;
             SqlIdentifier column = (SqlIdentifier) call.getOperandList().get(0);
-            if (tableMeta.getColumnIgnoreCase(column.getLastName()) != null) {
+            if (tableMeta.containsColumn(column.getLastName())) {
                 columnList.add(column);
 
                 SqlNode newExpression = convertExpression(call.getOperandList().get(1),

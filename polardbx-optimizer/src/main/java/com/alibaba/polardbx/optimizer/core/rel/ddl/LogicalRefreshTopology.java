@@ -21,18 +21,21 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshTopologyPreparedData;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -92,13 +95,24 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
             refreshDbTopologyPreparedData.setSchemaName(dbEntry.getKey());
             refreshDbTopologyPreparedData.setInstGroupDbInfo(instGroupDbInfo);
             if (tableGroupConfig != null && tableGroupConfig.getAllTables().size() > 0) {
+                TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+
+                String tableName = tableGroupConfig.getTables().get(0);
+                TableMeta tableMeta = ec.getSchemaManager(tableGroupRecord.getSchema()).getTable(tableName);
+
+                List<String> partNames = new ArrayList<>();
+                List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+                PartitionInfoUtil.getPartitionName(tableMeta.getPartitionInfo(), partNames, subPartNamePairs);
+
                 List<String> newPartitions =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, groupDetailInfoExRecords.size(),
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                        groupDetailInfoExRecords.size(),
                         new TreeSet<>(String::compareToIgnoreCase), false);
+                Boolean hasSubPartition = !GeneralUtil.isEmpty(subPartNamePairs);
                 refreshDbTopologyPreparedData.setTableGroupName(tableGroupConfig.getTableGroupRecord().tg_name);
                 refreshDbTopologyPreparedData.setNewPartitionNames(newPartitions);
                 refreshDbTopologyPreparedData.setTargetGroupDetailInfoExRecords(groupDetailInfoExRecords);
-                refreshDbTopologyPreparedData.prepareInvisiblePartitionGroup();
+                refreshDbTopologyPreparedData.prepareInvisiblePartitionGroup(hasSubPartition);
             }
             dbPreparedDataMap.put(dbEntry.getKey(), refreshDbTopologyPreparedData);
         }

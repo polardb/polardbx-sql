@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Arrays;
@@ -31,13 +32,45 @@ public class ByteArrayBlock extends AbstractCommonBlock {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(ByteArrayBlock.class).instanceSize();
 
     private final int[] offsets;
-    private final byte[] data;
+    private byte[] data;
+
+    public ByteArrayBlock(int positionCount) {
+        this(0, positionCount, new boolean[positionCount], new int[positionCount], null);
+    }
 
     ByteArrayBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets, byte[] data) {
         super(DataTypes.BytesType, positionCount, valueIsNull, valueIsNull != null);
         this.offsets = offsets;
         this.data = data;
         updateSizeInfo();
+    }
+
+    public static ByteArrayBlock from(ByteArrayBlock other, int selSize, int[] selection) {
+        int[] offsets = null;
+        byte[] data = null;
+        if (other.data != null) {
+            if (selection == null) {
+                offsets = Arrays.copyOf(other.offsets, selSize);
+                data = Arrays.copyOf(other.data, other.endOffset(selSize));
+            } else {
+                offsets = new int[selSize];
+                for (int i = 0; i < selSize; i++) {
+                    int dataLength = other.endOffset(selection[i]) - other.beginOffset(selection[i]);
+                    offsets[i] = dataLength + (i == 0 ? 0 : offsets[i - 1]);
+                }
+                data = new byte[offsets[selSize - 1]];
+                for (int i = 0; i < selSize; i++) {
+                    int beginOffset = other.beginOffset(selection[i]);
+                    int dataLength = other.endOffset(selection[i]) - beginOffset;
+                    System.arraycopy(other.data, beginOffset, data, i == 0 ? 0 : offsets[i - 1], dataLength);
+                }
+            }
+        }
+        return new ByteArrayBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            offsets,
+            data);
     }
 
     @Override
@@ -86,9 +119,18 @@ public class ByteArrayBlock extends AbstractCommonBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxHash64.hash(data, beginOffset(pos), endOffset(pos) - beginOffset(pos));
+        }
+    }
+
+    @Override
     public boolean equals(int position, Block other, int otherPosition) {
         if (other instanceof ByteArrayBlock) {
-            return equals(position, (ByteArrayBlock) other, otherPosition);
+            return equals(position, other.cast(ByteArrayBlock.class), otherPosition);
         } else if (other instanceof ByteArrayBlockBuilder) {
             return equals(position, (ByteArrayBlockBuilder) other, otherPosition);
         } else {
@@ -140,6 +182,10 @@ public class ByteArrayBlock extends AbstractCommonBlock {
 
     public byte[] getData() {
         return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
     }
 
     @Override

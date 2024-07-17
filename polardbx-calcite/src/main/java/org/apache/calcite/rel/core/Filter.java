@@ -26,7 +26,9 @@ import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.SingleRel;
+import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMdUtil;
+import org.apache.calcite.rel.metadata.RelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexChecker;
 import org.apache.calcite.rex.RexNode;
@@ -145,13 +147,21 @@ public abstract class Filter extends SingleRel {
 
   @Deprecated // to be removed before 2.0
   public static double estimateFilteredRows(RelNode child, RexProgram program) {
-    final RelMetadataQuery mq = RelMetadataQuery.instance();
+    final RelMetadataQuery mq;
+    RelMetadataProvider provider = child.getCluster().getMetadataProvider();
+    // provider in cluster cannot be a JaninoRelMetadataProvider,
+    // for it doesn't support RelMetadataProvider.apply method
+    mq = RelMetadataQuery.instance(JaninoRelMetadataProvider.of(provider));
     return RelMdUtil.estimateFilteredRows(child, program, mq);
   }
 
   @Deprecated // to be removed before 2.0
   public static double estimateFilteredRows(RelNode child, RexNode condition) {
-    final RelMetadataQuery mq = RelMetadataQuery.instance();
+    final RelMetadataQuery mq;
+    RelMetadataProvider provider = child.getCluster().getMetadataProvider();
+    // provider in cluster cannot be a JaninoRelMetadataProvider,
+    // for it doesn't support RelMetadataProvider.apply method
+    mq = RelMetadataQuery.instance(JaninoRelMetadataProvider.of(provider));
     return RelMdUtil.estimateFilteredRows(child, condition, mq);
   }
 

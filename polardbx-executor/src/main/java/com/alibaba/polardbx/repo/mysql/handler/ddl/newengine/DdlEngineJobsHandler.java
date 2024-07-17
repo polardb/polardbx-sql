@@ -80,10 +80,6 @@ public abstract class DdlEngineJobsHandler extends HandlerCommon {
         return schedulerManager.fetchTaskRecord(jobId);
     }
 
-    protected void interruptJob(String schemaName, List<Long> jobIds) {
-        DdlRequest ddlRequest = new DdlRequest(schemaName, jobIds);
-        GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), schemaName);
-    }
 
     /**
      * ported from com.taobao.tddl.executor.ddl.engine.AsyncDDLManager#concatJobIds(java.util.List)
@@ -103,6 +99,6 @@ public abstract class DdlEngineJobsHandler extends HandlerCommon {
                            boolean rollbackOpt) {
         DdlRequest ddlRequest = new DdlRequest(schemaName.toLowerCase(), Lists.newArrayList(jobId));
         DdlEngineRequester.respond(ddlRequest, new DdlJobManager(), executionContext, checkResponseInMemory,
-            rollbackOpt);
+            rollbackOpt, false);
     }
 }

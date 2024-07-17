@@ -37,7 +37,30 @@ public enum FileStorageInfoKey {
     DELETE_POLICY,
     STATUS,
 
-    ENDPOINT_ORDINAL;
+    ENDPOINT_ORDINAL,
+
+    // DefaultEndpointsProtocol=https;AccountName=openpolardbx;AccountKey=xxxxxxxxxx+x/xxxxxxxxx/xxxx+xx==;EndpointSuffix=core.windows.net
+    AZURE_CONNECTION_STRING,
+    AZURE_CONTAINER_NAME;
+
+    public enum AzureConnectionStringKey {
+        DefaultEndpointsProtocol,
+        AccountName,
+        AccountKey,
+        EndpointSuffix;
+
+        public static AzureConnectionStringKey of(String key) {
+            if (TStringUtil.isEmpty(key)) {
+                return null;
+            }
+            for (AzureConnectionStringKey record : values()) {
+                if (record.name().equalsIgnoreCase(key)) {
+                    return record;
+                }
+            }
+            return null;
+        }
+    }
 
     public static FileStorageInfoKey of(String key) {
         if (TStringUtil.isEmpty(key)) {

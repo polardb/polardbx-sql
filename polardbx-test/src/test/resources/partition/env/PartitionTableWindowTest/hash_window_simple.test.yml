@@ -57,7 +57,7 @@ CREATE TABLE `t_simple` (
   `c3` int(11) DEFAULT NULL
   ) ENGINE = InnoDB SINGLE;
 insert into t_simple values (1,1,1), (1,1,2), (2,1,2), (3,1,2), (4,4,4);
-select c1,c2,(sum(c3) over (partition by c1,c2)) as sum1,(avg(c1) over (partition by c1)) as avg1 from t_simple order by c1,c2;
+/*TDDL:enable_sort_window=false*/select c1,c2,(sum(c3) over (partition by c1,c2)) as sum1,(avg(c1) over (partition by c1)) as avg1 from t_simple order by c1,c2;
   
 CREATE TABLE `t_broadcast` (
   `c1` int(11) NOT NULL,
@@ -66,3 +66,4 @@ CREATE TABLE `t_broadcast` (
   ) ENGINE = InnoDB BROADCAST;
 insert into t_broadcast values (1,1,1), (1,1,2), (2,1,2), (3,1,2), (3,3,3), (4,4,4), (4, null, 4);
 select c1,c2,(sum(c1) over (partition by c2)) as sum1, (avg(c3) over (partition by c1,c2)) as avg1, (count(distinct c2) over(partition by c1)) as count1 from t_broadcast order by c1,c2;
+/*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ select c1, count(1) over (partition by c1) as count1 from t1 order by c1, count1;

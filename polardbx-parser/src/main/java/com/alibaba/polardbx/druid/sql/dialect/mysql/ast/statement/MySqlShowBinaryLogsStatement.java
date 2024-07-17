@@ -22,6 +22,8 @@ public class MySqlShowBinaryLogsStatement extends MySqlStatementImpl implements 
 
     private SQLExpr with;
 
+    private boolean full;
+
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
             acceptChild(visitor, with);
@@ -35,5 +37,13 @@ public class MySqlShowBinaryLogsStatement extends MySqlStatementImpl implements 
 
     public void setWith(SQLExpr with) {
         this.with = with;
+    }
+
+    public boolean isFull() {
+        return full;
+    }
+
+    public void setFull(boolean full) {
+        this.full = full;
     }
 }

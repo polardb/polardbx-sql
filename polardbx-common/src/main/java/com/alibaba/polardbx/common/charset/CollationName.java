@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -54,7 +55,7 @@ public enum CollationName {
     GBK_CHINESE_CI(28, false, true),
     LATIN5_TURKISH_CI(30, false, true),
     ARMSCII8_GENERAL_CI(32, false, true),
-    UTF8_GENERAL_CI(33, false, true),
+    UTF8_GENERAL_CI(33, false, true, "utf8mb3_general_ci"),
     UCS2_GENERAL_CI(35, false, true),
     CP866_GENERAL_CI(36, false, true),
     KEYBCS2_GENERAL_CI(37, false, true),
@@ -111,32 +112,32 @@ public enum CollationName {
     GBK_BIN(87, true, false),
     LATIN5_BIN(78, true, false),
     ARMSCII8_BIN(64, true, false),
-    UTF8_BIN(83, true, false),
-    UTF8_UNICODE_CI(192, false, false),
-    UTF8_ICELANDIC_CI(193, false, false),
-    UTF8_LATVIAN_CI(194, false, false),
-    UTF8_ROMANIAN_CI(195, false, false),
-    UTF8_SLOVENIAN_CI(196, false, false),
-    UTF8_POLISH_CI(197, false, false),
-    UTF8_ESTONIAN_CI(198, false, false),
-    UTF8_SPANISH_CI(199, false, false),
-    UTF8_SWEDISH_CI(200, false, false),
-    UTF8_TURKISH_CI(201, false, false),
-    UTF8_CZECH_CI(202, false, false),
-    UTF8_DANISH_CI(203, false, false),
-    UTF8_LITHUANIAN_CI(204, false, false),
-    UTF8_SLOVAK_CI(205, false, false),
-    UTF8_SPANISH2_CI(206, false, false),
-    UTF8_ROMAN_CI(207, false, false),
-    UTF8_PERSIAN_CI(208, false, false),
-    UTF8_ESPERANTO_CI(209, false, false),
-    UTF8_HUNGARIAN_CI(210, false, false),
-    UTF8_SINHALA_CI(211, false, false),
-    UTF8_GERMAN2_CI(212, false, false),
-    UTF8_CROATIAN_CI(213, false, false),
-    UTF8_UNICODE_520_CI(214, false, false),
-    UTF8_VIETNAMESE_CI(215, false, false),
-    UTF8_GENERAL_MYSQL500_CI(223, false, false),
+    UTF8_BIN(83, true, false, "utf8mb3_bin"),
+    UTF8_UNICODE_CI(192, false, false, "utf8mb3_unicode_ci"),
+    UTF8_ICELANDIC_CI(193, false, false, "utf8mb3_icelandic_ci"),
+    UTF8_LATVIAN_CI(194, false, false, "utf8mb3_latvian_ci"),
+    UTF8_ROMANIAN_CI(195, false, false, "utf8mb3_romanian_ci"),
+    UTF8_SLOVENIAN_CI(196, false, false, "utf8mb3_slovenian_ci"),
+    UTF8_POLISH_CI(197, false, false, "utf8mb3_polish_ci"),
+    UTF8_ESTONIAN_CI(198, false, false, "utf8mb3_estonian_ci"),
+    UTF8_SPANISH_CI(199, false, false, "utf8mb3_spanish_ci"),
+    UTF8_SWEDISH_CI(200, false, false, "utf8mb3_swedish_ci"),
+    UTF8_TURKISH_CI(201, false, false, "utf8mb3_turkish_ci"),
+    UTF8_CZECH_CI(202, false, false, "utf8mb3_czech_ci"),
+    UTF8_DANISH_CI(203, false, false, "utf8mb3_danish_ci"),
+    UTF8_LITHUANIAN_CI(204, false, false, "utf8mb3_lithuanian_ci"),
+    UTF8_SLOVAK_CI(205, false, false, "utf8mb3_slovak_ci"),
+    UTF8_SPANISH2_CI(206, false, false, "utf8mb3_spanish2_ci"),
+    UTF8_ROMAN_CI(207, false, false, "utf8mb3_roman_ci"),
+    UTF8_PERSIAN_CI(208, false, false, "utf8mb3_persian_ci"),
+    UTF8_ESPERANTO_CI(209, false, false, "utf8mb3_esperanto_ci"),
+    UTF8_HUNGARIAN_CI(210, false, false, "utf8mb3_hungarian_ci"),
+    UTF8_SINHALA_CI(211, false, false, "utf8mb3_sinhala_ci"),
+    UTF8_GERMAN2_CI(212, false, false, "utf8mb3_german2_ci"),
+    UTF8_CROATIAN_CI(213, false, false, "utf8mb3_croatian_ci"),
+    UTF8_UNICODE_520_CI(214, false, false, "utf8mb3_unicode_520_ci"),
+    UTF8_VIETNAMESE_CI(215, false, false, "utf8mb3_vietnamese_ci"),
+    UTF8_GENERAL_MYSQL500_CI(223, false, false, "utf8mb3_general_mysql500_ci"),
     UCS2_BIN(90, true, false),
     UCS2_UNICODE_CI(128, false, false),
     UCS2_ICELANDIC_CI(129, false, false),
@@ -312,17 +313,14 @@ public enum CollationName {
     UTF8MB4_VI_0900_AS_CS(300, true, false, true),
     UTF8MB4_ZH_0900_AS_CS(308, true, false, true);
 
-    /**
-     * Collect all collation names to map so we can check them in O(1)
-     */
-    public static Map<String, CollationName> COLLATION_NAME_MAP = Arrays.stream(values())
-        .collect(Collectors.toMap(Enum::name, Function.identity()));
-
     public static ImmutableList<CollationName> POLAR_DB_X_IMPLEMENTED_COLLATION_NAMES = ImmutableList.of(
         // for utf8
         UTF8_GENERAL_CI, UTF8_BIN, UTF8_UNICODE_CI, UTF8_GENERAL_MYSQL500_CI,
 
-        // for utf8mb
+        // for utf8mb4 in MySQL 8.0
+        UTF8MB4_ZH_0900_AS_CS,
+
+        // for utf8mb4
         UTF8MB4_GENERAL_CI, UTF8MB4_BIN, UTF8MB4_UNICODE_CI,
 
         // for utf16
@@ -362,21 +360,92 @@ public enum CollationName {
     /**
      * Mapping from upper case collation string to collation name.
      */
-    static Map<String, CollationName> STRING_TO_COLLATION_MAP_UPPER = Arrays.stream(CollationName.values())
-        .collect(Collectors.toMap(k -> k.name(), k -> k));
+    static Map<String, CollationName> STRING_TO_COLLATION_MAP_UPPER = new HashMap<>();
 
     /**
      * Mapping from lower case collation string to collation name.
      */
-    static Map<String, CollationName> STRING_TO_COLLATION_MAP_LOWER = Arrays.stream(CollationName.values())
-        .collect(Collectors.toMap(k -> k.name(), k -> k));
+    static Map<String, CollationName> STRING_TO_COLLATION_MAP_LOWER = new HashMap<>();
 
     static {
         // Initialize both upper case & lower case to check implementation in O(1).
         for (CollationName collationName : POLAR_DB_X_IMPLEMENTED_COLLATION_NAMES) {
             POLAR_DB_X_IMPLEMENTED_COLLATION_NAME_STRINGS.add(collationName.name().toUpperCase());
             POLAR_DB_X_IMPLEMENTED_COLLATION_NAME_STRINGS.add(collationName.name().toLowerCase());
+
+            // If the implemented collation had alias, also storing the alias.
+            if (collationName.getAlias() != null) {
+                String aliasCollation = collationName.getAlias();
+                POLAR_DB_X_IMPLEMENTED_COLLATION_NAME_STRINGS.add(aliasCollation.toUpperCase());
+                POLAR_DB_X_IMPLEMENTED_COLLATION_NAME_STRINGS.add(aliasCollation.toLowerCase());
+            }
         }
+
+        for (CollationName collationName : CollationName.values()) {
+            // Mapping from upper case collation string to collation name.
+            STRING_TO_COLLATION_MAP_UPPER.put(collationName.name(), collationName);
+            // Mapping from lower case collation string to collation name.
+            STRING_TO_COLLATION_MAP_LOWER.put(collationName.name().toLowerCase(), collationName);
+        }
+
+        // Mapping from UTF8MB3 in mysql 8.0 style to UTF8MB4 in mysql 5.7 style.
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_bin", UTF8_BIN);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_croatian_ci", UTF8_CROATIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_czech_ci", UTF8_CZECH_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_danish_ci", UTF8_DANISH_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_esperanto_ci", UTF8_ESPERANTO_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_estonian_ci", UTF8_ESTONIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_general_ci", UTF8_GENERAL_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_general_mysql500_ci", UTF8_GENERAL_MYSQL500_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_german2_ci", UTF8_GERMAN2_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_hungarian_ci", UTF8_HUNGARIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_icelandic_ci", UTF8_ICELANDIC_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_latvian_ci", UTF8_LATVIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_lithuanian_ci", UTF8_LITHUANIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_persian_ci", UTF8_PERSIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_polish_ci", UTF8_POLISH_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_romanian_ci", UTF8_ROMANIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_roman_ci", UTF8_ROMAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_sinhala_ci", UTF8_SINHALA_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_slovak_ci", UTF8_SLOVAK_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_slovenian_ci", UTF8_SLOVENIAN_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_spanish2_ci", UTF8_SPANISH2_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_spanish_ci", UTF8_SPANISH_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_swedish_ci", UTF8_SWEDISH_CI);
+        // STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_tolower_ci", UTF8_TOLOWER_CI); // not support yet.
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_turkish_ci", UTF8_TURKISH_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_unicode_520_ci", UTF8_UNICODE_520_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_unicode_ci", UTF8_UNICODE_CI);
+        STRING_TO_COLLATION_MAP_LOWER.put("utf8mb3_vietnamese_ci", UTF8_VIETNAMESE_CI);
+
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_BIN", UTF8_BIN);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_CROATIAN_CI", UTF8_CROATIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_CZECH_CI", UTF8_CZECH_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_DANISH_CI", UTF8_DANISH_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_ESPERANTO_CI", UTF8_ESPERANTO_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_ESTONIAN_CI", UTF8_ESTONIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_GENERAL_CI", UTF8_GENERAL_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_GENERAL_MYSQL500_CI", UTF8_GENERAL_MYSQL500_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_GERMAN2_CI", UTF8_GERMAN2_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_HUNGARIAN_CI", UTF8_HUNGARIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_ICELANDIC_CI", UTF8_ICELANDIC_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_LATVIAN_CI", UTF8_LATVIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_LITHUANIAN_CI", UTF8_LITHUANIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_PERSIAN_CI", UTF8_PERSIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_POLISH_CI", UTF8_POLISH_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_ROMANIAN_CI", UTF8_ROMANIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_ROMAN_CI", UTF8_ROMAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_SINHALA_CI", UTF8_SINHALA_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_SLOVAK_CI", UTF8_SLOVAK_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_SLOVENIAN_CI", UTF8_SLOVENIAN_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_SPANISH2_CI", UTF8_SPANISH2_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_SPANISH_CI", UTF8_SPANISH_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_SWEDISH_CI", UTF8_SWEDISH_CI);
+        // STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_TOLOWER_CI", UTF8_TOLOWER_CI); // not support yet.
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_TURKISH_CI", UTF8_TURKISH_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_UNICODE_520_CI", UTF8_UNICODE_520_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_UNICODE_CI", UTF8_UNICODE_CI);
+        STRING_TO_COLLATION_MAP_UPPER.put("UTF8MB3_VIETNAMESE_CI", UTF8_VIETNAMESE_CI);
     }
 
     /**
@@ -394,15 +463,30 @@ public enum CollationName {
      */
     private final boolean isMySQL80NewSupported;
 
+    /**
+     * The alias of this collation.
+     */
+    private final String alias;
+
     CollationName(int mysqlCollationId, boolean isCaseSensitive, boolean isDefaultCollation) {
-        this(mysqlCollationId, isCaseSensitive, isDefaultCollation, false);
+        this(mysqlCollationId, isCaseSensitive, isDefaultCollation, false, null);
+    }
+
+    CollationName(int mysqlCollationId, boolean isCaseSensitive, boolean isDefaultCollation, String alias) {
+        this(mysqlCollationId, isCaseSensitive, isDefaultCollation, false, alias);
     }
 
     CollationName(int mysqlCollationId, boolean isCaseSensitive, boolean isDefaultCollation,
                   boolean isMySQL80NewSupported) {
+        this(mysqlCollationId, isCaseSensitive, isDefaultCollation, isMySQL80NewSupported, null);
+    }
+
+    CollationName(int mysqlCollationId, boolean isCaseSensitive, boolean isDefaultCollation,
+                  boolean isMySQL80NewSupported, String alias) {
         this.mysqlCollationId = mysqlCollationId;
         this.isCaseSensitive = isCaseSensitive;
         this.isMySQL80NewSupported = isMySQL80NewSupported;
+        this.alias = alias;
     }
 
     public boolean isCaseSensitive() {
@@ -415,6 +499,10 @@ public enum CollationName {
 
     public int getMysqlCollationId() {
         return mysqlCollationId;
+    }
+
+    public String getAlias() {
+        return alias;
     }
 
     /**
@@ -595,6 +683,7 @@ public enum CollationName {
             .put(new MixCollationKey(UTF8MB4_GENERAL_CI, LATIN1_SPANISH_CI), UTF8MB4_GENERAL_CI)
             .put(new MixCollationKey(UTF8MB4_GENERAL_CI, BIG5_BIN), UTF8MB4_GENERAL_CI)
             .put(new MixCollationKey(UTF8MB4_GENERAL_CI, BIG5_CHINESE_CI), UTF8MB4_GENERAL_CI)
+            .put(new MixCollationKey(UTF8MB4_BIN, UTF8MB4_GENERAL_CI), UTF8MB4_BIN)
             .put(new MixCollationKey(UTF8MB4_BIN, UTF16LE_GENERAL_CI), UTF16LE_GENERAL_CI)
             .put(new MixCollationKey(UTF8MB4_BIN, UTF16LE_BIN), UTF16LE_BIN)
             .put(new MixCollationKey(UTF8MB4_BIN, ASCII_GENERAL_CI), UTF8MB4_BIN)
@@ -808,6 +897,11 @@ public enum CollationName {
             .put(new MixCollationKey(BINARY, LATIN1_SPANISH_CI), BINARY)
             .put(new MixCollationKey(BINARY, BIG5_BIN), BINARY)
             .put(new MixCollationKey(BINARY, BIG5_CHINESE_CI), BINARY)
+            // If UTF8MB4_0900_AI_CI exists, it means the server is in MySQL 80 mode and unicode_ci and general_ci
+            // should be compatible with it.
+            .put(new MixCollationKey(UTF8MB4_0900_AI_CI, UTF8MB4_GENERAL_CI), UTF8MB4_0900_AI_CI)
+            .put(new MixCollationKey(UTF8MB4_0900_AI_CI, UTF8MB4_UNICODE_CI), UTF8MB4_0900_AI_CI)
+            .put(new MixCollationKey(UTF8MB4_0900_AI_CI, UTF8MB4_BIN), UTF8MB4_BIN)
             .put(new MixCollationKey(UTF8MB4_0900_AI_CI, UTF8_GENERAL_CI), UTF8MB4_0900_AI_CI)
             .put(new MixCollationKey(UTF8MB4_0900_AI_CI, UTF8_BIN), UTF8MB4_0900_AI_CI)
             .put(new MixCollationKey(UTF8MB4_0900_AI_CI, UTF8_UNICODE_CI), UTF8MB4_0900_AI_CI)
@@ -915,11 +1009,7 @@ public enum CollationName {
     }
 
     public static CollationName findCollationName(String collation) {
-        if (TStringUtil.isEmpty(collation)) {
-            return null;
-        }
-        return Arrays.stream(values())
-            .filter(c -> c.name().equalsIgnoreCase(collation))
-            .findFirst().orElse(null);
+        // The old logic has risk that the alias collation like UTF8MB3_xxx will not be recognized.
+        return of(collation, false);
     }
 }

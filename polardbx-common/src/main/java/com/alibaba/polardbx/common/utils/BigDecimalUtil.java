@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.common.utils;
 
-import org.apache.commons.lang3.math.NumberUtils;
+import com.alibaba.polardbx.common.datatype.Decimal;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -28,7 +28,7 @@ public class BigDecimalUtil {
     private static final long BITS_PER_DIGIT = 3402;
     private static final int DIGIT_PER_INT = 9;
     private static final int DIGIT_PER_LONG = 18;
-    private static final int RADIX_10 = 1000000000;
+    private static final int RADIX_10 = 1_000_000_000;
     private static final BigInteger LONG_RADIX_10 = BigInteger.valueOf(0xde0b6b3a7640000L);
 
     private static final int MAX_MAG_LENGTH = Integer.MAX_VALUE / Integer.SIZE + 1; // (1 << 26)
@@ -37,6 +37,8 @@ public class BigDecimalUtil {
     static final long LONG_MASK = 0xffffffffL;
     static final byte[] ZERO_BYTE = new byte[] {'0'};
     private static final int SCHOENHAGE_BASE_CONVERSION_THRESHOLD = 20;
+
+    private static final byte[] MIN_INT128_BYTES = "-170141183460469231731687303715884105728".getBytes();
 
     /**
      * for XRowSet fastGetBytes only
@@ -331,5 +333,155 @@ public class BigDecimalUtil {
 
         }
         return keep == 0 ? val : Arrays.copyOfRange(val, keep, vlen);
+    }
+
+    public static byte[] fastInt128ToBytes(long int128Low, long int128High) {
+        if (int128Low == 0 && int128High == 0) {
+            return ZERO_BYTE;
+        }
+        if (int128Low == 0 && int128High == Long.MIN_VALUE) {
+            return MIN_INT128_BYTES;
+        }
+        // will not overflow size of 39
+        byte[] buffer = new byte[Decimal.MAX_128_BIT_PRECISION + 1];
+        int bufCount = 0;
+        int nonZeroBufCount = 0;
+
+        long tmpLow, tmpHigh;
+        if (int128High >= 0) {
+            tmpLow = int128Low;
+            tmpHigh = int128High;
+        } else {
+            tmpLow = ~int128Low + 1;
+            tmpHigh = ~int128High;
+            if (tmpLow == 0) {
+                tmpHigh += 1;
+            }
+        }
+        int x1 = (int) tmpLow;
+        int x2 = (int) (tmpLow >>> 32);
+        int x3 = (int) tmpHigh;
+        int x4 = (int) (tmpHigh >>> 32);
+        boolean skip;
+        long rightUnsigned = RADIX_10 & LONG_MASK;
+        while (!((x1 == 0) && (x2 == 0) && (x3 == 0) && (x4 == 0))) {
+            skip = true;
+            long quotient;
+            long remainder = 0;
+            if (x4 != 0) {
+                remainder = (x4 & LONG_MASK) + (remainder << 32);
+                quotient = remainder / rightUnsigned;
+                remainder %= rightUnsigned;
+                x4 = (int) quotient;
+                skip = false;
+            }
+            if (x3 != 0 || !skip) {
+                remainder = (x3 & LONG_MASK) + (remainder << 32);
+                quotient = remainder / rightUnsigned;
+                remainder %= rightUnsigned;
+                x3 = (int) quotient;
+                skip = false;
+            }
+            if (x2 != 0 || !skip) {
+                remainder = (x2 & LONG_MASK) + (remainder << 32);
+                quotient = remainder / rightUnsigned;
+                remainder %= rightUnsigned;
+                x2 = (int) quotient;
+                skip = false;
+            }
+            remainder = (x1 & LONG_MASK) + (remainder << 32);
+            quotient = remainder / rightUnsigned;
+            remainder %= rightUnsigned;
+            x1 = (int) quotient;
+
+            for (int i = 0; i < DIGIT_PER_INT && bufCount < buffer.length; ++i) {
+                int digit = (((int) remainder) % 10);
+                remainder /= 10;
+                buffer[bufCount] = (byte) (digit + '0');
+                ++bufCount;
+                if (digit != 0) {
+                    nonZeroBufCount = bufCount;
+                }
+            }
+        }
+
+        byte[] result;
+        if (int128High >= 0) {
+            result = new byte[nonZeroBufCount];
+            for (int i = 0; i < nonZeroBufCount; ++i) {
+                result[i] = buffer[nonZeroBufCount - i - 1];
+            }
+        } else {
+            result = new byte[nonZeroBufCount + 1];
+            result[0] = '-';
+            for (int i = 0; i < nonZeroBufCount; ++i) {
+                result[i + 1] = buffer[nonZeroBufCount - i - 1];
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Danger: ignoring overflow
+     */
+    public static long decodeAsUnscaledLong(byte[] buf, int scale) {
+        int i = 0;
+        int len = buf.length;
+        boolean negative = false;
+        boolean inFracPart = false;
+        long limit = -Long.MAX_VALUE;
+        int fracPart = 0;
+
+        if (len > 0) {
+            byte firstChar = buf[0];
+            if (firstChar < '0') { // Possible leading "+" or "-"
+                if (firstChar == '-') {
+                    negative = true;
+                    limit = Long.MIN_VALUE;
+                } else if (firstChar != '+') {
+                    throw new NumberFormatException(new String(buf));
+                }
+
+                if (len == 1) { // Cannot have lone "+" or "-"
+                    throw new NumberFormatException(new String(buf));
+                }
+                i++;
+            }
+            long multmin = limit / 10;
+            long result = 0;
+            while (i < len) {
+                byte b = buf[i++];
+                if (b == '.') {
+                    if (inFracPart) {
+                        throw new NumberFormatException(new String(buf));
+                    } else {
+                        inFracPart = true;
+                    }
+                    continue;
+                }
+
+                int digit = b - '0';
+                if (digit < 0 || result < multmin) {
+                    throw new NumberFormatException(new String(buf));
+                }
+                if (inFracPart) {
+                    fracPart++;
+                }
+
+                result *= 10;
+                if (result < limit + digit) {
+                    throw new NumberFormatException(new String(buf));
+                }
+                result -= digit;
+            }
+            while (fracPart < scale) {
+                result *= 10;
+                fracPart++;
+            }
+            return negative ? result : -result;
+        } else {
+            throw new NumberFormatException(new String(buf));
+        }
     }
 }

@@ -82,10 +82,11 @@ public class AlterTableGroupAddSubPartNonTemplateTest extends AlterTableGroupSub
         List<PartitionRuleInfo> partitionRuleInfos = new ArrayList<>();
 
         int initDataType = 5;
-        boolean ignoreInit = true;
+        boolean ignoreInit = false;
 
         for (int i = 1; i < partitions.length; i++) {
             for (int j = 0; j < subPartitions.length; j++) {
+                initDataType++;
                 partitionRuleInfos.add(new PartitionRuleInfo(
                     partStrategies[i], initDataType, ignoreInit,
                     tPartitionRules.get(partitions[i] + subPartitions[j]),

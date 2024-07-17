@@ -18,8 +18,8 @@ package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -28,16 +28,13 @@ public interface StatisticService {
 
     void setRowCount(String schema, String logicalTableName, long rowCount);
 
-    StatisticResult getCardinality(String schema, String logicalTableName, String columnName, boolean fromOptimzer,
+    StatisticResult getCardinality(String schema, String logicalTableName, String columnName, boolean fromOptimizer,
                                    boolean isNeedTrace);
 
-    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, String value,
+    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, List value,
                                  boolean isNeedTrace);
 
-    /**
-     * get frequency with row value.
-     */
-    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, Row.RowValue value,
+    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, String value,
                                  boolean isNeedTrace);
 
     StatisticResult getNullCount(String schema, String logicalTableName, String columnName, boolean isNeedTrace);
@@ -55,4 +52,9 @@ public interface StatisticService {
     void removeLogicalColumnList(String schema, String logicalTableName, List<String> columnNameList);
 
     Set<String> getTableNamesCollected(String schema);
+
+    /**
+     * return true if columns values in target table has skew value
+     */
+    StatisticResult hotColumns(String schema, String table, Collection<String> columns, boolean isNeedTrace);
 }

@@ -17,9 +17,13 @@
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
-public class SqlConvertAllSequences extends SqlDal {
+import java.util.Arrays;
+import java.util.List;
+
+public class SqlConvertAllSequences extends SqlDdl {
 
     private static final SqlSpecialOperator OPERATOR =
         new SqlAffectedRowsOperator("CONVERT_ALL_SEQUENCES", SqlKind.CONVERT_ALL_SEQUENCES);
@@ -31,7 +35,7 @@ public class SqlConvertAllSequences extends SqlDal {
 
     public SqlConvertAllSequences(SqlParserPos pos, Type fromType, Type toType, String schemaName,
                                   boolean allSchemata) {
-        super(pos);
+        super(OPERATOR, SqlParserPos.ZERO);
         this.fromType = fromType;
         this.toType = toType;
         this.schemaName = schemaName;
@@ -43,7 +47,7 @@ public class SqlConvertAllSequences extends SqlDal {
         final SqlWriter.Frame selectFrame = writer.startList(SqlWriter.FrameTypeEnum.SELECT);
         writer.keyword("CONVERT ALL SEQUENCES FROM");
         writer.print(fromType.name());
-        writer.keyword("TO");
+        writer.keyword(" TO");
         writer.print(toType.name());
         if (!allSchemata) {
             writer.keyword("FOR");
@@ -71,6 +75,11 @@ public class SqlConvertAllSequences extends SqlDal {
     @Override
     public SqlOperator getOperator() {
         return OPERATOR;
+    }
+
+    @Override
+    public List<SqlNode> getOperandList() {
+        return Arrays.asList();
     }
 
     @Override

@@ -16,14 +16,15 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.google.common.util.concurrent.ListenableFuture;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 import java.util.List;
 
 public interface AggHashMap extends GroupHashMap {
 
-    int[] putChunk(Chunk keyChunk, Chunk inputChunk);
+    void putChunk(Chunk keyChunk, Chunk inputChunk, IntArrayList groupIdResult);
 
     List<Chunk> getGroupChunkList();
 
@@ -40,5 +41,29 @@ public interface AggHashMap extends GroupHashMap {
     }
 
     default void close() {
+    }
+
+    /**
+     * To consume chunks, build hash table,
+     * maintain the groupId, and accumulate agg-function.
+     */
+    interface GroupBy {
+        /**
+         * The key-chunk and input chunk will share the same blocks.
+         *
+         * @param keyChunk chunks of group-by blocks.
+         * @param inputChunk chunks of total input blocks.
+         * @param groupIdResult if not null, fill the group ids into it.
+         */
+        void putChunk(Chunk keyChunk, Chunk inputChunk, IntArrayList groupIdResult);
+
+        /**
+         * Get the precise fixed estimated size in bytes of this object.
+         *
+         * @return size in bytes
+         */
+        long fixedEstimatedSize();
+
+        void close();
     }
 }

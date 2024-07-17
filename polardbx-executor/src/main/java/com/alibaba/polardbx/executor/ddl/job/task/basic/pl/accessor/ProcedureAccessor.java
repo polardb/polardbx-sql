@@ -34,8 +34,8 @@ import com.alibaba.polardbx.executor.pl.PLUtils;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.metadb.pl.procedure.CreateProcedureRecord;
-import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureMetaRecord;
 import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureDefinitionRecord;
+import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureMetaRecord;
 import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureStatusRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -46,7 +46,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.*;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.DEF_ROUTINE_CATALOG;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_CHARACTER_SET_CLIENT;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_COLLATION_CONNECTION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_DATABASE_COLLATION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.PROCEDURE;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.SQL;
 
 public class ProcedureAccessor extends AbstractAccessor {
     private static final Logger logger = LoggerFactory.getLogger(ProcedureAccessor.class);

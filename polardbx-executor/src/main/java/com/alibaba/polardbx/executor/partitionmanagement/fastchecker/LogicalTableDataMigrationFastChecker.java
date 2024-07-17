@@ -19,11 +19,10 @@ package com.alibaba.polardbx.executor.partitionmanagement.fastchecker;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.executor.backfill.Extractor;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
-import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -48,11 +47,10 @@ import java.util.stream.Collectors;
  */
 public class LogicalTableDataMigrationFastChecker extends FastChecker {
     public LogicalTableDataMigrationFastChecker(String srcSchemaName, String dstSchemaName, String srcLogicalTableName,
-                                                String dstLogicalTableName, Map<String, String> sourceTargetGroup,
+                                                String dstLogicalTableName,
                                                 Map<String, Set<String>> srcPhyDbAndTables,
                                                 Map<String, Set<String>> dstPhyDbAndTables, List<String> srcColumns,
                                                 List<String> dstColumns, List<String> srcPks, List<String> dstPks,
-                                                long parallelism, int lockTimeOut,
                                                 PhyTableOperation planSelectHashCheckSrc,
                                                 PhyTableOperation planSelectHashCheckWithUpperBoundSrc,
                                                 PhyTableOperation planSelectHashCheckWithLowerBoundSrc,
@@ -65,8 +63,8 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
                                                 PhyTableOperation planIdleSelectDst,
                                                 PhyTableOperation planSelectSampleSrc,
                                                 PhyTableOperation planSelectSampleDst) {
-        super(srcSchemaName, dstSchemaName, srcLogicalTableName, dstLogicalTableName, sourceTargetGroup,
-            srcPhyDbAndTables, dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks, parallelism, lockTimeOut,
+        super(srcSchemaName, dstSchemaName, srcLogicalTableName, dstLogicalTableName,
+            srcPhyDbAndTables, dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks,
             planSelectHashCheckSrc, planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
             planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
             planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
@@ -78,7 +76,7 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
      * dstTable: gsi table
      */
     public static List<FastChecker> create(String logicalSchemaSrc, String logicalSchemaDst, String logicalTableSrc,
-                                           String logicalTableDst, long parallelism, ExecutionContext ec) {
+                                           String logicalTableDst, ExecutionContext ec) {
         final SchemaManager srcSm = OptimizerContext.getContext(logicalSchemaSrc).getLatestSchemaManager();
         final TableMeta tableMetaSrc = srcSm.getTable(logicalTableSrc);
         final SchemaManager dstSm = OptimizerContext.getContext(logicalSchemaDst).getLatestSchemaManager();
@@ -92,13 +90,7 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
             tableMetaDst.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
 
         // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!!!
-        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMetaDst, ec);
-
-        if (parallelism <= 0) {
-            parallelism = Math.max(BackFillThreadPool.getInstance().getCorePoolSize() / 2, 1);
-        }
-
-        final int lockTimeOut = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_LOCK_TIMEOUT);
+        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMetaDst);
 
         final PhysicalPlanBuilder srcBuilder = new PhysicalPlanBuilder(logicalSchemaSrc, ec);
         final PhysicalPlanBuilder dstBuilder = new PhysicalPlanBuilder(logicalSchemaDst, ec);
@@ -123,9 +115,8 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
             for (String dstTb : dstTbs) {
                 FastChecker fc =
                     new LogicalTableDataMigrationFastChecker(logicalSchemaSrc, logicalSchemaDst, logicalTableSrc,
-                        logicalTableDst, null, ImmutableMap.of(srcDb, ImmutableSet.of(srcTb)),
-                        ImmutableMap.of(dstDb, ImmutableSet.of(dstTb)), allColumns, allColumns, pks, pks, parallelism,
-                        lockTimeOut,
+                        logicalTableDst, ImmutableMap.of(srcDb, ImmutableSet.of(srcTb)),
+                        ImmutableMap.of(dstDb, ImmutableSet.of(dstTb)), allColumns, allColumns, pks, pks,
 
                         srcBuilder.buildSelectHashCheckForChecker(tableMetaSrc, allColumns, pks, false, false),
                         srcBuilder.buildSelectHashCheckForChecker(tableMetaSrc, allColumns, pks, false, true),
@@ -140,8 +131,8 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
                         srcBuilder.buildIdleSelectForChecker(tableMetaSrc, allColumns),
                         dstBuilder.buildIdleSelectForChecker(tableMetaDst, allColumns),
 
-                        srcBuilder.buildSqlSelectForSample(tableMetaSrc, pks, pks, false, false),
-                        dstBuilder.buildSqlSelectForSample(tableMetaDst, pks, pks, false, false));
+                        srcBuilder.buildSqlSelectForSample(tableMetaSrc, pks),
+                        dstBuilder.buildSqlSelectForSample(tableMetaDst, pks));
                 fastCheckers.add(fc);
             }
 
@@ -149,8 +140,7 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
         } else {
             return ImmutableList.of(
                 new LogicalTableDataMigrationFastChecker(logicalSchemaSrc, logicalSchemaDst, logicalTableSrc,
-                    logicalTableDst, null, srcPhyDbAndTbs, dstPhyDbAndTbs, allColumns, allColumns, pks, pks,
-                    parallelism, lockTimeOut,
+                    logicalTableDst, srcPhyDbAndTbs, dstPhyDbAndTbs, allColumns, allColumns, pks, pks,
 
                     srcBuilder.buildSelectHashCheckForChecker(tableMetaSrc, allColumns, pks, false, false),
                     srcBuilder.buildSelectHashCheckForChecker(tableMetaSrc, allColumns, pks, false, true),
@@ -165,8 +155,8 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
                     srcBuilder.buildIdleSelectForChecker(tableMetaSrc, allColumns),
                     dstBuilder.buildIdleSelectForChecker(tableMetaDst, allColumns),
 
-                    srcBuilder.buildSqlSelectForSample(tableMetaSrc, pks, pks, false, false),
-                    dstBuilder.buildSqlSelectForSample(tableMetaDst, pks, pks, false, false)));
+                    srcBuilder.buildSqlSelectForSample(tableMetaSrc, pks),
+                    dstBuilder.buildSqlSelectForSample(tableMetaDst, pks)));
         }
     }
 }

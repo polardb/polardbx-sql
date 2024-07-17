@@ -32,9 +32,9 @@ public class AlterTablePurgeBeforeTimeStampJobFactory extends DdlJobFactory {
     private AlterTablePreparedData alterTablePreparedData;
 
     public AlterTablePurgeBeforeTimeStampJobFactory(String schemaName,
-                                             String logicalTableName,
-                                             AlterTablePreparedData alterTablePreparedData,
-                                             ExecutionContext executionContext) {
+                                                    String logicalTableName,
+                                                    AlterTablePreparedData alterTablePreparedData,
+                                                    ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.logicalTableName = logicalTableName;
         this.executionContext = executionContext;

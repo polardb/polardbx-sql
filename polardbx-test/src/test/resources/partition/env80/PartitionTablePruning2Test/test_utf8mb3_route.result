@@ -1,0 +1,30 @@
+DROP TABLE IF EXISTS tbl_key_str;
+CREATE TABLE IF NOT EXISTS tbl_key_str (
+	a varchar(64) NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 8;
+DROP TABLE IF EXISTS tbl_key_str2;
+CREATE TABLE IF NOT EXISTS tbl_key_str2 (
+	a varchar(64) COLLATE utf8_bin NOT NULL
+)
+PARTITION BY KEY (a) PARTITIONS 8;
+EXPLAIN SELECT *
+FROM tbl_key_str
+WHERE a = 'abc';
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_key_str[p3]", sql="SELECT `tbl_key_str`.`a` FROM ? AS `tbl_key_str` WHERE (`tbl_key_str`.`a` = ?)", params="abc")
+EXPLAIN SELECT *
+FROM tbl_key_str
+WHERE a = 'ABC';
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_key_str[p3]", sql="SELECT `tbl_key_str`.`a` FROM ? AS `tbl_key_str` WHERE (`tbl_key_str`.`a` = ?)", params="ABC")
+EXPLAIN SELECT *
+FROM tbl_key_str2
+WHERE a = 'abc';
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_key_str2[p2]", sql="SELECT `tbl_key_str2`.`a` FROM ? AS `tbl_key_str2` WHERE (`tbl_key_str2`.`a` = ?)", params="abc")
+EXPLAIN SELECT *
+FROM tbl_key_str2
+WHERE a = 'ABC';
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_key_str2[p6]", sql="SELECT `tbl_key_str2`.`a` FROM ? AS `tbl_key_str2` WHERE (`tbl_key_str2`.`a` = ?)", params="ABC")

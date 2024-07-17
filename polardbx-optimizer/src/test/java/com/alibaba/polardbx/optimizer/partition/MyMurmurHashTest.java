@@ -103,7 +103,7 @@ public class MyMurmurHashTest {
             for (int j = 0; j < colCnt; j++) {
                 datas[j] = shardVal;
             }
-            long val = MurmurHashUtils.murmurHashWithZeroSeed(calcHashCode(datas));
+            long val = MurmurHashUtils.murmurHash128WithZeroSeed(calcHashCode(datas));
             for (int j = 0; j < pCnt; j++) {
                 if (val < rangeArr[j]) {
                     ++rangeStat[j];

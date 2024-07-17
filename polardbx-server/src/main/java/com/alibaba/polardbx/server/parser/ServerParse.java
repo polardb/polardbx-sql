@@ -78,6 +78,9 @@ public final class ServerParse {
     public static final int TABLE = 100;
     public static final int START_SLAVE = 101;
     public static final int START_MASTER = 102;
+    public static final int ALTER_SYSTEM_SET = 103;
+
+    public static final char[] _ALTER_SYSTEM_SET = "ALTER SYSTEM SET".toCharArray();
 
     private static final Pattern ALTER_PROCEDURE_PATTERN = Pattern.compile("^\\s*alter\\s+procedure\\s+[\\s\\S]*$",
         Pattern.CASE_INSENSITIVE);
@@ -167,6 +170,9 @@ public final class ServerParse {
             case '#':
                 i = ParseUtil.comment(stmt, i);
                 continue;
+            case 'A':
+            case 'a':
+                return aCheck(stmt, i);
             case 'B':
             case 'b':
                 return bCheck(stmt, i);
@@ -427,6 +433,9 @@ public final class ServerParse {
                     case 'B':
                     case 'b':
                         return purgeTransBeforeCheck(stmt, offset);
+                    case 'V':
+                    case 'v':
+                        return purgeTransVCheck(stmt, offset);
                     default:
                         return OTHER;
                     }
@@ -464,6 +473,17 @@ public final class ServerParse {
                     }
                 }
                 return OTHER;
+            }
+        }
+        return OTHER;
+    }
+
+    // PURGE TRANS V1/V2
+    private static int purgeTransVCheck(ByteString stmt, int offset) {
+        if (stmt.length() > offset + "1".length()) {
+            char c1 = stmt.charAt(++offset);
+            if ((c1 == '1' || c1 == '2') && stmt.length() == offset + 1) {
+                return (offset << 8) | PURGE_TRANS;
             }
         }
         return OTHER;
@@ -747,6 +767,13 @@ public final class ServerParse {
             default:
                 return OTHER;
             }
+        }
+        return OTHER;
+    }
+
+    private static int aCheck(ByteString stmt, int offset) {
+        if (ParseUtil.compare(stmt, offset, _ALTER_SYSTEM_SET)) {
+            return ((offset + _ALTER_SYSTEM_SET.length) << 8) | ALTER_SYSTEM_SET;
         }
         return OTHER;
     }

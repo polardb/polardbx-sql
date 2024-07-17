@@ -16,6 +16,8 @@
  */
 package org.apache.calcite.sql.fun;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlAggFunction;
@@ -24,10 +26,8 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlSplittableAggFunction;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
-
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
+import org.apache.calcite.util.Optionality;
 
 import java.util.List;
 
@@ -141,6 +141,10 @@ public class SqlMinMaxAggFunction extends SqlAggFunction {
       return clazz.cast(SqlSplittableAggFunction.SelfSplitter.INSTANCE);
     }
     return super.unwrap(clazz);
+  }
+
+  @Override public Optionality getDistinctOptionality() {
+    return Optionality.IGNORED;
   }
 }
 

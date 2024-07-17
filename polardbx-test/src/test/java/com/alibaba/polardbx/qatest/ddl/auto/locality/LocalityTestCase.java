@@ -72,6 +72,12 @@ public class LocalityTestCase extends LocalityTestBase {
     }
 
     @Test
+    public void testAlterTableGroupAddSecondaryPartition()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("alter_tablegroup_add_secondary_partition_table.test.yml");
+    }
+
+    @Test
     public void testRebalanceSimpleWithEmptyTableGroup()
         throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("rebalance_drain_node_with_empty_tablegroup.test.yml");
@@ -153,6 +159,17 @@ public class LocalityTestCase extends LocalityTestBase {
         runTestCase("alter_locality_empty.test.yml");
     }
 
+    @Test
+    public void testAlterBalanceSingleTablePrimaryKey()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("alter_single_table_balance_primary_key.test.yml");
+    }
+
+    @Test
+    public void testSecondaryTableOperation()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("secondary_table_operation.test.yml");
+    }
 //    @Test
 //    public void testDatabaseLocality() throws FileNotFoundException, InterruptedException, SQLException {
 //        runTestCase("database_locality.test.yml");

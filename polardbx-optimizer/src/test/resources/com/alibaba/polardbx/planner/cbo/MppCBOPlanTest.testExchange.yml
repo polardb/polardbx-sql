@@ -32,7 +32,7 @@
 
     hashjoin(condition="id = id", type="inner")
       exchange(distribution=hash[0], collation=[])
-        semihashjoin(condition="name = name", type="semi")
+        semihashjoin(condition="name = name", type="semi", build="inner")
           exchange(distribution=hash[1], collation=[])
             logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `id`, `name`, `create_time` from `t1` as `t1`")
           exchange(distribution=hash[0], collation=[])
@@ -155,7 +155,7 @@
   plan: |
     HashAgg(count(*)="SUM(count(*))")
       Exchange(distribution=single, collation=[])
-        HashAgg(count(*)="COUNT()")
+        PartialHashAgg(count(*)="COUNT()")
           HashJoin(condition="id = id", type="inner")
             Exchange(distribution=hash[0], collation=[])
               LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id` FROM `v3` AS `v3`")
@@ -220,7 +220,7 @@
     Project(count(*)="count(*)")
       HashAgg(group="name3", count(*)="SUM(count(*))")
         Exchange(distribution=hash[0], collation=[])
-          HashAgg(group="name3", count(*)="COUNT()")
+          PartialHashAgg(group="name3", count(*)="COUNT()")
             SortMergeJoin(condition="id = id", type="inner")
               Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
                 LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id`, `name3` FROM `v3` AS `v3` ORDER BY `id`")
@@ -279,13 +279,13 @@
     /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE)*/
     select count(*) from v3 group by v3.name3 limit 1,2
   plan: |
-    Limit(offset=1, fetch=2)
-      Exchange(distribution=single, collation=[])
-        Limit(fetch=3)
-          Project(count(*)="count(*)")
-            SortAgg(group="name3", count(*)="SUM(count(*))")
-              Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
-                LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `name3`, COUNT(*) AS `count(*)` FROM `v3` AS `v3` GROUP BY `name3` ORDER BY `name3`")
+    limit(offset=1, fetch=2)
+      exchange(distribution=single, collation=[])
+        limit(fetch=3)
+          project(count(*)="count(*)")
+            sortagg(group="name3", count(*)="sum(count(*))")
+              exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+                logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `name3`, count(*) as `count(*)` from `v3` as `v3` group by `name3` order by `name3`")
 
 -
   sql: |

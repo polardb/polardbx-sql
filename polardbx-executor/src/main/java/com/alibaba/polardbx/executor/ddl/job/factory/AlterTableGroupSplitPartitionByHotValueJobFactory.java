@@ -36,14 +36,12 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionByHotValuePreparedData;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -86,7 +84,7 @@ public class AlterTableGroupSplitPartitionByHotValueJobFactory extends AlterTabl
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
                 alterTableGroupSplitPartitionByHotValuePreparedData.getTableGroupName(), tablesVersion, true,
-                alterTableGroupSplitPartitionByHotValuePreparedData.getTargetPhysicalGroups());
+                alterTableGroupSplitPartitionByHotValuePreparedData.getTargetPhysicalGroups(), false);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupSplitPartitionByHotValuePreparedData.getTableGroupName());
 
@@ -149,6 +147,7 @@ public class AlterTableGroupSplitPartitionByHotValueJobFactory extends AlterTabl
             return new TransientDdlJob();
         } else {
             executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
+            attacheCdcFinalMarkTask(executableDdlJob);
             return executableDdlJob;
         }
     }

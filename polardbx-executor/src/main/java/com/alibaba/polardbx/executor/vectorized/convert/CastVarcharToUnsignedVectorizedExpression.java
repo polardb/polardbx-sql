@@ -36,7 +36,7 @@ import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Var
 public class CastVarcharToUnsignedVectorizedExpression extends AbstractVectorizedExpression {
 
     public CastVarcharToUnsignedVectorizedExpression(DataType<?> outputDataType, int outputIndex,
-                                                   VectorizedExpression[] children) {
+                                                     VectorizedExpression[] children) {
         super(outputDataType, outputIndex, children);
     }
 
@@ -52,7 +52,7 @@ public class CastVarcharToUnsignedVectorizedExpression extends AbstractVectorize
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((ULongBlock) outputVectorSlot).longArray();
+        long[] output = outputVectorSlot.cast(ULongBlock.class).longArray();
 
         // handle nulls
         VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());

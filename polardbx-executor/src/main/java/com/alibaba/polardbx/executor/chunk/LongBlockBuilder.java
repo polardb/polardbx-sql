@@ -16,16 +16,30 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 
 public class LongBlockBuilder extends AbstractBlockBuilder {
 
-    protected final LongArrayList values;
+    protected final BatchedArrayList.BatchLongArrayList values;
+    private DriverObjectPool<long[]> objectPool;
+    private int chunkLimit;
 
     public LongBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new LongArrayList(capacity);
+        this.values = new BatchedArrayList.BatchLongArrayList(capacity);
+    }
+
+    public LongBlockBuilder(int capacity, int chunkLimit, DriverObjectPool<long[]> objectPool) {
+        super(capacity);
+        this.values = new BatchedArrayList.BatchLongArrayList(capacity);
+        this.objectPool = objectPool;
+        this.chunkLimit = chunkLimit;
     }
 
     @Override
@@ -63,7 +77,12 @@ public class LongBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public Block build() {
-        return new LongBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, values.elements());
+        Block block =
+            new LongBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, values.elements());
+        if (objectPool != null) {
+            block.setRecycler(objectPool.getRecycler(chunkLimit));
+        }
+        return block;
     }
 
     @Override
@@ -74,7 +93,16 @@ public class LongBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public BlockBuilder newBlockBuilder() {
-        return new LongBlockBuilder(getCapacity());
+        if (objectPool != null) {
+            return new LongBlockBuilder(getCapacity(), chunkLimit, objectPool);
+        } else {
+            return new LongBlockBuilder(getCapacity());
+        }
+    }
+
+    @Override
+    public BlockBuilder newBlockBuilder(ObjectPools objectPools, int chunkLimit) {
+        return new LongBlockBuilder(getCapacity(), chunkLimit, objectPools.getLongArrayPool());
     }
 
     @Override

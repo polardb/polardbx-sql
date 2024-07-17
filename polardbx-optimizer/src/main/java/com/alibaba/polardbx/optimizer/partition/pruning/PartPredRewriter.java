@@ -20,7 +20,10 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.Lists;
@@ -41,7 +44,9 @@ import org.apache.calcite.sql.SqlOperator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.OR;
@@ -1308,4 +1313,5 @@ public class PartPredRewriter {
 
         return false;
     }
+
 }

@@ -1,0 +1,45 @@
+SQL:
+  - sql: |
+      /*!TDDL:cmd_extra(ENABLE_EXPAND_DISTINCTAGG=false)*/SELECT tag_code AS tagCode,COUNT(DISTINCT mail_no),COUNT(DISTINCT mail_no) AS quantity FROM xx WHERE create_time >= '1992-07-05 00:00:00' AND create_time <'1992-09-05 00:00:00' GROUP BY tagCode
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="g_i_tag[p1,p2,p3,...p40]", shardcount=40, sql="select `tag_code` as `tagcode`, count(distinct `mail_no`) as `count(distinct mail_no)`, count(distinct `mail_no`) as `quantity` from `g_i_tag` as `g_i_tag` where ((`create_time` >= ?) and (`create_time` < ?)) group by `tag_code`")
+  - sql: |
+        /*!TDDL:cmd_extra(ENABLE_EXPAND_DISTINCTAGG=false)*/
+        SELECT tag_code AS tagCode,COUNT(DISTINCT mail_no),COUNT(DISTINCT mail_no) AS quantity FROM xx WHERE create_time >= '2023-11-04 00:00:00' AND create_time <'2023-11-05 00:00:00' and id > (select max(id) from xxb) GROUP BY tagCode
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="g_i_tag[p1,p2,p3,...p40],xxb", shardcount=40, sql="select `g_i_tag`.`tag_code` as `tagcode`, count(distinct `g_i_tag`.`mail_no`) as `count(distinct mail_no)`, count(distinct `g_i_tag`.`mail_no`) as `quantity` from `g_i_tag` as `g_i_tag` inner join (select max(`id`) as `max(id)` from `xxb` as `xxb`) as `t` on (`g_i_tag`.`id` > `t`.`max(id)`) where ((`g_i_tag`.`create_time` >= ?) and (`g_i_tag`.`create_time` < ?)) group by `g_i_tag`.`tag_code`")
+  - sql: |
+      /*!TDDL:cmd_extra(ENABLE_EXPAND_DISTINCTAGG=false)*/
+      SELECT xx.tag_code AS tagCode,COUNT(DISTINCT xx.mail_no),COUNT(DISTINCT xx.mail_no) AS quantity FROM xxb join xx WHERE xx.create_time >= '2023-11-04 00:00:00' AND xx.create_time <'2023-11-05 00:00:00' GROUP BY tagCode;
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="g_i_tag[p1,p2,p3,...p40],xxb", shardcount=40, sql="select `g_i_tag`.`tag_code` as `tagcode`, count(distinct `g_i_tag`.`mail_no`) as `count(distinct xx.mail_no)`, count(distinct `g_i_tag`.`mail_no`) as `quantity` from `g_i_tag` as `g_i_tag` inner join `xxb` as `xxb` on ((`g_i_tag`.`create_time` >= ?) and (`g_i_tag`.`create_time` < ?)) group by `g_i_tag`.`tag_code`")
+  - sql: |
+      /*TDDL:cmd_extra(ENABLE_EXPAND_DISTINCTAGG=false)*/
+      SELECT tagcode1 AS tagCode,COUNT(DISTINCT t.mail_no),COUNT(DISTINCT t.mail_no) from (SELECT id,xx.tag_code AS tagcode1, xx.mail_no FROM xx WHERE xx.create_time >= '2023-11-04 00:00:00' AND xx.create_time <'2023-11-05 00:00:00' )as t where t.id > (select max(id) from xxb) GROUP BY tagCode;
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="g_i_tag[p1,p2,p3,...p40],xxb", shardcount=40, sql="select `g_i_tag`.`tag_code` as `tagcode`, count(distinct `g_i_tag`.`mail_no`) as `count(distinct t.mail_no)`, count(distinct `g_i_tag`.`mail_no`) as `count(distinct t.mail_no)0` from `g_i_tag` as `g_i_tag` inner join (select max(`id`) as `max(id)` from `xxb` as `xxb`) as `t` on (`g_i_tag`.`id` > `t`.`max(id)`) where ((`g_i_tag`.`create_time` >= ?) and (`g_i_tag`.`create_time` < ?)) group by `g_i_tag`.`tag_code`")
+  - sql: |
+      /*!TDDL:cmd_extra(ENABLE_EXPAND_DISTINCTAGG=false)*/
+      SELECT tagcode1 AS tagCode,COUNT(DISTINCT t.mail_no),COUNT(DISTINCT t.mail_no),count(xxb.id) from xxb join (SELECT xx.tag_code AS tagcode1, xx.mail_no FROM xx WHERE xx.create_time >= '2023-11-04 00:00:00' AND xx.create_time <'2023-11-05 00:00:00' )as t on xxb.mail_no= t.tagcode1 GROUP BY tagCode;
+    plan: |
+      project(tagcode="tagcode", count(distinct t.mail_no)="count(distinct t.mail_no)", count(distinct t.mail_no)0="count(distinct t.mail_no)", count(xxb.id)="count(xxb.id)")
+        hashagg(group="tagcode", count(distinct t.mail_no)="count(distinct mail_no0)", count(xxb.id)="count()")
+          gather(concurrent=true)
+            logicalview(tables="xxb,xx[p1,p2,p3,...p40]", shardcount=40, sql="select `xx`.`tag_code` as `tagcode`, `xx`.`mail_no` as `mail_no0`, `xxb`.`id` from `xxb` as `xxb` inner join `xx` as `xx` on (`xxb`.`mail_no` = `xx`.`tag_code`) where ((`xx`.`create_time` >= ?) and (`xx`.`create_time` < ?))")
+DDL:
+  xx:
+    CREATE TABLE `xx` ( `id` bigint(20) NOT NULL DEFAULT '0', `mail_no` varchar(36) NOT NULL DEFAULT '', `tag_code` varchar(36) NOT NULL DEFAULT '', `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY USING BTREE (`id`, `create_time`), GLOBAL INDEX  `g_i_tag` (`create_time`, `mail_no`, `tag_code`) partition BY key(`tag_code`) partitions 40, LOCAL KEY `_local_g_i_tag` (`create_time`, `mail_no`, `tag_code`)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPACT partition BY key(`id`) partitions 40;
+  xxb:
+    CREATE TABLE `xxb` (  `id` bigint(20) NOT NULL DEFAULT '0',  `mail_no` varchar(36) NOT NULL DEFAULT '',  `tag_code` varchar(36) NOT NULL DEFAULT '',  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,  PRIMARY KEY USING BTREE (`id`, `create_time`)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPACT broadcast;
+STATISTICS:
+  xx:
+    1
+  xxb:
+    1
+CONFIG:
+  defaltxxAPPName.isNew:
+    true

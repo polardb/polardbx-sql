@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -68,6 +69,10 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         return true;
     }
 
+    public boolean hasColumnarIndex() {
+        return truncateTableWithGsiPreparedData.isHasColumnarIndex();
+    }
+
     public void prepareData(ExecutionContext ec) {
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
@@ -79,6 +84,8 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         truncateTableWithGsiPreparedData.setSchemaName(schemaName);
         truncateTableWithGsiPreparedData.setTableName(tableName);
         truncateTableWithGsiPreparedData.setTableVersion(tableMeta.getVersion());
+        truncateTableWithGsiPreparedData.setHasColumnarIndex(
+            GeneralUtil.isNotEmpty(tableMeta.getColumnarIndexPublished()));
         final GsiMetaBean gsiMetaBean = sm.getGsi(tableName, IndexStatus.ALL);
 
         if (gsiMetaBean.withGsi(tableName)) {
@@ -88,6 +95,12 @@ public class LogicalTruncateTable extends BaseDdlOperation {
                     throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
                         "can not truncate table when table has non-public gsi");
                 }
+
+                if (gsiEntry.getValue().columnarIndex) {
+                    // skip columnar index
+                    continue;
+                }
+
                 TruncateGlobalIndexPreparedData indexTablePreparedData =
                     prepareGsiData(tableName, gsiEntry.getKey(), isNewPartDb, ec);
                 truncateTableWithGsiPreparedData.addIndexTablePreparedData(indexTablePreparedData);

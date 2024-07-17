@@ -1,0 +1,726 @@
+- sql: |
+    select count(1) from t4 a left join t4 b on a.id = b.name;
+  plan: |
+    hashagg(count(1)="sum(count(1))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(count(1)="count()")
+          hashjoin(condition="id = name", type="left")
+            project(id="id")
+              exchange(distribution=hash[1], collation=[])
+                project(id="id", id_shuffle__="cast(id)")
+                  osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `t4` as `t4`")
+            project(name="name")
+              exchange(distribution=hash[1], collation=[])
+                project(name="name", name_shuffle__="cast(name)")
+                  osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, sql="select `name` from `t4` as `t4`")
+- sql: |
+    select count(1) from t4 a left join t4 b on a.id = b.id group by b.id;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="id0", count(1)="sum(count(1))")
+        exchange(distribution=hash[0]16, collation=[])
+          partialhashagg(group="id0", count(1)="count()")
+            hashjoin(condition="id = id", type="left", partition=[local])
+              osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+              osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    select count(1) from t4 a left join t4 b on a.id = b.id group by a.id;
+  plan: |
+    project(count(1)="count(1)")
+      hashgroupjoin(condition="id = id", type="left", partition=[local])
+        osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+        osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    select count(1) from t4 a left join t4 b on a.id = b.id group by a.id + 1;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="+", count(1)="sum(count(1))")
+        exchange(distribution=hash[0]16, collation=[])
+          partialhashagg(group="+", count(1)="count()")
+            project(id="id0", +="id0 + ?0", id0="id")
+              hashjoin(condition="id = id", type="right", partition=[local])
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_OUTER_JOIN_REORDER=false enable_broadcast_join=false)*/
+    select count(1) from t4 a left join t4 b on a.id = b.id left join t4 c on b.id = c.id;
+  plan: |
+    hashagg(count(1)="sum(count(1))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(count(1)="count()")
+          hashjoin(condition="id0 = id", type="left")
+            exchange(distribution=hash[1]16, collation=[])
+              hashjoin(condition="id = id", type="left", partition=[local])
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+            osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_OUTER_JOIN_REORDER=false enable_broadcast_join=false)*/
+    select count(1) from t4 a left join t4 b on a.id = b.id left join t4 c on b.id = c.id group by c.id;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="id1", count(1)="sum(count(1))")
+        exchange(distribution=hash[0]16, collation=[])
+          partialhashagg(group="id1", count(1)="count()")
+            hashjoin(condition="id0 = id", type="left")
+              exchange(distribution=hash[1]16, collation=[])
+                hashjoin(condition="id = id", type="left", partition=[local])
+                  osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+                  osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+              osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_OUTER_JOIN_REORDER=false enable_broadcast_join=false)*/ 
+    select count(1) from t4 a left join t4 b on a.id = b.id join t4 c on b.id = c.id;
+  plan: |
+    hashagg(count(1)="sum(count(1))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(count(1)="count()")
+          hashjoin(condition="id0 = id", type="inner")
+            exchange(distribution=hash[1]16, collation=[])
+              hashjoin(condition="id = id", type="left", partition=[local])
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+            osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    select count(1) from t4 a where exists (select 1 from t4 b where a.id = b.id) group by id;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="id", count(1)="count()")
+        semihashjoin(condition="id = id", type="semi", build="inner", partition=[local])
+          osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+          osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    select count(1) from t4 a where not exists (select 1 from t4 b where a.id = b.id) group by id;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="id", count(1)="count()")
+        semihashjoin(condition="id = id", type="anti", build="inner", partition=[local])
+          osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+          osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `t4` as `t4`")
+- sql: |
+    select count(1) from t4 a where not exists (select 1 from t4 b where a.id != b.id) group by id;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="id", count(1)="sum(count(1))")
+        exchange(distribution=hash[0]16, collation=[])
+          partialhashagg(group="id", count(1)="count()")
+            seminljoin(condition="id <> id", type="anti")
+              exchange(distribution=single, collation=[])
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `t4` as `t4`")
+              exchange(distribution=single, collation=[])
+                osstablescan(tables="t4[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `t4` as `t4`")
+- sql: |
+    select 1 from s2 a group by a.create_time;
+  plan: |
+    project(1="?0")
+      hashagg(group="create_time")
+        exchange(distribution=hash[0]16, collation=[])
+          partialhashagg(group="create_time")
+            osstablescan(tables="s2[p1,p2,p3,...p16]", shardcount=16, sql="select `create_time` from `s2` as `s2`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/select 1 from s1 a, v4 b where a.id = b.id group by a.id;
+  plan: |
+    project(1="?0")
+      hashjoin(condition="id = id", type="inner", partition=[local])
+        osstablescan(tables="s1[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `s1` as `s1`")
+        osstablescan(tables="v4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `v4` as `v4`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/ select 1 from s2 a, s2 b where a.create_time = b.create_time;
+  plan: |
+    project(1="?0")
+      hashjoin(condition="create_time = create_time", type="inner")
+        project(create_time="create_time")
+          exchange(distribution=hash[1], collation=[])
+            project(create_time="create_time", create_time_shuffle__="cast(create_time)")
+              osstablescan(tables="s2[p1,p2,p3,...p16]", shardcount=16, sql="select `create_time` from `s2` as `s2`")
+        project(create_time="create_time")
+          exchange(distribution=hash[1], collation=[])
+            project(create_time="create_time", create_time_shuffle__="cast(create_time)")
+              osstablescan(tables="s2[p1,p2,p3,...p16]", shardcount=16, sql="select `create_time` from `s2` as `s2`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/select 1 from s4 a, v4 b where a.id = b.id;
+  plan: |
+    project(1="?0")
+      hashjoin(condition="id = id", type="inner", partition=[local])
+        osstablescan(tables="s4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `s4` as `s4`")
+        osstablescan(tables="v4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `v4` as `v4`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/select 1 from s3 a, v4 b where a.id = b.id;
+  plan: |
+    project(1="?0")
+      hashjoin(condition="id = id", type="inner")
+        exchange(distribution=hash[0]16, collation=[])
+          osstablescan(tables="s3[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `s3` as `s3`")
+        osstablescan(tables="v4[p1,p2,p3,...p16]", shardcount=16, partition=[remote], sql="select `id` from `v4` as `v4`")
+- sql: |
+    select count(1) from s5 a group by a.v4_k;
+  plan: |
+    project(count(1)="count(1)")
+      hashagg(group="v4_k", count(1)="count()", partition=[local])
+        osstablescan(tables="s5[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `v4_k` from `s5` as `s5`")
+- sql: |
+    select sum(id) from s5 a group by a.v4_k,a.create_time;
+  plan: |
+    project(sum(id)="sum(id)")
+      hashagg(group="v4_k,create_time", sum(id)="sum(id)", partition=[local])
+        osstablescan(tables="s5[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id`, `v4_k`, `create_time` from `s5` as `s5`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/select 1 from s5 a, v4 b where a.v4_k = b.id;
+  plan: |
+    project(1="?0")
+      hashjoin(condition="v4_k = id", type="inner", partition=[local])
+        osstablescan(tables="s5[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `v4_k` from `s5` as `s5`")
+        osstablescan(tables="v4[p1,p2,p3,...p16]", shardcount=16, partition=[local, remote], sql="select `id` from `v4` as `v4`")
+- sql: |
+    select 1 from t_shard_id2 group by id-3;
+  plan: |
+    project(1="?0")
+      hashagg(group="$f0")
+        exchange(distribution=hash[0]4, collation=[])
+          partialhashagg(group="$f0")
+            project($f0="id - ?1")
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id` from `t_shard_id2` as `t_shard_id2`")
+- sql: |
+    /*+TDDL:cmd_extra(PARTIAL_AGG_ONLY=true)*/ select 1 from t_shard_id2 group by id-3;
+  plan: |
+    project(1="?0")
+      hashagg(group="$f0")
+        exchange(distribution=hash[0]4, collation=[])
+          partialhashagg(group="$f0")
+            project($f0="id - ?1")
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id` from `t_shard_id2` as `t_shard_id2`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false, enable_broadcast_join=false)  HASH_JOIN(l4,l3) HASH_JOIN((l4,l3),l2)
+     HASH_JOIN((l4,l3,l2),l1) ENABLE_RUNTIME_FILTER=false */
+     SELECT l1.id
+     FROM  l1,l2,l3,l4
+     WHERE l1.id = l2.id
+       AND l2.id = l3.id
+       AND l3.id = l4.id
+  plan: |
+    project(id="id")
+      hashjoin(condition="id00 = id", type="inner")
+        project(id00="id0")
+          hashjoin(condition="id0 = id", type="inner")
+            project(id0="id")
+              hashjoin(condition="id = id", type="inner")
+                osstablescan(tables="l4[p1,p2,p3,...p16]", shardcount=16, partition=[remote], sql="select `id` from `l4` as `l4`")
+                exchange(distribution=hash[0]16, collation=[])
+                  osstablescan(tables="l3[p1,p2,p3,...p12]", shardcount=12, sql="select `id` from `l3` as `l3`")
+            exchange(distribution=hash[0]16, collation=[])
+              osstablescan(tables="l2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `l2` as `l2`")
+        exchange(distribution=hash[0]16, collation=[])
+          osstablescan(tables="l1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `id` from `l1` as `l1`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false) SEMI_HASH_JOIN(t1,t3) HASH_JOIN((t1,t3),t2)*/
+    select * from t1 inner join t2 on t1.id = t2.id where t1.name in (select name from t3)
+
+  plan: |
+    hashjoin(condition="id = id", type="inner")
+      exchange(distribution=hash[0]12, collation=[])
+        semihashjoin(condition="name = name", type="semi", build="inner")
+          exchange(distribution=hash[1]12, collation=[])
+            osstablescan(tables="t1[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name`, `create_time` from `t1` as `t1`")
+          exchange(distribution=hash[0]12, collation=[])
+            osstablescan(tables="t3[p1,p2,p3,...p12]", shardcount=12, sql="select `name` from `t3` as `t3`")
+      exchange(distribution=hash[0]12, collation=[])
+        osstablescan(tables="t2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `name`, `create_time` from `t2` as `t2`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_sort_merge_join=false,enable_hash_join=false,enable_broadcast_join=false) */
+    SELECT l1.id
+    FROM  l1,l2,l3,l4,l5,l6,l7,l8
+    WHERE l1.id = l2.id
+      AND l2.id = l3.id
+      AND l3.id = l4.id
+      AND l4.id = l5.id
+      AND l5.id = l6.id
+      AND l6.id = l7.id
+      AND l7.id = l8.id
+  plan: |
+    project(id="id2")
+      nljoin(condition="id = id", type="inner")
+        nljoin(condition="id = id00", type="inner")
+          project(id="id1", id0="id00", id1="id", id00="id0")
+            nljoin(condition="id = id0", type="inner")
+              nljoin(condition="id = id", type="inner")
+                exchange(distribution=single, collation=[])
+                  osstablescan(tables="l3[p1,p2,p3,...p12]", shardcount=12, sql="select `id` from `l3` as `l3`")
+                exchange(distribution=single, collation=[])
+                  osstablescan(tables="l2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `l2` as `l2`")
+              project(id="id0", id0="id")
+                nljoin(condition="id = id", type="inner")
+                  exchange(distribution=single, collation=[])
+                    osstablescan(tables="l4[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `l4` as `l4`")
+                  exchange(distribution=single, collation=[])
+                    osstablescan(tables="l5[p1,p2,p3,...p20]", shardcount=20, sql="select `id` from `l5` as `l5`")
+          exchange(distribution=single, collation=[])
+            osstablescan(tables="l1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `id` from `l1` as `l1`")
+        project(id="id1", id0="id", id00="id0")
+          nljoin(condition="id = id", type="inner")
+            project(id="id0", id0="id")
+              nljoin(condition="id = id", type="inner")
+                exchange(distribution=single, collation=[])
+                  osstablescan(tables="l8[p1,p2,p3,...p32]", shardcount=32, sql="select `id` from `l8` as `l8`")
+                exchange(distribution=single, collation=[])
+                  osstablescan(tables="l7[p1,p2,p3,...p28]", shardcount=28, sql="select `id` from `l7` as `l7`")
+            exchange(distribution=single, collation=[])
+              osstablescan(tables="l6[p1,p2,p3,...p24]", shardcount=24, sql="select `id` from `l6` as `l6`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(fact,l6) HASH_JOIN((fact,l6),l5) HASH_JOIN((fact,l6,l5),l4) HASH_JOIN((fact,l6,l5,l4),l3) HASH_JOIN((fact,l6,l5,l4,l3),l2) HASH_JOIN((fact,l6,l5,l4,l3,l2),l1) */
+    SELECT *
+    FROM  fact left join l1 on l1.id = fact.id1
+    left join l2 on l2.id = fact.id2
+    left join l3 on l3.id = fact.id3
+    left join l4 on l4.id = fact.id4
+    left join l5 on l5.id = fact.id5
+    left join l6 on l6.id = fact.id6
+  plan: |
+    project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id11="id11", name0="name00", create_time0="create_time00", id12="id12", name1="name1", create_time1="create_time1", id13="id14", name2="name3", create_time2="create_time3", id15="id", name4="name", create_time4="create_time", id14="id13", name3="name2", create_time3="create_time2")
+      hashjoin(condition="id = id5", type="right")
+        exchange(distribution=hash[0]40, collation=[])
+          osstablescan(tables="l5[p1,p2,p3,...p20]", shardcount=20, sql="select `id`, `name`, `create_time` from `l5` as `l5`")
+        project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id11="id11", name0="name00", create_time0="create_time00", id12="id12", name1="name1", create_time1="create_time1", id14="id", name3="name", create_time3="create_time", id13="id13", name2="name2", create_time2="create_time2")
+          exchange(distribution=hash[8]40, collation=[])
+            hashjoin(condition="id = id4", type="right")
+              exchange(distribution=hash[0]40, collation=[])
+                osstablescan(tables="l4[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `name`, `create_time` from `l4` as `l4`")
+              project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id11="id11", name0="name00", create_time0="create_time00", id13="id", name2="name", create_time2="create_time", id12="id12", name1="name1", create_time1="create_time1")
+                exchange(distribution=hash[7]40, collation=[])
+                  hashjoin(condition="id = id3", type="right")
+                    exchange(distribution=hash[0]40, collation=[])
+                      osstablescan(tables="l3[p1,p2,p3,...p12]", shardcount=12, sql="select `id`, `name`, `create_time` from `l3` as `l3`")
+                    project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id0="id00", name="name0", create_time="create_time0", id12="id", name1="name", create_time1="create_time", id11="id11", name0="name00", create_time0="create_time00")
+                      exchange(distribution=hash[6]40, collation=[])
+                        hashjoin(condition="id = id2", type="right")
+                          exchange(distribution=hash[0]40, collation=[])
+                            osstablescan(tables="l2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `name`, `create_time` from `l2` as `l2`")
+                          project(id="id0", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id", name0="name", create_time0="create_time", id0="id00", name="name0", create_time="create_time0")
+                            exchange(distribution=hash[5]40, collation=[])
+                              hashjoin(condition="id = id1", type="right")
+                                exchange(distribution=hash[0]40, collation=[])
+                                  osstablescan(tables="l1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `id`, `name`, `create_time` from `l1` as `l1`")
+                                exchange(distribution=hash[1]40, collation=[])
+                                  hashjoin(condition="id = id6", type="left")
+                                    exchange(distribution=hash[6]40, collation=[])
+                                      osstablescan(tables="fact[p1,p2,p3,...p40]", shardcount=40, sql="select `id`, `id1`, `id2`, `id3`, `id4`, `id5`, `id6`, `id7`, `id8`, `id9`, `id10` from `fact` as `fact`")
+                                    exchange(distribution=hash[0]40, collation=[])
+                                      osstablescan(tables="l6[p1,p2,p3,...p24]", shardcount=24, sql="select `id`, `name`, `create_time` from `l6` as `l6`")
+- sql: |
+    /*+TDDL: cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v1,v3) HASH_JOIN(v4,v2) HASH_JOIN((v1,v3),(v4,v2)) */
+    select v1_k, v2_k, v3_k, v4_k from v1 inner join v2 on v1_k = v2_k inner join (v3 inner join v4 on v3_k = v4_k)  on name1 = name3 and name2 = name4;
+  plan: |
+    project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k", v4_k="v4_k")
+      hashjoin(condition="v1_k = v2_k and v3_k = v4_k", type="inner")
+        project(v3_k="v3_k", v1_k="v1_k")
+          exchange(distribution=hash[2]16, collation=[])
+            project(v3_k="v3_k", name3="name3", v1_k="v1_k", name1="name1")
+              hashjoin(condition="name3 = name1", type="inner")
+                exchange(distribution=hash[1]16, collation=[])
+                  osstablescan(tables="v1[p1,p2,p3,p4,p5]", shardcount=5, sql="select `v1_k`, `name1` from `v1` as `v1`")
+                exchange(distribution=hash[1]16, collation=[])
+                  osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `v3_k`, `name3` from `v3` as `v3`")
+        project(v4_k="v4_k", v2_k="v2_k")
+          exchange(distribution=hash[2]16, collation=[])
+            hashjoin(condition="name2 = name4", type="inner")
+              exchange(distribution=hash[1]16, collation=[])
+                osstablescan(tables="v4[p1,p2,p3,...p16]", shardcount=16, sql="select `v4_k`, `name4` from `v4` as `v4`")
+              exchange(distribution=hash[1]16, collation=[])
+                osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `v2_k`, `name2` from `v2` as `v2`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
+    select * from v3 join v2 on v3.id = v2.id
+  plan: |
+    hashjoin(condition="id = id", type="inner")
+      osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+      exchange(distribution=hash[0]12, collation=[])
+        osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
+    select count(*) from v3 join v2 on v3.id = v2.id
+  plan: |
+    hashagg(count(*)="count()")
+      exchange(distribution=single, collation=[])
+        hashjoin(condition="id = id", type="inner")
+          osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id` from `v3` as `v3`")
+          exchange(distribution=hash[0]12, collation=[])
+            osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `v2` as `v2`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false ENABLE_RUNTIME_FILTER=false)*/
+    select count(*) from v3 join v2 on v3.id = v2.id group by v3.name3
+  plan: |
+    project(count(*)="count(*)")
+      hashagg(group="name3", count(*)="sum(count(*))")
+        exchange(distribution=hash[0]12, collation=[])
+          partialhashagg(group="name3", count(*)="count()")
+            hashjoin(condition="id = id", type="inner")
+              exchange(distribution=hash[0]12, collation=[])
+                osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `v2` as `v2`")
+              osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `name3` from `v3` as `v3`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
+    select * from v3 join v2 on v3.id = v2.id order by v3.name3 limit 2, 3
+  plan: |
+    topn(sort="name3 asc", offset=?0, fetch=?1)
+      exchange(distribution=single, collation=[2 asc-nulls-first])
+        topn(sort="name3 asc", fetch=+(?1, ?0))
+          hashjoin(condition="id = id", type="inner")
+            osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+            exchange(distribution=hash[0]12, collation=[])
+              osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false enable_nl_join=false enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
+    select * from v3 join v2 on v3.id = v2.id limit 2, 3
+  plan: |
+    limit(offset=?0, fetch=?1)
+      exchange(distribution=single, collation=[])
+        hashjoin(condition="id = id", type="inner")
+          osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+          exchange(distribution=hash[0]12, collation=[])
+            osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false, enable_nl_join=false) HASH_JOIN(v3, v2)*/
+    select * from v3 join v2 on v3.id = v2.id order by v3.name3
+  plan: |
+    exchange(distribution=single, collation=[2 asc-nulls-first])
+      memsort(sort="name3 asc")
+        hashjoin(condition="id = id", type="inner")
+          osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+          exchange(distribution=hash[0]12, collation=[])
+            osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/
+    select count(*) from v3 join v2 on v3.id = v2.id group by v3.name3
+  plan: |
+    project(count(*)="count(*)")
+      hashagg(group="name3", count(*)="sum(count(*))")
+        exchange(distribution=hash[0]12, collation=[])
+          partialhashagg(group="name3", count(*)="count()")
+            hashjoin(condition="id = id", type="inner")
+              exchange(distribution=hash[0]12, collation=[])
+                osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `v2` as `v2`")
+              osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `name3` from `v3` as `v3`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_broadcast_join=false)*/
+    select * from v3 join v2 on v3.id = v2.id order by v3.id
+  plan: |
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="id asc")
+        project(id="id0", v3_k="v3_k", name3="name3", create_time="create_time0", id0="id", v2_k="v2_k", name2="name2", create_time0="create_time")
+          hashjoin(condition="id = id", type="inner")
+            exchange(distribution=hash[0]12, collation=[])
+              osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+            osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+- sql: |
+    select count(*) from v3 group by v3.name3 order by v3.name3
+  plan: |
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 asc-nulls-first])
+        memsort(sort="name3 asc")
+          hashagg(group="name3", count(*)="sum(count(*))")
+            exchange(distribution=hash[0]12, collation=[])
+              partialhashagg(group="name3", count(*)="count()")
+                osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `name3` from `v3` as `v3`")
+- sql: |
+    select count(*) from v3 group by v3.name3 order by v3.name3 desc
+  plan: |
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 desc-nulls-last])
+        memsort(sort="name3 desc")
+          hashagg(group="name3", count(*)="sum(count(*))")
+            exchange(distribution=hash[0]12, collation=[])
+              partialhashagg(group="name3", count(*)="count()")
+                osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `name3` from `v3` as `v3`")
+- sql: |
+    select count(*) from v3 group by v3.name3 order by v3.name3 desc limit 1,2
+  plan: |
+    project(count(*)="count(*)")
+      topn(sort="name3 desc", offset=?0, fetch=?1)
+        exchange(distribution=single, collation=[0 desc-nulls-last])
+          topn(sort="name3 desc", fetch=+(?1, ?0))
+            hashagg(group="name3", count(*)="sum(count(*))")
+              exchange(distribution=hash[0]12, collation=[])
+                partialhashagg(group="name3", count(*)="count()")
+                  osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `name3` from `v3` as `v3`")
+- sql: |
+    select count(*) from v3 group by v3.name3 limit 1,2
+  plan: |
+    limit(offset=?0, fetch=?1)
+      exchange(distribution=single, collation=[])
+        limit(offset=?0, fetch=?1)
+          project(count(*)="count(*)")
+            hashagg(group="name3", count(*)="sum(count(*))")
+              exchange(distribution=hash[0]12, collation=[])
+                partialhashagg(group="name3", count(*)="count()")
+                  osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `name3` from `v3` as `v3`")
+- sql: |
+    select * from v3 where v3.id in (select id from v2)
+  plan: |
+    semihashjoin(condition="id = id", type="semi", build="outer")
+      osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+      exchange(distribution=hash[0]12, collation=[])
+        osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `v2` as `v2`")
+- sql: |
+    select * from v3 where v3.id in (select id from v2) order by v3.id
+  plan: |
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="id asc")
+        semihashjoin(condition="id = id", type="semi", build="outer")
+          osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+          exchange(distribution=hash[0]12, collation=[])
+            osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `v2` as `v2`")
+- sql: |
+    /*+TDDL:cmd_extra()*/
+    select count(*) from v3 where v3.id in (select id from v2 order by id) group by v3.name3 order by v3.name3
+  plan: |
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 asc-nulls-first])
+        memsort(sort="name3 asc")
+          hashagg(group="name3", count(*)="sum(count(*))")
+            exchange(distribution=hash[0]12, collation=[])
+              partialhashagg(group="name3", count(*)="count()")
+                semihashjoin(condition="id = id", type="semi", build="outer")
+                  osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `name3` from `v3` as `v3`")
+                  exchange(distribution=hash[0]12, collation=[])
+                    osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id` from `v2` as `v2`")
+- sql: |
+    /*+TDDL: cmd_extra()*/
+    select count(*) from v3 where v3.id in (select id from v2 where id = 1) group by v3.name3 order by v3.name3
+  plan: |
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 asc-nulls-first])
+        memsort(sort="name3 asc")
+          hashagg(group="name3", count(*)="count()")
+            exchange(distribution=hash[1]12, collation=[])
+              semihashjoin(condition="id = id", type="semi", build="inner")
+                osstablescan(tables="v3[p11]", partition=[remote], sql="select `id`, `name3` from `v3` as `v3` where (`id` = ?)")
+                exchange(distribution=hash[0]12, collation=[])
+                  osstablescan(tables="v2[p7]", sql="select `id` from `v2` as `v2` where (`id` = ?)")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false,enable_nl_join=false, enable_sort_merge_join=false) HASH_JOIN(v2, v3)*/
+    select * from v2 left join v3 on v2.id = v3.id limit 2
+  plan: |
+    exchange(distribution=single, collation=[])
+      hashjoin(condition="id = id", type="left")
+        exchange(distribution=hash[0]12, collation=[])
+          limit(offset=0, fetch=?0)
+            exchange(distribution=single, collation=[])
+              limit(offset=0, fetch=?0)
+                osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+        osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
+    select * from v2 left join v3 on v2.id = v3.v3_k order by v2.id limit 2
+  plan: |
+    memsort(sort="id asc")
+      limit(offset=0, fetch=?0)
+        exchange(distribution=single, collation=[])
+          hashjoin(condition="id = v3_k", type="left")
+            exchange(distribution=hash[0]12, collation=[0 asc-nulls-first])
+              topn(sort="id asc", fetch=+(?0, 0))
+                exchange(distribution=single, collation=[0 asc-nulls-first])
+                  topn(sort="id asc", fetch=+(?0, 0))
+                    osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+            exchange(distribution=hash[1]12, collation=[])
+              osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
+    select * from v2 left join v3 on v2.id = v3.id order by v2.id limit 2
+  plan: |
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="id asc")
+        hashjoin(condition="id = id", type="left")
+          exchange(distribution=hash[0]12, collation=[0 asc-nulls-first])
+            topn(sort="id asc", offset=0, fetch=?0)
+              exchange(distribution=single, collation=[0 asc-nulls-first])
+                topn(sort="id asc", fetch=+(?0, 0))
+                  osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+          osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, partition=[remote], sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
+    select * from v2 left join v3 on v2.id = v3.v3_k order by v2.id limit 2
+  plan: |
+    memsort(sort="id asc")
+      limit(offset=0, fetch=?0)
+        exchange(distribution=single, collation=[])
+          hashjoin(condition="id = v3_k", type="left")
+            exchange(distribution=hash[0]12, collation=[0 asc-nulls-first])
+              topn(sort="id asc", fetch=+(?0, 0))
+                exchange(distribution=single, collation=[0 asc-nulls-first])
+                  topn(sort="id asc", fetch=+(?0, 0))
+                    osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+            exchange(distribution=hash[1]12, collation=[])
+              osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+- sql: |
+    /*+TDDL: cmd_extra(enable_broadcast_join=false,PARTIAL_AGG_SELECTIVITY_THRESHOLD=0) HASH_JOIN(v2, v3)*/
+    select * from v2 left join (select name3 from v3 group by name3) v3 on v2.name2 = v3.name3
+  plan: |
+    hashjoin(condition="name2 = name3", type="left")
+      exchange(distribution=hash[2]12, collation=[])
+        osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+      hashagg(group="name3")
+        exchange(distribution=hash[0]12, collation=[])
+          osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `name3` from `v3` as `v3`")
+- sql: |
+    /*+TDDL: cmd_extra(enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
+    select * from v2 left join (select name3, count(*) from v3 group by name3) v3 on v2.name2 = v3.name3
+  plan: |
+    hashjoin(condition="name2 = name3", type="left")
+      exchange(distribution=hash[2]12, collation=[])
+        osstablescan(tables="v2[p1,p2,p3,p4,p5,p6,p7,p8]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+      hashagg(group="name3", count(*)="sum(count(*))")
+        exchange(distribution=hash[0]12, collation=[])
+          partialhashagg(group="name3", count(*)="count()")
+            osstablescan(tables="v3[p1,p2,p3,...p12]", shardcount=12, sql="select `name3` from `v3` as `v3`")
+
+- sql: |
+    select count(*) over(partition by id), max(create_time) over(partition by id), id from t_shard_id2;
+  plan: |
+    project(count(*) over (partition by id )="f3w0$o0", max(create_time) over (partition by id )="f4w0$o1", id="id")
+      hashwindow(id="id", create_time="create_time", f2w0$o0="window#0count()", f3w0$o1="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [count(), max($1)])", partition=[local])
+        osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select count(*) over(partition by id, name), max(create_time) over(partition by id), id from t_shard_id2;
+  plan: |
+    project(count(*) over (partition by id, name )="f3w0$o0", max(create_time) over (partition by id )="f4w1$o0", id="id")
+      hashwindow(id="id", create_time="create_time", f3w0$o0="f3w0$o0", f3w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+        project(id="id", create_time="create_time", f3w0$o0="f3w0$o0")
+          hashwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0count()", reference windows="window#0=window(partition {0, 1} order by [] range between unbounded preceding and unbounded following aggs [count()])", partition=[local])
+            osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_PARTITION_WISE_WINDOW=false)*/ select count(*) over(partition by id, name), max(create_time) over(partition by id), id from t_shard_id2;
+  plan: |
+    project(count(*) over (partition by id, name )="f3w0$o0", max(create_time) over (partition by id )="f4w1$o0", id="id")
+      hashwindow(id="id", create_time="create_time", f3w0$o0="f3w0$o0", f3w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+        exchange(distribution=hash[0], collation=[])
+          project(id="id", create_time="create_time", f3w0$o0="f3w0$o0")
+            hashwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0count()", reference windows="window#0=window(partition {0, 1} order by [] range between unbounded preceding and unbounded following aggs [count()])")
+              exchange(distribution=hash[0, 1], collation=[])
+                osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select max(create_time) over(partition by id), count(*) over(partition by id, name), id from t_shard_id2;
+  plan: |
+    project(max(create_time) over (partition by id )="f3w0$o0", count(*) over (partition by id, name )="f4w1$o0", id="id")
+      hashwindow(id="id", name="name", f3w0$o0="f3w0$o0", f3w0$o0="window#0count()", reference windows="window#0=window(partition {0, 1} order by [] range between unbounded preceding and unbounded following aggs [count()])")
+        project(id="id", name="name", f3w0$o0="f3w0$o0")
+          hashwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0max($2)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($2)])", partition=[local])
+            osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_PARTITION_WISE_WINDOW=false)*/ select max(create_time) over(partition by id), count(*) over(partition by id, name), id from t_shard_id2;
+  plan: |
+    project(max(create_time) over (partition by id )="f3w0$o0", count(*) over (partition by id, name )="f4w1$o0", id="id")
+      hashwindow(id="id", name="name", f3w0$o0="f3w0$o0", f3w0$o0="window#0count()", reference windows="window#0=window(partition {0, 1} order by [] range between unbounded preceding and unbounded following aggs [count()])")
+        exchange(distribution=hash[0, 1], collation=[])
+          project(id="id", name="name", f3w0$o0="f3w0$o0")
+            sortwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0max($2)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($2)])")
+              memsort(sort="id asc")
+                osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select max(create_time) over(partition by id), count(*) over(partition by name), id from t_shard_id2;
+  plan: |
+    project(max(create_time) over (partition by id )="f3w0$o0", count(*) over (partition by name )="f4w1$o0", id="id")
+      hashwindow(id="id", name="name", f3w0$o0="f3w0$o0", f3w0$o0="window#0count()", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded following aggs [count()])")
+        exchange(distribution=hash[1]4, collation=[])
+          project(id="id", name="name", f3w0$o0="f3w0$o0")
+            hashwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0max($2)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($2)])", partition=[local])
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select max(create_time) over(), count(*) over(), id from t_shard_id2;
+  plan: |
+    project(max(create_time) over ()="f3w0$o0", count(*) over ()="f4w0$o1", id="id")
+      hashwindow(id="id", create_time="create_time", f2w0$o0="window#0max($1)", f3w0$o1="window#0count()", reference windows="window#0=window(partition {} order by [] range between unbounded preceding and unbounded following aggs [max($1), count()])")
+        exchange(distribution=single, collation=[])
+          osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select max(create_time) over(partition by id), count(*) over(), id from t_shard_id2;
+  plan: |
+    project(max(create_time) over (partition by id )="f3w0$o0", count(*) over ()="f4w1$o0", id="id")
+      hashwindow(id="id", f3w0$o0="f3w0$o0", f2w0$o0="window#0count()", reference windows="window#0=window(partition {} order by [] range between unbounded preceding and unbounded following aggs [count()])")
+        exchange(distribution=single, collation=[])
+          project(id="id", f3w0$o0="f3w0$o0")
+            hashwindow(id="id", create_time="create_time", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])", partition=[local])
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select id, count(*) from (select max(create_time), id from t_shard_id2 group by id) t;
+  plan: |
+    hashagg(id="__first_value(id)", count(*)="sum(count(*))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(id="__first_value(id)", count(*)="count()")
+          hashagg(group="id", max(create_time)="max(create_time)", partition=[local])
+            osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select max(create_time), id from t_shard_id2 group by id;
+  plan: |
+    project(max(create_time)="max(create_time)", id="id")
+      hashagg(group="id", max(create_time)="max(create_time)", partition=[local])
+        osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select sum(id) over(partition by name rows between unbounded preceding and unbounded following), count(*) over(partition by name rows between unbounded preceding and unbounded following), id from t_shard_id2;
+  plan: |
+    project(sum(id) over (partition by name  rows between unbounded preceding and unbounded following)="f3w0$o0", count(*) over (partition by name  rows between unbounded preceding and unbounded following)="f4w0$o1", id="id")
+      hashwindow(id="id", name="name", f2w0$o0="window#0sum($0)", f3w0$o1="window#0count()", reference windows="window#0=window(partition {1} order by [] rows between unbounded preceding and unbounded following aggs [sum($0), count()])")
+        exchange(distribution=hash[1]4, collation=[])
+          osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select id, count(*) from( select id, max(create_time) over(partition by name) as max_time from t_shard_id2) t group by id;
+  plan: |
+    hashagg(group="id", count(*)="sum(count(*))")
+      exchange(distribution=hash[0]4, collation=[])
+        partialhashagg(group="id", count(*)="count()")
+          hashwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0max($2)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded following aggs [max($2)])")
+            exchange(distribution=hash[1]4, collation=[])
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_PARTITION_WISE_WINDOW=false)*/ select id, count(*) from( select id, max(create_time) over(partition by name) as max_time from t_shard_id2) t group by id;
+  plan: |
+    hashagg(group="id", count(*)="sum(count(*))")
+      exchange(distribution=hash[0]4, collation=[])
+        partialhashagg(group="id", count(*)="count()")
+          hashwindow(id="id", name="name", create_time="create_time", f3w0$o0="window#0max($2)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded following aggs [max($2)])")
+            exchange(distribution=hash[1], collation=[])
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    select id, count(*) from( select create_time, id, max(create_time) over(partition by id) as max_time from t_shard_id2) t group by id;
+  plan: |
+    hashagg(group="id", count(*)="count()")
+      hashwindow(id="id", create_time="create_time", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])", partition=[local])
+        osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_PARTITION_WISE_WINDOW=false)*/ select id, count(*) from( select create_time, id, max(create_time) over(partition by id) as max_time from t_shard_id2) t group by id;
+  plan: |
+    hashagg(group="id", count(*)="count()")
+      sortwindow(id="id", create_time="create_time", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+        memsort(sort="id asc")
+          osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE ENABLE_PARTITION_WISE_WINDOW=false)*/ select id, count(*) from( select create_time, id, max(create_time) over(partition by id) as max_time from t_shard_id2) t group by id;
+  plan: |
+    hashagg(group="id", count(*)="sum(count(*))")
+      exchange(distribution=hash[0]4, collation=[])
+        partialhashagg(group="id", count(*)="count()")
+          hashwindow(id="id", create_time="create_time", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
+            exchange(distribution=hash[0], collation=[])
+              osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_EXPAND_DISTINCTAGG=false*/select CHECK_SUM(id), CHECK_SUM_V2(id) from t_shard_id2 group by create_time;
+  plan: |
+    project(check_sum(id)="check_sum(id)", check_sum_v2(id)="check_sum_v2(id)")
+      hashagg(group="create_time", check_sum(id)="check_sum_merge(check_sum(id))", check_sum_v2(id)="check_sum_v2_merge(check_sum_v2(id))")
+        exchange(distribution=hash[0]4, collation=[])
+          partialhashagg(group="create_time", check_sum(id)="check_sum(id)", check_sum_v2(id)="check_sum_v2(id)")
+            osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")

@@ -126,31 +126,16 @@ PARTITION `p24` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
       manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: []
-      manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb" ]
-      expectedManipulateColumns: [ 2 ]
     - conditionStmt:
       expectedConditionResult:
       manipulateStmt: "rebalance table t2 policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: [ ]
-      manipulateStmt: "rebalance table t2 policy = 'partition_balance'"
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb" ]
-      expectedManipulateColumns: [ 2 ]
     - conditionStmt:
       expectedConditionResult:
       manipulateStmt: "rebalance table t3 policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: [ ]
-      manipulateStmt: "rebalance table t3 policy = 'partition_balance'"
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb" ]
-      expectedManipulateColumns: [ 2 ]
     dataDistributionCheckActions:
     - conditionStmt: "show ddl"
       expectedConditionResult: [ ]

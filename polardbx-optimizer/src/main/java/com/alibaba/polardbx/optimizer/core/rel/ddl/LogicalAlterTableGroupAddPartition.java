@@ -66,7 +66,7 @@ public class LogicalAlterTableGroupAddPartition extends LogicalAlterTableAddPart
 
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
-        String firstTableName = tableGroupConfig.getAllTables().get(0).getLogTbRec().getTableName();
+        String firstTableName = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(firstTableName)
                 .getPartitionInfo();
@@ -86,7 +86,8 @@ public class LogicalAlterTableGroupAddPartition extends LogicalAlterTableAddPart
 
         preparedData.setOldPartitionNames(ImmutableList.of());
 
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = partitionInfo.containSubPartitions();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION);
 
@@ -108,7 +109,7 @@ public class LogicalAlterTableGroupAddPartition extends LogicalAlterTableAddPart
         AlterTableGroupAddPartition alterTableGroupAddPartition = (AlterTableGroupAddPartition) relDdl;
         String tableGroupName = alterTableGroupAddPartition.getTableGroupName();
         /* check table group */
-        if (TableGroupNameUtil.isOssTg(tableGroupName)) {
+        if (TableGroupNameUtil.isFileStorageTg(tableGroupName)) {
             return true;
         }
 

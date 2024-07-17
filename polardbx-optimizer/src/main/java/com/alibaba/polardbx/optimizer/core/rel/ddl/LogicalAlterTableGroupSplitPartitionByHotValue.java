@@ -20,18 +20,22 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionByHotValuePreparedData;
-import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
 import org.apache.calcite.rel.core.DDL;
@@ -42,8 +46,8 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,13 +75,13 @@ public class LogicalAlterTableGroupSplitPartitionByHotValue extends LogicalAlter
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
 
-        String firstTblNameInGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String firstTblNameInGroup = tableGroupConfig.getAllTables().get(0);
         Map<String, List<Long[]>> splitPointInfos = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         Map<String, SplitPointContext> splitPointCtxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
         List<PartitionInfo> allLogPartInfoList = new ArrayList<>();
         for (int i = 0; i < tableGroupConfig.getAllTables().size(); i++) {
-            String tbNameInGrp = tableGroupConfig.getAllTables().get(i).getLogTbRec().tableName;
+            String tbNameInGrp = tableGroupConfig.getAllTables().get(i);
             PartitionInfo partInfo =
                 OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tbNameInGrp);
             allLogPartInfoList.add(partInfo);
@@ -195,9 +199,14 @@ public class LogicalAlterTableGroupSplitPartitionByHotValue extends LogicalAlter
         if (!subPartitionSplit && hasSubPartition) {
             assert splitPartitionSpec != null && GeneralUtil.isNotEmpty(splitPartitionSpec.getSubPartitions());
             if (!useTemplateSubPartition) {
-                newSubPartitionNames.addAll(PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
-                    newPartitionNames.size() * splitPartitionSpec.getSubPartitions().size(),
-                    new HashSet<>(), true));
+                TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+                List<String> partNames = new ArrayList<>();
+                List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+                PartitionInfoUtil.getPartitionName(firstTblPartInfo, partNames, subPartNamePairs);
+                newSubPartitionNames.addAll(
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                        newPartitionNames.size() * splitPartitionSpec.getSubPartitions().size(),
+                        new HashSet<>(), true));
             } else {
                 for (PartitionSpec subPartitionSpec : splitPartitionSpec.getSubPartitions()) {
                     assert subPartitionSpec.isUseSpecTemplate();
@@ -250,7 +259,7 @@ public class LogicalAlterTableGroupSplitPartitionByHotValue extends LogicalAlter
         preparedData.setInsertPos(insertPos);
         preparedData.setSplitPointInfos(splitPointInfos);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE);
         preparedData.setHotKeyPartitionName(hotKeyPartNamePrefix);
     }
@@ -269,6 +278,15 @@ public class LogicalAlterTableGroupSplitPartitionByHotValue extends LogicalAlter
             (AlterTableGroupSplitPartitionByHotValue) relDdl;
         String tableGroupName = alterTableGroupSplitPartitionByHotValue.getTableGroupName();
         return !CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroupName);
+    }
+
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        final AlterTableGroupSplitPartitionByHotValue alterTableGroupSplitPartitionByHotValue =
+            (AlterTableGroupSplitPartitionByHotValue) relDdl;
+        final String tableGroupName = alterTableGroupSplitPartitionByHotValue.getTableGroupName();
+
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     public static LogicalAlterTableGroupSplitPartitionByHotValue create(DDL ddl) {

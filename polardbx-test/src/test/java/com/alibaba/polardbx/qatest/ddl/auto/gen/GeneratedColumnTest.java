@@ -15,7 +15,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -591,8 +594,10 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
             String.format("insert into %s(a,b) values (22222,33333) on duplicate key update a=a+1,b=default(c)",
                 tableName);
         JdbcUtil.executeUpdateSuccess(tddlConn, upsert);
-        JdbcUtil.executeUpdateSuccess(mysqlConn, upsert);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConn, tddlConn);
+        if (!isMySQL80()) {
+            JdbcUtil.executeUpdateSuccess(mysqlConn, upsert);
+            selectContentSameAssert("select * from " + tableName, null, mysqlConn, tddlConn);
+        }
     }
 
     @Test
@@ -1080,9 +1085,15 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
             "PRE ALLOCATE 3\n" +
             "PIVOTDATE NOW();", innodbTableName, startYear));
 
-        String[] dates =
-            {"1606752000", "1609430400", "1612108800", "1614528000", "1617206400", "1619798400"};
-        for (String date : dates) {
+        long[] dates =
+            {
+                LocalDate.of(startYear - 1, 12, 1).atStartOfDay(ZoneId.of("UTC")).toInstant().getEpochSecond(),
+                LocalDate.of(startYear, 1, 1).atStartOfDay(ZoneId.of("UTC")).toInstant().getEpochSecond(),
+                LocalDate.of(startYear, 2, 1).atStartOfDay(ZoneId.of("UTC")).toInstant().getEpochSecond(),
+                LocalDate.of(startYear, 3, 1).atStartOfDay(ZoneId.of("UTC")).toInstant().getEpochSecond(),
+                LocalDate.of(startYear, 4, 1).atStartOfDay(ZoneId.of("UTC")).toInstant().getEpochSecond(),
+                LocalDate.of(startYear, 5, 1).atStartOfDay(ZoneId.of("UTC")).toInstant().getEpochSecond()};
+        for (long date : dates) {
             StringBuilder insert = new StringBuilder();
             insert.append("insert into ").append(innodbTableName).append(" ('unix_time') values ");
             for (int i = 0; i < 999; i++) {

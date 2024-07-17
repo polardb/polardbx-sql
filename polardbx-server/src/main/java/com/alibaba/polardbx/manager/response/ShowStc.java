@@ -184,7 +184,7 @@ public final class ShowStc {
 
         List<List<Object>> list = MatrixStatistics.getStcInfo();
         for (List<Object> obs : list) {
-            RowDataPacket row = getRow(obs, c.getCharset(), schemas);
+            RowDataPacket row = getRow(obs, c.getResultSetCharset(), schemas);
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

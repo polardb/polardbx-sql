@@ -45,7 +45,7 @@ a
 ## explain point select
 explain select * from tbl where a='1989-01-01' order by a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="1989-01-01")
 HitCache:false
 Source:PLAN_CACHE
 TemplateId: 48dfdf4e
@@ -156,7 +156,7 @@ Table,Create Table
 tod2,CREATE TABLE `tod2` (
 	`dt` datetime DEFAULT NULL,
 	KEY `auto_shard_key_dt` USING BTREE (`dt`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(TO_DAYS(`dt`))
 (PARTITION p0 VALUES LESS THAN (5) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (10) ENGINE = InnoDB,

@@ -35,12 +35,9 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.repo.mysql.checktable.LocalPartitionDescription;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
-import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.rex.RexLiteral;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,13 +59,12 @@ public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubC
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-
-        InformationSchemaLocalPartitions localPartitionView = (InformationSchemaLocalPartitions) virtualView;
+        Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
 
         Set<String> equalSchemaNames =
-            getFilterValues(virtualView, localPartitionView.getTableSchemaIndex(), executionContext);
+            virtualView.getEqualsFilterValues(InformationSchemaLocalPartitions.getTableSchemaIndex(), params);
         Set<String> equalTableNames =
-            getFilterValues(virtualView, localPartitionView.getTableNameIndex(), executionContext);
+            virtualView.getEqualsFilterValues(InformationSchemaLocalPartitions.getTableNameIndex(), params);
 
         if (CollectionUtils.isEmpty(equalSchemaNames) || CollectionUtils.size(equalSchemaNames) != 1) {
             throw new TddlNestableRuntimeException("table_schema must be specified");
@@ -140,27 +136,6 @@ public class InformationSchemaLocalPartitionsHandler extends BaseVirtualViewSubC
         }
 
         return cursor;
-    }
-
-    Set<String> getFilterValues(VirtualView virtualView, int index, ExecutionContext executionContext) {
-        List<Object> indexList = virtualView.getIndex().get(index);
-
-        Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
-
-        Set<String> tableNames = new HashSet<>();
-        if (CollectionUtils.isNotEmpty(indexList)) {
-            for (Object obj : indexList) {
-                if (obj instanceof RexDynamicParam) {
-                    String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    tableNames.add(tableName.toLowerCase());
-                } else if (obj instanceof RexLiteral) {
-                    String tableName = ((RexLiteral) obj).getValueAs(String.class);
-                    tableNames.add(tableName.toLowerCase());
-                }
-            }
-        }
-
-        return tableNames;
     }
 }
 

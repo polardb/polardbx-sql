@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Multimap;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTask;
 import com.alibaba.polardbx.executor.mpp.execution.SqlStageExecution;
@@ -28,6 +25,9 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Multimap;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -105,6 +105,11 @@ public class FixedExpandSourceScheduler implements StageScheduler {
     @Override
     public int getTaskNum() {
         return splitAssignments.size();
+    }
+
+    @Override
+    public int requireChildOutputNum() {
+        return getTaskNum();
     }
 
     @Override

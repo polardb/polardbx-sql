@@ -110,7 +110,7 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
         Set<String> dnList = new HashSet<>();
         if (tableGroupConfig.getTableCount() > 0) {
             PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
-                .getPartitionInfo(tableGroupConfig.getTables().get(0).getTableName());
+                .getPartitionInfo(tableGroupConfig.getTables().get(0));
             List<ShowTopologyResult> topologyResults = getTopologyResults(partitionInfo);
             dnList = topologyResults.stream().map(o -> o.dnId).collect(Collectors.toSet());
         }
@@ -158,7 +158,7 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableGroupSetLocality alterTableGroupSetLocality = (AlterTableGroupSetLocality) relDdl;
         String tableGroupName = alterTableGroupSetLocality.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

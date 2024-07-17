@@ -21,7 +21,6 @@ import com.alibaba.polardbx.executor.chunk.Block;
 
 /**
  * @author chenzilin
- * @date 2021/12/8 15:01
  */
 public class BlackHoleMinMaxFilter extends MinMaxFilter {
 

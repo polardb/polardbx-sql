@@ -189,7 +189,7 @@ public final class ShowStats {
             if (SystemDbHelper.CDC_DB_NAME.equalsIgnoreCase(schema.getName())) {
                 continue;
             }
-            RowDataPacket row = getRow(schema.getDataSource(), c.getCharset());
+            RowDataPacket row = getRow(schema.getDataSource(), c.getResultSetCharset());
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

@@ -321,7 +321,6 @@ public abstract class AbstractRelNode implements RelNode {
       r = copy(getTraitSet(), inputs);
     }
     r.recomputeDigest();
-    assert r.isValid(Litmus.THROW, null);
     return r;
   }
 

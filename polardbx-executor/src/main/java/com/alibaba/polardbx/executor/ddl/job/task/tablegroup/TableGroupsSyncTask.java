@@ -22,9 +22,11 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableGroupsSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
+import java.sql.Connection;
 import java.util.List;
 
 @Getter
@@ -34,9 +36,9 @@ public class TableGroupsSyncTask extends BaseSyncTask {
     List<String> tableGroupNameList;
 
     @JSONCreator
-    public TableGroupsSyncTask(String schemaName, List<String> tableGroupName) {
+    public TableGroupsSyncTask(String schemaName, List<String> tableGroupNameList) {
         super(schemaName);
-        this.tableGroupNameList = tableGroupName;
+        this.tableGroupNameList = tableGroupNameList;
     }
 
     @Override
@@ -44,9 +46,14 @@ public class TableGroupsSyncTask extends BaseSyncTask {
         syncTableGroup();
     }
 
-    private void syncTableGroup() {
+    @Override
+    protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        syncTableGroup();
+    }
+
+    protected void syncTableGroup() {
         try {
-            SyncManagerHelper.sync(new TableGroupsSyncAction(schemaName, tableGroupNameList));
+            SyncManagerHelper.sync(new TableGroupsSyncAction(schemaName, tableGroupNameList), SyncScope.ALL);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while sync table group, schemaName:%s, tableGroupName:%s", schemaName,

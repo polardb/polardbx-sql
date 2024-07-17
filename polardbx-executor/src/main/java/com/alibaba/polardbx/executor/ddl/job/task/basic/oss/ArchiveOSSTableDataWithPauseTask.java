@@ -71,7 +71,7 @@ public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask {
                 List<ColumnMetasRecord> columnMetas =
                     columnMetaAccessor.queryUncommitted(getTaskId(), schemaName, logicalTableName);
                 deleteUncommitted(files, columnMetas);
-                filesAccessor.deleteUncommited(getTaskId(), schemaName, logicalTableName);
+                filesAccessor.deleteUncommitted(getTaskId(), schemaName, logicalTableName);
                 columnMetaAccessor.deleteUncommitted(getTaskId(), schemaName, logicalTableName);
                 return 0;
             }

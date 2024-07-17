@@ -38,17 +38,34 @@ public class NodeScheduler {
         this.nodeTaskMap = nodeTaskMap;
     }
 
-    public NodeSelector createNodeSelector(Session session, int limit) {
+    public NodeSelector createNodeSelector(Session session, int limit, boolean randomNode) {
         int maxSplitsPerNode =
             session.getClientContext().getParamManager().getInt(ConnectionParams.MPP_SCHEDULE_MAX_SPLITS_PER_NODE);
         boolean slaveFirst =
             session.getClientContext().getParamManager().getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST);
 
         boolean enableOSSRoundRobin =
-            session.getClientContext().getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN);
+            session.getClientContext().getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN);
 
         Set<InternalNode> nodes = nodeManager.getNodes(NodeState.ACTIVE, ConfigDataMode.isMasterMode() && slaveFirst);
 
-        return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode, enableOSSRoundRobin);
+        boolean columnarMode = session.getClientContext().getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCHEDULE);
+
+        boolean preferLocal =
+            session.getClientContext().getParamManager().getBoolean(ConnectionParams.MPP_PREFER_LOCAL_NODE);
+
+        if (columnarMode) {
+            boolean enableTwoChoiceSchedule = session.getClientContext().getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_TWO_CHOICE_SCHEDULE);
+
+            return new ColumnarNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode,
+                enableOSSRoundRobin,
+                randomNode, enableTwoChoiceSchedule, preferLocal);
+        } else {
+            return new SimpleNodeSelector(nodeManager, nodeTaskMap, nodes, limit, maxSplitsPerNode, enableOSSRoundRobin,
+                randomNode, preferLocal);
+        }
     }
 }

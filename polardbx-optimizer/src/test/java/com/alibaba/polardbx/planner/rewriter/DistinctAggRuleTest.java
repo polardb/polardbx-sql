@@ -26,7 +26,7 @@ import java.util.List;
 public class DistinctAggRuleTest extends BasePlanRewriterTest {
 
     public DistinctAggRuleTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
-        super(caseName, sqlIndex, sql, expectedPlan, lineNum);
+        super(caseName, sqlIndex, "/*+TDDL:ENABLE_PUSHDOWN_DISTINCT=false*/" + sql, expectedPlan, lineNum);
     }
 
     @Parameterized.Parameters(name = "{0}:{1}")

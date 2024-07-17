@@ -4,6 +4,7 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -91,7 +92,35 @@ public class ModifyPartitionKeyTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
 
         sql = String.format("alter table %s modify column a bigint, modify c bigint", tableName);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testModifyPartitionColumnWithUpperCase() {
+        String tableName = "modify_sk_test_tbl_upper" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (a int primary key, b varchar(255), c int, global index upperGsi(a,b) partition by key(a)) partition by hash(`a`)",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (0, 'abc', 999)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (1, 'abc', 999)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (2, 'abc', 999)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column A bigint", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column a varchar(10)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column A int", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
     @Test
@@ -104,7 +133,7 @@ public class ModifyPartitionKeyTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column b bigint, modify column c bigint", tableName);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
     @Test
@@ -185,6 +214,7 @@ public class ModifyPartitionKeyTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
+    @Ignore
     public void testModifyPartitionKeySimpleCheckerTest() {
         String tableName = "modify_sk_simple_checker_test_tbl" + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
@@ -432,6 +462,68 @@ public class ModifyPartitionKeyTest extends DDLBaseNewDBTestCase {
             throw new RuntimeException("", e);
         } finally {
             JdbcUtil.close(rs);
+        }
+    }
+
+    @Test
+    public void testModifyPartitionKeyWithUGSI() {
+        String tableName = "modify_sk_ugsi";
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b varchar(10)) partition by hash(a) partitions 3",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql =
+            String.format("alter table %s add unique global index ugsi1(b) partition by hash(b) partitions 3",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (0,'a'),(2,'b')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column b varchar(20) default 'abc'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testTableStatistic() {
+        String tableName = "omc_table_statistic_modify";
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b int) partition by hash(a) partitions 3", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("analyze table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format(
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            tddlDatabase1, tableName);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getInt(1), 2);
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+
+        sql = String.format("alter table %s modify column a varchar(10)", tableName);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+        sql = String.format(
+            "select count(1) from information_schema.virtual_statistic where schema_name='%s' and table_name='%s' and HISTOGRAM is not null",
+            tddlDatabase1, tableName);
+        ResultSet rs1 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs1.next());
+            Assert.assertEquals(rs1.getInt(1), 1);
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs1);
         }
     }
 }

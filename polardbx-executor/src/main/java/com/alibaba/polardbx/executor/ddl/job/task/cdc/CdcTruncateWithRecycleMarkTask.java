@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
@@ -35,6 +35,7 @@ import java.sql.Connection;
 import java.util.Map;
 
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+import static com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable.checkTableNamePatternForRename;
 
 /**
  * Created by ziyang.lb
@@ -67,9 +68,8 @@ public class CdcTruncateWithRecycleMarkTask extends BaseDdlTask {
         // 如果物理表名也发生了变化，需要将新的tablePattern作为附加参数传给cdcManager
         // 如果物理表名也发生了变更，此处所有物理表已经都完成了rename(此时用户针对该逻辑表提交的任何dml操作都会报错)，cdc打标必须先于元数据变更
         // 如果物理表名未进行变更，那么tablePattern不会发生改变，Rename是一个轻量级的操作，打标的位置放到元数据变更之前或之后，都可以
-        executionContext.setPhyTableRenamed(false);
         String newTbNamePattern = TableMetaChanger.buildNewTbNamePattern(executionContext, schemaName,
-            sourceTableName, targetTableName);
+            sourceTableName, targetTableName, !checkTableNamePatternForRename(schemaName, sourceTableName));
         Map<String, Object> params = buildExtendParameter(executionContext);
         params.put(ICdcManager.TABLE_NEW_NAME, targetTableName);
         params.put(ICdcManager.TABLE_NEW_PATTERN, newTbNamePattern);
@@ -79,6 +79,6 @@ public class CdcTruncateWithRecycleMarkTask extends BaseDdlTask {
         DdlContext ddlContext = executionContext.getDdlContext();
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, sourceTableName, SqlKind.RENAME_TABLE.name(), renameSql,
-                DdlType.RENAME_TABLE, ddlContext.getJobId(), getTaskId(), DdlVisibility.Public, params);
+                DdlType.RENAME_TABLE, ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public, params);
     }
 }

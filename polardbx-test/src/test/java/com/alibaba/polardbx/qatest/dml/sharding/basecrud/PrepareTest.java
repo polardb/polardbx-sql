@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.basecrud;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.Assert;
@@ -182,6 +184,32 @@ public class PrepareTest extends CrudBasedLockTestCase {
                 JdbcUtil.close(preparedStatement);
             }
         }
+    }
+
+    @Test
+    public void prepareExceedsLimitTest() throws SQLException {
+        try (Connection newTddlConnection = ConnectionManager.getInstance().newPolarDBXConnection();
+            Statement stmt = newTddlConnection.createStatement()) {
+            // 同一个session内prepare语句上限
+            final int MAX_PREPARED_COUNT =
+                Integer.parseInt(ConnectionParams.MAX_SESSION_PREPARED_STMT_COUNT.getDefault());
+            int idx = 0;
+            for (; idx < MAX_PREPARED_COUNT; idx++) {
+                try {
+                    stmt.execute(String.format("PREPARE stmt%d FROM 'select 1'", idx));
+                } catch (SQLException e) {
+                    Assert.fail("Expect prepare success, but got: " + e.getMessage());
+                }
+            }
+            try {
+                stmt.execute(String.format("PREPARE stmt%d FROM 'select 1'", idx));
+                Assert.fail("Expect prepare failure");
+            } catch (SQLException e) {
+                Assert.assertTrue(e.getMessage()
+                    .contains("Can't create more than MAX_SESSION_PREPARED_STMT_COUNT statements in one session"));
+            }
+        }
+
     }
 
     private void assertPrepareTest(

@@ -95,6 +95,19 @@ public class SqlTypeFactoryImpl extends RelDataTypeFactoryImpl {
     return canonize(new EnumSqlType(typeSystem, typeName, values, null, null));
   }
 
+  @Override
+  public RelDataType createSetSqlType(SqlTypeName typeName, int precision, List<String> setValues) {
+    final int maxPrecision = typeSystem.getMaxPrecision(typeName);
+    if (maxPrecision >= 0 && precision > maxPrecision) {
+      precision = maxPrecision;
+    }
+    RelDataType newType = precision == RelDataType.PRECISION_NOT_SPECIFIED
+        ? new SetSqlType(typeSystem, typeName, setValues)
+        : new SetSqlType(typeSystem, typeName, precision, setValues);
+    newType = SqlTypeUtil.addCharsetAndCollation(newType, this);
+    return canonize(newType);
+  }
+
   public RelDataType createUnknownType() {
     return canonize(new UnknownSqlType(this));
   }

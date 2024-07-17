@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -43,13 +44,14 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.optimizer.config.meta.CostModelWeight.OSS_PAGE_SIZE;
 import static com.alibaba.polardbx.optimizer.config.meta.CostModelWeight.TUPLE_HEADER_SIZE;
 
 /**
@@ -78,8 +80,8 @@ public class OrcTableScan extends TableScan {
     OrcTableScan(RelOptCluster cluster, RelTraitSet traitSet,
                  RelOptTable table, ImmutableList<Integer> outProjects, ImmutableList<RexNode> filters,
                  ImmutableList<Integer> inProjects, SqlNodeList hints, SqlNode indexNode, RexNode flashback,
-                 SqlNode partitions) {
-        super(cluster, traitSet, table, hints, indexNode, flashback, partitions);
+                 SqlOperator flashbackOperator, SqlNode partitions) {
+        super(cluster, traitSet, table, hints, indexNode, flashback, flashbackOperator, partitions);
         this.outProjects = Preconditions.checkNotNull(outProjects);
         this.filters = Preconditions.checkNotNull(filters);
         this.inProjects = Preconditions.checkNotNull(inProjects);
@@ -89,9 +91,11 @@ public class OrcTableScan extends TableScan {
     public static OrcTableScan create(RelOptCluster cluster,
                                       RelOptTable table, List<Integer> outProjects, List<RexNode> filters,
                                       List<Integer> inProjects, SqlNodeList hints, SqlNode indexNode, RexNode flashback,
+                                      SqlOperator flashbackOperator,
                                       SqlNode partitions) {
         return new OrcTableScan(cluster, cluster.traitSetOf(Convention.NONE), table, ImmutableList.copyOf(outProjects),
-            ImmutableList.copyOf(filters), ImmutableList.copyOf(inProjects), hints, indexNode, flashback, partitions);
+            ImmutableList.copyOf(filters), ImmutableList.copyOf(inProjects), hints, indexNode, flashback,
+            flashbackOperator, partitions);
     }
 
     public void setIndexAble(OSSTableScan.OSSIndexContext indexContext) {
@@ -151,9 +155,9 @@ public class OrcTableScan extends TableScan {
         long remainPage = getGroupNumber(estimateRowCount, totalRowCount, (int) CostModelWeight.OSS_PAGE_SIZE);
 
         remainPage = Math.max(1, remainPage);
-        double rowCount = remainPage * OSS_PAGE_SIZE;
+        double rowCount = remainPage * CostModelWeight.OSS_PAGE_SIZE;
         double io = Math.ceil(TUPLE_HEADER_SIZE + TableScanIOEstimator.estimateRowSize(getInputProjectRowType())
-            * remainPage * OSS_PAGE_SIZE);
+            * remainPage * CostModelWeight.OSS_PAGE_SIZE);
         return planner.getCostFactory().makeCost(rowCount, 0, 0, io, rowCount);
     }
 
@@ -174,6 +178,14 @@ public class OrcTableScan extends TableScan {
 
     public ImmutableList<RexNode> getFilters() {
         return filters;
+    }
+
+    public List<RexNode> getOriFilters() {
+        Map<Integer, Integer> shiftMap = Maps.newHashMap();
+        for (int i = 0; i < inProjects.size(); i++) {
+            shiftMap.put(i, inProjects.get(i));
+        }
+        return RexUtil.shift(filters, shiftMap);
     }
 
     public ImmutableList<Integer> getInProjects() {
@@ -234,15 +246,18 @@ public class OrcTableScan extends TableScan {
             synchronized (this) {
                 if (filters.isEmpty() && inProjects.isEmpty() && outProjects.isEmpty()) {
                     nodeForMetaQuery =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                 } else if (!filters.isEmpty() && inProjects.isEmpty() && outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalFilter logicalFilter = LogicalFilter.create(logicalTableScan, filters.get(0));
                     nodeForMetaQuery = logicalFilter;
                 } else if (filters.isEmpty() && !inProjects.isEmpty() && outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalProject inLogicalProject = LogicalProject.create(logicalTableScan,
                         inProjects.stream()
                             .map(idx -> new RexInputRef(idx, table.getRowType().getFieldList().get(idx).getType()))
@@ -252,7 +267,8 @@ public class OrcTableScan extends TableScan {
                     nodeForMetaQuery = inLogicalProject;
                 } else if (!filters.isEmpty() && !inProjects.isEmpty() && outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalProject inLogicalProject = LogicalProject.create(logicalTableScan,
                         inProjects.stream()
                             .map(idx -> new RexInputRef(idx, table.getRowType().getFieldList().get(idx).getType()))
@@ -263,7 +279,8 @@ public class OrcTableScan extends TableScan {
                     nodeForMetaQuery = logicalFilter;
                 } else if (filters.isEmpty() && inProjects.isEmpty() && !outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalProject inLogicalProject = LogicalProject.create(logicalTableScan,
                         outProjects.stream()
                             .map(idx -> new RexInputRef(idx, table.getRowType().getFieldList().get(idx).getType()))
@@ -273,7 +290,8 @@ public class OrcTableScan extends TableScan {
                     nodeForMetaQuery = inLogicalProject;
                 } else if (!filters.isEmpty() && inProjects.isEmpty() && !outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalFilter logicalFilter = LogicalFilter.create(logicalTableScan, filters.get(0));
                     LogicalProject outLogicalProject = LogicalProject.create(logicalFilter,
                         outProjects.stream()
@@ -284,7 +302,8 @@ public class OrcTableScan extends TableScan {
                     nodeForMetaQuery = outLogicalProject;
                 } else if (filters.isEmpty() && !inProjects.isEmpty() && !outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalProject inLogicalProject = LogicalProject.create(logicalTableScan,
                         inProjects.stream()
                             .map(idx -> new RexInputRef(idx, table.getRowType().getFieldList().get(idx).getType()))
@@ -300,7 +319,8 @@ public class OrcTableScan extends TableScan {
                     nodeForMetaQuery = outLogicalProject;
                 } else if (!filters.isEmpty() && !inProjects.isEmpty() && !outProjects.isEmpty()) {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalProject inLogicalProject = LogicalProject.create(logicalTableScan,
                         inProjects.stream()
                             .map(idx -> new RexInputRef(idx, table.getRowType().getFieldList().get(idx).getType()))

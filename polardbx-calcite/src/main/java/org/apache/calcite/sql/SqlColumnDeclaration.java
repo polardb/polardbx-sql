@@ -87,6 +87,8 @@ public class SqlColumnDeclaration extends SqlCall {
      */
     private final ColumnStrategy strategy;
 
+    private String securedWith;
+
     /**
      * <pre>
      * data_type [NOT NULL | NULL] [DEFAULT {literal | (expr)} ]
@@ -388,6 +390,14 @@ public class SqlColumnDeclaration extends SqlCall {
 
     public ColumnStrategy getStrategy() {
         return strategy;
+    }
+
+    public String getSecuredWith() {
+        return securedWith;
+    }
+
+    public void setSecuredWith(String securedWith) {
+        this.securedWith = securedWith;
     }
 }
 

@@ -24,9 +24,11 @@ import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.table.TableNamesRecord;
 import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
-import com.alibaba.polardbx.gms.topology.ConfigListenerRecord;
+import com.alibaba.polardbx.gms.topology.ConfigListenerDataIdRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -69,12 +71,7 @@ public abstract class GenericObjectListListener extends AbstractLifecycle implem
         unbindExpiredListeners();
     }
 
-    /**
-     * Get visible/available records.
-     *
-     * @return Record list
-     */
-    protected abstract List<SystemTableRecord> fetchRecords();
+    protected abstract List<SystemTableRecord> fetchTablesName();
 
     /**
      * Get an object data id.
@@ -82,7 +79,7 @@ public abstract class GenericObjectListListener extends AbstractLifecycle implem
      * @param record An object record
      * @return The object data id
      */
-    protected abstract String getDataId(SystemTableRecord record);
+    protected abstract String getDataId(String tableSchema, String tableName);
 
     /**
      * Get the prefix of data ids in current schema.
@@ -97,19 +94,20 @@ public abstract class GenericObjectListListener extends AbstractLifecycle implem
      * @param record An object record
      * @return The object listener
      */
-    protected abstract ConfigListener getObjectListener(SystemTableRecord record);
+    protected abstract ConfigListener getObjectListener(String tableSchema, String tableName);
 
     private void bindNewListeners(boolean isInit) {
         // Bind newly registered dataIds and object listeners.
-        List<SystemTableRecord> records = fetchRecords();
+        List<SystemTableRecord> records = fetchTablesName();
 
         if (records != null && records.size() > 0) {
             for (SystemTableRecord record : records) {
-                String objectDataId = getDataId(record);
+                TableNamesRecord tablesNameRecord = (TableNamesRecord) record;
+                String objectDataId = getDataId(schemaName, tablesNameRecord.tableName);
 
                 if (isInit || !objectListeners.keySet().contains(objectDataId)) {
                     // New a specific listener for the object.
-                    ConfigListener objectListener = getObjectListener(record);
+                    ConfigListener objectListener = getObjectListener(schemaName, tablesNameRecord.tableName);
 
                     // Bind them to enable timed task.
                     CONFIG_MANAGER.bindListener(objectDataId, objectListener);
@@ -175,12 +173,10 @@ public abstract class GenericObjectListListener extends AbstractLifecycle implem
             accessor.setConnection(metaDbConn);
 
             Set<String> activeDataIds = new HashSet<>();
-            List<ConfigListenerRecord> records = accessor.getDataIdsByPrefix(dataIdPrefix);
+            List<ConfigListenerDataIdRecord> records = accessor.getDataIdsOnlyByPrefix(dataIdPrefix);
 
-            for (ConfigListenerRecord record : records) {
-                if (record.status == ConfigListenerRecord.DATA_ID_STATUS_NORMAL) {
-                    activeDataIds.add(MetaDbDataIdBuilder.formatDataId(record.dataId));
-                }
+            for (ConfigListenerDataIdRecord record : records) {
+                activeDataIds.add(MetaDbDataIdBuilder.formatDataId(record.dataId));
             }
 
             return activeDataIds;

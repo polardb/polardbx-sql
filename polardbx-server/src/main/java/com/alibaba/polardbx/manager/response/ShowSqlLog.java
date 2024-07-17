@@ -56,7 +56,7 @@ public final class ShowSqlLog {
 
     public static void execute(ManagerConnection c) {
         ByteBufferHolder buffer = c.allocate();
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         executeInternal(proxy, charset);
     }

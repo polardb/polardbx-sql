@@ -20,6 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.ImplicitTableGroupUtil;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupTableDetailAccessor;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupTableDetailRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
@@ -50,31 +52,41 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
 
     private boolean temporary;
 
-    private TableGroupConfig tableGroupConfig;
+    private TableGroupDetailConfig tableGroupConfig;
     private LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
-    private boolean indexAlignWithPrimaryTableGroup;
+    private String tableGroupAlignWithTargetTable;
     private String primaryTable;
     private String locality;
     //specified in create table statement
     private String joinGroup;
+    private Boolean oss;
+    private Boolean withTableGroupImplicit;
+    private Boolean autoCreateTg;
 
     @JSONCreator
     public CreateTableAddTablesPartitionInfoMetaTask(String schemaName,
                                                      String logicalTableName,
                                                      boolean temporary,
-                                                     TableGroupConfig tableGroupConfig,
+                                                     TableGroupDetailConfig tableGroupConfig,
                                                      LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
-                                                     boolean indexAlignWithPrimaryTableGroup,
+                                                     String tableGroupAlignWithTargetTable,
                                                      String primaryTable,
-                                                     String joinGroup) {
+                                                     String joinGroup,
+                                                     boolean oss,
+                                                     boolean withTableGroupImplicit,
+                                                     boolean autoCreateTg) {
         super(schemaName, logicalTableName);
         this.temporary = temporary;
         this.tableGroupConfig = tableGroupConfig;
 
         this.localPartitionDefinitionInfo = localPartitionDefinitionInfo;
-        this.indexAlignWithPrimaryTableGroup = indexAlignWithPrimaryTableGroup;
+        this.tableGroupAlignWithTargetTable = tableGroupAlignWithTargetTable;
         this.primaryTable = primaryTable;
         this.joinGroup = joinGroup;
+        this.oss = oss;
+        this.autoCreateTg = autoCreateTg;
+        this.withTableGroupImplicit = withTableGroupImplicit;
+        ImplicitTableGroupUtil.checkAutoCreateTableGroup(tableGroupConfig, oss, withTableGroupImplicit, autoCreateTg);
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -83,14 +95,18 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
         if (!isCreateTableSupported(executionContext)) {
             return;
         }
-        if (indexAlignWithPrimaryTableGroup) {
-            assert primaryTable != null;
+        TablePartitionConfig tablePartitionConfig = null;
+        if (StringUtils.isNotEmpty(tableGroupAlignWithTargetTable)) {
+            tablePartitionConfig =
+                getTablePartitionConfig(tableGroupAlignWithTargetTable, metaDbConnection);
+        }
+        if (StringUtils.isNotEmpty(tableGroupAlignWithTargetTable) && tablePartitionConfig != null) {
             tableGroupConfig.setTableGroupRecord(null);
             if (tableGroupConfig.getAllTables().size() != 1) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT, "unexpected table count");
             }
-            TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupConfig.getAllTables().get(0);
-            TablePartitionConfig tablePartitionConfig = getTablePartitionConfig(primaryTable, metaDbConnection);
+            TablePartRecordInfoContext tablePartRecordInfoContext =
+                tableGroupConfig.getTablesPartRecordInfoContext().get(0);
             List<TablePartitionSpecConfig> tablePartitionSpecConfigs = tablePartitionConfig.getPartitionSpecConfigs();
             if (tablePartitionSpecConfigs.size() != tablePartRecordInfoContext.getPartitionRecList().size()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT, "unexpected partition count");
@@ -107,27 +123,53 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
                         "can't found the right partition");
                 }
                 tablePartitionRecord.setGroupId(tablePartitionSpecConfig.get().getSpecConfigInfo().getGroupId());
+                if (GeneralUtil.isNotEmpty(tablePartRecordInfoContext.getSubPartitionRecMap())) {
+                    List<TablePartitionRecord> subTablePartitionRecords =
+                        tablePartRecordInfoContext.getSubPartitionRecMap().get(tablePartitionRecord.getPartName());
+                    List<TablePartitionSpecConfig> subTablePartitionConfigs =
+                        tablePartitionSpecConfig.get().getSubPartitionSpecConfigs();
+                    if (GeneralUtil.isEmpty(subTablePartitionRecords) || GeneralUtil.isEmpty(
+                        subTablePartitionConfigs)) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                            "can't found the right subpartition");
+                    }
+                    for (TablePartitionRecord subTablePartitionRecord : subTablePartitionRecords) {
+                        Optional<TablePartitionSpecConfig> subTablePartitionSpecConfig =
+                            subTablePartitionConfigs.stream()
+                                .filter(o -> o.getSpecConfigInfo().partName.equalsIgnoreCase(
+                                    subTablePartitionRecord.partName))
+                                .findFirst();
+                        if (!subTablePartitionSpecConfig.isPresent()) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                                "can't found the right partition");
+                        }
+                        subTablePartitionRecord.setGroupId(subTablePartitionSpecConfig.get().getSpecConfigInfo()
+                            .getGroupId());
+                    }
+                }
             }
 
-        }
-        if (primaryTable == null) {
+        } else if (primaryTable == null) {
             JoinGroupInfoAccessor joinGroupInfoAccessor = new JoinGroupInfoAccessor();
             JoinGroupTableDetailAccessor joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
             joinGroupTableDetailAccessor.setConnection(metaDbConnection);
             joinGroupInfoAccessor.setConnection(metaDbConnection);
 
             if (tableGroupConfig.getTableGroupRecord() == null) {
-                TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupConfig.getTables().get(0);
+                TablePartRecordInfoContext tablePartRecordInfoContext =
+                    tableGroupConfig.getTablesPartRecordInfoContext()
+                        .get(0);
                 Long groupId = tablePartRecordInfoContext.getLogTbRec().groupId;
-                boolean isEmptyGroup = tableGroupConfig.getTables().size() == 1 && (groupId == null || groupId == -1);
+                boolean isEmptyGroup =
+                    tableGroupConfig.getAllTables().size() == 1 && (groupId == null || groupId == -1);
                 if (!isEmptyGroup) {
                     TableGroupConfig tgConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
                         .getTableGroupConfigById(groupId);
 
-                    if (GeneralUtil.isNotEmpty(tgConfig.getTables())) {
+                    if (GeneralUtil.isNotEmpty(tgConfig.getAllTables())) {
                         JoinGroupTableDetailRecord joinGroupTableDetailRecord =
                             joinGroupTableDetailAccessor.getJoinGroupDetailBySchemaTableName(schemaName,
-                                tgConfig.getTables().get(0).getTableName());
+                                tgConfig.getAllTables().get(0));
                         if (joinGroupTableDetailRecord != null) {
                             joinGroupTableDetailAccessor.insertJoingroupTableDetail(schemaName,
                                 joinGroupTableDetailRecord.joinGroupId,
@@ -173,11 +215,11 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
         return !(temporary || executionContext.isUseHint());
     }
 
-    public TableGroupConfig getTableGroupConfig() {
+    public TableGroupDetailConfig getTableGroupConfig() {
         return tableGroupConfig;
     }
 
-    public void setTableGroupConfig(TableGroupConfig tableGroupConfig) {
+    public void setTableGroupConfig(TableGroupDetailConfig tableGroupConfig) {
         this.tableGroupConfig = tableGroupConfig;
     }
 

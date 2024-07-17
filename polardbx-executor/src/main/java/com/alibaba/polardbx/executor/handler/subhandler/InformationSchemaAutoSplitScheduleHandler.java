@@ -87,26 +87,5 @@ public class InformationSchemaAutoSplitScheduleHandler extends BaseVirtualViewSu
 
         return cursor;
     }
-
-    Set<String> getFilterValues(VirtualView virtualView, int index, ExecutionContext executionContext) {
-        List<Object> indexList = virtualView.getIndex().get(index);
-
-        Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
-
-        Set<String> tableNames = new HashSet<>();
-        if (CollectionUtils.isNotEmpty(indexList)) {
-            for (Object obj : indexList) {
-                if (obj instanceof RexDynamicParam) {
-                    String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-                    tableNames.add(tableName.toLowerCase());
-                } else if (obj instanceof RexLiteral) {
-                    String tableName = ((RexLiteral) obj).getValueAs(String.class);
-                    tableNames.add(tableName.toLowerCase());
-                }
-            }
-        }
-
-        return tableNames;
-    }
 }
 

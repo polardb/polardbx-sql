@@ -81,7 +81,7 @@ public class BroadcastModifyGsiWriter extends AbstractSingleWriter
 
         switch (getOperation()) {
         case UPDATE:
-            if (GlobalIndexMeta.canWrite(ec, gsiMeta)) {
+            if (GlobalIndexMeta.canWrite(ec, gsiMeta) || GlobalIndexMeta.canDelete(ec, gsiMeta)) {
                 // WRITE_ONLY or PUBLIC
                 return updateWriter.getInput(ec, rowGenerator);
             }

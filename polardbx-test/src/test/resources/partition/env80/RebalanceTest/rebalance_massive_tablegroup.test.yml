@@ -1069,10 +1069,10 @@ PARTITION `p16` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
       expectedManipulateResult:
       expectedManipulateColumns:
     - conditionStmt: "show ddl"
-      expectedConditionResult: []
+      expectedConditionResult: [ ]
       manipulateStmt: "rebalance database policy = 'partition_balance'"
-      expectedManipulateColumns: [ 2 ]
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"]
+      expectedManipulateColumns:
+      expectedManipulateResult:
     - conditionStmt: "show ddl"
       expectedConditionResult: []
       manipulateStmt: "rebalance database policy = 'auto_split_for_partition_balance'"
@@ -1083,11 +1083,6 @@ PARTITION `p16` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
       manipulateStmt: "rebalance database policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: []
-      manipulateStmt: "rebalance database policy = 'partition_balance'"
-      expectedManipulateColumns: [ 2 ]
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"]
     dataDistributionCheckActions:
     - conditionStmt: "show ddl"
       expectedConditionResult: [ ]

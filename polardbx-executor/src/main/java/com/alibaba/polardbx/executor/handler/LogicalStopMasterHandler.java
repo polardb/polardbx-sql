@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.cdc.ResultCode;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.HttpClientHelper;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.net.util.CdcTargetUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlStopMaster;
@@ -39,6 +41,8 @@ import org.apache.calcite.sql.SqlStopMaster;
  * @since 2023/3/1 17:13
  **/
 public class LogicalStopMasterHandler extends HandlerCommon {
+
+    private static final Logger cdcLogger = SQLRecorderLogger.cdcLogger;
 
     public LogicalStopMasterHandler(IRepository repo) {
         super(repo);
@@ -60,11 +64,13 @@ public class LogicalStopMasterHandler extends HandlerCommon {
         try {
             res = HttpClientHelper.doGet("http://" + daemonEndpoint + "/system/stop");
         } catch (Exception e) {
+            cdcLogger.error("stop master error!", e);
             throw new RuntimeException("stop master failed", e);
         }
 
-        ResultCode resultCode = JSON.parseObject(res, ResultCode.class);
+        ResultCode<?> resultCode = JSON.parseObject(res, ResultCode.class);
         if (resultCode.getCode() == CdcConstants.SUCCESS_CODE) {
+            cdcLogger.warn("stop slave failed! code:" + resultCode.getCode() + ", msg:" + resultCode.getMsg());
             return new AffectRowCursor(0);
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC, resultCode.getMsg());

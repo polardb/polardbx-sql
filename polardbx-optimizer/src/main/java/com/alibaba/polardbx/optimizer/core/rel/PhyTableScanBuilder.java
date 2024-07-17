@@ -17,17 +17,19 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.jdbc.PruneRawString;
-import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
@@ -42,6 +44,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -70,6 +73,8 @@ import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -85,6 +90,8 @@ import static org.apache.calcite.sql.SqlKind.PLUS;
  * @author lingce.ldm 2017-11-15 14:00
  */
 public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
+
+    private static final Logger logger = LoggerFactory.getLogger(PhyTableScanBuilder.class);
 
     /**
      * <p>
@@ -119,25 +126,31 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     protected final List<String> logicalTableNames;
     protected UnionOptHelper unionOptHelper;
     protected ExecutionContext executionContext;
-    protected boolean buildForPushDownOneShardOnly = false;
+    protected boolean pushDowned = false;
+
+    protected Map<Pair<String, List<String>>, Parameters> prunedParameters;
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
                                ExecutionContext executionContext, RelNode parent, DbType dbType,
-                               RelDataType rowType, String schemaName, List<String> logicalTableNames,
-                               boolean useCache) {
+                               RelDataType rowType, String schemaName,
+                               List<String> logicalTableNames,
+                               boolean useCache, boolean pushDowned,
+                               Map<Pair<String, List<String>>, Parameters> prunedParameters) {
         this.executionContext = executionContext;
         this.targetTables = targetTables;
         this.params = executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+        this.prunedParameters = prunedParameters;
         this.parent = parent;
         this.dbType = dbType;
         this.rowType = rowType;
+        this.pushDowned = pushDowned;
 
         boolean usingPhySqlCache = executionContext.enablePhySqlCache() & useCache;
         if (usingPhySqlCache &&
             (executionContext.getCorrelateFieldInViewMap() == null || executionContext
                 .getCorrelateFieldInViewMap().isEmpty())) {
             this.sqlTemplate = sqlTemplate;
-            this.sqlTemplate.accept(new FetchPreprocessor(params, true));
+            this.sqlTemplate.accept(new FetchPreprocessor(params, prunedParameters, true));
         } else {
             this.sqlTemplate = (SqlSelect) sqlTemplate.accept(
                 new ReplaceTableNameWithSomethingVisitor(executionContext.getCorrelateFieldInViewMap(),
@@ -149,7 +162,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     }
                 }
             );
-            this.sqlTemplate.accept(new FetchPreprocessor(params, false));
+            this.sqlTemplate.accept(new FetchPreprocessor(params, prunedParameters, false));
         }
         this.dynamicParamList = PlannerUtils.getDynamicParamInfoList(this.sqlTemplate);
         this.schemaName = schemaName;
@@ -157,26 +170,41 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     }
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
-                               ExecutionContext executionContext, RelNode parent, DbType dbType, String schemaName,
+                               ExecutionContext executionContext, RelNode parent, DbType dbType,
+                               String schemaName,
                                List<String> logicalTableName) {
-        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(), schemaName,
-            logicalTableName, true);
+        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(),
+            schemaName,
+            logicalTableName, true, false, null);
     }
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
                                ExecutionContext executionContext, RelNode parent, DbType dbType, String schemaName,
-                               List<String> logicalTableName, boolean useCache) {
+                               List<String> logicalTableName,
+                               Map<Pair<String, List<String>>, Parameters> prunedParameters) {
         this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(), schemaName,
-            logicalTableName, useCache);
+            logicalTableName, true, false, prunedParameters);
+    }
+
+    public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
+                               ExecutionContext executionContext, RelNode parent, DbType dbType,
+                               String schemaName,
+                               List<String> logicalTableName, boolean useCache) {
+        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(),
+            schemaName,
+            logicalTableName, useCache, false, null);
     }
 
     private static class FetchPreprocessor extends SqlShuttle {
 
         protected final Map<Integer, ParameterContext> params;
+        protected final Map<Pair<String, List<String>>, Parameters> prunedParams;
         private final boolean usingCache;
 
-        private FetchPreprocessor(Map<Integer, ParameterContext> params, boolean usingCache) {
+        private FetchPreprocessor(Map<Integer, ParameterContext> params,
+                                  Map<Pair<String, List<String>>, Parameters> prunedParams, boolean usingCache) {
             this.params = params;
+            this.prunedParams = prunedParams;
             this.usingCache = usingCache;
         }
 
@@ -222,8 +250,15 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     // it is ok to set concurrently
                     sqlTemplate.setComputedFetch(dynamicParam);
                     // put the computed value to params in execution context
-                    params.put(params.size() + 1, new ParameterContext(
-                        OptimizerUtils.getParameterMethod(fetchVal), new Object[] {params.size() + 1, fetchVal}));
+                    int index = params.size() + 1;
+                    ParameterMethod method = OptimizerUtils.getParameterMethod(fetchVal);
+                    params.put(index, new ParameterContext(method, new Object[] {index, fetchVal}));
+                    if (prunedParams != null) {
+                        for (Parameters parameter : prunedParams.values()) {
+                            parameter.getCurrentParameter()
+                                .put(index, new ParameterContext(method, new Object[] {index, fetchVal}));
+                        }
+                    }
                 } else {
                     /*
                       When no cache, we can generate a Literal directly.
@@ -247,13 +282,45 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                         return -1;
                     }
                     int index = ((SqlDynamicParam) op).getIndex();
-                    fetchVal = fetchVal + Long.valueOf(String.valueOf(params.get(index + 1).getValue())).longValue();
+                    long value = 0;
+                    try {
+                        value = Long.parseLong(String.valueOf(params.get(index + 1).getValue()));
+                    } catch (NumberFormatException e) {
+                        Object obj = params.get(index + 1).getValue();
+                        if (obj instanceof BigInteger) {
+                            if (((BigInteger) obj).signum() < 0) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "get rex " + obj);
+                            } else {
+                                fetchVal = Long.MAX_VALUE;
+                                continue;
+                            }
+                        }
+                        if (obj instanceof BigDecimal) {
+                            if (((BigDecimal) obj).scale() > 0) {
+                                throw e;
+                            }
+                            if (((BigDecimal) obj).signum() < 0) {
+                                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "get rex " + obj);
+                            } else {
+                                return Long.MAX_VALUE;
+                            }
+                        }
+                        throw e;
+                    }
+                    if (value < 0) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "get rex " + value);
+                    }
+                    fetchVal += value;
                 } else if (op instanceof SqlLiteral) {
                     fetchVal = fetchVal + ((SqlLiteral) op).longValue(false);
                 } else {
                     // Impossible.
                     throw new TddlNestableRuntimeException("Impossible be here.");
                 }
+            }
+            // over flow
+            if (fetchVal < 0) {
+                return Long.MAX_VALUE;
             }
             return fetchVal;
         }
@@ -267,7 +334,13 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
         final XPlanTemplate XPlan;
         final BytesSql bytesSql;
-        if (parent instanceof LogicalView && ((LogicalView) parent).getSqlTemplate(executionContext) == sqlTemplate) {
+
+        if (pushDowned && parent instanceof LogicalView) {
+            //the sqlTemplate shouldn't happen change for push-down plan.
+            bytesSql = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
+            XPlan = ((LogicalView) parent).getXPlan();
+        } else if (parent instanceof LogicalView
+            && ((LogicalView) parent).getSqlTemplate(executionContext) == sqlTemplate) {
             bytesSql = ((LogicalView) parent).getBytesSql(sqlTemplate);
             XPlan = ((LogicalView) parent).getXPlan();
         } else {
@@ -295,68 +368,6 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             final SpecialFunctionRelFinder finder = new SpecialFunctionRelFinder();
             finder.go(parent);
             supportGalaxyPrepare = finder.supportGalaxyPrepare();
-        }
-
-        if (parent instanceof LogicalView) {
-            LogicalView lv = (LogicalView) parent;
-            boolean isNeedPrune = isNeedPrune((LogicalView) parent, executionContext);
-            if (isNeedPrune) {
-                /**
-                 * prune step 1: find all raw strings
-                 */
-                Map<Integer, RawString> rawStrings = findAllRawStrings(executionContext);
-
-                // step 2: prune args(rawstring)
-                int step = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_STEP_SIZE);
-                int maxPruneTime = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME);
-                if (rawStrings.size() == 1) {
-                    RawString r = rawStrings.values().iterator().next();
-                    step = r.size() / maxPruneTime > step ? r.size() / maxPruneTime : step;
-                    int currentIndex = 0;
-                    Map<Pair<String, List<String>>, Parameters> pruneRawStringMap = Maps.newHashMap();
-                    while (currentIndex < r.size()) {
-                        Parameters parameters = executionContext.getParams().clone();
-
-                        // split rawstring ( args of in expr)
-                        PruneRawString p =
-                            new PruneRawString(r.getObjList(), PruneRawString.PRUNE_MODE.RANGE, currentIndex,
-                                Math.min((currentIndex + step), r.size()),
-                                null);
-
-                        // sub parameter
-                        ParameterContext parameterContext = new ParameterContext();
-                        Object[] objs = new Object[2];
-                        objs[0] = rawStrings.keySet().iterator().next();
-                        objs[1] = p;
-                        parameterContext.setArgs(objs);
-                        parameterContext.setParameterMethod(ParameterMethod.setObject1);
-                        parameters.getCurrentParameter().put(rawStrings.keySet().iterator().next(), parameterContext);
-
-                        // sub context
-                        ExecutionContext e = executionContext.copy(parameters);
-
-                        // cal prune
-                        Map<String, List<List<String>>> groupAndTables = lv.buildTargetTables(e);
-
-                        for (Map.Entry<String, List<List<String>>> entry1 : groupAndTables.entrySet()) {
-                            String group = entry1.getKey();
-                            List<List<String>> tables = entry1.getValue();
-                            for (List<String> tbls : tables) {
-                                Pair<String, List<String>> pairs = new Pair<>(group, tbls);
-                                if (pruneRawStringMap.get(pairs) == null) {
-                                    pruneRawStringMap.put(pairs, parameters);
-                                } else {
-                                    pruneRawStringMap.put(pairs,
-                                        mergeRawStringParameters(parameters, pruneRawStringMap.get(pairs)));
-                                }
-                            }
-                        }
-                        currentIndex += step;
-                    }
-
-                    executionContext.setPruneRawStringMap(pruneRawStringMap);
-                }
-            }
         }
 
         int totalCount = 0;
@@ -403,11 +414,17 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     galaxyPrepareDigest, tmpTargetTables, totalCount, shardPlanMemoryContext);
             allPhyTableScans.addAll(phyTableScans);
         }
+        if (pushDowned) {
+            if (allPhyTableScans.size() > 1) {
+                throw new IllegalArgumentException(
+                    "Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly="
+                        + pushDowned);
+            } else if (allPhyTableScans.get(0) instanceof BaseQueryOperation) {
+                if (ExplainResult.isExplainExecute(executionContext.getExplain())) {
+                    executionContext.setUnOptimizedPlan(parent);
+                }
+            }
 
-        if (buildForPushDownOneShardOnly && allPhyTableScans.size() > 1) {
-            throw new IllegalArgumentException(
-                "Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly="
-                    + buildForPushDownOneShardOnly);
         }
         return allPhyTableScans;
     }
@@ -445,6 +462,9 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     supportGalaxyPrepare,
                     galaxyPrepareDigest,
                     maOfPlanBuildingPool);
+                if (XPlan != null && parent instanceof LogicalView) {
+                    phyTableOp.setOriginPlan(((LogicalView) parent).getPushedRelNode());
+                }
 
 //                phyTableOp.setLogicalTableNames(logicalTableNames);
 //                phyTableOp.setXTemplate(XPlan);
@@ -472,6 +492,9 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                         supportGalaxyPrepare,
                         galaxyPrepareDigest,
                         maOfPlanBuildingPool);
+                    if (XPlan != null && parent instanceof LogicalView) {
+                        phyTableOp.setOriginPlan(parent);
+                    }
 //                    phyTableOp.setLogicalTableNames(logicalTableNames);
 //                    phyTableOp.setXTemplate(XPlan);
 //                    phyTableOp.setSqlDigest(sqlTemplateDigest);
@@ -482,37 +505,6 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             }
         }
         return phyTableScans;
-    }
-
-    private Parameters mergeRawStringParameters(Parameters parameterContexts,
-                                                Parameters parameterContexts1) {
-        Map<Integer, ParameterContext> map = parameterContexts.getCurrentParameter();
-        for (Map.Entry<Integer, ParameterContext> entry : map.entrySet()) {
-            if (entry.getValue() != null && entry.getValue().getValue() instanceof PruneRawString) {
-                PruneRawString pruneRawString = (PruneRawString) entry.getValue().getValue();
-                PruneRawString pruneRawString1 =
-                    (PruneRawString) parameterContexts1.getCurrentParameter().get(entry.getKey()).getValue();
-                pruneRawString.merge(pruneRawString1);
-            }
-        }
-        return new Parameters(map);
-    }
-
-    private Map<Integer, RawString> findAllRawStrings(ExecutionContext executionContext) {
-        Map<Integer, RawString> allRawString = Maps.newHashMap();
-        if (executionContext.getParams() != null) {
-            Map<Integer, ParameterContext> parameterContextMap = executionContext.getParams().getCurrentParameter();
-            for (Map.Entry<Integer, ParameterContext> entry : parameterContextMap.entrySet()) {
-                if (entry.getValue() != null && entry.getValue().getValue() instanceof RawString) {
-                    RawString rawString = (RawString) entry.getValue().getValue();
-                    int pruneSize = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_SIZE);
-                    if (rawString.size() > pruneSize) {
-                        allRawString.put(entry.getKey(), rawString);
-                    }
-                }
-            }
-        }
-        return allRawString;
     }
 
     /**
@@ -555,7 +547,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
     public List<ParameterContext> buildSplitParams(String group, List<String> tables, boolean useDelegate) {
         List<ParameterContext> results = new ArrayList<>();
-        Map<Integer, ParameterContext> currentParams = executionContext.getPruneParams(group, tables);
+        Map<Integer, ParameterContext> currentParams = getPruneParams(group, tables);
         int tableIndex = -1;
         for (DynamicParamInfo dynamicParamInfo : dynamicParamList) {
             if (dynamicParamInfo instanceof IndexedDynamicParamInfo) {
@@ -594,6 +586,17 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             }
         }
         return results;
+    }
+
+    public Map<Integer, ParameterContext> getPruneParams(String dbIndex, List<String> tableNames) {
+        if (prunedParameters == null || prunedParameters.size() == 0) {
+            return null;
+        }
+        Pair<String, List<String>> pair = new Pair<>(dbIndex, tableNames);
+        if (prunedParameters.get(pair) == null) {
+            return null;
+        }
+        return prunedParameters.get(pair).getCurrentParameter();
     }
 
     public Map<Integer, ParameterContext> buildSplitParamMap(List<String> tables) {
@@ -645,7 +648,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         buildParams.setPhyTables(tableNames);
         buildParams.setSqlKind(SqlKind.SELECT);
         buildParams.setLockMode(sqlTemplate.getLockMode());
-        buildParams.setOnlyOnePartitionAfterPruning(buildForPushDownOneShardOnly);
+        buildParams.setOnlyOnePartitionAfterPruning(pushDowned);
 
         buildParams.setLogicalPlan(parent);
         buildParams.setCluster(parent.getCluster());
@@ -724,32 +727,5 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
     public boolean containLimit() {
         return sqlTemplate.getFetch() != null || sqlTemplate.getOffset() != null;
-    }
-
-    private boolean isNeedPrune(LogicalView logicalView, ExecutionContext executionContext) {
-        if (logicalView.hasDynamicPruning() && executionContext.getParams() != null) {
-            Map<Integer, ParameterContext> parameterContextMap = executionContext.getParams().getCurrentParameter();
-            boolean needPrune = false;
-            for (ParameterContext parameterContext : parameterContextMap.values()) {
-                if (parameterContext != null && parameterContext.getValue() instanceof RawString) {
-                    RawString rawString = (RawString) parameterContext.getValue();
-                    int pruneSize = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_SIZE);
-                    int pruneStep = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_STEP_SIZE);
-                    int maxPruneTime = executionContext.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME);
-                    if (rawString.size() > pruneStep * maxPruneTime) {
-                        return false;
-                    }
-                    if (rawString.size() > pruneSize) {
-                        needPrune = true;
-                    }
-                }
-            }
-            return needPrune;
-        }
-        return false;
-    }
-
-    public void setBuildForPushDownOneShardOnly(boolean buildForPushDownOneShardOnly) {
-        this.buildForPushDownOneShardOnly = buildForPushDownOneShardOnly;
     }
 }

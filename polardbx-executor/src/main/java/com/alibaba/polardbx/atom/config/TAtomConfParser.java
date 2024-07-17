@@ -20,9 +20,7 @@ import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import org.apache.commons.lang.BooleanUtils;
-import org.apache.commons.lang.StringUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -105,41 +103,16 @@ public class TAtomConfParser {
             Properties globaProp = TAtomConfParser.parserConfStr2Properties(globalConfStr);
             if (!globaProp.isEmpty()) {
                 String ipKey = TAtomConfParser.GLOBA_IP_KEY;
-                if (!StringUtils.isEmpty(ConfigDataMode.getAtomAddressMode())) {
-                    String modeIpKey = ipKey + ConfigDataMode.getAtomAddressMode();
-                    String ip = TStringUtil.trim(globaProp.getProperty(modeIpKey));
-
-                    if (TStringUtil.isBlank(ip)) {
-                        ip = TStringUtil.trim(globaProp.getProperty(ipKey));
-                    }
-                    if (TStringUtil.isNotBlank(ip)) {
-                        pasObj.setIp(ip);
-                    }
-                } else {
-                    String ip = TStringUtil.trim(globaProp.getProperty(ipKey));
-                    if (TStringUtil.isNotBlank(ip)) {
-                        pasObj.setIp(ip);
-                    }
+                String ip = TStringUtil.trim(globaProp.getProperty(ipKey));
+                if (TStringUtil.isNotBlank(ip)) {
+                    pasObj.setIp(ip);
                 }
 
                 String portKey = TAtomConfParser.GLOBA_PORT_KEY;
-                if (!StringUtils.isEmpty(ConfigDataMode.getAtomAddressMode())) {
-                    String modePortKey = portKey + ConfigDataMode.getAtomAddressMode();
-                    String port = TStringUtil.trim(globaProp.getProperty(modePortKey));
-
-                    if (TStringUtil.isBlank(port)) {
-                        port = TStringUtil.trim(globaProp.getProperty(portKey));
-                    }
-                    if (TStringUtil.isNotBlank(port)) {
-                        pasObj.setPort(port);
-                    }
-                } else {
-                    String port = TStringUtil.trim(globaProp.getProperty(portKey));
-                    if (TStringUtil.isNotBlank(port)) {
-                        pasObj.setPort(port);
-                    }
+                String port = TStringUtil.trim(globaProp.getProperty(portKey));
+                if (TStringUtil.isNotBlank(port)) {
+                    pasObj.setPort(port);
                 }
-
                 String dbName = TStringUtil.trim(globaProp.getProperty(TAtomConfParser.GLOBA_DB_NAME_KEY));
                 if (TStringUtil.isNotBlank(dbName)) {
                     pasObj.setDbName(dbName);

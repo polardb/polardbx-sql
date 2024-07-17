@@ -19,6 +19,8 @@ package com.alibaba.polardbx.executor.archive.columns;
 import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
@@ -51,6 +53,17 @@ public class BitColumnProvider extends IntegerColumnProvider {
 
                 accumulator.ifPresent(a -> a.appendHash(Byte.hashCode(bytes[0])));
             }
+        }
+    }
+
+    @Override
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+        } else {
+            byte[] bytes = row.getBytes(columnId);
+            int intVal = ColumnProvider.intFromByte(bytes, bytes.length);
+            blockBuilder.writeInt(intVal);
         }
     }
 }

@@ -36,6 +36,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLOrderBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLOver;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartition;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByCoHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByList;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
@@ -46,6 +47,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLRecordDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLRowDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLStructDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartition;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByCoHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByList;
 import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByRange;
@@ -209,6 +211,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLBlockStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLBuildTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCallStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCancelJobStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCancelReplicaCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLChangeRoleStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCharacterDataType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCheck;
@@ -220,12 +223,14 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnReference;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnUniqueKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCommentStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCommitStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLContinueReplicaCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCopyFromStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJoinGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateLBACSecurityEntityStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateOutlineStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
@@ -247,6 +252,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJoinGroupStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLBACSecurityEntityStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropLogFileGroupStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropOutlineStatement;
@@ -280,6 +286,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLForeignKeyImpl;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLGrantStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLIfStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLImportDatabaseStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLImportSequenceStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLImportTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement.ValuesClause;
@@ -294,6 +301,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLNullConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLOpenStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPartitionRef;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPauseReplicaCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPrimaryKeyImpl;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPrivilegeItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLPurgeLogsStatement;
@@ -304,6 +312,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLRefreshMaterializedViewSt
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReleaseSavePointStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRenameUserStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplaceStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLResetReplicaCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRestoreStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLReturnStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLRevokeStatement;
@@ -335,6 +344,8 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowPartitionsStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowProcessListStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowQueryTaskStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowRecyclebinStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowReplicaCheckDiffStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowReplicaCheckProgressStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowSessionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticListStmt;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatisticStmt;
@@ -343,6 +354,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowTableGroupsStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowTablesStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowUsersStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowViewsStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLStartReplicaCheckTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLStartTransactionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSubmitJobStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSubqueryTableSource;
@@ -363,15 +375,25 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhileStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterStoragePoolStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelComponentStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityPolicyStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateStoragePoolStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelComponentStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityPolicyStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropStoragePoolStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsGrantSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRevokeSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowStorage;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeMasterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlChangeReplicationFilterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlFlushLogsStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlKillStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlPartitionByKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRebalanceMasterStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLReplicaHashCheckStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlResetMasterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlResetSlaveStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRestartMasterStatement;
@@ -2024,6 +2046,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public boolean visit(MySqlPartitionByKey x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(MySqlPartitionByKey x) {
+
+    }
+
+    @Override
     public boolean visit(SQLPartitionByList x) {
         return true;
     }
@@ -2044,6 +2076,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public boolean visit(SQLPartitionByCoHash x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLPartitionByCoHash x) {
+
+    }
+
+    @Override
     public boolean visit(SQLSubPartition x) {
         return true;
     }
@@ -2060,6 +2102,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(SQLSubPartitionByHash x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLSubPartitionByCoHash x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLSubPartitionByCoHash x) {
 
     }
 
@@ -3547,6 +3599,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public boolean visit(SQLImportSequenceStatement x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLImportSequenceStatement x) {
+
+    }
+
+    @Override
     public void endVisit(SQLRenameUserStatement x) {
 
     }
@@ -3975,6 +4037,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public boolean visit(SQLReplicaHashCheckStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLReplicaHashCheckStatement x) {
+
+    }
+
+    @Override
     public boolean visit(MySqlShowCdcStorageStatement x) {
         return true;
     }
@@ -4003,4 +4075,175 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     public void endVisit(MySqlFlushLogsStatement x) {
 
     }
+
+    @Override
+    public boolean visit(SQLStartReplicaCheckTableStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLStartReplicaCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLPauseReplicaCheckTableStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLPauseReplicaCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLContinueReplicaCheckTableStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLContinueReplicaCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLCancelReplicaCheckTableStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLCancelReplicaCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLResetReplicaCheckTableStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLResetReplicaCheckTableStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLShowReplicaCheckProgressStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLShowReplicaCheckProgressStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLShowReplicaCheckDiffStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLShowReplicaCheckDiffStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsGrantSecurityLabelStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsGrantSecurityLabelStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCreateSecurityLabelComponentStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsCreateSecurityLabelComponentStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCreateSecurityLabelStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsCreateSecurityLabelStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCreateSecurityPolicyStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsCreateSecurityPolicyStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLCreateLBACSecurityEntityStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLCreateLBACSecurityEntityStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLDropLBACSecurityEntityStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(SQLDropLBACSecurityEntityStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsRevokeSecurityLabelStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsRevokeSecurityLabelStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsDropSecurityLabelComponentStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsDropSecurityLabelComponentStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsDropSecurityLabelStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsDropSecurityLabelStatement x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsDropSecurityPolicyStatement x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsDropSecurityPolicyStatement x) {
+
+    }
+
 }

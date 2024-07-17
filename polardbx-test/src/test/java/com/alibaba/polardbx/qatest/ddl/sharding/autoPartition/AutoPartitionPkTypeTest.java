@@ -81,6 +81,7 @@ public class AutoPartitionPkTypeTest extends AutoPartitionTestBase {
             .filter(c -> !c.contains("_set"))
             .filter(c -> !c.contains("_binary"))
             .filter(c -> !c.contains("_varbinary"))
+            .filter(c -> !c.contains("_bigint_64_un"))
             .map(c -> new String[] {c})
             .collect(Collectors.toList());
     }

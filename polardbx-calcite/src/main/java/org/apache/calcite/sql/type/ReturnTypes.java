@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.common.charset.CharsetName;

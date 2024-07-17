@@ -48,10 +48,13 @@ public class SqlCreateView extends SqlCreate {
     private static final SqlOperator OPERATOR =
             new SqlSpecialOperator("CREATE VIEW", SqlKind.CREATE_VIEW);
 
+    private boolean alter;
+
     /** Creates a SqlCreateView. */
-    public SqlCreateView(SqlParserPos pos, boolean replace, SqlIdentifier name,
+    public SqlCreateView(SqlParserPos pos, boolean replace, boolean alter, SqlIdentifier name,
                   SqlNodeList columnList, SqlNode query) {
         super(OPERATOR, pos, replace, false);
+        this.alter = alter;
         this.name = Preconditions.checkNotNull(name);
         this.columnList = columnList; // may be null
         this.query = Preconditions.checkNotNull(query);
@@ -96,5 +99,9 @@ public class SqlCreateView extends SqlCreate {
     @Override
     public SqlIdentifier getName() {
         return (SqlIdentifier) name;
+    }
+
+    public boolean isAlter() {
+        return alter;
     }
 }

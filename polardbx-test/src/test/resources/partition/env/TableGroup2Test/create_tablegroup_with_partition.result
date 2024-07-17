@@ -1,0 +1,701 @@
+## DISABLE_FAST_SQL_PARSER
+## h_h_tp
+create tablegroup h_h_tp_tg
+partition by hash (int,bigint) partitions 4
+subpartition by hash (int, int) subpartitions 4;
+show create tablegroup h_h_tp_tg;
+TableGroup,Create TableGroup
+h_h_tp_tg,CREATE TABLEGROUP `H_H_TP_TG` PARTITION BY HASH ( INT,  BIGINT) PARTITIONS 4
+SUBPARTITION BY HASH ( INT,  INT) SUBPARTITIONS 4
+## h_k_tp
+create tablegroup h_k_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by key (bigint, int) subpartitions 4;
+show create tablegroup h_k_tp_tg;
+TableGroup,Create TableGroup
+h_k_tp_tg,CREATE TABLEGROUP `H_K_TP_TG` PARTITION BY HASH ( INT,  BIGINT) PARTITIONS 4
+SUBPARTITION BY KEY ( BIGINT,  INT) SUBPARTITIONS 4
+## h_r_tp
+create tablegroup h_r_tp_tg partition by hash (int, bigint) partitions 4
+subpartition by range (int) (
+subpartition sp1 values less than ( 123 ),
+subpartition sp2 values less than ( maxvalue )
+);
+show create tablegroup h_r_tp_tg;
+TableGroup,Create TableGroup
+h_r_tp_tg,CREATE TABLEGROUP `H_R_TP_TG` PARTITION BY HASH ( INT,  BIGINT) PARTITIONS 4
+SUBPARTITION BY RANGE ( INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (123),
+	SUBPARTITION SP2 VALUES LESS THAN MAXVALUE
+)
+## h_rc_tp
+create tablegroup h_rc_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by range columns (varchar(20), varchar(30)) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup h_rc_tp_tg;
+TableGroup,Create TableGroup
+h_rc_tp_tg,CREATE TABLEGROUP `H_RC_TP_TG` PARTITION BY HASH ( INT,  BIGINT) PARTITIONS 4
+SUBPARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30)) (
+	SUBPARTITION SP1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	SUBPARTITION SP2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## h_l_tp
+create tablegroup h_l_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by list (int) (
+subpartition sp1 values in ( 123 ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup h_l_tp_tg;
+TableGroup,Create TableGroup
+h_l_tp_tg,CREATE TABLEGROUP `H_L_TP_TG` PARTITION BY HASH ( INT,  BIGINT) PARTITIONS 4
+SUBPARTITION BY LIST ( INT) (
+	SUBPARTITION SP1 VALUES IN (123),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+)
+## h_lc_tp
+create tablegroup h_lc_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by list columns (varchar(20), varchar(30)) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup h_lc_tp_tg;
+TableGroup,Create TableGroup
+h_lc_tp_tg,CREATE TABLEGROUP `H_LC_TP_TG` PARTITION BY HASH ( INT,  BIGINT) PARTITIONS 4
+SUBPARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30)) (
+	SUBPARTITION SP1 VALUES IN (('2020-01-01', 'ABC')),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+)
+#########
+  ## k_h_tp
+create tablegroup k_h_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4;
+show create tablegroup k_h_tp_tg;
+TableGroup,Create TableGroup
+k_h_tp_tg,CREATE TABLEGROUP `K_H_TP_TG` PARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) PARTITIONS 4
+SUBPARTITION BY HASH ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4
+## k_k_tp
+create tablegroup k_k_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by key (varchar(20), varchar(30)) subpartitions 4;
+show create tablegroup k_k_tp_tg;
+TableGroup,Create TableGroup
+k_k_tp_tg,CREATE TABLEGROUP `K_K_TP_TG` PARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) PARTITIONS 4
+SUBPARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4
+## k_r_tp
+create tablegroup k_r_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by range (bigint) (
+subpartition sp1 values less than ( 123 ),
+subpartition sp2 values less than ( maxvalue )
+);
+show create tablegroup k_r_tp_tg;
+TableGroup,Create TableGroup
+k_r_tp_tg,CREATE TABLEGROUP `K_R_TP_TG` PARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) PARTITIONS 4
+SUBPARTITION BY RANGE ( BIGINT) (
+	SUBPARTITION SP1 VALUES LESS THAN (123),
+	SUBPARTITION SP2 VALUES LESS THAN MAXVALUE
+)
+## k_rc_tp
+create tablegroup k_rc_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by range columns (varchar(20), varchar(30)) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup k_rc_tp_tg;
+TableGroup,Create TableGroup
+k_rc_tp_tg,CREATE TABLEGROUP `K_RC_TP_TG` PARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) PARTITIONS 4
+SUBPARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30)) (
+	SUBPARTITION SP1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	SUBPARTITION SP2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## k_l_tp
+create tablegroup k_l_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by list (int) (
+subpartition sp1 values in ( 123 ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup k_l_tp_tg;
+TableGroup,Create TableGroup
+k_l_tp_tg,CREATE TABLEGROUP `K_L_TP_TG` PARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) PARTITIONS 4
+SUBPARTITION BY LIST ( INT) (
+	SUBPARTITION SP1 VALUES IN (123),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+)
+## k_lc_tp
+create tablegroup k_lc_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by list columns (varchar(20), varchar(30)) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup k_lc_tp_tg;
+TableGroup,Create TableGroup
+k_lc_tp_tg,CREATE TABLEGROUP `K_LC_TP_TG` PARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) PARTITIONS 4
+SUBPARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30)) (
+	SUBPARTITION SP1 VALUES IN (('2020-01-01', 'ABC')),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+)
+#########
+  ## r_h_tp
+create tablegroup r_h_tp_tg
+partition by range (int)
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_h_tp_tg;
+TableGroup,Create TableGroup
+r_h_tp_tg,CREATE TABLEGROUP `R_H_TP_TG` PARTITION BY RANGE ( INT)
+SUBPARTITION BY HASH ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES LESS THAN (123),
+	PARTITION P2 VALUES LESS THAN MAXVALUE
+)
+## r_k_tp
+create tablegroup r_k_tp_tg
+partition by range (int)
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_k_tp_tg;
+TableGroup,Create TableGroup
+r_k_tp_tg,CREATE TABLEGROUP `R_K_TP_TG` PARTITION BY RANGE ( INT)
+SUBPARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES LESS THAN (123),
+	PARTITION P2 VALUES LESS THAN MAXVALUE
+)
+## r_r_tp
+create tablegroup r_r_tp_tg
+partition by range (int)
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_r_tp_tg;
+TableGroup,Create TableGroup
+r_r_tp_tg,CREATE TABLEGROUP `R_R_TP_TG` PARTITION BY RANGE ( INT)
+SUBPARTITION BY RANGE ( INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000),
+	SUBPARTITION SP2 VALUES LESS THAN MAXVALUE
+) (
+	PARTITION P1 VALUES LESS THAN (123),
+	PARTITION P2 VALUES LESS THAN MAXVALUE
+)
+## r_rc_tp
+create tablegroup r_rc_tp_tg
+partition by range (int)
+subpartition by range columns (varchar(20), varchar(30))
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_rc_tp_tg;
+TableGroup,Create TableGroup
+r_rc_tp_tg,CREATE TABLEGROUP `R_RC_TP_TG` PARTITION BY RANGE ( INT)
+SUBPARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30)) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000, 10000),
+	SUBPARTITION SP2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+) (
+	PARTITION P1 VALUES LESS THAN (123),
+	PARTITION P2 VALUES LESS THAN MAXVALUE
+)
+## r_l_tp
+create tablegroup r_l_tp_tg
+partition by range (int)
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_l_tp_tg;
+TableGroup,Create TableGroup
+r_l_tp_tg,CREATE TABLEGROUP `R_L_TP_TG` PARTITION BY RANGE ( INT)
+SUBPARTITION BY LIST ( INT) (
+	SUBPARTITION SP1 VALUES IN (1000, 2000),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES LESS THAN (123),
+	PARTITION P2 VALUES LESS THAN MAXVALUE
+)
+## r_lc_tp
+create tablegroup r_lc_tp_tg
+partition by range (int)
+subpartition by list columns (int, int)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_lc_tp_tg;
+TableGroup,Create TableGroup
+r_lc_tp_tg,CREATE TABLEGROUP `R_LC_TP_TG` PARTITION BY RANGE ( INT)
+SUBPARTITION BY LIST COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES IN ((1000, 2000)),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES LESS THAN (123),
+	PARTITION P2 VALUES LESS THAN MAXVALUE
+)
+#########
+  ## rc_h_tp
+create tablegroup rc_h_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_h_tp_tg;
+TableGroup,Create TableGroup
+rc_h_tp_tg,CREATE TABLEGROUP `RC_H_TP_TG` PARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY HASH ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	PARTITION P2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## rc_k_tp
+create tablegroup rc_k_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_k_tp_tg;
+TableGroup,Create TableGroup
+rc_k_tp_tg,CREATE TABLEGROUP `RC_K_TP_TG` PARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	PARTITION P2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## rc_r_tp
+create tablegroup rc_r_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_r_tp_tg;
+TableGroup,Create TableGroup
+rc_r_tp_tg,CREATE TABLEGROUP `RC_R_TP_TG` PARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY RANGE ( INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000),
+	SUBPARTITION SP2 VALUES LESS THAN MAXVALUE
+) (
+	PARTITION P1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	PARTITION P2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## rc_rc_tp
+create tablegroup rc_rc_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by range columns (int, int)
+(
+subpartition sp1 values less than ( 1000, 2000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_rc_tp_tg;
+TableGroup,Create TableGroup
+rc_rc_tp_tg,CREATE TABLEGROUP `RC_RC_TP_TG` PARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY RANGE COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000, 2000),
+	SUBPARTITION SP2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+) (
+	PARTITION P1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	PARTITION P2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## rc_l_tp
+create tablegroup rc_l_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_l_tp_tg;
+TableGroup,Create TableGroup
+rc_l_tp_tg,CREATE TABLEGROUP `RC_L_TP_TG` PARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY LIST ( INT) (
+	SUBPARTITION SP1 VALUES IN (1000, 2000),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	PARTITION P2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+## rc_lc_tp
+create tablegroup rc_lc_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by list columns (int,int)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_lc_tp_tg;
+TableGroup,Create TableGroup
+rc_lc_tp_tg,CREATE TABLEGROUP `RC_LC_TP_TG` PARTITION BY RANGE COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY LIST COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES IN ((1000, 2000)),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES LESS THAN ('2020-01-01', 'ABC'),
+	PARTITION P2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+)
+#########
+  ## l_h_tp
+create tablegroup l_h_tp_tg
+partition by list (int)
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_h_tp_tg;
+TableGroup,Create TableGroup
+l_h_tp_tg,CREATE TABLEGROUP `L_H_TP_TG` PARTITION BY LIST ( INT)
+SUBPARTITION BY HASH ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES IN (123),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## l_k_tp
+create tablegroup l_k_tp_tg
+partition by list (int)
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_k_tp_tg;
+TableGroup,Create TableGroup
+l_k_tp_tg,CREATE TABLEGROUP `L_K_TP_TG` PARTITION BY LIST ( INT)
+SUBPARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES IN (123),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## l_r_tp
+create tablegroup l_r_tp_tg
+partition by list (int)
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_r_tp_tg;
+TableGroup,Create TableGroup
+l_r_tp_tg,CREATE TABLEGROUP `L_R_TP_TG` PARTITION BY LIST ( INT)
+SUBPARTITION BY RANGE ( INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000),
+	SUBPARTITION SP2 VALUES LESS THAN MAXVALUE
+) (
+	PARTITION P1 VALUES IN (123),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## l_rc_tp
+create tablegroup l_rc_tp_tg
+partition by list (int)
+subpartition by range columns (int, int)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_rc_tp_tg;
+TableGroup,Create TableGroup
+l_rc_tp_tg,CREATE TABLEGROUP `L_RC_TP_TG` PARTITION BY LIST ( INT)
+SUBPARTITION BY RANGE COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000, 10000),
+	SUBPARTITION SP2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+) (
+	PARTITION P1 VALUES IN (123),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## l_l_tp
+create tablegroup l_l_tp_tg
+partition by list (int)
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_l_tp_tg;
+TableGroup,Create TableGroup
+l_l_tp_tg,CREATE TABLEGROUP `L_L_TP_TG` PARTITION BY LIST ( INT)
+SUBPARTITION BY LIST ( INT) (
+	SUBPARTITION SP1 VALUES IN (1000, 2000),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES IN (123),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## l_lc_tp
+create tablegroup l_lc_tp_tg
+partition by list (int)
+subpartition by list columns (int, int)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_lc_tp_tg;
+TableGroup,Create TableGroup
+l_lc_tp_tg,CREATE TABLEGROUP `L_LC_TP_TG` PARTITION BY LIST ( INT)
+SUBPARTITION BY LIST COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES IN ((1000, 2000)),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES IN (123),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+#########
+  ## lc_h_tp
+create tablegroup lc_h_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_h_tp_tg;
+TableGroup,Create TableGroup
+lc_h_tp_tg,CREATE TABLEGROUP `LC_H_TP_TG` PARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY HASH ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES IN (('2020-01-01', 'ABC')),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## lc_k_tp
+create tablegroup lc_k_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_k_tp_tg;
+TableGroup,Create TableGroup
+lc_k_tp_tg,CREATE TABLEGROUP `LC_K_TP_TG` PARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY KEY ( VARCHAR(20),  VARCHAR(30)) SUBPARTITIONS 4 (
+	PARTITION P1 VALUES IN (('2020-01-01', 'ABC')),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## lc_r_tp
+create tablegroup lc_r_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_r_tp_tg;
+TableGroup,Create TableGroup
+lc_r_tp_tg,CREATE TABLEGROUP `LC_R_TP_TG` PARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY RANGE ( INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000),
+	SUBPARTITION SP2 VALUES LESS THAN MAXVALUE
+) (
+	PARTITION P1 VALUES IN (('2020-01-01', 'ABC')),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## lc_rc_tp
+create tablegroup lc_rc_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by range columns (int, int)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_rc_tp_tg;
+TableGroup,Create TableGroup
+lc_rc_tp_tg,CREATE TABLEGROUP `LC_RC_TP_TG` PARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY RANGE COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES LESS THAN (1000, 10000),
+	SUBPARTITION SP2 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+) (
+	PARTITION P1 VALUES IN (('2020-01-01', 'ABC')),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## lc_l_tp
+create tablegroup lc_l_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_l_tp_tg;
+TableGroup,Create TableGroup
+lc_l_tp_tg,CREATE TABLEGROUP `LC_L_TP_TG` PARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY LIST ( INT) (
+	SUBPARTITION SP1 VALUES IN (1000, 2000),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES IN (('2020-01-01', 'ABC')),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+## lc_lc_tp
+create tablegroup lc_lc_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by list columns (int, int)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_lc_tp_tg;
+TableGroup,Create TableGroup
+lc_lc_tp_tg,CREATE TABLEGROUP `LC_LC_TP_TG` PARTITION BY LIST COLUMNS ( VARCHAR(20),  VARCHAR(30))
+SUBPARTITION BY LIST COLUMNS ( INT,  INT) (
+	SUBPARTITION SP1 VALUES IN ((1000, 2000)),
+	SUBPARTITION SP2 VALUES IN (DEFAULT)
+) (
+	PARTITION P1 VALUES IN (('2020-01-01', 'ABC')),
+	PARTITION P2 VALUES IN (DEFAULT)
+)
+create tablegroup `---key_tg` partition by key(int, int) partitions 3;
+show create tablegroup `---key_tg`;
+TableGroup,Create TableGroup
+---key_tg,CREATE TABLEGROUP `---KEY_TG` PARTITION BY KEY ( INT,  INT) PARTITIONS 3
+create table key_t1 (a int) partition by key(a) tablegroup=`---key_tg`;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table key_t1;
+Table,Create Table
+key_t1,CREATE TABLE `key_t1` (
+	`a` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3074457345618258603) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+tablegroup = `---key_tg`
+create table key_t2 (a int, b int, c int) partition by key(a,b,c) tablegroup=`---key_tg`;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table key_t2;
+Table,Create Table
+key_t2,CREATE TABLE `key_t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`,`c`)
+PARTITIONS 3
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (3074457345618258603,9223372036854775807,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `---key_tg`
+alter tablegroup `---key_tg` split partition p2;
+create table key_t3 (a int, b int) partition by key(a,b) tablegroup=`---key_tg`;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table key_t3;
+Table,Create Table
+key_t3,CREATE TABLE `key_t3` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 4
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (3074457345618258603,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+tablegroup = `---key_tg`
+show create tablegroup `---key_tg`;
+TableGroup,Create TableGroup
+---key_tg,CREATE TABLEGROUP `---KEY_TG` PARTITION BY KEY(INTEGER)
+PARTITIONS 4
+(PARTITION p1 VALUES LESS THAN (-3074457345618258601) ENGINE = InnoDB,
+ PARTITION p4 VALUES LESS THAN (1) ENGINE = InnoDB,
+ PARTITION p5 VALUES LESS THAN (3074457345618258603) ENGINE = InnoDB,
+ PARTITION p3 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+create tablegroup single_tg1 single;
+show create tablegroup single_tg1;
+TableGroup,Create TableGroup
+single_tg1,CREATE TABLEGROUP `SINGLE_TG1` SINGLE
+create table single_t1(a int) tablegroup=single_tg1;
+create table single_t2(a varchar(20)) tablegroup=single_tg1;
+show full create table single_t1;
+Table,Create Table
+single_t1,CREATE TABLE `single_t1` (
+	`a` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `single_tg1`
+show full create table single_t2;
+Table,Create Table
+single_t2,CREATE TABLE `single_t2` (
+	`a` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+tablegroup = `single_tg1`

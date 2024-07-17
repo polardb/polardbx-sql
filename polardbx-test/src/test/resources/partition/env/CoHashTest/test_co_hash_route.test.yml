@@ -1,0 +1,90 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table h_t1
+(
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime
+)
+partition by hash(order_id)
+partitions 8;
+alter table h_t1 split partition p1;
+
+
+create table ch_t1_f_c
+(
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime
+)
+partition by co_hash( substr(order_id, -4), user_id)
+partitions 8;
+
+create table ch_t2_f_c
+(
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime
+)
+partition by co_hash( substr(order_id, -4), user_id)
+partitions 8;
+
+create table ch_t1_f_f
+(
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime
+)
+partition by co_hash( substr(order_id, -4), substr(user_id, -4))
+partitions 8;
+
+
+explain select * from ch_t1_f_f where order_id = '123456';
+explain select * from ch_t1_f_f where user_id = '123456';
+select part_route('','ch_t1_f_f', '123456','123456');
+
+create table ch_t1_f_c
+(
+id bigint,
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( substr(order_id, -4), user_id)
+partitions 8;
+
+create table ch_t1_f_c
+(
+id bigint auto_increment,
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( substr(order_id, -10), user_id)
+partitions 8;
+
+create table ch_t2_f_c
+(
+id bigint auto_increment,
+sid varchar(32),
+user_id varchar(32),
+order_id varchar(32),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( substr(order_id, -10), user_id)
+partitions 8;
+
+insert into ch_t1_f_c ( id, user_id, order_id ) values ( null, unix_timestamp(), concat( unix_timestamp(), unix_timestamp()  ) );
+
+insert into ch_t1_f_c ( user_id, order_id ) select unix_timestamp(), concat( unix_timestamp(), unix_timestamp() ) from ch_t1_f_c;
+
+

@@ -127,6 +127,9 @@ public abstract class RelDataTypeSystemImpl implements RelDataTypeSystem {
       // SqlTypeName.getDefaultPrecision), but it should be 6
       // (microseconds) per SQL99 part 2 section 6.1 syntax rule 30.
       return 0;
+    case BIT:
+    case BIG_BIT:
+      return 1;
     default:
       return -1;
     }
@@ -163,6 +166,9 @@ public abstract class RelDataTypeSystemImpl implements RelDataTypeSystem {
     case INTERVAL_MINUTE_SECOND:
     case INTERVAL_SECOND:
       return SqlTypeName.MAX_INTERVAL_START_PRECISION;
+    case BIT:
+    case BIG_BIT:
+      return 64;
     default:
       return getDefaultPrecision(typeName);
     }

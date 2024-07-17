@@ -20,23 +20,24 @@ import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.MySQLPacket;
 import com.alibaba.polardbx.net.packet.OkPacket;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
-import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.matrix.jdbc.TDataSource;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -107,9 +108,8 @@ public final class KillHandler {
             }
 
             if (node != null) {
-                List<Map<String, Object>> result = SyncManagerHelper
-                    .sync(action, c.getSchema(),
-                        node.getServerKey());
+                List<Map<String, Object>> result = SyncManagerHelper.sync(action, c.getSchema(),
+                    node.getServerKey());
                 if (result != null) {
                     count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
                 }
@@ -117,8 +117,8 @@ public final class KillHandler {
         }
 
         if (count == 0) {
-            List<List<Map<String, Object>>> results = SyncManagerHelper
-                .sync(action, c.getSchema());
+            List<List<Map<String, Object>>> results =
+                SyncManagerHelper.sync(action, c.getSchema(), SyncScope.CURRENT_ONLY);
 
             for (List<Map<String, Object>> result : results) {
                 if (result != null) {

@@ -29,12 +29,12 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.exception.code.ErrorType;
 import com.alibaba.polardbx.executor.mpp.client.FailureInfo;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
@@ -62,27 +62,27 @@ public class QueryInfo {
     @JsonCreator
     public QueryInfo(
         @JsonProperty("queryId")
-            String queryId,
+        String queryId,
         @JsonProperty("session")
-            SessionInfo session,
+        SessionInfo session,
         @JsonProperty("state")
-            QueryState state,
+        QueryState state,
         @JsonProperty("scheduled")
-            boolean scheduled,
+        boolean scheduled,
         @JsonProperty("self")
-            URI self,
+        URI self,
         @JsonProperty("query")
-            String query,
+        String query,
         @JsonProperty("queryStats")
-            QueryStats queryStats,
+        QueryStats queryStats,
         @JsonProperty("outputStage")
-            Optional<StageInfo> outputStage,
+        Optional<StageInfo> outputStage,
         @JsonProperty("failureInfo")
-            FailureInfo failureInfo,
+        FailureInfo failureInfo,
         @JsonProperty("errorCode")
-            ErrorCode errorCode,
+        ErrorCode errorCode,
         @JsonProperty("completeInfo")
-            boolean completeInfo
+        boolean completeInfo
     ) {
         requireNonNull(queryId, "queryId is null");
         requireNonNull(session, "session is null");
@@ -195,7 +195,7 @@ public class QueryInfo {
             return this;
         }
 
-        if (this.outputStage.get().getTasks().get(0).getStats() == null) {
+        if (this.outputStage.get().getTasks().get(0).getTaskStats() == null) {
             return this;
         }
 

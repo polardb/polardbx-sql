@@ -27,11 +27,13 @@ import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
-import org.apache.calcite.schema.Table;
 
 import java.sql.Connection;
 import java.util.List;
 
+/**
+ * @author wumu
+ */
 @Getter
 @TaskName(name = "RenameTablesUpdateMetaTask")
 public class RenameTablesUpdateMetaTask extends BaseGmsTask {
@@ -60,10 +62,11 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
             if (isNewPartitionDb) {
                 TableMetaChanger
                     .renamePartitionTableMeta(metaDbConnection, schemaName, tableName, newTableName,
-                        executionContext, false);
+                        executionContext, false, false);
             } else {
                 TableMetaChanger
-                    .renameTableMeta(metaDbConnection, schemaName, tableName, newTableName, executionContext, false);
+                    .renameTableMeta(metaDbConnection, schemaName, tableName, newTableName, executionContext, false,
+                        false);
             }
             CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, tableName, newTableName);
         }
@@ -82,10 +85,10 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
             if (isNewPartitionDb) {
                 TableMetaChanger
                     .renamePartitionTableMeta(metaDbConnection, schemaName, tableName, newTableName,
-                        executionContext);
+                        false, executionContext);
             } else {
                 TableMetaChanger
-                    .renameTableMeta(metaDbConnection, schemaName, tableName, newTableName, executionContext);
+                    .renameTableMeta(metaDbConnection, schemaName, tableName, newTableName, true, executionContext);
             }
             CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, tableName, newTableName);
         }
@@ -95,6 +98,9 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         executeImpl(metaDbConnection, executionContext);
         updateTablesVersion(metaDbConnection);
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            updateTablesExtVersion(metaDbConnection);
+        }
     }
 
     /**
@@ -108,6 +114,9 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
     protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         rollbackImpl(metaDbConnection, executionContext);
         updateTablesVersion(metaDbConnection);
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            updateTablesExtVersion(metaDbConnection);
+        }
     }
 
     /**
@@ -136,6 +145,29 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
             } catch (Throwable t) {
                 LOGGER.error(String.format(
                     "error occurs while update table version, schemaName:%s, tableName:%s", schemaName,
+                    newTableNames.get(i)));
+                throw GeneralUtil.nestedException(t);
+            }
+        }
+    }
+
+    private void updateTablesExtVersion(Connection metaDbConnection) {
+        if (GeneralUtil.isNotEmpty(newTableNames)) {
+            int i = 0;
+            long maxVersion = 1;
+            try {
+                for (String tableName : newTableNames) {
+                    long version = TableInfoManager.getTableExtVersion4Rename(schemaName, tableName, metaDbConnection);
+                    maxVersion = Math.max(maxVersion, version);
+                }
+                for (String tableName : newTableNames) {
+                    TableInfoManager.updateTableExtVersion4Rename(schemaName, tableName, maxVersion + 1,
+                        metaDbConnection);
+                    i++;
+                }
+            } catch (Throwable t) {
+                LOGGER.error(String.format(
+                    "error occurs while update tables_ext version, schemaName:%s, tableName:%s", schemaName,
                     newTableNames.get(i)));
                 throw GeneralUtil.nestedException(t);
             }

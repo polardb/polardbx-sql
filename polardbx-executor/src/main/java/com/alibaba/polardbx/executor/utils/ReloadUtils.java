@@ -25,8 +25,10 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.utils.VariableProxy;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
+import com.alibaba.polardbx.rule.TddlRule;
 
 import javax.sql.DataSource;
 
@@ -46,11 +48,12 @@ public class ReloadUtils {
         }
         executorContext.getSequenceManager().destroy();
         optimizerContext.getRuleManager().destroy();
-        // TODO yuehan check this
-//        GsiMetaManager.invalidateCache(executorContext.getTopologyHandler().getAppName());
-        SystemTableTableStatistic.invalidateAll();
-//        SystemTableColumnStatistic.invalidateAll();
+        executorContext.getSequenceManager().destroy();
+        optimizerContext.getRuleManager().destroy();
+        GsiMetaManager.invalidateCache(executorContext.getTopologyHandler().getAppName());
         SystemTableView.invalidateAll();
+
+        TddlRule tddlRule = optimizerContext.getRuleManager().getTddlRule();
 
         executorContext.getTopologyHandler().reload();
         executorContext.getSequenceManager().init();
@@ -74,6 +77,6 @@ public class ReloadUtils {
     }
 
     public enum ReloadType {
-        USERS, SCHEMA, DATASOURCES, FILESTORAGE, PROCEDURES, FUNCTIONS, JAVA_FUNCTIONS, STATISTICS;
+        USERS, SCHEMA, DATASOURCES, FILESTORAGE, PROCEDURES, FUNCTIONS, JAVA_FUNCTIONS, STATISTICS, COLUMNARMANAGER;
     }
 }

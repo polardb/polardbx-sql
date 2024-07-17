@@ -91,10 +91,7 @@ public class HybridHashJoinExecutorFactory extends ExecutorFactory {
                     new HybridHashJoinExec(outerInput, inner, join.getJoinType(), maxOneRow,
                         joinKeys, otherCondition, antiJoinOperands, context, parallelism, i, bucketNum,
                         spillerFactory);
-                exec.setId(join.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(join, exec, context);
-                }
+                registerRuntimeStat(exec, join, context);
                 executors.add(exec);
             }
         }

@@ -78,7 +78,7 @@ public final class ShowDatabase {
         Map<String, SchemaConfig> schemas = CobarServer.getInstance().getConfig().getSchemas();
         for (String name : new TreeSet<String>(schemas.keySet())) {
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-            row.add(StringUtil.encode(name, c.getCharset()));
+            row.add(StringUtil.encode(name, c.getResultSetCharset()));
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

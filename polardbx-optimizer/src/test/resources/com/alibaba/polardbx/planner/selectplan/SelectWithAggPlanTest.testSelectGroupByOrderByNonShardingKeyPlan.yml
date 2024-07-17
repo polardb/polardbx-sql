@@ -8,3 +8,16 @@ plan: |
     sortagg(group="integer_test", count(pk)="sum(count(pk))")
       mergesort(sort="integer_test asc")
         logicalview(tables="[0000-0003].select_base_one_multi_db_multi_tb_[00-15]", shardcount=16, sql="select `integer_test`, count(*) as `count(pk)` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` group by `integer_test` order by `integer_test`")
+
+sql: |
+  select integer_test,count(1),count(*)
+  from select_base_one_multi_db_multi_tb
+  group by integer_test order by integer_test limit 10;
+
+plan: |
+
+  project(integer_test="integer_test", count(1)="count(1)", count(*)="count(1)")
+    limit(offset=0, fetch=10)
+      sortagg(group="integer_test", count(1)="sum(count(1))")
+        mergesort(sort="integer_test asc")
+          logicalview(tables="[0000-0003].select_base_one_multi_db_multi_tb_[00-15]", shardcount=16, sql="select `integer_test`, count(*) as `count(1)` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` group by `integer_test` order by `integer_test`")

@@ -26,24 +26,32 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.executor.ddl.workqueue.PriorityWorkQueue;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaChecker;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
 import com.alibaba.polardbx.gms.privilege.PolarLoginErrConfig;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.GmsJdbcUtil;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.server.util.LogUtils;
+import com.alibaba.polardbx.transaction.ColumnarTsoManager;
 import com.alibaba.polardbx.util.RexMemoryLimitHelper;
 import org.apache.calcite.rex.RexUtil;
 import org.slf4j.Logger;
@@ -51,6 +59,8 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.util.Properties;
+
+import static com.alibaba.polardbx.common.properties.ConnectionParams.PLAN_CACHE_SIZE;
 
 /**
  * 一个cluster的加载
@@ -228,6 +238,11 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             }
         }
 
+        if (p.containsKey(ConnectionProperties.FASTCHECKER_THREAD_POOL_SIZE)) {
+            int parallelism = Integer.parseInt(p.getProperty(ConnectionProperties.FASTCHECKER_THREAD_POOL_SIZE));
+            FastCheckerThreadPool.getInstance().setParallelism(parallelism);
+        }
+
         if (p.containsKey(ConnectionProperties.GLOBAL_MEMORY_LIMIT)) {
             String memoryLimitString = p.getProperty(ConnectionProperties.GLOBAL_MEMORY_LIMIT);
             try {
@@ -310,18 +325,6 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             }
             PolarPrivManager.getInstance().setPolarLoginErrConfig(config);
 
-        if (p.containsKey(ConnectionProperties.TRANSACTION_ISOLATION)) {
-            String str = p.getProperty(ConnectionProperties.TRANSACTION_ISOLATION);
-            // try to parse string
-            IsolationLevel level = IsolationLevel.parse(str);
-            if (level == null) {
-                throw new IllegalArgumentException("unknown isolation level setting : " + str);
-            }
-
-            ConfigDataMode.setTxIsolation(level.getCode());
-            logger.info("Transaction isolation level set to " + level.nameWithHyphen());
-        }
-
         // for scaleout config
         if (p.containsKey(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE)) {
             System.setProperty(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE,
@@ -352,10 +355,9 @@ public abstract class ClusterLoader extends BaseClusterLoader {
         }
         /* ========mpp system engine config======== */
 
-        for (Field field : ConnectionProperties.class.getDeclaredFields()) {
+        for (String key : SystemPropertiesHelper.getConnectionProperties()) {
             try {
-                String key = field.get(ConnectionProperties.class).toString();
-                if (key != null && key.toUpperCase().startsWith("MPP_")) {
+                if (key.startsWith("MPP_")) {
                     MppConfig.getInstance().loadValue(logger, key, p.getProperty(key));
                 }
                 DynamicConfig.getInstance().loadValue(logger, key, p.getProperty(key));
@@ -441,6 +443,36 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             boolean enableLowerCase =
                 Boolean.parseBoolean(p.getProperty(ConnectionProperties.ENABLE_LOWER_CASE_TABLE_NAMES));
             InformationSchemaViewManager.getInstance().defineCaseSensitiveView(enableLowerCase);
+        }
+
+        if (p.containsKey(ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE)) {
+            DynamicConfig.getInstance().loadValue(logger,
+                ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE,
+                p.getProperty(ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE));
+        }
+
+        if (p.containsKey(ConnectionProperties.COLUMNAR_TSO_UPDATE_INTERVAL)) {
+            int columnarTsoUpdateInterval =
+                Integer.parseInt(p.getProperty(ConnectionProperties.COLUMNAR_TSO_UPDATE_INTERVAL));
+            ColumnarTsoManager.getInstance().resetColumnarTsoUpdateInterval(columnarTsoUpdateInterval);
+        }
+
+        if (p.containsKey(ConnectionProperties.COLUMNAR_TSO_PURGE_INTERVAL)) {
+            int columnarTsoPurgeInterval =
+                Integer.parseInt(p.getProperty(ConnectionProperties.COLUMNAR_TSO_PURGE_INTERVAL));
+            ColumnarTsoManager.getInstance().resetColumnarTsoPurgeInterval(columnarTsoPurgeInterval);
+        }
+
+        if (p.containsKey(ConnectionProperties.PLAN_CACHE_SIZE)) {
+            int newSize = InstConfUtil.getInt(PLAN_CACHE_SIZE);
+            PlanCache.getInstance().resize(newSize);
+        }
+
+        if (p.containsKey(ConnectionProperties.ENABLE_LBAC)) {
+            for (com.alibaba.polardbx.common.utils.Pair<String, String> pair :
+                LBACSecurityManager.getInstance().getAllTableWithPolicy()) {
+                PlanManager.getInstance().invalidateTable(pair.getKey(), pair.getValue(), true);
+            }
         }
 
         logger.info("load instance properties ok");

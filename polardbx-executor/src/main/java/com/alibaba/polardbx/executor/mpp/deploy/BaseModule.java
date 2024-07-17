@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
-import com.google.inject.Provides;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.execution.ForDriverYieldExecutor;
 import com.alibaba.polardbx.executor.mpp.execution.ForQueryExecution;
 import com.alibaba.polardbx.executor.mpp.execution.ForTaskNotificationExecutor;
+import com.google.inject.Provides;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 
 import javax.inject.Singleton;

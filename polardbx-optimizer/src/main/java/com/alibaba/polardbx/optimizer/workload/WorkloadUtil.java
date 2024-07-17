@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.optimizer.workload;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.RemoveFixedCostVisitor;
@@ -43,11 +43,19 @@ public class WorkloadUtil {
         LogicalViewFinder logicalViewFinder = new LogicalViewFinder();
         rel.accept(logicalViewFinder);
         double ossNetThreshold = plannerContext.getParamManager().getLong(ConnectionParams.WORKLOAD_OSS_NET_THRESHOLD);
+        long columnarRowThreshold =
+            plannerContext.getParamManager().getLong(ConnectionParams.WORKLOAD_COLUMNAR_ROW_THRESHOLD);
         for (LogicalView logicalView : logicalViewFinder.getResult()) {
             if (logicalView instanceof OSSTableScan) {
                 RelOptCost ossTableScanCost = mq.getCumulativeCost(logicalView);
-                if (ossTableScanCost.getNet() > ossNetThreshold) {
-                    return WorkloadType.AP;
+                if (((OSSTableScan) logicalView).isColumnarIndex()) {
+                    if (ossTableScanCost.getRows() > columnarRowThreshold) {
+                        return WorkloadType.AP;
+                    }
+                } else {
+                    if (ossTableScanCost.getNet() > ossNetThreshold) {
+                        return WorkloadType.AP;
+                    }
                 }
             }
         }
@@ -57,20 +65,23 @@ public class WorkloadUtil {
     }
 
     public static WorkloadType getWorkloadType(ExecutionContext executionContext) {
-        return getWorkloadType(executionContext, executionContext.getFinalPlan());
+        if (executionContext.getWorkloadType() != null) {
+            return executionContext.getWorkloadType();
+        }
+        return WorkloadType.TP;
     }
 
-    public static WorkloadType getWorkloadType(ExecutionContext executionContext, ExecutionPlan executionPlan) {
+    public static WorkloadType getAndSetWorkloadType(ExecutionContext executionContext, ExecutionPlan executionPlan) {
         RelNode plan;
         if (executionPlan == null) {
             plan = null;
         } else {
             plan = executionPlan.getPlan();
         }
-        return getWorkloadType(executionContext, plan);
+        return getAndSetWorkloadType(executionContext, plan);
     }
 
-    public static WorkloadType getWorkloadType(ExecutionContext executionContext, RelNode plan) {
+    public static WorkloadType getAndSetWorkloadType(ExecutionContext executionContext, RelNode plan) {
         if (executionContext.getWorkloadType() != null) {
             return executionContext.getWorkloadType();
         }

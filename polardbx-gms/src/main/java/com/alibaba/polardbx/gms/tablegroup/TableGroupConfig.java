@@ -39,7 +39,7 @@ public class TableGroupConfig {
 
     TableGroupRecord tableGroupRecord;
     List<PartitionGroupRecord> partitionGroupRecords;
-    List<TablePartRecordInfoContext> tables;
+    List<String> tables;
     LocalityDesc localityDesc;
 
     // index for speed up partition-group & table lookup
@@ -47,15 +47,17 @@ public class TableGroupConfig {
     // Map<Long, PartitionGroupRecord> pgIdMap;
     // Map<String, TablePartRecordInfoContext> tableNameMap;
 
-    public List<TablePartRecordInfoContext> getAllTables() {
+    /*public List<TablePartRecordInfoContext> getAllTables() {
         return this.tables;
+    }*/
+
+    //todo luoyanxin
+    public List<String> getAllTables() {
+        return getTables();
     }
 
-    public TablePartRecordInfoContext getTableById(long tableId) {
-        return this.tables.stream()
-            .filter(x -> x.getLogTbRec().id == tableId)
-            .findAny()
-            .orElseThrow(() -> new TddlRuntimeException(ErrorCode.ERR_TABLE_NOT_EXIST, String.valueOf(tableId)));
+    public List<String> getTables() {
+        return tables;
     }
 
     public int getTableCount() {
@@ -70,7 +72,7 @@ public class TableGroupConfig {
 
     public TableGroupConfig(TableGroupRecord tableGroupRecord,
                             List<PartitionGroupRecord> partitionGroupRecords,
-                            List<TablePartRecordInfoContext> tables,
+                            List<String> tables,
                             String locality) {
         this.tableGroupRecord = tableGroupRecord;
         this.partitionGroupRecords = partitionGroupRecords;
@@ -108,11 +110,7 @@ public class TableGroupConfig {
         this.partitionGroupRecords = partitionGroupRecords;
     }
 
-    public List<TablePartRecordInfoContext> getTables() {
-        return tables;
-    }
-
-    public void setTables(List<TablePartRecordInfoContext> tables) {
+    public void setTables(List<String> tables) {
         this.tables = tables;
     }
 
@@ -147,6 +145,10 @@ public class TableGroupConfig {
         return tableGroupRecord != null && !StringUtils.isEmpty(tableGroupRecord.partition_definition);
     }
 
+    public boolean isColumnarTableGroup() {
+        return tableGroupRecord != null && tableGroupRecord.isColumnarTableGroup();
+    }
+
     public String getPreDefinePartitionInfo() {
         if (isPreDefinePartitionInfo()) {
             return tableGroupRecord.getPartition_definition();
@@ -160,37 +162,12 @@ public class TableGroupConfig {
             return false;
         }
 
-        for (TablePartRecordInfoContext entry : tables) {
-            if (StringUtils.equalsIgnoreCase(entry.getTableName(), tableName)) {
+        for (String existTable : tables) {
+            if (StringUtils.equalsIgnoreCase(existTable, tableName)) {
                 return true;
             }
         }
         return false;
-    }
-
-    public Map<String, List<String>> logicalToPhyTables() {
-        Map<String, List<String>> res = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (TablePartRecordInfoContext tableInfo : GeneralUtil.emptyIfNull(getTables())) {
-            for (TablePartitionRecord tablePart : tableInfo.getPartitionRecList()) {
-                res.computeIfAbsent(tablePart.getTableName(), (x) -> new ArrayList<>())
-                    .add(tablePart.getPhyTable());
-            }
-        }
-        return res;
-    }
-
-    public Map<String, String> phyToLogicalTables() {
-        Map<String, String> res = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (TablePartRecordInfoContext tableInfo : GeneralUtil.emptyIfNull(getTables())) {
-            List<TablePartitionRecord> tableParts = tableInfo.getPartitionRecList();
-            if (!tableInfo.getSubPartitionRecList().isEmpty()) {
-                tableParts = tableInfo.getSubPartitionRecList();
-            }
-            for (TablePartitionRecord tablePart : tableParts) {
-                res.put(tablePart.getPhyTable(), tablePart.getTableName());
-            }
-        }
-        return res;
     }
 
     public static TableGroupConfig copyWithoutTables(TableGroupConfig source) {

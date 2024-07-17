@@ -63,13 +63,14 @@ public class LogicalAlterTableGroupRenamePartition extends LogicalAlterTableRena
         preparedData.setChangePartitionsPair(sqlAlterTableGroupRenamePartition.getChangePartitionsPair());
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSubPartitionRename(sqlAlterTableGroupRenamePartition.isSubPartitionsRename());
+        preparedData.setRenameNothing(preparedData.partitionNameNoChange());
     }
 
     @Override
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableGroupRenamePartition alterTableGroupRenamePartition = (AlterTableGroupRenamePartition) relDdl;
         String tableGroupName = alterTableGroupRenamePartition.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

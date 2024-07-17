@@ -37,6 +37,7 @@ public class DataIngestForBigInt extends DataIngest {
     @Override
     public void generatePk(int dataRows, PreparedStatement ps, int i) throws SQLException {
         super.idSum += i;
+        super.idSum = super.idSum % MOD_DIVISOR;
         ps.setLong(1, i);
     }
 }

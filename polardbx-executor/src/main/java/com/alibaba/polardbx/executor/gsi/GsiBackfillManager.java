@@ -28,8 +28,9 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.executor.ddl.engine.AsyncDDLCache;
 import com.alibaba.polardbx.executor.gsi.utils.Transformer;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
@@ -49,9 +50,6 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
-
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Connection;
@@ -89,6 +87,8 @@ public class GsiBackfillManager {
     private static final String SYSTABLE_BACKFILL_OBJECTS = GmsSystemTables.BACKFILL_OBJECTS;
     private static final String SYSTABLE_FILE_STORAGE_BACKFILL_OBJECTS =
         GmsSystemTables.FILE_STORAGE_BACKFILL_OBJECTS;
+
+    private static final String SYSTABLE_PHYSICAL_BACKFILL_OBJECTS = GmsSystemTables.PHYSICAL_BACKFILL_OBJECTS;
 
     public static final String CREATE_GSI_BACKFILL_OBJECTS_TABLE = "CREATE TABLE IF NOT EXISTS `"
         + SYSTABLE_BACKFILL_OBJECTS
@@ -159,6 +159,11 @@ public class GsiBackfillManager {
                                 try (PreparedStatement ps = conn.prepareStatement(SQL_CLEAN_OUTDATED_FILESTORAGE_LOG)) {
                                     ps.execute();
                                 }
+                                try (PreparedStatement ps = conn.prepareStatement(
+                                    SQL_CLEAN_OUTDATED_PHYSICAL_BACKFILL_LOG)) {
+                                    ps.execute();
+                                }
+                                PhysicalBackfillUtils.destroyDataSources();
                             } catch (SQLException e) {
                                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
                                     e,
@@ -688,6 +693,11 @@ public class GsiBackfillManager {
     private static final String SQL_CLEAN_OUTDATED_FILESTORAGE_LOG = "DELETE FROM "
         + SYSTABLE_FILE_STORAGE_BACKFILL_OBJECTS
         + " WHERE DATE(END_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY ) AND DATE(START_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY )";
+
+    private static final String SQL_CLEAN_OUTDATED_PHYSICAL_BACKFILL_LOG = "DELETE FROM "
+        + SYSTABLE_PHYSICAL_BACKFILL_OBJECTS
+        + " WHERE DATE(END_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY ) AND DATE(START_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY )";
+
     private static final String SQL_CLEAN_ALL = "DELETE FROM " + SYSTABLE_BACKFILL_OBJECTS + " WHERE TABLE_SCHEMA = ?";
 
     private static final String SQL_CLEAN_ALL_FILE_STORAGE =

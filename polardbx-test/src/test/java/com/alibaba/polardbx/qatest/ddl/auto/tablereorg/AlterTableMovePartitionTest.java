@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.tablereorg;
 
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
+import com.alibaba.polardbx.qatest.ddl.auto.tablegroup.AlterTableGroupTestBase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
@@ -322,6 +323,17 @@ public class AlterTableMovePartitionTest extends AlterTableReorgBaseTest {
                 pi.setTableStatus(c);
                 status.add(new PartitionRuleInfo[] {pi});
             });
+            if (c == ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC) {
+                partitionRuleInfos.forEach(o -> {
+                    PartitionRuleInfo pi =
+                        new PartitionRuleInfo(o.strategy, o.initDataType, o.partitionRule, o.alterCommand,
+                            o.needGenDml, o.dmlType, o.rowCount, o.targetPart, o.minVal1, o.maxVal1, o.minVal2,
+                            o.maxVal2);
+                    pi.setTableStatus(c);
+                    pi.setUsePhysicalTableBackfill(true);
+                    status.add(new PartitionRuleInfo[] {pi});
+                });
+            }
         });
         return status;
     }

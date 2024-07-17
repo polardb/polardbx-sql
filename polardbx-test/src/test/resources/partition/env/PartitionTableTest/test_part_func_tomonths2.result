@@ -16,10 +16,10 @@ PARTITION BY HASH(TO_MONTHS(`dt`))
 PARTITIONS 8
 explain select dt from hash_to_months where dt = '2021-12-01';
 Logical ExecutionPlan
-LogicalView(tables="hash_to_months[p3]", sql="SELECT `dt` FROM `hash_to_months` AS `hash_to_months` WHERE (`dt` = ?)")
+PhyTableOperation(tables="hash_to_months[p3]", sql="SELECT `hash_to_months`.`dt` AS `dt` FROM ? AS `hash_to_months` WHERE (`hash_to_months`.`dt` = ?)", params="2021-12-01")
 explain select dt from hash_to_months where dt = '2021-11-01';
 Logical ExecutionPlan
-LogicalView(tables="hash_to_months[p5]", sql="SELECT `dt` FROM `hash_to_months` AS `hash_to_months` WHERE (`dt` = ?)")
+PhyTableOperation(tables="hash_to_months[p5]", sql="SELECT `hash_to_months`.`dt` AS `dt` FROM ? AS `hash_to_months` WHERE (`hash_to_months`.`dt` = ?)", params="2021-11-01")
 select part_route('', 'hash_to_months', '2022-01-01');
 part_route('', 'hash_to_months', '2022-01-01')
 p3

@@ -1,0 +1,69 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table ch_t1_ufi_ufi
+(
+id bigint auto_increment,
+sid varchar(32),
+tid varchar(32),
+user_id bigint,
+order_id bigint,
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( Substrforint(`order_id`, 4), Substrforint(`user_id`, 4) )
+partitions 8;
+show create table ch_t1_ufi_ufi;
+explain select id from ch_t1_ufi_ufi where order_id=123456;
+explain select id from ch_t1_ufi_ufi where user_id=123456;
+explain select id from ch_t1_ufi_ufi where user_id=123456 or order_id=1234567;
+explain select id from ch_t1_ufi_ufi where user_id=123456 and order_id=1234567;
+
+create table ch_t1_ufc_ufc
+(
+id bigint auto_increment,
+sid varchar(32),
+tid varchar(32),
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( Substrforvar(`order_id`, 4), Substrforvar(`user_id`, 4) )
+partitions 8;
+show create table ch_t1_ufc_ufc;
+explain select id from ch_t1_ufc_ufc where order_id='123456';
+explain select id from ch_t1_ufc_ufc where user_id='123456';
+explain select id from ch_t1_ufc_ufc where user_id='123456' or order_id='1234567';
+explain select id from ch_t1_ufc_ufc where user_id='123456' and order_id='1234567';
+
+  ## error_msg: $# must be the same #$
+create table ch_t1_ufc_ufi
+(
+id bigint auto_increment,
+sid varchar(32),
+tid varchar(32),
+user_id bigint,
+order_id varchar(64),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( Substrforvar(`order_id`, 4), Substrforint(`user_id`, 4) )
+partitions 8;
+
+#create table ch_t1_ufc_ufi
+#(
+#id bigint auto_increment,
+#sid varchar(32),
+#tid varchar(32),
+#user_id bigint,
+#order_id varchar(64),
+#order_time datetime,
+#primary key(id)
+#)
+#partition by co_hash( Substrforvar(`order_id`, 4), Substrforint(`user_id`, 4) )
+#partitions 8;
+#show create table ch_t1_ufc_ufi;
+#explain select id from ch_t1_ufc_ufi where order_id='123456';
+#explain select id from ch_t1_ufc_ufi where user_id=123456;
+#explain select id from ch_t1_ufc_ufi where user_id=123456 or order_id='1234567';
+#explain select id from ch_t1_ufc_ufi where user_id=123456 and order_id='1234567';

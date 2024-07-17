@@ -19,10 +19,12 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
@@ -134,50 +136,55 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         preparedData.setPartBoundExprInfo(alterTable.getAllRexExprInfo());
         preparedData.setHotKeys(sqlAlterTableExtractPartitionByHotValue.getHotKeys());
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = partitionInfo.containSubPartitions();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION);
         preparedData.setSplitPoints(splitPoints);
 
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
+        preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
+        if (preparedData.needFindCandidateTableGroup()) {
+            PartitionInfo curPartitionInfo =
+                OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+            List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
+                new TreeMap<>(String::compareToIgnoreCase);
 
-        PartitionInfo curPartitionInfo =
-            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
+            int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
+            if (ignoreNameAndLocality) {
+                for (int j = 0; j < newPartitionGroups.size(); j++) {
+                    Pair<String, String> pair = new Pair<>("", "");
+                    mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, pair);
+                }
+                flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
+            } else {
+                int i = 0;
+                for (int j = 0; j < newPartitionGroups.size(); j++) {
 
-        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
-        if (ignoreNameAndLocality) {
-            for (int j = 0; j < newPartitionGroups.size(); j++) {
-                Pair<String, String> pair = new Pair<>("", "");
-                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, pair);
+                    String mockTableName = "";
+                    mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name,
+                        new Pair<>(mockTableName,
+                            GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
+                }
             }
-            flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
-        } else {
-            int i = 0;
-            for (int j = 0; j < newPartitionGroups.size(); j++) {
 
-                String mockTableName = "";
-                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
-                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
-            }
+            PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+                .getNewPartitionInfo(
+                    preparedData,
+                    partitionInfo,
+                    false,
+                    sqlAlterTableExtractPartitionByHotValue,
+                    preparedData.getOldPartitionNames(),
+                    preparedData.getNewPartitionNames(),
+                    preparedData.getTableGroupName(),
+                    null,
+                    preparedData.getInvisiblePartitionGroups(),
+                    mockOrderedTargetTableLocations,
+                    executionContext);
+
+            preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
+                null, flag, executionContext);
         }
-
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfo(
-                preparedData,
-                partitionInfo,
-                false,
-                sqlAlterTableExtractPartitionByHotValue,
-                preparedData.getOldPartitionNames(),
-                preparedData.getNewPartitionNames(),
-                preparedData.getTableGroupName(),
-                null,
-                preparedData.getInvisiblePartitionGroups(),
-                mockOrderedTargetTableLocations,
-                executionContext);
-
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
-            null, flag, executionContext);
     }
 
     protected List<Long[]> normalizeSqlExtractPartition(
@@ -231,9 +238,14 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
             }
         }
 
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        List<String> partNames = new ArrayList<>();
+        List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+        PartitionInfoUtil.getPartitionName(partitionInfo, partNames, subPartNamePairs);
+
         if (StringUtils.isEmpty(hotKeyPartitioName)) {
             List<String> newPartNames =
-                PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 3,
+                PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs, 3,
                     new TreeSet<>(String::compareToIgnoreCase), false);
             SqlIdentifier name1 = new SqlIdentifier(newPartNames.get(0), SqlParserPos.ZERO);
             SqlPartition sqlPartition1 = new SqlPartition(name1, null, SqlParserPos.ZERO);
@@ -252,18 +264,18 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
             if (flag == -1) {
                 newPartNames.add(hotKeyPartitioName);
                 newPartNames.addAll(
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs, 1,
                         new TreeSet<>(String::compareToIgnoreCase), false));
             } else if (flag == 0) {
                 List<String> boundPartNames =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 2,
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs, 2,
                         new TreeSet<>(String::compareToIgnoreCase), false);
                 newPartNames.add(boundPartNames.get(0));
                 newPartNames.add(hotKeyPartitioName);
                 newPartNames.add(boundPartNames.get(1));
             } else if (flag == 1) {
                 newPartNames.addAll(
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs, 1,
                         new TreeSet<>(String::compareToIgnoreCase), false));
                 newPartNames.add(hotKeyPartitioName);
             } else {

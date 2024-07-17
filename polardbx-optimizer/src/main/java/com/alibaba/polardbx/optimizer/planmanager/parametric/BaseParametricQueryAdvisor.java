@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -127,7 +128,7 @@ public class BaseParametricQueryAdvisor implements ParametricQueryAdvisor {
                                                    List<Object> params) {
         Map<String, Double> m = Maps.newTreeMap();
         for (Map.Entry<LogicalTableScan, RexNode> r : exprMap.entrySet()) {
-            double selectivity = RelMetadataQuery.instance().getSelectivity(r.getKey(), r.getValue());
+            double selectivity = PlannerUtils.newMetadataQuery().getSelectivity(r.getKey(), r.getValue());
             String tableName = r.getKey().getTable().getQualifiedName().toString();
             if (m.containsKey(tableName)) {
                 m.put(tableName, selectivity + m.get(tableName));

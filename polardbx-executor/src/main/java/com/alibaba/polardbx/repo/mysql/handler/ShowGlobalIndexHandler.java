@@ -70,7 +70,7 @@ public class ShowGlobalIndexHandler extends HandlerCommon {
         }
 
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
-            if (bean.gsiMetaBean != null) {
+            if (bean.gsiMetaBean != null && !bean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean bean1 = bean.gsiMetaBean;
                 Object[] row = new Object[] {
                     bean1.tableSchema, bean1.tableName, bean1.nonUnique ? 1 : 0, bean1.indexName,

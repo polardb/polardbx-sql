@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.execution.RecordMemSystemListener;
@@ -28,6 +25,9 @@ import com.alibaba.polardbx.executor.mpp.execution.TaskId;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.ExtendedSettableFuture;
 import io.airlift.units.DataSize;
 
@@ -38,13 +38,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
-import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferResult.emptyResults;
 import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferState.FAILED;
 import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferState.FINISHED;
 import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferState.OPEN;
 import static com.alibaba.polardbx.executor.mpp.execution.buffer.BufferState.TERMINAL_BUFFER_STATES;
+import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static java.util.Objects.requireNonNull;
 
 public class LazyOutputBuffer implements OutputBuffer {

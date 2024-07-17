@@ -23,12 +23,16 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import org.apache.calcite.rel.core.DDL;
+import org.jetbrains.annotations.NotNull;
+import org.apache.calcite.sql.SqlIdentifier;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class CreatePartitionTableWithGsiBuilder {
 
@@ -75,26 +79,59 @@ public class CreatePartitionTableWithGsiBuilder {
 
     private void buildPrimaryTablePhysicalPlans() {
         CreateTablePreparedData primaryTablePreparedData = preparedData.getPrimaryTablePreparedData();
+        final PartitionTableType partitionTableType = getPartitionTableType(primaryTablePreparedData);
+
         primaryTableBuilder = new CreatePartitionTableBuilder(relDdl, primaryTablePreparedData, executionContext,
-            PartitionTableType.PARTITION_TABLE);
+            partitionTableType);
         primaryTableBuilder.build();
         this.primaryTableTopology = primaryTableBuilder.getTableTopology();
         this.primaryTablePhysicalPlans = primaryTableBuilder.getPhysicalPlans();
     }
 
+    @NotNull
+    private static PartitionTableType getPartitionTableType(CreateTablePreparedData primaryTablePreparedData) {
+        final boolean broadcastTable = primaryTablePreparedData.isBroadcast();
+        final boolean singleTable = !primaryTablePreparedData.isSharding()
+            && primaryTablePreparedData.getPartitioning() == null;
+
+        PartitionTableType partitionTableType = PartitionTableType.PARTITION_TABLE;
+        if (broadcastTable) {
+            partitionTableType = PartitionTableType.BROADCAST_TABLE;
+        } else if (singleTable) {
+            partitionTableType = PartitionTableType.SINGLE_TABLE;
+        }
+        return partitionTableType;
+    }
+
     private void buildIndexTablePhysicalPlans() {
+        Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap = new LinkedHashMap<>();
         for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : preparedData.getIndexTablePreparedDataMap()
             .entrySet()) {
-            buildIndexTablePhysicalPlans(entry.getKey(), entry.getValue());
+            buildIndexTablePhysicalPlans(entry.getKey(), entry.getValue(), indexTablePreparedDataMap);
+            indexTablePreparedDataMap.put(entry.getKey(), entry.getValue());
         }
     }
 
     private void buildIndexTablePhysicalPlans(String indexTableName,
-                                              CreateGlobalIndexPreparedData indexTablePreparedData) {
+                                              CreateGlobalIndexPreparedData indexTablePreparedData,
+                                              Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap) {
         indexTablePreparedData.setPrimaryPartitionInfo(primaryTableBuilder.getPartitionInfo());
+        CreateTablePreparedData primaryTablePreparedData = preparedData.getPrimaryTablePreparedData();
+        boolean alignWithPrimaryTable = false;
+        if (primaryTablePreparedData.isWithImplicitTableGroup() && indexTablePreparedData.isWithImplicitTableGroup() &&
+            primaryTablePreparedData.getTableGroupName() != null) {
+            String indexTableGroupName = indexTablePreparedData.getTableGroupName() != null ?
+                ((SqlIdentifier) indexTablePreparedData.getTableGroupName()).getLastName() : null;
+            String primaryTableGroupName = ((SqlIdentifier) primaryTablePreparedData.getTableGroupName()).getLastName();
+            if (primaryTableGroupName.equalsIgnoreCase(indexTableGroupName)) {
+                alignWithPrimaryTable = true;
+            }
+        }
 
         CreateGlobalIndexBuilder indexTableBuilder =
-            new CreatePartitionGlobalIndexBuilder(relDdl, indexTablePreparedData, executionContext);
+            new CreatePartitionGlobalIndexBuilder(relDdl, indexTablePreparedData, indexTablePreparedDataMap,
+                alignWithPrimaryTable,
+                executionContext);
         indexTableBuilder.build();
 
         this.indexTablePhysicalPlansMap.put(indexTableName, indexTableBuilder.getPhysicalPlans());

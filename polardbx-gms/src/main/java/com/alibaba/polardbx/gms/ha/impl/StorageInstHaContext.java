@@ -338,7 +338,7 @@ public class StorageInstHaContext {
         List<String> replicaList = new ArrayList<>();
         List<StorageNodeHaInfo> replicas = allStorageNodeHaInfoMap.values().stream()
             .sorted(Comparator.comparing(StorageNodeHaInfo::getRole)).collect(Collectors.toList());
-        for (val replica : replicas) {
+        for (StorageNodeHaInfo replica : replicas) {
             StorageInfoRecord dnNodeRec = storageNodeInfos.get(replica.getAddr());
             String zone = "unknown";
             if (dnNodeRec != null) {
@@ -373,7 +373,7 @@ public class StorageInstHaContext {
     public boolean containsReplicaAtAzone(String primaryZone) {
         Objects.requireNonNull(primaryZone);
 
-        for (val replica : storageNodeInfos.values()) {
+        for (StorageInfoRecord replica : storageNodeInfos.values()) {
             if (primaryZone.equals(replica.getAzoneId())) {
                 return true;
             }

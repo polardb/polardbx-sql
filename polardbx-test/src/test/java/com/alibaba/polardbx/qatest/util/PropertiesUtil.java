@@ -111,6 +111,14 @@ public class PropertiesUtil {
         return Boolean.valueOf(configProp.getProperty("use_file_storage", "false"));
     }
 
+    public static boolean columnarMode() {
+        return Boolean.valueOf(configProp.getProperty("columnar_mode", "false"));
+    }
+
+    public static boolean skipCreateColumnarIndex() {
+        return Boolean.valueOf(configProp.getProperty("skip_create_columnar_index", "false"));
+    }
+
     public static String getCreateFileStorageSql() {
         return configProp.getProperty("create_file_storage_sql");
     }

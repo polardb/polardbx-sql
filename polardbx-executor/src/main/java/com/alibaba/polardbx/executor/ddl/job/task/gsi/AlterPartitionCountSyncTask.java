@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.sync.AlterPartitionCountSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -60,7 +61,8 @@ public class AlterPartitionCountSyncTask extends BaseSyncTask {
                     executionContext.getConnId(),
                     executionContext.getTraceId()
                 ),
-                schemaName
+                schemaName,
+                SyncScope.ALL
             );
 
             LOGGER.info(

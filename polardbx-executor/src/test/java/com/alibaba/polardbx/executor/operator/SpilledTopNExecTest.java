@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.io.MoreFiles;
-import com.google.common.io.RecursiveDeleteOption;
-import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleStreamSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.GenericSpillerFactory;
@@ -28,6 +24,9 @@ import com.alibaba.polardbx.executor.operator.spill.SyncFileCleaner;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.google.common.collect.ImmutableList;
+import com.google.common.io.MoreFiles;
+import com.google.common.io.RecursiveDeleteOption;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -44,8 +43,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
-import static com.google.common.truth.Truth.assertWithMessage;
 import static com.alibaba.polardbx.executor.operator.util.RowChunksBuilder.rowChunksBuilder;
+import static com.google.common.truth.Truth.assertWithMessage;
 import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
 
@@ -63,8 +62,6 @@ public class SpilledTopNExecTest extends BaseExecTest {
     public static void beforeClass() {
         List<Path> spillPaths = new ArrayList<>();
         spillPaths.add(tempPath);
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().addAll(spillPaths);
         AsyncFileSingleStreamSpillerFactory singleStreamSpillerFactory =
             new AsyncFileSingleStreamSpillerFactory(new SyncFileCleaner(), spillPaths, 4);
         spillerFactory = new GenericSpillerFactory(singleStreamSpillerFactory);

@@ -1,0 +1,107 @@
+## DISABLE_FAST_SQL_PARSER
+create table t1(a int, b int, c int, global index g1(b) partition by key(b) partitions 3) partition by key(a) partitions 2;
+create table t2(a int, b int, c int, global index g1(b) partition by key(b) partitions 3, global index g2(c) partition by key(c) partitions 2) partition by key(a) partitions 2;
+create table t3(a int, b int, c int, global index g1(b) partition by key(b) partitions 3) partition by key(a) partitions 2;
+alter table t1 modify column a bigint with tablegroup=tgi1 implicit, index g1 with tablegroup=tgi2 implicit;
+alter table t2 modify column a bigint with tablegroup=tgi1 implicit, index g1 with tablegroup=tgi2 implicit,index g2 with tablegroup=tgi3 implicit;
+alter table t2 modify column a bigint with tablegroup=tgi1 implicit, index g1 with tablegroup=tgi2 implicit,index g2 with tablegroup=tgi3 implicit;
+alter table t3 modify column a bigint, index g1 with tablegroup=tgi2 implicit;
+create table t4(a varchar(20), b int, c bigint, global index g1(b) partition by key(b) partitions 3, global index g2(c) partition by key(c) partitions 3) partition by hash(a,b) partitions 3;
+create table t5(a varchar(20), b int, c bigint, global index g1(b) partition by key(b) partitions 3, global index g2(c) partition by key(c) partitions 3) partition by hash(a,b) partitions 3;
+create table t6(a varchar(20), b int, c bigint, global index g1(b) partition by key(b) partitions 3, global index g2(c) partition by key(c) partitions 3) partition by hash(a,b) partitions 3;
+alter table t4 modify column a bigint with tablegroup=tgi4 implicit, index g1 with tablegroup=tgi5 implicit, index g2 with tablegroup=tgi6 implicit;
+alter table t5 modify column a bigint with tablegroup=tgi4 implicit, index g1 with tablegroup=tgi5 implicit, index g2 with tablegroup=tgi6 implicit;
+alter table t6 modify column a bigint with tablegroup=tgi4 implicit, index g1 with tablegroup=tgi5 implicit, index g2 with tablegroup=tgi6 implicit;
+alter table t4 modify column b bigint;
+alter table t5 modify column b bigint;
+alter table t6 modify column b bigint;
+show create table t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g2` (`c`) COVERING (`a`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 2,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table t3;
+Table,Create Table
+t3,CREATE TABLE `t3` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+show create table t4;
+Table,Create Table
+t4,CREATE TABLE `t4` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` bigint(20) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g2` (`c`) COVERING (`a`, `b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`b`)
+PARTITIONS 3
+show create table t5;
+Table,Create Table
+t5,CREATE TABLE `t5` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` bigint(20) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g2` (`c`) COVERING (`a`, `b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`b`)
+PARTITIONS 3
+show create table t6;
+Table,Create Table
+t6,CREATE TABLE `t6` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` bigint(20) DEFAULT NULL,
+	GLOBAL INDEX `g1` (`b`) COVERING (`a`)
+		PARTITION BY KEY(`b`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g2` (`c`) COVERING (`a`, `b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`b`)
+PARTITIONS 3

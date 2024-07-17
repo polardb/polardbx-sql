@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.mpp.operator.LocalBucketPartitionFunction;
 import com.alibaba.polardbx.executor.mpp.operator.PartitionFunction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.util.concurrent.ListenableFuture;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 

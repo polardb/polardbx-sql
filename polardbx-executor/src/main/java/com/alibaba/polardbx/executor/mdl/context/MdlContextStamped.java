@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.mdl.context;
 
-import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
@@ -25,7 +24,6 @@ import com.alibaba.polardbx.executor.mdl.MdlKey;
 import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
-
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 import java.util.Iterator;

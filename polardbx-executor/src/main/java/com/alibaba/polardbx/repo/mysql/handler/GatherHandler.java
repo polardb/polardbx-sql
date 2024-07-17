@@ -20,12 +20,10 @@ import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
-import com.alibaba.polardbx.executor.cursor.impl.MultiCursorAdapter;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 
@@ -52,12 +50,7 @@ public class GatherHandler extends HandlerCommon {
                     kind.belongsTo(SqlKind.DML) || kind.belongsTo(SqlKind.DDL) || kind.belongsTo(SqlKind.SQL_SET_QUERY);
             }
             Cursor cursor = ExecutorHelper.executeByCursor(relNode, executionContext, false);
-            if (cursor instanceof MultiCursorAdapter) {
-                // handle logicalView
-                inputCursors.addAll(((MultiCursorAdapter) cursor).getSubCursors());
-            } else {
-                inputCursors.add(cursor);
-            }
+            inputCursors.add(cursor);
         }
         if (useUpdate) {
             int affectRows = 0;
@@ -69,7 +62,7 @@ public class GatherHandler extends HandlerCommon {
             }
             return new AffectRowCursor(affectRows);
         } else {
-            return new GatherCursor(inputCursors, executionContext);
+            return inputCursors.size() == 1 ? inputCursors.get(0) : new GatherCursor(inputCursors, executionContext);
         }
     }
 }

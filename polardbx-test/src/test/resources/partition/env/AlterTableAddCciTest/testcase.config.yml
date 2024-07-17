@@ -1,0 +1,6 @@
+#test_alter_table_add_cci_tmp
+test_alter_table_add_cci
+test_alter_table_add_cci_random_suffix
+test_alter_table_add_cci_partition_by_hash
+test_alter_table_add_cci_partition_by_list
+test_alter_table_add_cci_partition_by_range

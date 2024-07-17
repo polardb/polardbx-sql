@@ -53,6 +53,7 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXAutoDBName1;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 import static com.google.common.truth.Truth.assertWithMessage;
 
 /**
@@ -1322,5 +1323,15 @@ public class InsertSequenceTest extends AutoCrudBasedLockTestCase {
         lastInsertId =
             JdbcUtil.executeQueryAndGetFirstStringResult("select last_insert_id()", tddlConnection);
         Assert.assertNotEquals(lastInsertId, "0");
+    }
+
+    @Test
+    public void insertAllDefault() {
+        String sql = "insert into " + baseOneTableName + " () values ()";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
+
+        sql = "select integer_test, varchar_test, char_test, bigint_test, float_test from " + baseOneTableName;
+        selectOrderAssert(sql, null, mysqlConnection, tddlConnection);
     }
 }

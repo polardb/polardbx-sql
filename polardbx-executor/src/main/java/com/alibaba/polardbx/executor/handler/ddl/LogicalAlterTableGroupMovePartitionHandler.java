@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -58,7 +59,9 @@ public class LogicalAlterTableGroupMovePartitionHandler extends LogicalCommonDdl
             return new TransientDdlJob();
         }
 
-        logicalAlterTableGroupMovePartition.preparedData(executionContext);
+        boolean usePhysicalBackfill =
+            PhysicalBackfillUtils.isSupportForPhysicalBackfill(logicalDdlPlan.getSchemaName(), executionContext);
+        logicalAlterTableGroupMovePartition.preparedData(executionContext, usePhysicalBackfill);
         //CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupMovePartition.getPreparedData());
         return AlterTableGroupMovePartitionJobFactory
             .create(logicalAlterTableGroupMovePartition.relDdl, logicalAlterTableGroupMovePartition.getPreparedData(),

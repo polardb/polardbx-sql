@@ -21,11 +21,14 @@ import com.google.common.collect.ImmutableList;
 
 import java.lang.reflect.Modifier;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ClassHelper {
     public static final String PACKAGE_NAME = "com.alibaba.polardbx.qatest";
 
     public static ImmutableList<Class> fileStorageTestCases;
+
+    public static ImmutableList<Class> columnarTestCases;
 
     static {
         // Scan all class in this package and register the unit case on file storage.
@@ -53,5 +56,36 @@ public class ClassHelper {
 
     public static ImmutableList<Class> getFileStorageTestCases() {
         return fileStorageTestCases;
+    }
+
+    public static ImmutableList<Class> getColumnarTestCases() {
+        if (columnarTestCases == null) {
+            synchronized (ClassHelper.class) {
+                if (columnarTestCases == null) {
+                    columnarTestCases = ImmutableList.<Class>builder().addAll(fileStorageTestCases.stream()
+                        .filter(klass -> klass.getAnnotation(TestFileStorage.class) == null).collect(
+                            Collectors.toList())).addAll(getColumnarDqlCase()).build();
+                }
+            }
+        }
+        return columnarTestCases;
+    }
+
+    private static List<Class> getColumnarDqlCase() {
+        String columnarPackageName = "com.alibaba.polardbx.qatest.columnar.dql";
+        ClassFinder.ClassFilter filter = new ClassFinder.ClassFilter() {
+            @Override
+            public boolean filter(Class klass) {
+                int mod = klass.getModifiers();
+                return !Modifier.isAbstract(mod)
+                    && !Modifier.isInterface(mod);
+            }
+
+            @Override
+            public boolean preFilter(String classFulName) {
+                return classFulName.endsWith("Test");
+            }
+        };
+        return ClassFinder.findClassesInPackage(columnarPackageName, filter);
     }
 }

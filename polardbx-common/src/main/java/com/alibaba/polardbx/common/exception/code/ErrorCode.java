@@ -706,6 +706,10 @@ public enum ErrorCode {
 
     ERR_ROWCOUNT_COLLECT(ErrorType.Optimizer, 4530),
 
+    ERR_STATISTIC_JOB_INTERRUPTED(ErrorType.Optimizer, 4531),
+
+    ERR_IN_PRUNING(ErrorType.Optimizer, 4532),
+
     // ============= executor 从4600下标开始================
     //
     ERR_FUNCTION(ErrorType.Executor, 4600),
@@ -829,6 +833,9 @@ public enum ErrorCode {
     ERR_ADD_FK_CHARSET_COLLATION(ErrorType.Executor, 4695),
     ERR_FK_CONVERT_TO_CHARSET(ErrorType.Executor, 4696),
     ERR_FK_REFERENCING_COLUMN_NOT_EXIST(ErrorType.Executor, 4697),
+
+    ERR_UNSUPPORTED_COLUMN_TYPE_WITH_CCI(ErrorType.Executor, 4698),
+    ERR_DDL_WITH_CCI(ErrorType.Executor, 4699),
 
     ERR_TABLE_ALREADY_EXISTS(ErrorType.Executor, 4643),
 
@@ -997,6 +1004,11 @@ public enum ErrorCode {
     ERR_CHARACTER_NOT_SUPPORT(ErrorType.Priviledge, 5121),
 
     ERR_DATATYPE_NOT_SUPPORT(ErrorType.Priviledge, 5122),
+    ERR_INSTANCE_READ_ONLY_OPTION_NOT_SUPPORT(ErrorType.Priviledge, 5123),
+
+    ERR_ENCDB(ErrorType.Priviledge, 5123),
+
+    ERR_LBAC(ErrorType.Priviledge, 5124),
 
     ERR_CREATE_USER_FAILED(ErrorType.Account, 5200),
 
@@ -1144,11 +1156,18 @@ public enum ErrorCode {
 
     ERR_DATA_NOT_FOUND(ErrorType.Procedure, 5516),
 
+    // ================列存索引相关异常从5600开始==================
+    /**
+     * 列存索引校验相关错误
+     */
+    ERR_COLUMNAR_INDEX_CHECKER(ErrorType.Executor, 5600),
+
     // ================鉴权相关异常==================
 
     ERR_AUTH_AKSK_FAIL(ErrorType.Auth, 6001),
 
     ERR_BASELINE(ErrorType.Baseline, 7001),
+    ERR_PLAN_COST(ErrorType.Baseline, 7002),
 
     // ================View 异常 7901 - 8000==================
     ERR_VIEW(ErrorType.Executor, 7901),
@@ -1227,6 +1246,7 @@ public enum ErrorCode {
     // ================= concurrency control Related Exceptions ===================
 
     ERR_CCL(ErrorType.CCL, 9201),
+    ERR_CCL_RESCHEDULE(ErrorType.CCL, 9202),
 
     ERR_LOGICAL_TABLE_UNSUPPORTED(ErrorType.Executor, 9203),
 
@@ -1235,6 +1255,7 @@ public enum ErrorCode {
     ERR_REPLICATION_RESULT(ErrorType.CDC, 9204),
 
     ERR_REPLICA_NOT_SUPPORT(ErrorType.CDC, 9205),
+    ERR_INSTANCE_READ_ONLY_OPTION_SET_FAILED(ErrorType.CDC, 9206),
 
     ERR_PARTITION_MANAGEMENT(ErrorType.Executor, 9300),
 
@@ -1283,6 +1304,7 @@ public enum ErrorCode {
     ERR_SUBPARTITION_STRATEGY_IS_NOT_EQUAL(ErrorType.Executor, 9337),
     ERR_REDUNDANCY_PARTITION_DEFINITION(ErrorType.Executor, 9338),
     ERR_REDUNDANCY_SUBPARTITION_DEFINITION(ErrorType.Executor, 9339),
+    ERR_AUTO_CREATE_TABLEGROUP(ErrorType.Executor, 9340),
 
     // ============= 私有协议 从10000下标开始================
     ERR_X_PROTOCOL_BAD_PACKET(ErrorType.Xprotocol, 10000),
@@ -1308,7 +1330,18 @@ public enum ErrorCode {
     ERR_FILE_STORAGE_READ_ONLY(ErrorType.OSS, 11012),
     ERR_OSS_CONNECT(ErrorType.OSS, 11013),
     ERR_FILE_STORAGE_EXISTS(ErrorType.OSS, 11014),
-    ERR_BACK_FILL_TIMEOUT(ErrorType.OSS, 11015);
+    ERR_BACK_FILL_TIMEOUT(ErrorType.OSS, 11015),
+    ERR_ARCHIVE_NOT_ENABLED(ErrorType.OSS, 11016),
+    ERR_ARCHIVE_TABLE_EXISTS(ErrorType.OSS, 11017),
+
+    // ============= Columnar Related Exceptions ================
+    ERR_BINARY_PREDICATE(ErrorType.ColumnarIndexPrune, 12000),
+    ERR_BITMAP_ROW_GROUP_INDEX(ErrorType.ColumnarIndexPrune, 12001),
+    ERR_LOAD_CSV_FILE(ErrorType.ColumnarAccess, 12002),
+    ERR_LOAD_DEL_FILE(ErrorType.ColumnarAccess, 12003),
+    ERR_LOAD_ORC_FILE(ErrorType.ColumnarAccess, 12004),
+    ERR_COLUMNAR_SNAPSHOT(ErrorType.GMS, 12005),
+    ERR_COLUMNAR_SCHEMA(ErrorType.GMS, 12006);
 
     private static final String errorMessagePre = "ERR-CODE: [PXC-";
     private final int code;

@@ -53,6 +53,7 @@ public class GsiChecker extends Checker {
         long speedLimit;
         long parallelism;
         long earlyFailNumber;
+        boolean useBinary;
 
         public static Params buildFromExecutionContext(ExecutionContext ec) {
             ParamManager pm = ec.getParamManager();
@@ -62,7 +63,8 @@ public class GsiChecker extends Checker {
                 pm.getLong(ConnectionParams.GSI_CHECK_SPEED_MIN),
                 pm.getLong(ConnectionParams.GSI_CHECK_SPEED_LIMITATION),
                 pm.getLong(ConnectionParams.GSI_CHECK_PARALLELISM),
-                pm.getLong(ConnectionParams.GSI_EARLY_FAIL_NUMBER)
+                pm.getLong(ConnectionParams.GSI_EARLY_FAIL_NUMBER),
+                pm.getBoolean(ConnectionParams.BACKFILL_USING_BINARY)
             );
         }
     }
@@ -80,9 +82,9 @@ public class GsiChecker extends Checker {
                       Comparator<List<Pair<ParameterContext, byte[]>>> rowComparator) {
         super(schemaName, tableName, indexName, primaryTableMeta, gsiTableMeta,
             params.getBatchSize(), params.getSpeedMin(), params.getSpeedLimit(), params.getParallelism(),
-            primaryLock, gsiLock, planSelectWithMaxPrimary, planSelectWithMaxGsi, planSelectWithMinAndMaxPrimary,
-            planSelectWithMinAndMaxGsi, planSelectWithInTemplate, planSelectWithIn, planSelectMaxPk, indexColumns,
-            primaryKeysId, rowComparator);
+            params.isUseBinary(), primaryLock, gsiLock, planSelectWithMaxPrimary, planSelectWithMaxGsi,
+            planSelectWithMinAndMaxPrimary, planSelectWithMinAndMaxGsi, planSelectWithInTemplate, planSelectWithIn,
+            planSelectMaxPk, indexColumns, primaryKeysId, rowComparator);
     }
 
     public static Checker create(String schemaName, String tableName, String indexName,
@@ -107,7 +109,7 @@ public class GsiChecker extends Checker {
         }
 
         Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName, false, true);
-        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, params.isUseBinary(), ec);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
             .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(),

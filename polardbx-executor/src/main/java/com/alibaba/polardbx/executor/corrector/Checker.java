@@ -200,10 +200,11 @@ public class Checker {
     // Flags.
     private boolean inBackfill = false;
     private long jobId = 0; // Set to jobId if in async ddl task or generate one.
+    protected boolean useBinary;
 
     public Checker(String schemaName, String tableName, String indexName, TableMeta primaryTableMeta,
                    TableMeta gsiTableMeta, long batchSize, long speedMin, long speedLimit, long parallelism,
-                   SqlSelect.LockMode primaryLock, SqlSelect.LockMode gsiLock,
+                   boolean useBinary, SqlSelect.LockMode primaryLock, SqlSelect.LockMode gsiLock,
                    PhyTableOperation planSelectWithMaxPrimary, PhyTableOperation planSelectWithMaxGsi,
                    PhyTableOperation planSelectWithMinAndMaxPrimary, PhyTableOperation planSelectWithMinAndMaxGsi,
                    SqlSelect planSelectWithInTemplate, PhyTableOperation planSelectWithIn,
@@ -220,6 +221,7 @@ public class Checker {
         this.t = new Throttle(speedMin, speedLimit, schemaName);
         this.nowSpeedLimit = speedLimit;
         this.parallelism = parallelism;
+        this.useBinary = useBinary;
         this.primaryLock = primaryLock;
         this.gsiLock = gsiLock;
         this.planSelectWithMaxPrimary = planSelectWithMaxPrimary;
@@ -346,8 +348,8 @@ public class Checker {
     }
 
     public static Checker create(String schemaName, String tableName, String indexName, long batchSize, long speedMin,
-                                 long speedLimit,
-                                 long parallelism, SqlSelect.LockMode primaryLock, SqlSelect.LockMode gsiLock,
+                                 long speedLimit, long parallelism, boolean useBinary,
+                                 SqlSelect.LockMode primaryLock, SqlSelect.LockMode gsiLock,
                                  ExecutionContext checkerEc) {
         // Build select plan
         // Caution: This should get latest schema to check column which newly added.
@@ -368,7 +370,7 @@ public class Checker {
         }
 
         Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(checkerEc, schemaName, tableName, indexName, false);
-        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, checkerEc);
+        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, checkerEc);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder
             .buildSelectWithInForChecker(baseTableMeta, info.getTargetTableColumns(), info.getPrimaryKeys(),
@@ -398,6 +400,7 @@ public class Checker {
             speedMin,
             speedLimit,
             parallelism,
+            useBinary,
             primaryLock,
             gsiLock,
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
@@ -740,7 +743,7 @@ public class Checker {
             try {
                 Row row;
                 while ((row = cursor.next()) != null) {
-                    recheckBaseRows.add(row2objects(row));
+                    recheckBaseRows.add(row2objects(row, useBinary));
                 }
             } finally {
                 cursor.close(new ArrayList<>());
@@ -771,7 +774,7 @@ public class Checker {
                     try {
                         Row checkRow;
                         while ((checkRow = checkCursor.next()) != null) {
-                            recheckCheckRows.add(row2objects(checkRow));
+                            recheckCheckRows.add(row2objects(checkRow, useBinary));
                         }
                     } finally {
                         checkCursor.close(new ArrayList<>());
@@ -834,7 +837,7 @@ public class Checker {
                 Row row;
                 while ((row = cursor.next()) != null) {
                     // Fetch first line.
-                    rowData = null == rowData ? row2objects(row) : rowData;
+                    rowData = null == rowData ? row2objects(row, useBinary) : rowData;
                 }
             } finally {
                 cursor.close(new ArrayList<>());
@@ -911,7 +914,7 @@ public class Checker {
                     try {
                         Row row;
                         while ((row = cursor.next()) != null) {
-                            baseRows.add(row2objects(row));
+                            baseRows.add(row2objects(row, useBinary));
                         }
                     } finally {
                         cursor.close(new ArrayList<>());
@@ -939,7 +942,7 @@ public class Checker {
                                 try {
                                     Row checkRow;
                                     while ((checkRow = checkCursor.next()) != null) {
-                                        checkRows.add(row2objects(checkRow));
+                                        checkRows.add(row2objects(checkRow, useBinary));
                                     }
                                 } finally {
                                     checkCursor.close(new ArrayList<>());
@@ -1220,10 +1223,14 @@ public class Checker {
     // Convert data to ParameterContext(for sort and correction(insert)) and raw
     // bytes(for compare).
     public static List<Pair<ParameterContext, byte[]>> row2objects(Row rowSet) {
+        return row2objects(rowSet, false);
+    }
+
+    public static List<Pair<ParameterContext, byte[]>> row2objects(Row rowSet, boolean useBinary) {
         final List<ColumnMeta> columns = rowSet.getParentCursorMeta().getColumns();
         final List<Pair<ParameterContext, byte[]>> result = new ArrayList<>(columns.size());
         for (int i = 0; i < columns.size(); i++) {
-            result.add(new Pair<>(Transformer.buildColumnParam(rowSet, i), rowSet.getBytes(i)));
+            result.add(new Pair<>(Transformer.buildColumnParam(rowSet, i, useBinary), rowSet.getBytes(i)));
         }
         return result;
     }

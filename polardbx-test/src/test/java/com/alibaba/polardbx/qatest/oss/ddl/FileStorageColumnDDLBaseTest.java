@@ -325,10 +325,22 @@ public class FileStorageColumnDDLBaseTest extends DDLBaseNewDBTestCase {
     }
 
     protected void checkAgg() {
-        String columns = String.join(",", getColumns());
-        String compareSql = String.format("select check_sum(%s) from %s", columns, compareTable);
+        String compareSql;
+        String ttlSql;
 
-        String ttlSql = String.format("select check_sum(%s) from (select %s from %s union all select %s from %s.%s)",
+        // check agg column by column
+        for (String singleColumn : getColumns()) {
+            compareSql = String.format("select check_sum(%s) from %s", singleColumn, compareTable);
+            ttlSql = String.format("select check_sum(%s) from (select %s from %s union all select %s from %s.%s)",
+                singleColumn, singleColumn, innodbTable, singleColumn, getOssSchema(), ossTable);
+            DataValidator.selectContentSameAssertWithDiffSql(ttlSql, compareSql, null,
+                getInnoConn(), getCompareConn(), true, false, true);
+        }
+
+        String columns = String.join(",", getColumns());
+        compareSql = String.format("select check_sum(%s) from %s", columns, compareTable);
+
+        ttlSql = String.format("select check_sum(%s) from (select %s from %s union all select %s from %s.%s)",
             columns, columns, innodbTable, columns, getOssSchema(), ossTable);
         DataValidator.selectContentSameAssertWithDiffSql(ttlSql, compareSql, null,
             getInnoConn(), getCompareConn(), true, false, true);

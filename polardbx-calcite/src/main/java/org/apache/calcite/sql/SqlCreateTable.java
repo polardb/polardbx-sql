@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.ArchiveMode;
@@ -39,6 +40,8 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCharacterDataType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnPrimaryKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnUniqueKey;
@@ -155,6 +158,7 @@ public class SqlCreateTable extends SqlCreate {
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> globalKeys;
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> globalUniqueKeys;
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> clusteredKeys;
+    private List<Pair<SqlIdentifier, SqlIndexDefinition>> columnarKeys;
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> clusteredUniqueKeys;
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> keys;
     private List<Pair<SqlIdentifier, SqlIndexDefinition>> fullTextKeys;
@@ -165,6 +169,7 @@ public class SqlCreateTable extends SqlCreate {
     private List<String> logicalReferencedTables = null;
     private List<String> physicalReferencedTables = null;
     private List<ForeignKeyData> addedForeignKeys;
+    private List<Boolean> isAddLogicalForeignKeyOnly;
     public boolean pushDownForeignKeys;
 
     /**
@@ -196,12 +201,20 @@ public class SqlCreateTable extends SqlCreate {
     private SqlNode localPartition = null;
 
     private SqlNode tableGroupName = null;
+    private boolean withImplicitTableGroup = false;
     private SqlNode joinGroupName = null;
     private SQLPartitionByRange localPartitionSuffix;
 
     private Engine engine = null;
     private ArchiveMode archiveMode;
+
+    private String loadTableName = null;
+
     private String loadTableSchema = null;
+
+    private List<String> dictColumns = null;
+
+    private String securityPolicy;
 
     private final static int MAX_AUTO_INDEX_LEN = 191;
 
@@ -210,6 +223,7 @@ public class SqlCreateTable extends SqlCreate {
     // use for create table replace select
     // different from base class‘s replace
     boolean replaceInto = false;
+    protected boolean onlyConvertTableMode = false;
 
     public void setIgnore(boolean ignore) {
         this.ignore = ignore;
@@ -227,6 +241,14 @@ public class SqlCreateTable extends SqlCreate {
         return asTableName;
     }
 
+    public boolean isOnlyConvertTableMode() {
+        return onlyConvertTableMode;
+    }
+
+    public void setOnlyConvertTableMode(boolean onlyConvertTableMode) {
+        this.onlyConvertTableMode = onlyConvertTableMode;
+    }
+
     public boolean isIgnore() {
         return ignore;
     }
@@ -241,13 +263,22 @@ public class SqlCreateTable extends SqlCreate {
     public void setLoadTableSchema(String loadTableSchema) {
         this.loadTableSchema = loadTableSchema;
     }
-    private String loadTableName = null;
+
     public String getLoadTableName() {
         return loadTableName;
     }
     public void setLoadTableName(String loadTableName) {
         this.loadTableName = loadTableName;
     }
+
+    public List<String> getDictColumns() {
+        return dictColumns;
+    }
+
+    public void setDictColumns(List<String> dictColumns) {
+        this.dictColumns = dictColumns;
+    }
+
     public Engine getEngine() {
         return engine;
     }
@@ -283,6 +314,14 @@ public class SqlCreateTable extends SqlCreate {
 
     public void setEncryption(String defaultEncryption) {
         this.encryption = defaultEncryption;
+    }
+
+    public String getSecurityPolicy() {
+        return securityPolicy;
+    }
+
+    public void setSecurityPolicy(String securityPolicy) {
+        this.securityPolicy = securityPolicy;
     }
 
     public void setRowFormat(String rf) {
@@ -323,6 +362,14 @@ public class SqlCreateTable extends SqlCreate {
 
     public boolean isSelect() {
         return isSelect;
+    }
+
+    public boolean isWithImplicitTableGroup() {
+        return withImplicitTableGroup;
+    }
+
+    public void setWithImplicitTableGroup(boolean withImplicitTableGroup) {
+        this.withImplicitTableGroup = withImplicitTableGroup;
     }
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("CREATE TABLE", SqlKind.CREATE_TABLE);
@@ -368,8 +415,35 @@ public class SqlCreateTable extends SqlCreate {
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> spatialKeys,
                           List<Pair<SqlIdentifier, SqlIndexDefinition>> foreignKeys, List<SqlCall> checks,
                           SqlIdentifier primaryKeyConstraint, boolean hasPrimaryKeyConstraint, SqlNode sqlPartition,
-                          SqlNode localPartition, SqlNode tableGroupName, SqlNode joinGroupName,
-                          List<ForeignKeyData> addedForeignKeys, String defaultCharset, String defaultCollation) {
+                          SqlNode localPartition,
+                          SqlNode tableGroupName,
+                          SqlNode joinGroupName,
+                          boolean dbPartition,
+                          List<ForeignKeyData> addedForeignKeys,
+                          List<Boolean> isAddLogicalForeignKeyOnly,
+                          ArchiveMode archiveMode,
+                          SqlNode asTableName,
+                          boolean autoSplit,
+                          List<Pair<SqlIdentifier, SqlIndexDefinition>> clusteredKeys,
+                          List<Pair<SqlIdentifier, SqlIndexDefinition>> clusteredUniqueKeys,
+                          List<Pair<SqlIdentifier, SqlIndexDefinition>> columnarKeys,
+                          String comment,
+                          String defaultCharset,
+                          String defaultCollation,
+                          String encryption,
+                          Engine engine,
+                          boolean ignore,
+                          boolean isSelect,
+                          String loadTableSchema,
+                          String locality,
+                          List<String> logicalReferencedTables,
+                          List<MappingRule> mappingRules,
+                          String originalSql,
+                          List<String> physicalReferencedTables,
+                          boolean pushDownForeignKeys,
+                          boolean replaceInto,
+                          String rowFormat,
+                          boolean uniqueShardingKey) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = name;
         this.likeTableName = likeTableName;
@@ -402,9 +476,33 @@ public class SqlCreateTable extends SqlCreate {
         this.localPartition = localPartition;
         this.tableGroupName = tableGroupName;
         this.joinGroupName = joinGroupName;
+        this.DbPartition = dbPartition;
         this.addedForeignKeys = addedForeignKeys;
+        this.isAddLogicalForeignKeyOnly = isAddLogicalForeignKeyOnly;
+        this.archiveMode = archiveMode;
+        this.asTableName = asTableName;
+        this.autoSplit = autoSplit;
+        this.clusteredKeys = clusteredKeys;
+        this.clusteredUniqueKeys = clusteredUniqueKeys;
+        this.columnarKeys = columnarKeys;
+        this.comment = comment;
         this.defaultCharset = defaultCharset;
         this.defaultCollation = defaultCollation;
+        this.encryption = encryption;
+        this.engine = engine;
+        this.ignore = ignore;
+        this.isSelect = isSelect;
+        this.loadTableName = loadTableName;
+        this.loadTableSchema = loadTableSchema;
+        this.locality = locality;
+        this.logicalReferencedTables = logicalReferencedTables;
+        this.mappingRules = mappingRules;
+        this.originalSql = originalSql;
+        this.physicalReferencedTables = physicalReferencedTables;
+        this.pushDownForeignKeys = pushDownForeignKeys;
+        this.replaceInto = replaceInto;
+        this.rowFormat = rowFormat;
+        this.uniqueShardingKey = uniqueShardingKey;
     }
 
     public boolean shouldLoad() {
@@ -423,6 +521,8 @@ public class SqlCreateTable extends SqlCreate {
                 || trimmedComment.equalsIgnoreCase("load_s3")
                 || trimmedComment.equalsIgnoreCase("load_local_disk")
                 || trimmedComment.equalsIgnoreCase("load_nfs")
+                || trimmedComment.equalsIgnoreCase("load_s3")
+                || trimmedComment.equalsIgnoreCase("load_abs")
                 || trimmedComment.equalsIgnoreCase("load_external_disk");
         }
 
@@ -513,7 +613,7 @@ public class SqlCreateTable extends SqlCreate {
                         String n = convertName(otherName);
                         writer.keyword(n);
                     } else {
-                        writer.keyword(c.getKey().getLastName());
+                        writer.identifier(c.getKey().getLastName());
                     }
                     c.getValue().unparse(writer, 0, 0);
 //                    throw new TddlRuntimeException(ERR_CREATE_SELECT_WITH_GSI, "create select don't support table with GSI");
@@ -532,7 +632,7 @@ public class SqlCreateTable extends SqlCreate {
                         String n = convertName(otherName);
                         writer.keyword(n);
                     } else {
-                        writer.keyword(c.getKey().getLastName());
+                        writer.identifier(c.getKey().getLastName());
                     }
                     c.getValue().unparse(writer, 0, 0);
 //                    throw new TddlRuntimeException(ERR_CREATE_SELECT_WITH_GSI, "create select don't support table with GSI");
@@ -544,6 +644,7 @@ public class SqlCreateTable extends SqlCreate {
                     writer.sep(",");
                     writer.keyword("clustered");
                     writer.keyword("index");
+                    writer.identifier(c.getKey().getLastName());
                     c.getValue().unparse(writer, 0, 0);
                 }
             }
@@ -554,6 +655,18 @@ public class SqlCreateTable extends SqlCreate {
                     writer.keyword("unique");
                     writer.keyword("clustered");
                     writer.keyword("index");
+                    writer.identifier(c.getKey().getLastName());
+                    c.getValue().unparse(writer, 0, 0);
+                }
+            }
+
+            if (columnarKeys != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> c : columnarKeys) {
+                    writer.sep(",");
+                    writer.keyword("clustered");
+                    writer.keyword("columnar");
+                    writer.keyword("index");
+                    writer.identifier(c.getKey().getLastName());
                     c.getValue().unparse(writer, 0, 0);
                 }
             }
@@ -640,6 +753,22 @@ public class SqlCreateTable extends SqlCreate {
 
         if (broadcast == true) {
             writer.keyword("BROADCAST");
+        }
+
+        if (tableGroupName != null) {
+            if (withImplicitTableGroup) {
+                writer.keyword("WITH TABLEGROUP=");
+                tableGroupName.unparse(writer, 0, 0);
+                writer.keyword("IMPLICIT");
+            } else {
+                writer.keyword("TABLEGROUP=");
+                tableGroupName.unparse(writer, 0, 0);
+            }
+        }
+
+        if (joinGroupName != null) {
+            writer.keyword("JOINGROUP=");
+            joinGroupName.unparse(writer, 0, 0);
         }
 
         if (engine != null) {
@@ -923,11 +1052,33 @@ public class SqlCreateTable extends SqlCreate {
             localPartition,
             tableGroupName,
             joinGroupName,
+            DbPartition,
             addedForeignKeys,
+            isAddLogicalForeignKeyOnly,
+            archiveMode,
+            asTableName,
+            autoSplit,
+            clusteredKeys,
+            clusteredUniqueKeys,
+            columnarKeys,
+            comment,
             defaultCharset,
-            defaultCollation);
-        ret.setEngine(engine);
-        ret.setDBPartition(DbPartition);
+            defaultCollation,
+            encryption,
+            engine,
+            ignore,
+            isSelect,
+            loadTableSchema,
+            locality,
+            logicalReferencedTables,
+            mappingRules,
+            originalSql,
+            physicalReferencedTables,
+            pushDownForeignKeys,
+            replaceInto,
+            rowFormat,
+            uniqueShardingKey);
+        ret.setWithImplicitTableGroup(withImplicitTableGroup);
         return ret;
     }
 
@@ -967,7 +1118,7 @@ public class SqlCreateTable extends SqlCreate {
                 });
 
             addIndex(shardKeys, stmt, uniqueShardingKey);
-        } else if (sqlPartition != null) {
+        } else if (sqlPartition != null || createCci()) {
             // Patch for implicit pk if needed.
             colDefs.stream()
                 .filter(pair -> pair.left.getLastName().equalsIgnoreCase(IMPLICIT_COL_NAME))
@@ -993,7 +1144,7 @@ public class SqlCreateTable extends SqlCreate {
             addLocalPartitionSuffix(stmt);
         }
         stmt.setBroadCast(false);
-        removeSequenceAndGsi(stmt);
+        removePolarDBXExclusiveFeature(stmt);
 
         stmt.setDbPartitionBy(null);
         stmt.setDbPartitions(null);
@@ -1017,60 +1168,40 @@ public class SqlCreateTable extends SqlCreate {
                     removeFKs.add(sqlTableElement);
                 }
             }
-            for (ForeignKeyData foreignKeyData : getAddedForeignKeys()) {
-                Set<String> foreignKeys = new LinkedHashSet<>(foreignKeyData.columns);
-
-                addForeignKeyIndex(foreignKeys, stmt, uniqueShardingKey, foreignKeyData);
+            for (int i = 0; i < addedForeignKeys.size(); i++) {
+                if (GeneralUtil.isNotEmpty(isAddLogicalForeignKeyOnly) && !isAddLogicalForeignKeyOnly.get(i)) {
+                    Set<String> foreignKeys = new LinkedHashSet<>(addedForeignKeys.get(i).columns);
+                    addForeignKeyIndex(foreignKeys, stmt, uniqueShardingKey, addedForeignKeys.get(i));
+                }
             }
             stmt.getTableElementList().removeAll(removeFKs);
         }
 
         if (dbpartitionBy != null) {
+            // fetch dbShardKeys for drdsTbl
             shardKeys = getShardingKeys(dbpartitionBy, shardKeys);
         }
-
         if (tbpartitionBy != null) {
+            // fetch tbShardKeys for drdsTbl
             getShardingKeys(tbpartitionBy, shardKeys);
         }
 
         if (sqlPartition != null) {
+            // fetch partkeys and subpartKeys for partTbl
             getPartitionKeys(sqlPartition, shardKeys, subPartKeys);
         }
 
         // Remove implicit pk in shard keys, because it must be primary key.
         shardKeys.removeIf(SqlValidatorImpl::isImplicitKey);
 
-        boolean useSubPartBy = false;
-        boolean subPartKeyContainAllPartKeyAsPrefixCols = false;
-        if (subPartKeys != null && subPartKeys.size() > 0) {
-            useSubPartBy = true;
-            List<String> partKeyList = shardKeys.stream().collect(Collectors.toList());
-            List<String> subPartKeyList = subPartKeys.stream().collect(Collectors.toList());
-            subPartKeyContainAllPartKeyAsPrefixCols = checkIfContainPrefixPartCols(subPartKeyList, partKeyList);
-        }
-        if (shardKeys.size() > 0) {
-            if (!(useSubPartBy && subPartKeyContainAllPartKeyAsPrefixCols)) {
-                if (sqlPartition == null) {
-                    addIndex(shardKeys, stmt, uniqueShardingKey);
-                } else {
-                    addCompositeIndex(shardKeys, stmt);
-                }
-            }
-            if (useSubPartBy) {
-                addCompositeIndex(subPartKeys, stmt);
-            }
+        // add local indexes for shard keys
+        addLocalIndexesForShardKeys(stmt, shardKeys, subPartKeys);
 
-//            if (sqlPartition == null || shardKeys.size() == 1) {
-//                addIndex(shardKeys, stmt, uniqueShardingKey);
-//            } else {
-//                // create composite indexes for key/range column/list column partitions
-//                addCompositeIndex(shardKeys, stmt);
-//            }
-        }
         stmt.setBroadCast(false);
         // remove locality on mysql
         stmt.setLocality(null);
-        removeSequenceAndGsi(stmt);
+        removePolarDBXExclusiveFeature(stmt);
+        SqlCreateTable.removeLBACAttr(stmt);
 
         for (Pair<SqlIdentifier, SqlColumnDeclaration> pair : colDefs) {
             String columnName = pair.left.getSimple();
@@ -1097,6 +1228,53 @@ public class SqlCreateTable extends SqlCreate {
         return stmt;
     }
 
+    /**
+     * Add local index for shardkeys and subshardKeys
+     */
+    private void addLocalIndexesForShardKeys(MySqlCreateTableStatement stmt, Set<String> shardKeys,
+                                             Set<String> subPartKeys) {
+        String partStrategy = SqlCreateTable.fetchPartStrategy(sqlPartition, false);
+        String subpartStrategy = SqlCreateTable.fetchPartStrategy(sqlPartition, true);
+        boolean usePartBy = !partStrategy.isEmpty();
+        boolean useSubPartBy = false;
+        boolean subPartKeyContainAllPartKeyAsPrefixCols = false;
+
+        List<String> partKeyList = shardKeys.stream().collect(Collectors.toList());
+        List<String> subPartKeyList = subPartKeys.stream().collect(Collectors.toList());
+        boolean addPartColIndexLater = false;
+        if (subPartKeys != null && subPartKeys.size() > 0) {
+            useSubPartBy = true;
+            subPartKeyContainAllPartKeyAsPrefixCols = checkIfContainPrefixPartCols(subPartKeyList, partKeyList);
+            addPartColIndexLater = needAddPartColLocalIndexLater(partStrategy, subpartStrategy);
+        }
+        if (shardKeys.size() > 0) {
+            if (!(useSubPartBy && subPartKeyContainAllPartKeyAsPrefixCols)) {
+                if (sqlPartition == null) {
+                    /**
+                     * add local index for drds sharding keys
+                     */
+                    addIndex(shardKeys, stmt, uniqueShardingKey);
+                } else {
+//                    addCompositeIndex(shardKeys, stmt);
+                    if (usePartBy && !addPartColIndexLater) {
+                        SqlCreateTable.addCompositeIndexForAutoTbl(null, stmt,
+                            false, ImmutableList.<SqlIndexOption>of(), false, partStrategy, partKeyList, false, "");
+                    }
+                }
+            }
+
+            if (useSubPartBy) {
+//                addCompositeIndex(subPartKeys, stmt);
+                SqlCreateTable.addCompositeIndexForAutoTbl(null, stmt,
+                    false, ImmutableList.<SqlIndexOption>of(), false, subpartStrategy, subPartKeyList, false, "");
+                if (usePartBy && addPartColIndexLater) {
+                    SqlCreateTable.addCompositeIndexForAutoTbl(null, stmt,
+                        false, ImmutableList.<SqlIndexOption>of(), false, partStrategy, partKeyList, false, "");
+                }
+            }
+        }
+    }
+
     public void addLocalPartitionSuffix(MySqlCreateTableStatement stmt) {
         if (stmt == null || localPartitionSuffix == null) {
             return;
@@ -1105,7 +1283,7 @@ public class SqlCreateTable extends SqlCreate {
             Lists.newArrayList(new SQLCommentHint("!50500 PARTITION BY " + localPartitionSuffix.toString())));
     }
 
-    private static void removeSequenceAndGsi(MySqlCreateTableStatement stmt) {
+    private static void removePolarDBXExclusiveFeature(MySqlCreateTableStatement stmt) {
         final Iterator<SQLTableElement> iterator = stmt.getTableElementList().iterator();
         while (iterator.hasNext()) {
             final SQLTableElement tableElement = iterator.next();
@@ -1117,11 +1295,40 @@ public class SqlCreateTable extends SqlCreate {
                 sqlColumnDefinition.setUnitCount(null);
                 sqlColumnDefinition.setUnitIndex(null);
             } else if ((tableElement instanceof MySqlTableIndex && (((MySqlTableIndex) tableElement).isGlobal()
-                || ((MySqlTableIndex) tableElement).isClustered()))
+                || ((MySqlTableIndex) tableElement).isClustered() || ((MySqlTableIndex) tableElement).isColumnar()))
                 || (tableElement instanceof MySqlUnique && (((MySqlUnique) tableElement).isGlobal()
                 || ((MySqlUnique) tableElement).isClustered()))) {
                 // remove gsi definition
                 iterator.remove();
+            } else if (tableElement instanceof MySqlTableIndex) {
+                final MySqlTableIndex index = (MySqlTableIndex) tableElement;
+                index.setTableGroup(null);
+                index.setWithImplicitTablegroup(false);
+            } else if (tableElement instanceof MySqlKey) {
+                final MySqlKey index = (MySqlKey) tableElement;
+                index.setTableGroup(null);
+                index.setWithImplicitTablegroup(false);
+            }
+        }
+    }
+
+    private static void removeLBACAttr(final MySqlCreateTableStatement stmt) {
+        Iterator<SQLTableElement> iterator = stmt.getTableElementList().iterator();
+        while (iterator.hasNext()) {
+            SQLTableElement tableElement = iterator.next();
+            //去除列的安全标号
+            if (tableElement instanceof SQLColumnDefinition) {
+                SQLColumnDefinition sqlColumnDefinition = (SQLColumnDefinition) tableElement;
+                sqlColumnDefinition.setSecuredWith(null);
+            }
+        }
+        Iterator<SQLAssignItem> optionIterator = stmt.getTableOptions().iterator();
+        while (optionIterator.hasNext()){
+            SQLAssignItem item = optionIterator.next();
+            //去除表的安全策略
+            if (item.getTarget() instanceof SQLIdentifierExpr &&
+                "SECURITY POLICY".equalsIgnoreCase(((SQLIdentifierExpr) item.getTarget()).getName())){
+                optionIterator.remove();
             }
         }
     }
@@ -1374,6 +1581,8 @@ public class SqlCreateTable extends SqlCreate {
                                 .equalsIgnoreCase(UGSI_PK_INDEX_NAME)) {
                                 it.remove();  //  Need to be replaced with MySqlUnique
                             }
+                        } else if (sqlTableElement instanceof MySqlPrimaryKey) {
+                            needAddIndexColumns = false;
                         } else {
                             needAddIndexColumns = false;
                             ((MySqlKey) sqlTableElement).setIndexType(indexType);
@@ -1694,9 +1903,37 @@ public class SqlCreateTable extends SqlCreate {
     }
 
     /**
+     * Check if need add local index of the 1st-level part cols after subpart-part cols
+     */
+    public static boolean needAddPartColLocalIndexLater(
+        String partStrategy,
+        String subPartStrategy
+    ) {
+        boolean useSubPart = subPartStrategy != null && !subPartStrategy.isEmpty();
+        boolean usePart = partStrategy != null && !partStrategy.isEmpty();
+        boolean isPartUsingCoHash = usePart && partStrategy.equalsIgnoreCase("CO_HASH");
+        boolean isSubPartUsingCoHash = useSubPart && subPartStrategy.equalsIgnoreCase("CO_HASH");
+
+        if (!useSubPart) {
+            return false;
+        }
+        if (isPartUsingCoHash) {
+            if (isSubPartUsingCoHash) {
+                return false;
+            } else {
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
+
+    /**
      * Check if the target partition columns contains the target prefix part columns
      */
-    public static boolean checkIfContainPrefixPartCols(List<String> targetPartCols, List<String> targetPrefixCols) {
+    public static boolean checkIfContainPrefixPartCols(
+        List<String> targetPartCols,
+        List<String> targetPrefixCols) {
         if (targetPartCols.size() < targetPrefixCols.size()) {
             return false;
         }
@@ -1901,6 +2138,14 @@ public class SqlCreateTable extends SqlCreate {
         this.clusteredKeys = clusteredKeys;
     }
 
+    public List<Pair<SqlIdentifier, SqlIndexDefinition>> getColumnarKeys() {
+        return columnarKeys;
+    }
+
+    public void setColumnarKeys(List<Pair<SqlIdentifier, SqlIndexDefinition>> columnarKeys) {
+        this.columnarKeys = columnarKeys;
+    }
+
     public List<Pair<SqlIdentifier, SqlIndexDefinition>> getClusteredUniqueKeys() {
         return clusteredUniqueKeys;
     }
@@ -1967,6 +2212,20 @@ public class SqlCreateTable extends SqlCreate {
         this.pushDownForeignKeys = pushDownForeignKeys;
     }
 
+    public List<Boolean> getIsAddLogicalForeignKeyOnly() {
+        return isAddLogicalForeignKeyOnly;
+    }
+
+    public void setIsAddLogicalForeignKeyOnly(List<Boolean> isAddLogicalForeignKeyOnly) {
+        if (null == this.isAddLogicalForeignKeyOnly) {
+            this.isAddLogicalForeignKeyOnly = new ArrayList<>();
+        }
+
+        if (isAddLogicalForeignKeyOnly != null) {
+            this.isAddLogicalForeignKeyOnly.addAll(isAddLogicalForeignKeyOnly);
+        }
+    }
+
     public List<SqlCall> getChecks() {
         return checks;
     }
@@ -2005,6 +2264,11 @@ public class SqlCreateTable extends SqlCreate {
     public boolean createGsi() {
         return GeneralUtil.isNotEmpty(globalKeys) || GeneralUtil.isNotEmpty(globalUniqueKeys)
             || GeneralUtil.isNotEmpty(clusteredKeys) || GeneralUtil.isNotEmpty(clusteredUniqueKeys);
+    }
+
+    @Override
+    public boolean createCci() {
+        return GeneralUtil.isNotEmpty(columnarKeys);
     }
 
     public boolean createClusteredIndex() {
@@ -2058,6 +2322,136 @@ public class SqlCreateTable extends SqlCreate {
         }
         addCompositeIndex(indexColumnNameMap, stmt, false, ImmutableList.<SqlIndexOption>of(), false,
             new ArrayList<>(shardKeys), false, "");
+    }
+
+    public static void addCompositeIndexForAutoTbl(Map<String, SqlIndexColumnName> indexColumnNameMap,
+                                                   MySqlCreateTableStatement stmt,
+                                                   boolean isUniqueIndex,
+                                                   List<SqlIndexOption> options,
+                                                   boolean isGsi,
+                                                   String shardKeysPartStrategy,
+                                                   List<String> shardKeys,
+                                                   boolean addFkIndex,
+                                                   String fkIndexName
+    ) {
+        /**
+         * The linked-hash Map can key the key's order by their insert order
+         */
+        final Map<String, SqlIndexColumnName> newIndexColumnNameMap =
+            new LinkedHashMap<String, SqlIndexColumnName>();
+
+        /**
+         * The tree-set can handle the CASE_INSENSITIVE_ORDER that can remove duplicated items
+         */
+        final Set<String> newIndexColumnNameTreeSet =
+            new TreeSet(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+        if (indexColumnNameMap != null && !indexColumnNameMap.isEmpty()) {
+            newIndexColumnNameMap.putAll(indexColumnNameMap);
+            newIndexColumnNameTreeSet.addAll(newIndexColumnNameMap.keySet());
+        }
+
+        if (!isGsi && newIndexColumnNameMap.isEmpty()) {
+            for (String columnName : shardKeys) {
+                if (!newIndexColumnNameTreeSet.contains(columnName)) {
+                    newIndexColumnNameMap.put(columnName,
+                        new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(columnName,
+                            SqlParserPos.ZERO), null, null));
+                    newIndexColumnNameTreeSet.add(columnName);
+                }
+            }
+        }
+
+        if (shardKeysPartStrategy.equalsIgnoreCase("co_hash")) {
+            for (String shardKey : shardKeys) {
+                List<String> tmpShardKey = new ArrayList<>();
+                tmpShardKey.add(shardKey);
+//                addCompositeIndex(newIndexColumnNameMap, stmt, false, ImmutableList.<SqlIndexOption>of(), false,
+//                    tmpShardKey, false, "");
+                addCompositeIndex(newIndexColumnNameMap, stmt, isUniqueIndex, options, isGsi,
+                    tmpShardKey, addFkIndex, fkIndexName);
+            }
+        } else {
+            addCompositeIndex(newIndexColumnNameMap, stmt, isUniqueIndex, options, isGsi,
+                shardKeys, addFkIndex, fkIndexName);
+        }
+    }
+
+    private static String fetchPartStrategy(SqlNode sqlPartition, boolean isForSubPart) {
+        String partStrategy = "";
+        if (sqlPartition == null) {
+            return partStrategy;
+        }
+
+        SqlPartitionBy partBy = (SqlPartitionBy) sqlPartition;
+        SqlSubPartitionBy subPartBy = partBy.getSubPartitionBy();
+        boolean useSubPart = subPartBy != null;
+
+        if (isForSubPart) {
+            if (subPartBy == null) {
+                return partStrategy;
+            }
+            if (subPartBy instanceof SqlSubPartitionByHash) {
+                boolean isKey = ((SqlSubPartitionByHash) subPartBy).isKey();
+                if (isKey) {
+                    partStrategy = "KEY";
+                } else {
+                    partStrategy = "HASH";
+                }
+            } else if (subPartBy instanceof SqlSubPartitionByCoHash) {
+                partStrategy = "CO_HASH";
+
+            } else if (subPartBy instanceof SqlSubPartitionByUdfHash) {
+                partStrategy = "UDF_HASH";
+            } else if (subPartBy instanceof SqlSubPartitionByRange) {
+                boolean isColumns = subPartBy.isColumns();
+                if (isColumns) {
+                    partStrategy = "RANGE_COLUMNS";
+                } else {
+                    partStrategy = "RANGE";
+                }
+            } else if (subPartBy instanceof SqlSubPartitionByList) {
+                boolean isColumns = subPartBy.isColumns();
+                if (isColumns) {
+                    partStrategy = "LIST_COLUMNS";
+                } else {
+                    partStrategy = "LIST";
+                }
+            } else {
+                return partStrategy;
+            }
+        } else {
+            if (partBy instanceof SqlPartitionByHash) {
+                boolean isKey = ((SqlPartitionByHash) partBy).isKey();
+                if (isKey) {
+                    partStrategy = "KEY";
+                } else {
+                    partStrategy = "HASH";
+                }
+            } else if (partBy instanceof SqlPartitionByCoHash) {
+                partStrategy = "CO_HASH";
+            } else if (partBy instanceof SqlPartitionByUdfHash) {
+                partStrategy = "UDF_HASH";
+            } else if (partBy instanceof SqlPartitionByRange) {
+                boolean isColumns = ((SqlPartitionByRange) partBy).isColumns();
+                if (isColumns) {
+                    partStrategy = "RANGE_COLUMNS";
+                } else {
+                    partStrategy = "RANGE";
+                }
+            } else if (partBy instanceof SqlPartitionByList) {
+                boolean isColumns = ((SqlPartitionByList) partBy).isColumns();
+                if (isColumns) {
+                    partStrategy = "LIST_COLUMNS";
+                } else {
+                    partStrategy = "LIST";
+                }
+            } else {
+                return partStrategy;
+            }
+        }
+        return partStrategy;
+
     }
 
     /**
@@ -2346,8 +2740,7 @@ public class SqlCreateTable extends SqlCreate {
 
             Set<String> orderedIndexColumnNames = new LinkedHashSet<>(shardingKey);
             final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
-            final String indexName = addFkIndex ? (foreignKeyIndexName == null ?
-                buildForeignKeyIndexName(existingIndexNames, suffix) : foreignKeyIndexName) :
+            final String indexName = addFkIndex ? buildForeignKeyName(foreignKeyIndexName, existingIndexNames, suffix) :
                 buildIndexName(existingIndexNames, suffix);
 
             final MySqlTableIndex mySqlTableIndex = new MySqlTableIndex();
@@ -2371,6 +2764,13 @@ public class SqlCreateTable extends SqlCreate {
             stmt.getTableElementList().add(mySqlTableIndex);
             existingIndexNames.add(indexName);
         }
+    }
+
+    public static String buildForeignKeyName(String foreignKeyIndexName, Set<String> existingIndexNames,
+                                              String suffix) {
+        return foreignKeyIndexName == null ?
+            buildForeignKeyIndexName(existingIndexNames, suffix) :
+            SqlIdentifier.surroundWithBacktick(foreignKeyIndexName);
     }
 
     private static List<IndexColumnInfo> preparAutoCompositeIndexs(List<String> shardKeys,
@@ -2492,6 +2892,18 @@ public class SqlCreateTable extends SqlCreate {
             }
         }
         return indexColumnInfos;
+    }
+
+    public void replaceCciDef(String indexName, SqlIndexDefinition newIndexDef) {
+        this.setColumnarKeys(getColumnarKeys()
+            .stream()
+            .map(p -> {
+                if (TStringUtil.equalsIgnoreCase(p.getKey().getLastName(), indexName)) {
+                    return Pair.of(p.getKey(), newIndexDef);
+                }
+                return p;
+            })
+            .collect(Collectors.toList()));
     }
 }
 

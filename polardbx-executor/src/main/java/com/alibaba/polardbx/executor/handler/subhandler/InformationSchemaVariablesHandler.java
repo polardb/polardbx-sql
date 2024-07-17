@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
@@ -91,7 +92,8 @@ public class InformationSchemaVariablesHandler extends BaseVirtualViewSubClassHa
             } catch (Exception e) {
                 throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
             }
-            final List<List<Map<String, Object>>> allTaskValues = SyncManagerHelper.sync(fetchTimerTaskInfoSyncAction);
+            final List<List<Map<String, Object>>> allTaskValues = SyncManagerHelper.sync(fetchTimerTaskInfoSyncAction,
+                SyncScope.MASTER_ONLY);
 
             if (allTaskValues == null) {
                 return resultCursor;

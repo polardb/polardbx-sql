@@ -21,8 +21,8 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableGroupAddTablesMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -82,11 +82,15 @@ public class AlterTableGroupAddTableJobFactory extends DdlJobFactory {
         if (preparedData.getReferenceTable() == null) {
             //validate the tablegroup is not empty
             curDdl = new AlterTableGroupValidateTask(preparedData.getSchemaName(),
-                preparedData.getTableGroupName(), preparedData.getTableVersions(), false, null);
+                preparedData.getTableGroupName(), preparedData.getTableVersions(), false, null, false);
         } else {
             curDdl = new ValidateTableVersionTask(preparedData.getSchemaName(), preparedData.getTableVersions());
         }
         executableDdlJob.addTask(curDdl);
+
+        CdcAlterTableGroupAddTablesMarkTask cdcAlterTableGroupAddTablesMarkTask =
+            new CdcAlterTableGroupAddTablesMarkTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
+
         if (preparedData.getReferenceTable() != null) {
             sourceTables.remove(preparedData.getReferenceTable());
             DdlTask ddlTask = generateSetTableGroupJob(preparedData.getReferenceTable());
@@ -94,12 +98,16 @@ public class AlterTableGroupAddTableJobFactory extends DdlJobFactory {
             executableDdlJob.addTaskRelationship(curDdl, ddlTask);
             curDdl = ddlTask;
         }
-        EmptyTask lastTask = new EmptyTask(preparedData.getSchemaName());
-        for (String tableName : sourceTables) {
-            DdlTask ddlTask = generateSetTableGroupJob(tableName);
-            executableDdlJob.addTask(ddlTask);
-            executableDdlJob.addTaskRelationship(curDdl, ddlTask);
-            executableDdlJob.addTaskRelationship(ddlTask, lastTask);
+
+        if (sourceTables.isEmpty()) {
+            executableDdlJob.addTaskRelationship(curDdl, cdcAlterTableGroupAddTablesMarkTask);
+        } else {
+            for (String tableName : sourceTables) {
+                DdlTask ddlTask = generateSetTableGroupJob(tableName);
+                executableDdlJob.addTask(ddlTask);
+                executableDdlJob.addTaskRelationship(curDdl, ddlTask);
+                executableDdlJob.addTaskRelationship(ddlTask, cdcAlterTableGroupAddTablesMarkTask);
+            }
         }
 
         return executableDdlJob;

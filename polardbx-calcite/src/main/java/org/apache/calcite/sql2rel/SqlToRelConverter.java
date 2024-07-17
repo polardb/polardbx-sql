@@ -48,6 +48,7 @@ import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelCollations;
+import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelRoot;
@@ -80,9 +81,11 @@ import org.apache.calcite.rel.ddl.AlterFileStorageAsOfTimestamp;
 import org.apache.calcite.rel.ddl.AlterFileStorageBackup;
 import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
 import org.apache.calcite.rel.ddl.AlterFunction;
+import org.apache.calcite.rel.ddl.AlterInstance;
 import org.apache.calcite.rel.ddl.AlterJoinGroup;
 import org.apache.calcite.rel.ddl.AlterProcedure;
 import org.apache.calcite.rel.ddl.AlterRule;
+import org.apache.calcite.rel.ddl.AlterStoragePool;
 import org.apache.calcite.rel.ddl.AlterSystemSetConfig;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.rel.ddl.AlterTableGroupAddPartition;
@@ -105,6 +108,8 @@ import org.apache.calcite.rel.ddl.AlterTableRepartition;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.rel.ddl.AnalyzeTable;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
+import org.apache.calcite.rel.ddl.ClearFileStorage;
+import org.apache.calcite.rel.ddl.ConvertAllSequences;
 import org.apache.calcite.rel.ddl.CreateDatabase;
 import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateFunction;
@@ -116,6 +121,7 @@ import org.apache.calcite.rel.ddl.CreateProcedure;
 import org.apache.calcite.rel.ddl.CreateStoragePool;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
+import org.apache.calcite.rel.ddl.CreateView;
 import org.apache.calcite.rel.ddl.DropDatabase;
 import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropFunction;
@@ -124,9 +130,13 @@ import org.apache.calcite.rel.ddl.DropJavaFunction;
 import org.apache.calcite.rel.ddl.DropJoinGroup;
 import org.apache.calcite.rel.ddl.DropMaterializedView;
 import org.apache.calcite.rel.ddl.DropProcedure;
+import org.apache.calcite.rel.ddl.DropStoragePool;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
+import org.apache.calcite.rel.ddl.DropView;
 import org.apache.calcite.rel.ddl.GenericDdl;
+import org.apache.calcite.rel.ddl.ImportDatabase;
+import org.apache.calcite.rel.ddl.ImportSequence;
 import org.apache.calcite.rel.ddl.InspectIndex;
 import org.apache.calcite.rel.ddl.MergeTableGroup;
 import org.apache.calcite.rel.ddl.MoveDatabase;
@@ -167,7 +177,6 @@ import org.apache.calcite.rel.logical.LogicalTableModify;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.logical.LogicalValues;
-import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelColumnMapping;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.stream.Delta;
@@ -205,10 +214,10 @@ import org.apache.calcite.sql.OutFileParams;
 import org.apache.calcite.sql.SemiJoinType;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAggFunction;
-import org.apache.calcite.sql.SqlAlter;
 import org.apache.calcite.sql.SqlAlterDatabase;
 import org.apache.calcite.sql.SqlAlterFileStorage;
 import org.apache.calcite.sql.SqlAlterFunction;
+import org.apache.calcite.sql.SqlAlterInstance;
 import org.apache.calcite.sql.SqlAlterJoinGroup;
 import org.apache.calcite.sql.SqlAlterProcedure;
 import org.apache.calcite.sql.SqlAlterRule;
@@ -251,6 +260,9 @@ import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCallBinding;
 import org.apache.calcite.sql.SqlChangeConsensusRole;
 import org.apache.calcite.sql.SqlCharStringLiteral;
+import org.apache.calcite.sql.SqlCheckColumnarIndex;
+import org.apache.calcite.sql.SqlClearFileStorage;
+import org.apache.calcite.sql.SqlConvertAllSequences;
 import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.calcite.sql.SqlCreateFileStorage;
@@ -265,6 +277,7 @@ import org.apache.calcite.sql.SqlCreateStoragePool;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlCreateTableGroup;
 import org.apache.calcite.sql.SqlCreateTrigger;
+import org.apache.calcite.sql.SqlCreateView;
 import org.apache.calcite.sql.SqlDal;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlDdl;
@@ -283,12 +296,15 @@ import org.apache.calcite.sql.SqlDropStoragePool;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlDropTableGroup;
 import org.apache.calcite.sql.SqlDropTrigger;
+import org.apache.calcite.sql.SqlDropView;
 import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlImportDatabase;
+import org.apache.calcite.sql.SqlImportSequence;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlInspectIndex;
@@ -333,6 +349,7 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.SqlUtil;
 import org.apache.calcite.sql.SqlUtil.SpecialIdentiFiers;
 import org.apache.calcite.sql.SqlValuesOperator;
+import org.apache.calcite.sql.SqlValuesTableSource;
 import org.apache.calcite.sql.SqlWindow;
 import org.apache.calcite.sql.SqlWith;
 import org.apache.calcite.sql.SqlWithItem;
@@ -497,7 +514,7 @@ public class SqlToRelConverter {
                              Prepare.CatalogReader catalogReader, RelOptPlanner planner, RexBuilder rexBuilder,
                              SqlRexConvertletTable convertletTable) {
         this(viewExpander, validator, catalogReader, RelOptCluster.create(planner, rexBuilder), convertletTable,
-            Config.DEFAULT, Integer.MAX_VALUE);
+            Config.DEFAULT, Integer.MAX_VALUE, false);
     }
 
     @Deprecated // to be removed before 2.0
@@ -510,13 +527,15 @@ public class SqlToRelConverter {
     public SqlToRelConverter(RelOptTable.ViewExpander viewExpander, SqlValidator validator,
                              Prepare.CatalogReader catalogReader, RelOptCluster cluster,
                              SqlRexConvertletTable convertletTable, Config config) {
-        this(viewExpander, validator, catalogReader, cluster, convertletTable, config, config.getInSubQueryThreshold());
+        this(viewExpander, validator, catalogReader, cluster, convertletTable, config, config.getInSubQueryThreshold(),
+            config.isRemoveDistinct());
     }
 
     /* Creates a converter. */
     public SqlToRelConverter(RelOptTable.ViewExpander viewExpander, SqlValidator validator,
                              Prepare.CatalogReader catalogReader, RelOptCluster cluster,
-                             SqlRexConvertletTable convertletTable, Config config, int inSubQueryThreshold) {
+                             SqlRexConvertletTable convertletTable, Config config, int inSubQueryThreshold,
+                             boolean isRemoveDistinct) {
         this.viewExpander = viewExpander;
         this.opTab = (validator == null) ? SqlStdOperatorTable.instance() : validator.getOperatorTable();
         this.validator = validator;
@@ -527,7 +546,9 @@ public class SqlToRelConverter {
         this.cluster = Preconditions.checkNotNull(cluster);
         this.exprConverter = new SqlNodeToRexConverterImpl(convertletTable);
         this.explainParamCount = 0;
-        this.config = new ConfigBuilder().withConfig(config).withInSubQueryThreshold(inSubQueryThreshold).build();
+        this.config = new ConfigBuilder().withConfig(config)
+            .withInSubQueryThreshold(inSubQueryThreshold)
+            .withRemoveDistinct(isRemoveDistinct).build();
         this.relBuilder = RelFactories.LOGICAL_BUILDER.create(cluster, null);
     }
 
@@ -741,7 +762,6 @@ public class SqlToRelConverter {
             query = validator.validate(query);
         }
 
-        RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(cluster.getMetadataProvider()));
         RelNode result = convertQueryRecursive(query, top, null).rel;
         if (top) {
             if (isStream(query)) {
@@ -2155,7 +2175,7 @@ public class SqlToRelConverter {
             SqlNode tableName = call.operand(0);
             SqlNode timeStamp = call.operand(1);
             final RexNode timestampExpr = bb.convertExpression(timeStamp);
-            this.hintBlackboard.beginAsOf(timestampExpr);
+            this.hintBlackboard.beginAsOf(Pair.of(timestampExpr, call.getOperator()));
             SqlIdentifier identifier = (SqlIdentifier) tableName;
             convertIdentifier(bb, identifier, null, identifier.indexNode, identifier.partitions);
             this.hintBlackboard.endAsOf();
@@ -2591,10 +2611,11 @@ public class SqlToRelConverter {
         } else {
             SqlNodeList hint = this.hintBlackboard.currentHints(Util.last(table.getQualifiedName()));
             if (this.hintBlackboard.hasAsOf()) {
-                tableRel = LogicalTableScan.create(cluster, table, hint, indexNode, this.hintBlackboard.peekAsOf(),
+                Pair<RexNode, SqlOperator> asOf = this.hintBlackboard.peekAsOf();
+                tableRel = LogicalTableScan.create(cluster, table, hint, indexNode, asOf.getKey(), asOf.getValue(),
                     partitions);
             } else {
-                tableRel = LogicalTableScan.create(cluster, table, hint, indexNode, null, partitions);
+                tableRel = LogicalTableScan.create(cluster, table, hint, indexNode, null, null, partitions);
 
             }
         }
@@ -3290,7 +3311,61 @@ public class SqlToRelConverter {
      */
     protected RelNode createAggregate(Blackboard bb, ImmutableBitSet groupSet, ImmutableList<ImmutableBitSet> groupSets,
                                       List<AggregateCall> aggCalls) {
-        return LogicalAggregate.create(bb.root, groupSet, groupSets, aggCalls);
+
+        final List<AggregateCall> aggregateCalls = new ArrayList<>();
+        Set<Integer> nullRefs = new HashSet<>();
+        for (AggregateCall aggregateCall : aggCalls) {
+            if (groupSets.size() <= 1 && config.isRemoveDistinct()) {
+                aggregateCall = removeRedundantAggregateDistinct(
+                    aggregateCall, groupSet, bb.root, nullRefs);
+            }
+            aggregateCalls.add(aggregateCall);
+        }
+
+        RelNode relNode = bb.root;
+        if (nullRefs.size() > 0) {
+            final List<RelDataTypeField> fields = relNode.getRowType().getFieldList();
+            final List<RexNode> isNotNullOperands = new ArrayList<>();
+            for (Integer nullRef : nullRefs) {
+                RelDataType dataType = fields.get(nullRef).getType();
+                if (dataType.isNullable()) {
+                    isNotNullOperands.add(relBuilder.isNotNull(rexBuilder.makeInputRef(relNode, nullRef)));
+                }
+            }
+            if (isNotNullOperands.size() > 0) {
+                relNode = LogicalFilter.create(
+                    relNode,  RexUtil.composeConjunction(rexBuilder, isNotNullOperands, true));
+            }
+        }
+        return LogicalAggregate.create(relNode, groupSet, groupSets, aggregateCalls);
+    }
+
+    private AggregateCall removeRedundantAggregateDistinct(
+        AggregateCall aggregateCall,
+        ImmutableBitSet groupSet,
+        RelNode relNode,
+        Set<Integer> nullRefs) {
+        final List<Integer> argList = aggregateCall.getArgList();
+        if (aggregateCall.isDistinct()) {
+            final RelMetadataQuery mq = relNode.getCluster().getMetadataQuery();
+            final ImmutableBitSet distinctArg = ImmutableBitSet.builder()
+                .addAll(argList)
+                .build();
+            final ImmutableBitSet columns = groupSet.union(distinctArg);
+            final Boolean alreadyUnique =
+                mq.areColumnsUnique(relNode, columns);
+            if (alreadyUnique != null && alreadyUnique) {
+                // columns have been distinct or columns are primary keys
+                if (aggregateCall.getAggregation().getKind() == SqlKind.COUNT) {
+                    //in order to avoid generate the physical sql "count(a, b, c)" for the singleTable,
+                    //and mysql don't support count multi-column.
+                    return aggregateCall;
+                } else {
+                    return aggregateCall.withDistinct(false);
+                }
+            }
+        }
+        return aggregateCall;
     }
 
     public RexDynamicParam convertDynamicParam(final SqlDynamicParam dynamicParam) {
@@ -3481,8 +3556,8 @@ public class SqlToRelConverter {
             return RelRoot.of(convertSequenceDdl((SqlSequence) query), kind);
         case ALTER_RULE:
             return RelRoot.of(convertAlterRule((SqlAlterRule) query), kind);
-        case CREATE_VIEW:
-        case DROP_VIEW:
+        case CHECK_COLUMNAR_INDEX:
+            return RelRoot.of(convertCheckColumnarIndex((SqlCheckColumnarIndex) query), kind);
         case CHECK_GLOBAL_INDEX:
         case REBALANCE:
             return RelRoot.of(convertGenericDdl((SqlDdl) query), kind);
@@ -3508,6 +3583,10 @@ public class SqlToRelConverter {
             return RelRoot.of(convertAlterDatabase((SqlAlterDatabase) query), kind);
         case DROP_DATABASE:
             return RelRoot.of(convertDropDatabase((SqlDropDatabase) query), kind);
+        case CREATE_VIEW:
+            return RelRoot.of(convertCreateView((SqlCreateView) query), kind);
+        case DROP_VIEW:
+            return RelRoot.of(convertDropView((SqlDropView) query), kind);
         case CREATE_JAVA_FUNCTION:
             return RelRoot.of(convertCreateJavaFunction((SqlCreateJavaFunction) query), kind);
         case DROP_JAVA_FUNCTION:
@@ -3550,6 +3629,8 @@ public class SqlToRelConverter {
             return RelRoot.of(convertUnArchive((SqlUnArchive) query), kind);
         case DROP_FILESTORAGE:
             return RelRoot.of(convertDropFileStorage((SqlDropFileStorage) query), kind);
+        case CLEAR_FILESTORAGE:
+            return RelRoot.of(convertClearFileStorage((SqlClearFileStorage) query), kind);
         case CREATE_FILESTORAGE:
             return RelRoot.of(convertCreateFileStorage((SqlCreateFileStorage) query), kind);
         case CREATE_JOINGROUP:
@@ -3566,10 +3647,18 @@ public class SqlToRelConverter {
             }
         case INSPECT_INDEX:
             return RelRoot.of(convertInspectIndex((SqlInspectIndex) query), kind);
+        case IMPORT_DATABASE:
+            return RelRoot.of(convertImportDatabase((SqlImportDatabase) query), kind);
+        case IMPORT_SEQUENCE:
+            return RelRoot.of(convertImportSequence((SqlImportSequence) query), kind);
         case ANALYZE_TABLE:
             if (query instanceof SqlAnalyzeTableDdl) {
                 return RelRoot.of(convertAnalyzeTable((SqlAnalyzeTableDdl) query), kind);
             }
+        case CONVERT_ALL_SEQUENCES:
+            return RelRoot.of(convertConvertAllSequence((SqlConvertAllSequences) query), kind);
+        case ALTER_INSTANCE:
+            return RelRoot.of(convertAlterInstance((SqlAlterInstance) query), kind);
         default:
             if (kind.belongsTo(SqlKind.DAL)) {
                 return RelRoot.of(convertDal((SqlDal) query), kind);
@@ -3615,38 +3704,40 @@ public class SqlToRelConverter {
         return CreateIndex.create(getCluster(), query, query.getOperandList().get(0), rexNodesForPartition);
     }
 
-    private RelNode convertCreateStoragePool(SqlCreate query){
-        if(query instanceof SqlCreateStoragePool) {
-            SqlNode storagePool = ((SqlCreateStoragePool)query).getStoragePool();
+    private RelNode convertCreateStoragePool(SqlCreate query) {
+        if (query instanceof SqlCreateStoragePool) {
+            SqlNode storagePool = ((SqlCreateStoragePool) query).getStoragePool();
             SqlNode dnList = ((SqlCreateStoragePool) query).getDnList();
-            SqlNode tableName = ((SqlCreateStoragePool)query).getName();
-            SqlNode undeletableDn = ((SqlCreateStoragePool)query).getUndeletableDn();
+            SqlNode tableName = ((SqlCreateStoragePool) query).getName();
+            SqlNode undeletableDn = ((SqlCreateStoragePool) query).getUndeletableDn();
             return CreateStoragePool.create(getCluster(), query, tableName, storagePool, dnList, undeletableDn);
-        }else{
+        } else {
             throw new AssertionError("not suitable create storage pool statement");
         }
     }
 
-    private RelNode convertDropStoragePool(SqlCreate query){
-        if(query instanceof SqlDropStoragePool) {
-            SqlNode storagePool = ((SqlDropStoragePool)query).getStoragePool();
-            SqlNode tableName = ((SqlDropStoragePool)query).getName();
+    private RelNode convertDropStoragePool(SqlCreate query) {
+        if (query instanceof SqlDropStoragePool) {
+            SqlNode storagePool = ((SqlDropStoragePool) query).getStoragePool();
+            SqlNode tableName = ((SqlDropStoragePool) query).getName();
             return DropStoragePool.create(getCluster(), query, tableName, storagePool);
-        }else{
+        } else {
             throw new AssertionError("not suitable drop storage pool statement");
         }
     }
-    private RelNode convertAlterStoragePool(SqlCreate query){
-        if(query instanceof SqlAlterStoragePool) {
-            SqlNode storagePool = ((SqlAlterStoragePool)query).getStoragePool();
+
+    private RelNode convertAlterStoragePool(SqlCreate query) {
+        if (query instanceof SqlAlterStoragePool) {
+            SqlNode storagePool = ((SqlAlterStoragePool) query).getStoragePool();
             SqlNode dnList = ((SqlAlterStoragePool) query).getDnList();
             SqlNode operation = ((SqlAlterStoragePool) query).getOperation();
             SqlNode tableName = ((SqlAlterStoragePool) query).getName();
             return AlterStoragePool.create(getCluster(), query, tableName, storagePool, dnList, operation);
-        }else{
+        } else {
             throw new AssertionError("not suitable alter storage pool statement");
         }
     }
+
     private RelNode convertAlterTable(SqlAlterTable query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
@@ -3789,6 +3880,13 @@ public class SqlToRelConverter {
             query.getName().toString());
     }
 
+    private RelNode convertClearFileStorage(SqlClearFileStorage query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+        return ClearFileStorage.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query, targetRowType,
+            query.getName().toString());
+    }
+
     private RelNode convertCreateFileStorage(SqlCreateFileStorage query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
@@ -3877,9 +3975,10 @@ public class SqlToRelConverter {
         SqlNode tableName = sqlAlterTableSetTableGroup.getTargetTable();
         List<SqlIdentifier> objectNames = sqlAlterTableSetTableGroup.getObjectNames();
         boolean force = sqlAlterTableSetTableGroup.isForce();
+        boolean implicit = sqlAlterTableSetTableGroup.isImplicit();
         assert targetRowType != null;
         return AlterTableSetTableGroup.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
-            sqlAlterTableSetTableGroup, targetRowType, objectNames, tableName, tableGroupName, force);
+            sqlAlterTableSetTableGroup, targetRowType, objectNames, tableName, tableGroupName, implicit, force);
     }
 
     private RelNode convertRefreshTopology(SqlRefreshTopology sqlRefreshTopology) {
@@ -3972,6 +4071,15 @@ public class SqlToRelConverter {
         query = checkAndRewriteGsiName(query);
 
         return DropIndex.create(getCluster(), query, query.getOperandList().get(0));
+    }
+
+    private RelNode convertCheckColumnarIndex(SqlCheckColumnarIndex query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+
+        query = checkAndRewriteGsiName(query);
+
+        return GenericDdl.create(getCluster(), query, query.getOperandList().get(0));
     }
 
     private RelNode convertSequenceDdl(SqlSequence query) {
@@ -4200,6 +4308,11 @@ public class SqlToRelConverter {
         return show;
     }
 
+    protected SqlCheckColumnarIndex checkAndRewriteGsiName(SqlCheckColumnarIndex query) {
+        // implemented in TddlSqlToRelConverter
+        return query;
+    }
+
     protected void checkGsiColumnLen(SqlCreateTable create) {
         // implemented in TddlSqlToRelConverter
     }
@@ -4239,6 +4352,12 @@ public class SqlToRelConverter {
         }
         if (GeneralUtil.isNotEmpty(query.getClusteredUniqueKeys())) {
             for (Pair<SqlIdentifier, SqlIndexDefinition> pair : query.getClusteredUniqueKeys()) {
+                Map<SqlNode, RexNode> rexNodesForIndexPartition = convertPartition(pair.getValue().getPartitioning());
+                rexNodesForPartition.putAll(rexNodesForIndexPartition);
+            }
+        }
+        if (GeneralUtil.isNotEmpty(query.getColumnarKeys())) {
+            for (Pair<SqlIdentifier, SqlIndexDefinition> pair : query.getColumnarKeys()) {
                 Map<SqlNode, RexNode> rexNodesForIndexPartition = convertPartition(pair.getValue().getPartitioning());
                 rexNodesForPartition.putAll(rexNodesForIndexPartition);
             }
@@ -4680,14 +4799,44 @@ public class SqlToRelConverter {
         return AlterDatabase.create(query, targetRowType, getCluster());
     }
 
+    private RelNode convertAlterInstance(SqlAlterInstance query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return AlterInstance.create(query, targetRowType, getCluster());
+    }
+
     private RelNode convertInspectIndex(SqlInspectIndex query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         return InspectIndex.create(query, targetRowType, getCluster());
     }
 
+    private RelNode convertImportDatabase(SqlImportDatabase query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return ImportDatabase.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertImportSequence(SqlImportSequence query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return ImportSequence.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertConvertAllSequence(SqlConvertAllSequences query) {
+        final RelDataType tarRowType = validator.getParameterRowType(query);
+        return ConvertAllSequences.create(query, tarRowType, getCluster());
+    }
+
     private RelNode convertDropDatabase(SqlDropDatabase query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         return DropDatabase.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertCreateView(SqlCreateView query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return CreateView.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertDropView(SqlDropView query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return DropView.create(query, targetRowType, getCluster());
     }
 
     private RelNode convertCreateJavaFunction(SqlCreateJavaFunction query) {
@@ -4974,7 +5123,7 @@ public class SqlToRelConverter {
             if (srcNode instanceof SqlIdentifier) {
                 // Table name
                 result.add(new TableInfoNode(srcNode, srcWithAlias, ImmutableList.of(getTargetTable(srcNode))));
-            } else if (srcNode instanceof SqlSelect) {
+            } else if (srcNode instanceof SqlSelect || RelOptUtil.isUnion(srcNode)) {
                 // SubQuery
                 final List<SqlIdentifier> tableNames = sqlUpdate.subQueryTables(srcNode);
                 result.add(new TableInfoNode(srcNode, srcWithAlias,
@@ -5021,7 +5170,7 @@ public class SqlToRelConverter {
                 // Table name
                 srcTableInfos.add(
                     new TableModify.TableInfoNode(srcNode, srcWithAlias, ImmutableList.of(getTargetTable(srcNode))));
-            } else if (srcNode instanceof SqlSelect) {
+            } else if (srcNode instanceof SqlSelect || RelOptUtil.isUnion(srcNode)) {
                 // SubQuery
                 final List<SqlIdentifier> tableNames = sqlDelete.subQueryTables(srcNode);
                 srcTableInfos.add(new TableModify.TableInfoNode(srcNode, srcWithAlias,
@@ -5352,7 +5501,7 @@ public class SqlToRelConverter {
             final SqlNode table = tables.get(o.i);
             final String aliasString = SqlValidatorUtil.getAlias(alias, -1);
 
-            if (!(table instanceof SqlSelect)) {
+            if (!(table instanceof SqlSelect || RelOptUtil.isUnion(table))) {
                 // Ignore subquery
                 final RelOptTable relOptTable = srcTableInfoNodes.get(o.i).getRefTable();
                 outAliasTableMap.put(aliasString, o.i);
@@ -5872,7 +6021,9 @@ public class SqlToRelConverter {
         // fancy stuff like sub-queries below.
         boolean allIsDynamic = values.getOperandList().stream().anyMatch(t -> t instanceof SqlDynamicParam);
         RelNode valuesRel;
-        if (allIsDynamic) {
+        if (values instanceof SqlValuesTableSource) {
+            valuesRel = convertValues(bb, (SqlValuesTableSource) values, targetRowType);
+        } else if (allIsDynamic) {
             valuesRel = convertDynamicRowValues(bb, values, values.getOperandList(), true, targetRowType);
         } else {
             valuesRel = convertRowValues(bb, values, values.getOperandList(), true, targetRowType);
@@ -5918,6 +6069,26 @@ public class SqlToRelConverter {
         // REVIEW jvs 22-Jan-2004: should I add
         // mapScopeToLux.put(validator.getScope(values),bb.root);
         // ?
+    }
+
+    private DynamicValues convertValues(Blackboard bb, SqlValuesTableSource values, RelDataType targetRowType) {
+        if (targetRowType == null) {
+            targetRowType = SqlTypeUtil.promoteToRowType(typeFactory, validator.getValidatedNodeType(values), null);
+        }
+        final ImmutableList.Builder<ImmutableList<RexNode>> tupleList = ImmutableList.builder();
+        for (SqlNode rowConstructor1 : values.getOperandList()) {
+            ImmutableList.Builder<RexNode> tuple = ImmutableList.builder();
+            SqlCall rowConstructor = (SqlCall) rowConstructor1;
+            for (int i = 0; i < rowConstructor.getOperandList().size(); i++) {
+                tuple.add(convertExpression(rowConstructor.getOperandList().get(i)));
+            }
+            tupleList.add(tuple.build());
+        }
+        DynamicValues dynamicValues = DynamicValues.create(
+            cluster,
+            cluster.traitSet().replace(RelDistributions.SINGLETON), //for mpp
+            targetRowType, tupleList.build());
+        return dynamicValues;
     }
 
     // ~ Inner Classes
@@ -7627,6 +7798,8 @@ public class SqlToRelConverter {
          * usage of OR in all cases.
          */
         int getInSubQueryThreshold();
+
+        boolean isRemoveDistinct();
     }
 
     /**
@@ -7641,6 +7814,7 @@ public class SqlToRelConverter {
         private boolean explain;
         private boolean expand = true;
         private int inSubQueryThreshold = DEFAULT_IN_SUB_QUERY_THRESHOLD;
+        private boolean removeDistinct = true;
 
         private ConfigBuilder() {
         }
@@ -7656,6 +7830,7 @@ public class SqlToRelConverter {
             this.explain = config.isExplain();
             this.expand = config.isExpand();
             this.inSubQueryThreshold = config.getInSubQueryThreshold();
+            this.removeDistinct = config.isRemoveDistinct();
             return this;
         }
 
@@ -7699,12 +7874,17 @@ public class SqlToRelConverter {
             return this;
         }
 
+        public ConfigBuilder withRemoveDistinct(boolean removeDistinct) {
+            this.removeDistinct = removeDistinct;
+            return this;
+        }
+
         /**
          * Builds a {@link Config}.
          */
         public Config build() {
             return new ConfigImpl(convertTableAccess, decorrelationEnabled, trimUnusedFields, createValuesRel, explain,
-                expand, inSubQueryThreshold);
+                expand, inSubQueryThreshold, removeDistinct);
         }
     }
 
@@ -7721,9 +7901,11 @@ public class SqlToRelConverter {
         private final boolean explain;
         private final int inSubQueryThreshold;
         private final boolean expand;
+        private final boolean removeDistinct;
 
         private ConfigImpl(boolean convertTableAccess, boolean decorrelationEnabled, boolean trimUnusedFields,
-                           boolean createValuesRel, boolean explain, boolean expand, int inSubQueryThreshold) {
+                           boolean createValuesRel, boolean explain, boolean expand, int inSubQueryThreshold,
+                           boolean removeDistinct) {
             this.convertTableAccess = convertTableAccess;
             this.decorrelationEnabled = decorrelationEnabled;
             this.trimUnusedFields = trimUnusedFields;
@@ -7731,6 +7913,7 @@ public class SqlToRelConverter {
             this.explain = explain;
             this.expand = expand;
             this.inSubQueryThreshold = inSubQueryThreshold;
+            this.removeDistinct = removeDistinct;
         }
 
         public boolean isConvertTableAccess() {
@@ -7759,6 +7942,10 @@ public class SqlToRelConverter {
 
         public int getInSubQueryThreshold() {
             return inSubQueryThreshold;
+        }
+
+        public boolean isRemoveDistinct() {
+            return removeDistinct;
         }
     }
 
@@ -7791,7 +7978,7 @@ public class SqlToRelConverter {
 
         private final Deque<AliasContext> aliasStack = new ArrayDeque<>();
 
-        private final Deque<RexNode> asOfStack = new ArrayDeque<>();
+        private final Deque<Pair<RexNode, SqlOperator>> asOfStack = new ArrayDeque<>();
 
         public void beginSelect() {
             hintStack.push(new HashMap<>(2));
@@ -7813,11 +8000,11 @@ public class SqlToRelConverter {
             return hintStack.peek();
         }
 
-        public void beginAsOf(RexNode flashback) {
+        public void beginAsOf(Pair<RexNode, SqlOperator> flashback) {
             asOfStack.push(flashback);
         }
 
-        public RexNode endAsOf() {
+        public Pair<RexNode, SqlOperator> endAsOf() {
             return this.asOfStack.pop();
         }
 
@@ -7825,7 +8012,7 @@ public class SqlToRelConverter {
             return !asOfStack.isEmpty();
         }
 
-        public RexNode peekAsOf() {
+        public Pair<RexNode, SqlOperator> peekAsOf() {
             return this.asOfStack.peek();
         }
 

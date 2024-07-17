@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.ddl.job.task.storagepool;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.AlterStoragePoolSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -108,12 +107,14 @@ public class DeleteStorageInfoTask extends BaseDdlTask {
 
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""),
+            SyncScope.ALL);
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""),
+            SyncScope.ALL);
     }
 
 }

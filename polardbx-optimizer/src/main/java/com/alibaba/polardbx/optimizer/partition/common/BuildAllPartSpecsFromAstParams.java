@@ -38,7 +38,7 @@ public class BuildAllPartSpecsFromAstParams {
     protected PartitionIntFunction partIntFunc;
     protected SearchDatumComparator pruningSpaceComparator;
     protected List<SqlNode> partitions;
-    protected SqlNode hashPartitionCntAst;
+    protected SqlNode partitionCntAst;
     protected Map<SqlNode, RexNode> partBoundExprInfo;
     protected PartitionStrategy partStrategy;
     protected PartitionTableType tblType;
@@ -87,12 +87,12 @@ public class BuildAllPartSpecsFromAstParams {
         this.partitions = partitions;
     }
 
-    public SqlNode getHashPartitionCntAst() {
-        return hashPartitionCntAst;
+    public SqlNode getPartitionCntAst() {
+        return partitionCntAst;
     }
 
-    public void setHashPartitionCntAst(SqlNode hashPartitionCntAst) {
-        this.hashPartitionCntAst = hashPartitionCntAst;
+    public void setPartitionCntAst(SqlNode partitionCntAst) {
+        this.partitionCntAst = partitionCntAst;
     }
 
     public Map<SqlNode, RexNode> getPartBoundExprInfo() {

@@ -16,13 +16,19 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.utils.XxhashUtils;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
+import com.alibaba.polardbx.executor.operator.util.BatchBlockWriter;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import com.google.common.base.Preconditions;
+import io.airlift.slice.SliceOutput;
+import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.sql.Date;
@@ -46,8 +52,17 @@ public class DateBlock extends AbstractCommonBlock {
 
     private int[] selection;
 
-    public DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data, DataType<? extends Date> dataType,
-                     TimeZone timezone, int[] selection) {
+    public DateBlock(int slotLen, TimeZone timezone) {
+        super(DataTypes.DateType, slotLen);
+        this.packed = new long[slotLen];
+        this.selection = null;
+        this.timezone = timezone;
+        updateSizeInfo();
+    }
+
+    DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data,
+              DataType<? extends Date> dataType,
+              TimeZone timezone, int[] selection) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = Preconditions.checkNotNull(data);
         this.timezone = timezone;
@@ -55,12 +70,34 @@ public class DateBlock extends AbstractCommonBlock {
         updateSizeInfo();
     }
 
-    DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data, DataType<? extends Date> dataType,
-              TimeZone timezone) {
+    public DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data,
+                     DataType<? extends Date> dataType,
+                     TimeZone timezone) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = Preconditions.checkNotNull(data);
         this.timezone = timezone;
         updateSizeInfo();
+    }
+
+    public static DateBlock from(DateBlock dateBlock, int selSize, int[] selection, boolean useSelection) {
+        if (useSelection) {
+            return new DateBlock(0, selSize, dateBlock.isNull, dateBlock.packed, dateBlock.dataType,
+                dateBlock.timezone, selection);
+        }
+
+        return new DateBlock(0, selSize,
+            BlockUtils.copyNullArray(dateBlock.isNull, selection, selSize),
+            BlockUtils.copyLongArray(dateBlock.packed, selection, selSize),
+            dateBlock.dataType,
+            dateBlock.timezone,
+            null);
+    }
+
+    @Override
+    public void recycle() {
+        if (recycler != null) {
+            recycler.recycle(packed);
+        }
     }
 
     private int realPositionOf(int position) {
@@ -73,18 +110,13 @@ public class DateBlock extends AbstractCommonBlock {
     @Override
     public boolean isNull(int position) {
         position = realPositionOf(position);
-        return isNull != null && isNull[position + arrayOffset];
+        return isNullInner(position);
     }
 
     @Override
     public Date getDate(int position) {
-        // unpack the long value to original date object.
-        final long packedLong = getPackedLong(position);
-        MysqlDateTime t = TimeStorage.readDate(packedLong);
-        t.setTimezone(timezone);
-        // we assume the time read from packed long value is valid.
-        Date date = new OriginalDate(t);
-        return date;
+        position = realPositionOf(position);
+        return getDateInner(position);
     }
 
     /**
@@ -93,76 +125,95 @@ public class DateBlock extends AbstractCommonBlock {
     @Override
     @Deprecated
     public long getLong(int position) {
-        // this method means get long value of millis second ?
-        long millis = getDate(position).getTime();
-        return millis;
-    }
-
-    @Override
-    public long getPackedLong(int position) {
         position = realPositionOf(position);
-
-        return packed[arrayOffset + position];
+        // this method means get long value of millis second ?
+        return getDateInner(position).getTime();
     }
 
     @Override
     public Object getObject(int position) {
-        return isNull(position) ? null : getDate(position);
+        position = realPositionOf(position);
+        return isNullInner(position) ? null : getDateInner(position);
     }
 
     @Override
     public Object getObjectForCmp(int position) {
-        return isNull(position) ? null : getPackedLong(position);
+        position = realPositionOf(position);
+        return isNullInner(position) ? null : getPackedLongInner(position);
+    }
+
+    @Override
+    public void writePositionTo(int[] selection, int offsetInSelection, int positionCount, BlockBuilder blockBuilder) {
+        if (this.selection != null || !(blockBuilder instanceof DateBlockBuilder)) {
+            // don't support it when selection in use.
+            super.writePositionTo(selection, offsetInSelection, positionCount, blockBuilder);
+            return;
+        }
+
+        if (!mayHaveNull()) {
+            ((DateBlockBuilder) blockBuilder).packed
+                .add(this.packed, selection, offsetInSelection, positionCount);
+
+            ((DateBlockBuilder) blockBuilder).valueIsNull
+                .add(false, positionCount);
+
+            return;
+        }
+
+        DateBlockBuilder dateBlockBuilder = (DateBlockBuilder) blockBuilder;
+        for (int i = 0; i < positionCount; i++) {
+            int position = selection[i + offsetInSelection];
+
+            if (isNull != null && isNull[position + arrayOffset]) {
+                dateBlockBuilder.appendNull();
+            } else {
+                dateBlockBuilder.writeDatetimeRawLong(packed[position + arrayOffset]);
+            }
+        }
     }
 
     @Override
     public void writePositionTo(int position, BlockBuilder blockBuilder) {
-        if (blockBuilder instanceof DateBlockBuilder) {
-            writePositionTo(position, (DateBlockBuilder) blockBuilder);
-        } else {
-            throw new AssertionError();
-        }
-    }
-
-    private void writePositionTo(int position, DateBlockBuilder b) {
-        if (isNull(position)) {
-            b.appendNull();
-        } else {
-            b.valueIsNull.add(false);
-            b.packed.add(getPackedLong(position));
-        }
+        position = realPositionOf(position);
+        writePositionToInner(position, blockBuilder);
     }
 
     @Override
     public int hashCode(int position) {
-        if (isNull(position)) {
-            return 0;
+        position = realPositionOf(position);
+        return hashCodeInner(position);
+    }
+
+    @Override
+    public long hashCodeUseXxhash(int pos) {
+        int realPos = realPositionOf(pos);
+        if (isNull(realPos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxhashUtils.finalShuffle(getPackedLongInner(realPos));
         }
-        return Long.hashCode(getPackedLong(position));
     }
 
     @Override
     public void addToHasher(IStreamingHasher sink, int position) {
-        if (isNull(position)) {
-            sink.putBytes(NULL_VALUE_FOR_HASHER);
-        } else {
-            sink.putString(getDate(position).toString());
-        }
+        position = realPositionOf(position);
+        addToHasherInner(sink, position);
     }
 
     @Override
     public boolean equals(int position, Block other, int otherPosition) {
+        position = realPositionOf(position);
         if (other instanceof DateBlock) {
-            return equals(position, (DateBlock) other, otherPosition);
+            return equalsInner(position, other.cast(DateBlock.class), otherPosition);
         } else if (other instanceof DateBlockBuilder) {
-            return equals(position, (DateBlockBuilder) other, otherPosition);
+            return equalsInner(position, (DateBlockBuilder) other, otherPosition);
         } else {
             throw new AssertionError();
         }
     }
 
-    boolean equals(int position, DateBlock other, int otherPosition) {
-        boolean n1 = isNull(position);
+    private boolean equalsInner(int realPosition, DateBlock other, int otherPosition) {
+        boolean n1 = isNullInner(realPosition);
         boolean n2 = other.isNull(otherPosition);
         if (n1 && n2) {
             return true;
@@ -171,13 +222,13 @@ public class DateBlock extends AbstractCommonBlock {
         }
 
         // by packed long value
-        long l1 = getPackedLong(position);
+        long l1 = getPackedLongInner(realPosition);
         long l2 = other.getPackedLong(otherPosition);
         return l1 == l2;
     }
 
-    boolean equals(int position, DateBlockBuilder other, int otherPosition) {
-        boolean n1 = isNull(position);
+    private boolean equalsInner(int realPosition, DateBlockBuilder other, int otherPosition) {
+        boolean n1 = isNullInner(realPosition);
         boolean n2 = other.isNull(otherPosition);
         if (n1 && n2) {
             return true;
@@ -186,7 +237,7 @@ public class DateBlock extends AbstractCommonBlock {
         }
 
         // by packed long value
-        long l1 = getPackedLong(position);
+        long l1 = getPackedLongInner(realPosition);
         long l2 = other.getPackedLong(otherPosition);
         return l1 == l2;
     }
@@ -201,6 +252,70 @@ public class DateBlock extends AbstractCommonBlock {
 
     public int[] getSelection() {
         return selection;
+    }
+
+    public void writeLong(SliceOutput sliceOutput, int position) {
+        position = realPositionOf(position);
+        sliceOutput.writeLong(getPackedLongInner(position));
+    }
+
+    public long getPackedLong(int position) {
+        position = realPositionOf(position);
+        return packed[arrayOffset + position];
+    }
+
+    private long getPackedLongInner(int position) {
+        return packed[arrayOffset + position];
+    }
+
+    private Date getDateInner(int position) {
+        // unpack the long value to original date object.
+        final long packedLong = getPackedLongInner(position);
+        MysqlDateTime t = TimeStorage.readDate(packedLong);
+        t.setTimezone(timezone);
+        // we assume the time read from packed long value is valid.
+        Date date = new OriginalDate(t);
+        return date;
+    }
+
+    private int hashCodeInner(int position) {
+        if (isNullInner(position)) {
+            return 0;
+        }
+        return Long.hashCode(getPackedLongInner(position));
+    }
+
+    private void writePositionToInner(int position, BlockBuilder blockBuilder) {
+        if (blockBuilder instanceof DateBlockBuilder) {
+            DateBlockBuilder b = (DateBlockBuilder) blockBuilder;
+            if (isNullInner(position)) {
+                b.appendNull();
+            } else {
+                b.valueIsNull.add(false);
+                b.packed.add(getPackedLongInner(position));
+            }
+        } else if (blockBuilder instanceof BatchBlockWriter.BatchDateBlockBuilder) {
+            BatchBlockWriter.BatchDateBlockBuilder b = (BatchBlockWriter.BatchDateBlockBuilder) blockBuilder;
+            if (isNullInner(position)) {
+                b.appendNull();
+            } else {
+                b.writePackedLong(getPackedLongInner(position));
+            }
+        } else {
+            throw new AssertionError();
+        }
+    }
+
+    private void addToHasherInner(IStreamingHasher sink, int position) {
+        if (isNullInner(position)) {
+            sink.putBytes(NULL_VALUE_FOR_HASHER);
+        } else {
+            sink.putString(getDateInner(position).toString());
+        }
+    }
+
+    private boolean isNullInner(int position) {
+        return isNull != null && isNull[position + arrayOffset];
     }
 
     @Override

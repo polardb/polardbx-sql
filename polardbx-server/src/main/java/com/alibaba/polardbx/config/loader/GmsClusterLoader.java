@@ -18,6 +18,12 @@ package com.alibaba.polardbx.config.loader;
 
 import com.alibaba.polardbx.ClusterSyncManager;
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.PolarQuarantineManager;
+import com.alibaba.polardbx.common.IdGenerator;
+import com.alibaba.polardbx.common.TrxIdGenerator;
+import com.alibaba.polardbx.common.TddlNode;
+import com.alibaba.polardbx.common.logger.LoggerInit;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
@@ -65,11 +71,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
+/**
+ * @author chenghui.lch
+ */
 public class GmsClusterLoader extends ClusterLoader {
 
     private final SystemConfig systemConfig;
-    protected String instanceId;
+    private String instanceId;
     protected String instanceName;
     protected String instanceType;
     protected boolean isUsing = false;
@@ -145,6 +156,14 @@ public class GmsClusterLoader extends ClusterLoader {
         }
     }
 
+    protected static class CdcSystemConfigListener implements ConfigListener {
+
+        @Override
+        public void onHandleConfig(String dataId, long newOpVersion) {
+
+        }
+    }
+
     public GmsClusterLoader(SystemConfig systemConfig) {
         super(systemConfig.getClusterName(), systemConfig.getUnitName());
         this.systemConfig = systemConfig;
@@ -189,7 +208,7 @@ public class GmsClusterLoader extends ClusterLoader {
 
     @Override
     public void loadCluster() {
-        logger.info("loadCluster:" + cluster + ",ConfigDataMode=" + ConfigDataMode.getConfigServerMode());
+        logger.info("loadCluster:" + cluster + ",ConfigDataMode=" + ConfigDataMode.getMode());
         try {
             loadPolarDbXCluster();
         } catch (Throwable ex) {
@@ -202,7 +221,7 @@ public class GmsClusterLoader extends ClusterLoader {
         // Set Sync Manager used by GMS.
         GmsSyncManagerHelper.setSyncManager(new ClusterSyncManager());
 
-        // load node infos from server_info in metaDb
+        // load node info from server_info in metaDb
         loadServerNodeInfos();
 
         // load properties from inst_config in metaDb
@@ -273,12 +292,6 @@ public class GmsClusterLoader extends ClusterLoader {
         // load inst version
         String instanceVersion = Optional.ofNullable(System.getProperty(InstanceVersion.systemVersion)).orElse("5");
         InstanceVersion.reloadVersion(instanceVersion);
-
-        // load instRole and instType
-        InstanceRole instRole =
-            ServerInstIdManager.getInstance().isMasterInst() ? InstanceRole.MASTER : InstanceRole.SLAVE;
-        initInstanceRoleConfig(instRole);
-
     }
 
     protected void initInstanceRoleConfig(InstanceRole instanceRole) {
@@ -312,6 +325,13 @@ public class GmsClusterLoader extends ClusterLoader {
         }
     }
 
+    protected void loadNodeInfos() {
+        synchronized (this) {
+            GmsNodeManager.getInstance().reloadNodes(systemConfig.getServerPort());
+            resetIdGenerator();
+        }
+    }
+
     protected void resetIdGenerator() {
         // IdGenerator must be reset after NodeId is allocated.
         IdGenerator.remove(TrxIdGenerator.getInstance().getIdGenerator());
@@ -319,13 +339,6 @@ public class GmsClusterLoader extends ClusterLoader {
 
         // Rebind new NodeId to all IdGenerators
         IdGenerator.rebindAll();
-    }
-
-    protected void loadNodeInfos() {
-        synchronized (this) {
-            GmsNodeManager.getInstance().reloadNodes(systemConfig.getServerPort());
-            resetIdGenerator();
-        }
     }
 
     protected void initClusterAppInfo() {
@@ -340,10 +353,14 @@ public class GmsClusterLoader extends ClusterLoader {
 
         CobarServer.getInstance().getConfig().setInstanceId(this.instanceId);
         CobarServer.getInstance().getConfig().getSystem().setInstanceId(this.instanceId);
+
+        // init instance-level quarantine config
+        PolarQuarantineManager.getInstance().init();
+
         // CobarServer should set instance id before initializing
         // this so that we can get correct instance id in subsequent
         // MatrixConfigHolder.doInit().
-        ((GmsAppLoader) appLoader).initDbUserPrivsInfo();
+        ((GmsAppLoader) appLoader).initDbUserPrivsInfo(this.instanceId);
 
         warmingLogicalDb();
 
@@ -352,43 +369,47 @@ public class GmsClusterLoader extends ClusterLoader {
     }
 
     protected void warmingLogicalDb() {
-        if (ConfigDataMode.isPolarDbX()) {
-            if (systemConfig.getEnableLogicalDbWarmmingUp()) {
-                // Auto load all schemas here
-                ArrayList<SchemaConfig> schemas = new ArrayList<>(appLoader.getSchemas().values());
-                final Runnable warmupLogicalDbTask = () -> {
-                    for (SchemaConfig schema : schemas) {
-                        if (schema.isDropped()) {
-                            continue;
-                        }
-                        final TDataSource ds = schema.getDataSource();
-                        long startTime = System.nanoTime();
-                        Throwable ex = TDataSourceInitUtils.initDataSource(ds);
-                        if (ex == null) {
-                            logger.info("Init schema '{}' costs {} secs", schema.getName(),
-                                (System.nanoTime() - startTime) / 1e9);
-                            try {
-                                // Before init the next schema,
-                                // wait for this schema finish some init task,
-                                // e.g. RotateTrxLogTask, StatisticsTask, etc.
-                                Thread.sleep(60 * 1000);
-                            } catch (InterruptedException e) {
-                                logger.info("LogicalDb-Warming-Up-Thread is interrupted unexpectedly");
-                                return;
-                            }
-                        } else {
-                            logger.warn(
-                                "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(), ex);
-                        }
+        if (ConfigDataMode.isPolarDbX() && systemConfig.getEnableLogicalDbWarmmingUp()) {
+            // Auto load all schemas here
+            ConcurrentLinkedDeque<SchemaConfig> schemas = new ConcurrentLinkedDeque<>(appLoader.getSchemas().values());
+            final Runnable warmupLogicalDbTask = () -> {
+                SchemaConfig schema;
+                while (null != (schema = schemas.poll())) {
+                    if (schema.isDropped()) {
+                        continue;
                     }
-                };
+                    final TDataSource ds = schema.getDataSource();
+                    long startTime = System.nanoTime();
+                    Throwable ex = TDataSourceInitUtils.initDataSource(ds);
+                    if (ex == null) {
+                        logger.info("Init schema '{}' costs {} secs", schema.getName(),
+                            (System.nanoTime() - startTime) / 1e9);
+                        try {
+                            // Before init the next schema,
+                            // wait for this schema finish some init task,
+                            // e.g. RotateTrxLogTask, StatisticsTask, etc.
+                            long sleepSeconds = DynamicConfig.getInstance().getWarmUpDbInterval();
+                            if (sleepSeconds > 0 && 0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+                                Thread.sleep(sleepSeconds * 1000);
+                            }
+                        } catch (InterruptedException e) {
+                            logger.info("LogicalDb-Warming-Up-Thread is interrupted unexpectedly");
+                            return;
+                        }
+                    } else {
+                        logger.warn(
+                            "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(), ex);
+                    }
+                }
+            };
 
-                // Single thread to slow warm up all schemas.
-                (new Thread(warmupLogicalDbTask, "LogicalDb-Warming-Up-Thread")).start();
+            int parallelism = DynamicConfig.getInstance().getWarmUpDbParallelism();
+            parallelism = Integer.min(parallelism, schemas.size());
+            for (int i = 0; i < parallelism; i++) {
+                (new Thread(warmupLogicalDbTask, "LogicalDb-Warming-Up-Thread-" + i)).start();
             }
         }
     }
-
 
     public void loadProperties(String instId) {
         MetaDbInstConfigManager.getInstance().registerInstReceiver(new InstConfigReceiver() {
@@ -404,6 +425,9 @@ public class GmsClusterLoader extends ClusterLoader {
         MetaDbConfigManager.getInstance()
             .bindListener(MetaDbDataIdBuilder.getVariableConfigDataId(instId),
                 new MetaDbVariableConfigManager.MetaDbVariableConfigListener());
+        MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getCdcSystemConfigDataId(), null);
+        MetaDbConfigManager.getInstance().bindListener(MetaDbDataIdBuilder.getCdcSystemConfigDataId(),
+            new MetaDbVariableConfigManager.CdcSystemConfigListener());
     }
 
     protected void reloadDbInfoFromMetaDB() {

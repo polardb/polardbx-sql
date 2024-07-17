@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 
 import java.util.ArrayList;
@@ -23,11 +24,12 @@ import java.util.List;
 
 public class AlterTableGroupRenamePartitionPreparedData extends AlterTableGroupBasePreparedData {
 
-    public AlterTableGroupRenamePartitionPreparedData() {
-    }
-
     private List<Pair<String, String>> changePartitionsPair;
     private boolean subPartitionRename;
+    private boolean renameNothing = false;
+
+    public AlterTableGroupRenamePartitionPreparedData() {
+    }
 
     public List<Pair<String, String>> getChangePartitionsPair() {
         return changePartitionsPair;
@@ -54,5 +56,25 @@ public class AlterTableGroupRenamePartitionPreparedData extends AlterTableGroupB
         }
 
         return relatedParts;
+    }
+
+    public boolean isRenameNothing() {
+        return renameNothing;
+    }
+
+    public void setRenameNothing(boolean renameNothing) {
+        this.renameNothing = renameNothing;
+    }
+
+    public boolean partitionNameNoChange() {
+        if (GeneralUtil.isEmpty(changePartitionsPair)) {
+            return true;
+        }
+        for (Pair<String, String> changePair : changePartitionsPair) {
+            if (!changePair.getKey().equalsIgnoreCase(changePair.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
 }

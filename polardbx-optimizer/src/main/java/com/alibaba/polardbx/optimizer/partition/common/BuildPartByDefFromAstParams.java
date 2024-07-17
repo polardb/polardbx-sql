@@ -36,7 +36,7 @@ public class BuildPartByDefFromAstParams {
     protected List<SqlNode> partByAstColumns;
     protected List<SqlNode> partByAstPartitions;
     protected PartitionStrategy partByStrategy;
-    protected SqlNode hashPartCntAst;
+    protected SqlNode partCntAst;
 
     protected Map<SqlNode, RexNode> boundExprInfo;
     protected List<ColumnMeta> pkColMetas;
@@ -118,12 +118,12 @@ public class BuildPartByDefFromAstParams {
         this.partByStrategy = partByStrategy;
     }
 
-    public SqlNode getHashPartCntAst() {
-        return hashPartCntAst;
+    public SqlNode getPartCntAst() {
+        return partCntAst;
     }
 
-    public void setHashPartCntAst(SqlNode hashPartCntAst) {
-        this.hashPartCntAst = hashPartCntAst;
+    public void setPartCntAst(SqlNode partCntAst) {
+        this.partCntAst = partCntAst;
     }
 
     public Map<SqlNode, RexNode> getBoundExprInfo() {

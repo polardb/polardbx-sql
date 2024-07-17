@@ -194,6 +194,10 @@ public class PartitionInfo {
         return this.tableType == PartitionTableType.PARTITION_TABLE || this.tableType == PartitionTableType.GSI_TABLE;
     }
 
+    public boolean isColumnarTable() {
+        return this.tableType == PartitionTableType.COLUMNAR_TABLE;
+    }
+
     public String defaultDbIndex() {
         return this.getPartitionBy().getPartitions().get(0).getLocation().getGroupKey();
     }
@@ -473,6 +477,10 @@ public class PartitionInfo {
         return tableType == PartitionTableType.GSI_TABLE;
     }
 
+    public boolean isColumnar() {
+        return tableType == PartitionTableType.COLUMNAR_TABLE;
+    }
+
     public boolean isGsiOrPartitionedTable() {
         return tableType == PartitionTableType.GSI_TABLE || tableType == PartitionTableType.PARTITION_TABLE;
     }
@@ -492,9 +500,9 @@ public class PartitionInfo {
             params.setShowHashByRange(showHashByRange);
             params.setTextIntentBase(textIntentBase);
             partByDef = partitionBy.normalizePartByDefForShowCreateTable(params);
-            if (this.getAutoFlag() != 0) {
-                partByDef += "\nAUTO_SPLIT=ON";
-            }
+//            if (this.getAutoFlag() != 0) {
+//                partByDef += "\nAUTO_SPLIT=ON";
+//            }
         }
         return partByDef;
     }
@@ -525,7 +533,7 @@ public class PartitionInfo {
                 }
             }
             if (partitionBy.getSubPartitionBy() != null) {
-                List<String> secondLevelActPartCol = allLevelActualPartCols.get(0);
+                List<String> secondLevelActPartCol = allLevelActualPartCols.get(1);
                 for (String colName : secondLevelActPartCol) {
                     if (!actShardSet.contains(colName)) {
                         actShardSet.add(colName);

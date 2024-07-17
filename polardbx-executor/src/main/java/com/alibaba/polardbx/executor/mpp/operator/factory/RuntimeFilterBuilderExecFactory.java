@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import com.alibaba.polardbx.common.utils.hash.HashMethodInfo;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.RuntimeFilterBuilderExec;
 import com.alibaba.polardbx.executor.operator.util.BloomFilterProduce;
@@ -27,7 +27,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RuntimeFilterUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import io.airlift.http.client.HttpClient;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.logical.RuntimeFilterBuilder;
@@ -42,6 +41,7 @@ import java.util.List;
 
 public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
 
+    boolean localBloomFilter;
     private RuntimeFilterBuilder filterBuilder;
     private HttpClient client;
     private URI uri;
@@ -49,11 +49,12 @@ public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
 
     public RuntimeFilterBuilderExecFactory(RuntimeFilterBuilder filterBuilder, ExecutorFactory executorFactory,
                                            HttpClient httpClient,
-                                           URI uri) {
+                                           URI uri, boolean localBloomFilter) {
         this.filterBuilder = filterBuilder;
         addInput(executorFactory);
         this.client = httpClient;
         this.uri = uri;
+        this.localBloomFilter = localBloomFilter;
     }
 
     @Override
@@ -100,16 +101,15 @@ public class RuntimeFilterBuilderExecFactory extends ExecutorFactory {
                 minMaxFilters.add(minMaxFilterList);
             }
             bloomFilterProduce = BloomFilterProduce.create(
-                bloomfilterId, keyHash, bloomFilters, minMaxFilters, client, uri, context.getTraceId());
+                bloomfilterId, keyHash, bloomFilters, minMaxFilters, !localBloomFilter ? client : null,
+                !localBloomFilter ? uri : null, context.getTraceId());
         }
         bloomFilterProduce.addCounter();
         Executor input = getInputs().get(0).createExecutor(context, idx);
         Executor exec = new RuntimeFilterBuilderExec(input, bloomFilterProduce, context, idx);
 
-        exec.setId(filterBuilder.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(filterBuilder, exec, context);
-        }
+        registerRuntimeStat(exec, filterBuilder, context);
         return exec;
     }
+
 }

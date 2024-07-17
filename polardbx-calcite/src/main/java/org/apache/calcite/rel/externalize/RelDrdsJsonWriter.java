@@ -114,6 +114,10 @@ public class RelDrdsJsonWriter implements RelWriter {
                 node.put("actual_next_time", sketch.getDuration());
                 node.put("actual_worker_time", sketch.getWorkerDuration());
                 node.put("actual_rowcount", sketch.getRowCount());
+                if (sketch.getRuntimeFilteredRowCount() > 0) {
+                    node.put("runtime_filtered_count", sketch.getRuntimeFilteredRowCount());
+                }
+
                 node.put("actual_memory", sketch.getMemory());
 
                 if (sketch.getSpillCnt() > 0) {

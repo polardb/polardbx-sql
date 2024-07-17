@@ -130,7 +130,7 @@ CREATE TABLE `t_simple` (
   `c3` int(11) DEFAULT NULL
   ) ENGINE = InnoDB SINGLE;
 insert into t_simple values (1,1,1), (1,1,2), (2,1,2), (3,1,2), (4,4,4);
-select c1,c2,(sum(c3) over (partition by c1,c2)) as sum1,(avg(c1) over (partition by c1)) as avg1 from t_simple order by c1,c2;
+/*TDDL:enable_sort_window=false*/select c1,c2,(sum(c3) over (partition by c1,c2)) as sum1,(avg(c1) over (partition by c1)) as avg1 from t_simple order by c1,c2;
 c1,c2,sum1,avg1
 1,1,3,1.0000
 1,1,3,1.0000
@@ -152,3 +152,11 @@ c1,c2,sum1,avg1,count1
 3,3,3,3.0000,2
 4,null,4,4.0000,1
 4,4,4,4.0000,1
+/*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ select c1, count(1) over (partition by c1) as count1 from t1 order by c1, count1;
+c1,count1
+1,3
+1,3
+1,3
+2,1
+3,1
+4,1

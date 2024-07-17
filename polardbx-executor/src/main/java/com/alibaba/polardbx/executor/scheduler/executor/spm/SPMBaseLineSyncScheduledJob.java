@@ -23,18 +23,22 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.scheduler.executor.SchedulerExecutor;
 import com.alibaba.polardbx.executor.sync.BaselineLoadSyncAction;
-import com.alibaba.polardbx.executor.sync.BaselineQuerySyncAction;
+import com.alibaba.polardbx.executor.sync.BaselineQueryAllSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.table.BaselineInfoAccessor;
 import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.PolarDbXSystemTableBaselineInfo;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.commons.lang.StringUtils;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -111,19 +115,54 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
             // do the job
             logger.info("plan manager async load data");
             // merge&prune baseline from cluster
-            Map<String, Map<String, BaselineInfo>> fullBaseline = queryBaselineFromCluster();
+            Map<String, Map<String, Map<String, BaselineInfo>>> fullBaseline = queryBaselineFromCluster();
 
             // persist baseline
-            for (Map.Entry<String, Map<String, BaselineInfo>> e : fullBaseline.entrySet()) {
-                String schema = e.getKey();
-                e.getValue().values().forEach(b -> PolarDbXSystemTableBaselineInfo.persist(schema, b));
-                if (e.getValue().size() != 0) {
-                    remark.append(schema).append(":").append(e.getValue().size()).append(";");
+            try (BaselineInfoAccessor baselineInfoAccessor = new BaselineInfoAccessor(true)) {
+                // for each inst
+                for (String instId : fullBaseline.keySet()) {
+                    Map<String, Map<String, BaselineInfo>> instBaseline = fullBaseline.get(instId);
+                    StringBuilder logStr = new StringBuilder(instId + " ");
+                    // for each schema
+                    for (Map.Entry<String, Map<String, BaselineInfo>> e : instBaseline.entrySet()) {
+                        String schema = e.getKey();
+
+                        // for each baseline
+                        for (BaselineInfo baselineInfo : e.getValue().values()) {
+
+                            boolean persistPlanStats = false;
+                            if (InstConfUtil.isInMaintenanceTimeWindow()) {
+                                persistPlanStats = true;
+                            }
+
+                            baselineInfoAccessor.persist(schema,
+                                baselineInfo.buildBaselineRecord(schema, instId),
+                                baselineInfo.buildPlanRecord(schema, instId),
+                                persistPlanStats);
+
+                        }
+                        logStr.append(schema).append(":").append(e.getValue().size()).append(" ");
+                        if (e.getValue().size() != 0) {
+                            remark.append(schema).append(":").append(e.getValue().size()).append(";");
+                        }
+                    }
+                    ModuleLogInfo.getInstance()
+                        .logRecord(Module.SPM, LogPattern.PROCESS_END,
+                            new String[] {"spm merge baseline", logStr.toString()},
+                            LogLevel.NORMAL);
                 }
+            } catch (Exception e) {
+                ModuleLogInfo.getInstance()
+                    .logRecord(
+                        Module.SPM,
+                        UNEXPECTED,
+                        new String[] {BASELINE_SYNC + "," + fireTime, e.getMessage()},
+                        CRITICAL,
+                        e);
             }
 
             // sync merged baseline to cluster
-            syncBaseLineInfoAndPlanInfo();
+            SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction(), SyncScope.ALL);
             ModuleLogInfo.getInstance()
                 .logRecord(
                     Module.SPM,
@@ -147,21 +186,34 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
         }
     }
 
-    private Map<String, Map<String, BaselineInfo>> queryBaselineFromCluster() {
-        List<List<Map<String, Object>>> results = SyncManagerHelper.syncWithDefaultDB(new BaselineQuerySyncAction());
+    private Map<String, Map<String, Map<String, BaselineInfo>>> queryBaselineFromCluster() {
+        List<List<Map<String, Object>>> results = SyncManagerHelper.syncWithDefaultDB(new BaselineQueryAllSyncAction(),
+            SyncScope.ALL);
 
-        Map<String, Map<String, BaselineInfo>> current = PlanManager.getInstance().getBaselineMap();
+        Map<String, Map<String, Map<String, BaselineInfo>>> instSchemaSqlBaselineMap = Maps.newConcurrentMap();
         // Node
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {
                 continue;
             }
             Map<String, Object> row = nodeRows.get(0);
+            if (!row.containsKey("inst_id")) {
+                // some cluster might not update to this version yet
+                continue;
+            }
+            String instId = (String) row.get("inst_id");
             String baselines = (String) row.get("baselines");
             Map<String, Map<String, BaselineInfo>> temp = PlanManager.getBaselineFromJson(baselines);
-            mergeBaseline(current, temp);
+
+            if (instSchemaSqlBaselineMap.containsKey(instId)) {
+                Map<String, Map<String, BaselineInfo>> current = instSchemaSqlBaselineMap.get(instId);
+                mergeBaseline(current, temp);
+            } else {
+                instSchemaSqlBaselineMap.put(instId, temp);
+            }
+
         }
-        return current;
+        return instSchemaSqlBaselineMap;
     }
 
     /**
@@ -246,6 +298,5 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
     }
 
     private void syncBaseLineInfoAndPlanInfo() {
-        SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction());
     }
 }

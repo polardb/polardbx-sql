@@ -304,6 +304,24 @@ public class DALParserTest extends TestCase {
         Assert.assertEquals("SHOW COLLATION WHERE Collation LIKE 'big5%'", output);
     }
 
+    public void test_show_binlog_events() {
+        String sql = "show binlog events";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinLogEventsStatement show = (MySqlShowBinLogEventsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(show);
+        Assert.assertEquals("SHOW BINLOG EVENTS", output);
+    }
+
+    public void test_show_binlog_events_with() {
+        String sql = "show binlog events with 'group1_stream_0'";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinLogEventsStatement show = (MySqlShowBinLogEventsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(show);
+        Assert.assertEquals("SHOW BINLOG EVENTS WITH 'group1_stream_0'", output);
+    }
+
     public void test_binaryLog() throws Exception {
         String sql = "SHOW binlog events in 'a' from 1 limit 1,2  ";
         MySqlStatementParser parser = new MySqlStatementParser(sql);
@@ -1415,6 +1433,60 @@ public class DALParserTest extends TestCase {
         parser.match(Token.EOF);
         String output = SQLUtils.toMySqlString(stmt);
         assertEquals("EXPLAIN PLANCACHE", output);
+    }
+
+    public void test_show_full_master_status() {
+        String sql = "SHOW FULL MASTER STATUS";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowMasterStatusStatement stmt = (MySqlShowMasterStatusStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW FULL MASTER STATUS", output);
+    }
+
+    public void test_show_full_master_status_with() {
+        String sql = "SHOW FULL MASTER STATUS WITH group1_stream_0";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowMasterStatusStatement stmt = (MySqlShowMasterStatusStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW FULL MASTER STATUS WITH group1_stream_0", output);
+    }
+
+    public void test_show_full_binary_logs() {
+        String sql = "SHOW FULL BINARY LOGS";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinaryLogsStatement stmt = (MySqlShowBinaryLogsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW FULL BINARY LOGS", output);
+    }
+
+    public void test_show_full_binary_logs_with() {
+        String sql = "SHOW FULL BINARY LOGS WITH group1_stream_0";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinaryLogsStatement stmt = (MySqlShowBinaryLogsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW FULL BINARY LOGS WITH group1_stream_0", output);
+    }
+
+    public void test_show_full_master_logs() {
+        String sql = "SHOW FULL MASTER LOGS";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowMasterLogsStatement stmt = (MySqlShowMasterLogsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW FULL MASTER LOGS", output);
+    }
+
+    public void test_show_full_master_logs_with() {
+        String sql = "SHOW FULL MASTER LOGS WITH group1_stream_0";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowMasterLogsStatement stmt = (MySqlShowMasterLogsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals("SHOW FULL MASTER LOGS WITH group1_stream_0", output);
     }
 
 //

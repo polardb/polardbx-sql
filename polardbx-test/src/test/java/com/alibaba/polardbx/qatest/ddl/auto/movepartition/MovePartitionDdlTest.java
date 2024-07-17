@@ -49,7 +49,7 @@ public class MovePartitionDdlTest extends MovePartitionBaseTest {
     }
 
     @Test
-    public void alterTableGroupWithTPCCTest() throws Exception {
+    public void alterTableGroupTest() throws Exception {
         // create table
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_SQL, TABLE_NAME));
 

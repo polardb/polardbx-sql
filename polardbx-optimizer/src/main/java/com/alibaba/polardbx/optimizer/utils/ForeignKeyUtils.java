@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.optimizer.utils;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
@@ -29,8 +32,14 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalReplace;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalUpsert;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.MappingBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.BroadcastModifyWriter;
@@ -46,15 +55,19 @@ import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.sql.SqlAddForeignKey;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlReferenceOption;
 import org.apache.calcite.sql.SqlUpdate;
+import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
@@ -69,6 +82,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -82,57 +97,76 @@ public class ForeignKeyUtils {
     public static void buildForeignKeySubPlans(ExecutionContext ec, ExecutionPlan executionPlan,
                                                PlannerContext plannerContext) {
         final boolean checkForeignKey = ec.foreignKeyChecks();
-        if (checkForeignKey && (executionPlan.getPlan() instanceof LogicalModify
-            || executionPlan.getPlan() instanceof LogicalRelocate)) {
-            TableModify plan = (TableModify) executionPlan.getPlan();
+        try {
+            if (checkForeignKey && (executionPlan.getPlan() instanceof LogicalModify
+                || executionPlan.getPlan() instanceof LogicalRelocate)) {
+                TableModify plan = (TableModify) executionPlan.getPlan();
 
-            if (plan instanceof LogicalModify && plan.getTargetTableNames().size() > 1) {
-                LogicalModify logicalModify = (LogicalModify) executionPlan.getPlan();
-                Set<Integer> tableIndexes = new TreeSet<>(logicalModify.getTargetTableIndexes());
-                for (int i = 0; i < tableIndexes.size(); i++) {
-                    LogicalModify modify = null;
-                    DistinctWriter writer = logicalModify.getPrimaryModifyWriters().get(i);
-                    if (writer instanceof SingleModifyWriter) {
-                        modify = ((SingleModifyWriter) writer).getModify();
-                    } else if (writer instanceof BroadcastModifyWriter) {
-                        modify = ((BroadcastModifyWriter) writer).getModify();
-                    } else {
-                        modify = ((ShardingModifyWriter) writer).getModify();
+                if (plan instanceof LogicalModify && plan.getTargetTableNames().size() > 1) {
+                    LogicalModify logicalModify = (LogicalModify) executionPlan.getPlan();
+                    Set<Integer> tableIndexes = new TreeSet<>(logicalModify.getTargetTableIndexes());
+                    for (int i = 0; i < tableIndexes.size(); i++) {
+                        LogicalModify modify = null;
+                        DistinctWriter writer = logicalModify.getPrimaryModifyWriters().get(i);
+                        if (writer instanceof SingleModifyWriter) {
+                            modify = ((SingleModifyWriter) writer).getModify();
+                        } else if (writer instanceof BroadcastModifyWriter) {
+                            modify = ((BroadcastModifyWriter) writer).getModify();
+                        } else {
+                            modify = ((ShardingModifyWriter) writer).getModify();
+                        }
+
+                        ForeignKeyUtils.buildFkPlans(plan.getSchemaName(),
+                            modify.getLogicalTableName(), plan, modify, null,
+                            null, plannerContext, false, 1);
                     }
+                } else if (plan instanceof LogicalRelocate && plan.getTargetTableNames().size() > 1) {
+                    LogicalRelocate logicalRelocate = (LogicalRelocate) executionPlan.getPlan();
+                    final Map<Integer, DistinctWriter> primaryDistinctWriter =
+                        logicalRelocate.getPrimaryDistinctWriter();
+                    final Map<Integer, RelocateWriter> primaryRelocateWriter =
+                        logicalRelocate.getPrimaryRelocateWriter();
 
+                    for (Integer tableIndex : logicalRelocate.getSetColumnMetas().keySet()) {
+                        LogicalModify modify = null;
+                        DistinctWriter writer = primaryRelocateWriter.containsKey(tableIndex) ?
+                            primaryRelocateWriter.get(tableIndex).getModifyWriter() :
+                            primaryDistinctWriter.get(tableIndex);
+
+                        if (writer instanceof SingleModifyWriter) {
+                            modify = ((SingleModifyWriter) writer).getModify();
+                        } else if (writer instanceof BroadcastModifyWriter) {
+                            modify = ((BroadcastModifyWriter) writer).getModify();
+                        } else {
+                            modify = ((ShardingModifyWriter) writer).getModify();
+                        }
+
+                        ForeignKeyUtils.buildFkPlans(plan.getSchemaName(),
+                            modify.getLogicalTableName(), plan, modify, null,
+                            null, plannerContext, false, 1);
+                    }
+                } else {
                     ForeignKeyUtils.buildFkPlans(plan.getSchemaName(),
-                        modify.getLogicalTableName(), plan, modify, null,
+                        plan.getTargetTableNames().get(0), plan, plan, null,
                         null, plannerContext, false, 1);
                 }
-            } else if (plan instanceof LogicalRelocate && plan.getTargetTableNames().size() > 1) {
-                LogicalRelocate logicalRelocate = (LogicalRelocate) executionPlan.getPlan();
-                final Map<Integer, DistinctWriter> primaryDistinctWriter = logicalRelocate.getPrimaryDistinctWriter();
-                final Map<Integer, RelocateWriter> primaryRelocateWriter = logicalRelocate.getPrimaryRelocateWriter();
+            } else if (checkForeignKey && executionPlan.getPlan() instanceof LogicalReplace) {
+                TableModify plan = (TableModify) executionPlan.getPlan();
 
-                for (Integer tableIndex : logicalRelocate.getSetColumnMetas().keySet()) {
-                    LogicalModify modify = null;
-                    DistinctWriter writer = primaryRelocateWriter.containsKey(tableIndex) ?
-                        primaryRelocateWriter.get(tableIndex).getModifyWriter() :
-                        primaryDistinctWriter.get(tableIndex);
+                ForeignKeyUtils.buildFkPlans(plan.getSchemaName(),
+                    plan.getTargetTableNames().get(0), plan, plan, null,
+                    null, plannerContext, false, 1);
+            } else if (checkForeignKey && executionPlan.getPlan() instanceof LogicalUpsert) {
+                TableModify plan = (TableModify) executionPlan.getPlan();
 
-                    if (writer instanceof SingleModifyWriter) {
-                        modify = ((SingleModifyWriter) writer).getModify();
-                    } else if (writer instanceof BroadcastModifyWriter) {
-                        modify = ((BroadcastModifyWriter) writer).getModify();
-                    } else {
-                        modify = ((ShardingModifyWriter) writer).getModify();
-                    }
-
-                    ForeignKeyUtils.buildFkPlans(plan.getSchemaName(),
-                        modify.getLogicalTableName(), plan, modify, null,
-                        null, plannerContext, false, 1);
-                }
-            } else {
                 ForeignKeyUtils.buildFkPlans(plan.getSchemaName(),
                     plan.getTargetTableNames().get(0), plan, plan, null,
                     null, plannerContext, false, 1);
             }
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e.getMessage());
         }
+
     }
 
     public static void buildFkPlans(String schemaName, String tableName, TableModify modify, TableModify currentModify,
@@ -171,28 +205,46 @@ public class ForeignKeyUtils {
             TableMeta refTableMeta = OptimizerContext.getContext(refSchema).getLatestSchemaManager()
                 .getTableWithNull(refTableName);
 
-            boolean deleteCascade = currentModify.isDelete() && !alreadySetNull && data.onDelete != null && (
-                data.onDelete == ForeignKeyData.ReferenceOptionType.CASCADE);
+            boolean isUpsert = currentModify instanceof LogicalInsert && ((LogicalInsert) currentModify).isUpsert();
+            boolean isReplace = currentModify instanceof LogicalInsert && currentModify.isReplace();
 
-            boolean updateCascade = (currentModify.isUpdate() || alreadySetNull) && data.onUpdate != null && (
+            boolean deleteCascade = (currentModify.isDelete() || currentModify.isReplace()) &&
+                !alreadySetNull && (data.onDelete == ForeignKeyData.ReferenceOptionType.CASCADE);
+
+            boolean updateCascade = (currentModify.isUpdate() || isUpsert || alreadySetNull) && (
                 data.onUpdate == ForeignKeyData.ReferenceOptionType.CASCADE);
 
             boolean deleteUpdateSetNull = data.onDelete == ForeignKeyData.ReferenceOptionType.SET_NULL ||
                 data.onUpdate == ForeignKeyData.ReferenceOptionType.SET_NULL;
 
             List<String> tableColumns =
-                refTableMeta.getAllColumns().stream().map(c -> c.getName()).collect(Collectors.toList());
+                refTableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
 
             if (updateCascade) {
+                if (isUpsert) {
+                    DistinctWriter writer;
+                    if (!((LogicalUpsert) currentModify).isModifyPartitionKey()) {
+                        writer = ((LogicalUpsert) currentModify).getPrimaryUpsertWriter().getUpdaterWriter();
+                    } else {
+                        writer = ((LogicalUpsert) currentModify).getPrimaryRelocateWriter().getModifyWriter();
+                    }
+                    currentModify = getCurrenModify(writer);
+                }
+
                 if (depth == 1) {
                     if (!containsUpdateFkColumns(currentModify, data)) {
                         return;
                     }
                 }
 
-                final SqlNode originPlan =
-                    currentModify instanceof LogicalModify ? ((LogicalModify) currentModify).getOriginalSqlNode() :
-                        ((LogicalRelocate) currentModify).getOriginalSqlNode();
+                final SqlNode originPlan;
+                if (currentModify instanceof LogicalModify) {
+                    originPlan = ((LogicalModify) currentModify).getOriginalSqlNode();
+                } else if (currentModify instanceof LogicalRelocate) {
+                    originPlan = ((LogicalRelocate) currentModify).getOriginalSqlNode();
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Not supported foreign key sub plan type");
+                }
 
                 columnMap = IntStream.range(0, data.columns.size()).collect(TreeMaps::caseInsensitiveMap,
                     (m, i) -> m.put(data.refColumns.get(i), data.columns.get(i)),
@@ -226,6 +278,12 @@ public class ForeignKeyUtils {
 
                 final SqlNode condition = buildAndCondition(updateColumnPairList, paramIndex);
 
+                SqlNodeList keywords = currentModify.isUpdate() ? ((SqlUpdate) originPlan).getKeywords() :
+                    ((SqlDelete) originPlan).getKeywords();
+                if (keywords == null) {
+                    keywords = new SqlNodeList(SqlParserPos.ZERO);
+                }
+
                 final SqlUpdate sqlUpdate = new SqlUpdate(SqlParserPos.ZERO,
                     targetTable,
                     new SqlNodeList(targetColumns, SqlParserPos.ZERO),
@@ -235,8 +293,7 @@ public class ForeignKeyUtils {
                     null,
                     null,
                     null,
-                    currentModify.isUpdate() ? ((SqlUpdate) originPlan).getKeywords() :
-                        ((SqlDelete) originPlan).getKeywords()
+                    keywords
                 );
 
                 ExecutionPlan executionPlan = Planner.getInstance().getPlan(sqlUpdate, plannerContext);
@@ -273,9 +330,28 @@ public class ForeignKeyUtils {
                 ExecutionPlan executionPlan = Planner.getInstance().getPlan(sqlDelete, plannerContext);
                 modify.putFkPlan(refSchema, refTableName, constraintName, executionPlan.getPlan(), depth);
             } else if (deleteUpdateSetNull) {
-                final SqlNode originPlan =
-                    currentModify instanceof LogicalModify ? ((LogicalModify) currentModify).getOriginalSqlNode() :
-                        ((LogicalRelocate) currentModify).getOriginalSqlNode();
+                if (isUpsert) {
+                    DistinctWriter writer;
+                    if (!((LogicalUpsert) currentModify).isModifyPartitionKey()) {
+                        writer = ((LogicalUpsert) currentModify).getPrimaryUpsertWriter().getUpdaterWriter();
+                    } else {
+                        writer = ((LogicalUpsert) currentModify).getPrimaryRelocateWriter().getModifyWriter();
+                    }
+                    currentModify = getCurrenModify(writer);
+                } else if (isReplace) {
+                    DistinctWriter writer =
+                        ((LogicalReplace) currentModify).getPrimaryRelocateWriter().getDeleteWriter();
+                    currentModify = getCurrenModify(writer);
+                }
+
+                final SqlNode originPlan;
+                if (currentModify instanceof LogicalModify) {
+                    originPlan = ((LogicalModify) currentModify).getOriginalSqlNode();
+                } else if (currentModify instanceof LogicalRelocate) {
+                    originPlan = ((LogicalRelocate) currentModify).getOriginalSqlNode();
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Not supported foreign key sub plan type");
+                }
 
                 updateColumnList = data.columns;
 
@@ -305,6 +381,12 @@ public class ForeignKeyUtils {
 
                 final SqlNode condition = buildAndCondition(updateColumnPairList, paramIndex);
 
+                SqlNodeList keywords = currentModify.isUpdate() ? ((SqlUpdate) originPlan).getKeywords() :
+                    ((SqlDelete) originPlan).getKeywords();
+                if (keywords == null) {
+                    keywords = new SqlNodeList(SqlParserPos.ZERO);
+                }
+
                 final SqlUpdate sqlUpdate = new SqlUpdate(SqlParserPos.ZERO,
                     targetTable,
                     new SqlNodeList(targetColumns, SqlParserPos.ZERO),
@@ -314,8 +396,7 @@ public class ForeignKeyUtils {
                     null,
                     null,
                     null,
-                    currentModify.isUpdate() ? ((SqlUpdate) originPlan).getKeywords() :
-                        ((SqlDelete) originPlan).getKeywords()
+                    keywords
                 );
 
                 ExecutionPlan executionPlan = Planner.getInstance().getPlan(sqlUpdate, plannerContext);
@@ -348,6 +429,18 @@ public class ForeignKeyUtils {
 
     }
 
+    public static TableModify getCurrenModify(DistinctWriter writer) {
+        TableModify currentModify;
+        if (writer instanceof SingleModifyWriter) {
+            currentModify = ((SingleModifyWriter) writer).getModify();
+        } else if (writer instanceof BroadcastModifyWriter) {
+            currentModify = ((BroadcastModifyWriter) writer).getModify();
+        } else {
+            currentModify = ((ShardingModifyWriter) writer).getModify();
+        }
+        return currentModify;
+    }
+
     public static List<List<Object>> getUpdateValueList(ForeignKeyData data, List<String> updateColumns,
                                                         List<List<Object>> values, TableMeta tableMeta,
                                                         boolean isFront) {
@@ -355,19 +448,19 @@ public class ForeignKeyUtils {
 
         List<List<Object>> updateValueList = new ArrayList<>();
         List<Integer> refColIndex = new ArrayList<>();
-        for (int i = 0; i < tableMeta.getAllColumns().size(); i++) {
+        int columnCnt = tableMeta.getAllColumns().size();
+        for (int i = 0; i < columnCnt; i++) {
             String columnName = tableMeta.getAllColumns().get(i).getName();
             if (columns.stream().anyMatch(colName -> colName.equalsIgnoreCase(columnName))
                 && updateColumns.contains(columnName)) {
                 refColIndex.add(updateColumns.indexOf(columnName));
             }
         }
-
-        int columnNumber = tableMeta.getAllColumns().size();
+        ;
         for (List<Object> row : values) {
             List<Object> updateValue = new ArrayList<>();
             for (Integer colIndex : refColIndex) {
-                updateValue.add(row.get(colIndex + columnNumber));
+                updateValue.add(row.get(colIndex + columnCnt));
             }
             updateValueList.add(updateValue);
         }
@@ -484,14 +577,14 @@ public class ForeignKeyUtils {
         // Fake one meta and do check push down.
         final ForeignKeyData foreignKeyData = new ForeignKeyData();
         foreignKeyData.constraint = foreignKey.getConstraint() != null ?
-            SQLUtils.normalize(foreignKey.getConstraint().getLastName()) : null;
+            SQLUtils.normalizeNoTrim(foreignKey.getConstraint().getLastName()) : null;
         foreignKeyData.indexName = foreignKey.getIndexName() != null ?
-            SQLUtils.normalize(foreignKey.getIndexName().getLastName()) : null;
+            SQLUtils.normalizeNoTrim(foreignKey.getIndexName().getLastName()) : null;
         foreignKeyData.columns = foreignKey.getIndexDef().getColumns().stream()
             .map(c -> c.getColumnNameStr().toLowerCase()).collect(Collectors.toList());
         foreignKeyData.refSchema = foreignKey.getSchemaName();
         foreignKeyData.refTableName =
-            SQLUtils.normalize(
+            SQLUtils.normalizeNoTrim(
                 foreignKey.getReferenceDefinition().getTableName().getLastName().toLowerCase());
         foreignKeyData.refColumns =
             foreignKey.getReferenceDefinition().getColumns().stream()
@@ -534,4 +627,104 @@ public class ForeignKeyUtils {
             sqlAlterTable.setLogicalReferencedTables(null);
         }
     }
+
+    public static String extractHint(String sql) {
+        String hint = "";
+        int startIndex = sql.indexOf("/*");
+        int endIndex = sql.indexOf("*/");
+        if (startIndex == 0 && endIndex != -1) {
+            hint = sql.substring(startIndex, endIndex + 2);
+        }
+        return hint;
+    }
+
+    public static void rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, ExecutionContext ec,
+                                                      String schemaName, String tableName) {
+        // rewrite origin sql for different naming behaviours in 5.7 & 8.0
+        boolean createTableWithFk = logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE
+            && !((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().getAddedForeignKeys().isEmpty();
+        boolean alterTableAddFk =
+            logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE && logicalDdlPlan instanceof LogicalAlterTable
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().size() == 1
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
+                == SqlKind.ADD_FOREIGN_KEY;
+        boolean alterTableDropFk =
+            logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE && logicalDdlPlan instanceof LogicalAlterTable
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().size() == 1
+                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
+                == SqlKind.DROP_FOREIGN_KEY;
+        if (createTableWithFk) {
+            SqlCreateTable sqlCreateTable = ((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable();
+            String originalSql = sqlCreateTable.getOriginalSql();
+            String newSql = addForeignKeyConstraints(originalSql, sqlCreateTable.getAddedForeignKeys());
+            ec.getDdlContext().setForeignKeyOriginalSql(newSql);
+        } else if (alterTableAddFk) {
+            final SqlAlterTable sqlTemplate = ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable();
+
+            SqlAddForeignKey sqlAddForeignKey =
+                (SqlAddForeignKey) ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0);
+            // create foreign key constraints symbol
+            String symbol =
+                ForeignKeyUtils.getForeignKeyConstraintName(schemaName, tableName);
+            if (sqlAddForeignKey.getConstraint() == null) {
+                sqlAddForeignKey.setConstraint(new SqlIdentifier(SQLUtils.normalizeNoTrim(symbol), SqlParserPos.ZERO));
+            }
+            SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+            writer.setAlwaysUseParentheses(true);
+            writer.setSelectListItemsOnSeparateLines(false);
+            writer.setIndentation(0);
+            final int leftPrec = sqlTemplate.getOperator().getLeftPrec();
+            final int rightPrec = sqlTemplate.getOperator().getRightPrec();
+            sqlTemplate.getAlters().clear();
+            sqlTemplate.getAlters().add(sqlAddForeignKey);
+            sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
+
+            ec.getDdlContext().setForeignKeyOriginalSql(
+                ForeignKeyUtils.extractHint(ec.getOriginSql()) + writer.toSqlString().getSql());
+        } else if (alterTableDropFk) {
+            ec.getDdlContext().setForeignKeyOriginalSql(ec.getOriginSql());
+        }
+    }
+
+    public static String addForeignKeyConstraints(String createTableSql, List<ForeignKeyData> fks) {
+        // 用于匹配所有外键定义的正则表达式（不管是否有命名）
+        Pattern fkPattern = Pattern.compile(
+            "FOREIGN\\s+KEY\\s+`?\\w*`?\\s*\\((?:\\s*`?\\w+`?\\s*,?)+\\)\\s+REFERENCES\\s+`?\\w+`?\\s*\\((?:\\s*`?\\w+`?\\s*,?)+\\)\\s*,?",
+            Pattern.CASE_INSENSITIVE);
+
+        Matcher fkMatcher = fkPattern.matcher(createTableSql);
+        StringBuffer buffer = new StringBuffer();
+        int fkIndex = 0;
+
+        Pattern namedConstraintPattern = Pattern.compile(
+            "CONSTRAINT\\s+`?\\w*`?\\s*$",
+            Pattern.CASE_INSENSITIVE); // 正确转义反引号，并从字符串末尾匹配
+
+        while (fkMatcher.find()) {
+            int start = fkMatcher.start();
+            String substringBeforeFk = createTableSql.substring(0, start);
+            Matcher namedConstraintMatcher = namedConstraintPattern.matcher(substringBeforeFk);
+            // 用于判断当前外键是否已经被命名
+            boolean isNamed = namedConstraintMatcher.find();
+
+            String fkConstraint = fkMatcher.group();
+            String constraintName;
+            if (!isNamed && fkIndex < fks.size()) {
+                // 外键未命名，从 fks 列表中获取约束名
+                constraintName = fks.get(fkIndex++).constraint;
+                // 替换未命名的外键定义，加上约束名
+                fkMatcher.appendReplacement(buffer, "CONSTRAINT `" + constraintName + "` " + fkConstraint);
+            } else if (isNamed) {
+                // 外键已被命名，跳过命名过程
+                fkIndex++;
+                fkMatcher.appendReplacement(buffer, Matcher.quoteReplacement(fkConstraint));
+            } else {
+                // 没有更多的外键约束名可用
+                throw new IllegalStateException("Not enough constraint names provided for all unnamed foreign keys");
+            }
+        }
+        fkMatcher.appendTail(buffer);
+        return buffer.toString();
+    }
+
 }

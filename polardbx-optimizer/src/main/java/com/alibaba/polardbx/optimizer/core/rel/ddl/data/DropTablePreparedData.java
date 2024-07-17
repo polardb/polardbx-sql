@@ -26,6 +26,7 @@ public class DropTablePreparedData extends DdlPreparedData {
     // No additional information needed, just keep this as a placeholder
     // in case something will be added in the future.
     private boolean ifExists;
+    private boolean importTable = false;
 
     public boolean isIfExists() {
         return this.ifExists;
@@ -33,5 +34,13 @@ public class DropTablePreparedData extends DdlPreparedData {
 
     public void setIfExists(final boolean ifExists) {
         this.ifExists = ifExists;
+    }
+
+    public boolean isImportTable() {
+        return importTable;
+    }
+
+    public void setImportTable(boolean importTable) {
+        this.importTable = importTable;
     }
 }

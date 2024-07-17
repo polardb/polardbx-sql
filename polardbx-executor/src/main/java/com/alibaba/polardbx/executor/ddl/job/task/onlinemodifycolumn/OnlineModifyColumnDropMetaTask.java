@@ -24,8 +24,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 @Getter
 @TaskName(name = "OnlineModifyColumnDropMetaTask")
@@ -71,7 +71,8 @@ public class OnlineModifyColumnDropMetaTask extends BaseGmsTask {
         TableMetaChanger.onlineModifyColumnDropColumn(metaDbConnection, schemaName, logicalTableName, dbIndex,
             phyTableName, droppedColumn, coveringGsi, gsiDbIndex, gsiPhyTableName, unique, keptColumn);
 
-        CommonMetaChanger.finalOperationsOnSuccess(schemaName, logicalTableName);
+        CommonMetaChanger.alterTableColumnFinalOperationsOnSuccess(schemaName, logicalTableName,
+            Collections.singletonList(oldColumnName));
     }
 
     @Override

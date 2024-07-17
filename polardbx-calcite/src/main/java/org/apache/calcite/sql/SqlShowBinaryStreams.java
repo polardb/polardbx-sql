@@ -22,16 +22,19 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import java.util.List;
 
 public class SqlShowBinaryStreams extends SqlShow {
-    private static final List<SqlSpecialIdentifier> SPECIAL_IDENTIFIERS = Lists.newArrayList(
-        SqlSpecialIdentifier.BINARY,
-        SqlSpecialIdentifier.STREAMS);
+    private SqlNode with;
 
-    public SqlShowBinaryStreams(SqlParserPos pos) {
-        super(pos, SPECIAL_IDENTIFIERS);
+    public SqlShowBinaryStreams(SqlParserPos pos, List<SqlSpecialIdentifier> specialIdentifiers, SqlNode with) {
+        super(pos, specialIdentifiers);
+        this.with = with;
     }
 
     @Override
     public SqlKind getShowKind() {
         return SqlKind.SHOW_BINARY_STREAMS;
+    }
+
+    public SqlNode getWith() {
+        return with;
     }
 }

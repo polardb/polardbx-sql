@@ -34,6 +34,8 @@ public class SchemaObject {
     private SQLStatement statement;
     private long rowCount = -1;
 
+    private String schemaCharset;
+
     public SchemaObject(Schema schema, String name, SchemaObjectType type) {
         this(schema, name, type, null);
     }

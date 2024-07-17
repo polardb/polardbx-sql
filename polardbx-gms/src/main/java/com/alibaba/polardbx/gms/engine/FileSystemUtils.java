@@ -17,9 +17,20 @@
 package com.alibaba.polardbx.gms.engine;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CachingFileSystem;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.aliyun.oss.event.ProgressListener;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Seekable;
@@ -28,6 +39,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Map;
+import java.util.Optional;
 
 public class FileSystemUtils {
 
@@ -38,73 +51,92 @@ public class FileSystemUtils {
         return String.join(DELIMITER, fileSystem.getWorkingDirectory().toString(), fileName);
     }
 
+    public static String buildColumnarUri(FileSystem fileSystem, String fileName) {
+        if (fileSystem instanceof CachingFileSystem) {
+            FileSystem dataFileSystem = ((CachingFileSystem) fileSystem).getDataTier();
+            if (dataFileSystem instanceof OSSFileSystem) {
+                // columnar_oss_directory only works for OSS engine
+                return String.join(DELIMITER, fileSystem.getUri().toString(), getColumnarDirectory(), fileName);
+            }
+        } else if (fileSystem instanceof OSSFileSystem) {
+            // columnar_oss_directory only works for OSS engine
+            return String.join(DELIMITER, fileSystem.getUri().toString(), getColumnarDirectory(), fileName);
+        }
+        return String.join(DELIMITER, fileSystem.getWorkingDirectory().toString(), fileName);
+    }
+
+    // keep API compatible
+    // this API is deprecated by CN, but is still used by columnar node
+    @Deprecated
     public static Path buildPath(FileSystem fileSystem, String fileName) {
-        return new Path(buildUri(fileSystem, fileName));
+        return buildPath(fileSystem, fileName, false);
     }
 
-    public static void writeFile(File localFile, String ossKey, Engine engine) throws IOException {
-        long stamp = FileSystemManager.readLockWithTimeOut(engine);
-        try {
-            FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
-            fileSystemGroup.writeFile(localFile, ossKey);
-        } finally {
-            FileSystemManager.unlockRead(engine, stamp);
+    public static Path buildPath(FileSystem fileSystem, String fileName, boolean isColumnar) {
+        if (isColumnar) {
+            return new Path(buildColumnarUri(fileSystem, fileName));
+        } else {
+            return new Path(buildUri(fileSystem, fileName));
         }
     }
 
-    public static void writeFile(File localFile, String ossKey, ProgressListener progressListener, Engine engine)
+    public static void writeFile(File localFile, String fileName, Engine engine, boolean isColumnar)
         throws IOException {
-        long stamp = FileSystemManager.readLockWithTimeOut(engine);
-        try {
-            FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
-            fileSystemGroup.writeFile(localFile, ossKey);
-        } finally {
-            FileSystemManager.unlockRead(engine, stamp);
-        }
+        FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
+        FileSystem fileSystem = fileSystemGroup.getMaster();
+        fileSystemGroup.writeFile(localFile, buildPath(fileSystem, fileName, isColumnar));
     }
 
-    public static boolean deleteIfExistsFile(String ossKey, Engine engine) {
-        long stamp = FileSystemManager.readLockWithTimeOut(engine);
+    public static boolean deleteIfExistsFile(String fileName, Engine engine, boolean isColumnar) {
         try {
             FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
-            return fileSystemGroup.delete(ossKey, false);
+            return fileSystemGroup.delete(fileName, false, isColumnar);
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
-        } finally {
-            FileSystemManager.unlockRead(engine, stamp);
         }
     }
 
-    public static void readFile(String ossKey, OutputStream outputStream, Engine engine) {
-        long stamp = FileSystemManager.readLockWithTimeOut(engine);
+    public static void readFile(String fileName, OutputStream outputStream, Engine engine, boolean isColumnar) {
+        FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
+        try (InputStream in = fileSystem.open(buildPath(fileSystem, fileName, isColumnar))) {
+            IOUtils.copy(in, outputStream);
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public static boolean fileExists(String fileName, Engine engine, boolean isColumnar) {
         try {
             FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
-            try (InputStream in = fileSystem.open(buildPath(fileSystem, ossKey))) {
-                IOUtils.copy(in, outputStream);
-            } catch (IOException e) {
-                throw GeneralUtil.nestedException(e);
-            }
-        } finally {
-            FileSystemManager.unlockRead(engine, stamp);
+            return fileSystem.exists(buildPath(fileSystem, fileName, isColumnar));
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
         }
+    }
 
+    /**
+     * Read fully file from engine.
+     */
+    public static byte[] readFullyFile(String fileName, Engine engine, boolean isColumnar) {
+        FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
+        try (InputStream in = fileSystem.open(buildPath(fileSystem, fileName, isColumnar))) {
+            return IOUtils.toByteArray(in);
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 
     /**
      * Read file from the offset
      */
-    public static void readFile(String ossKey, int offset, int length, byte[] output, Engine engine) {
-        long stamp = FileSystemManager.readLockWithTimeOut(engine);
-        try {
-            FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
-            try (InputStream in = fileSystem.open(buildPath(fileSystem, ossKey))) {
-                ((Seekable) in).seek(offset);
-                IOUtils.read(in, output, 0, length);
-            } catch (IOException e) {
-                throw GeneralUtil.nestedException(e);
-            }
-        } finally {
-            FileSystemManager.unlockRead(engine, stamp);
+    public static void readFile(String fileName, int offset, int length, byte[] output, Engine engine,
+                                boolean isColumnar) {
+        FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
+        try (InputStream in = fileSystem.open(buildPath(fileSystem, fileName, isColumnar))) {
+            ((Seekable) in).seek(offset);
+            IOUtils.read(in, output, 0, length);
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
         }
     }
 
@@ -114,5 +146,42 @@ public class FileSystemUtils {
             localFile.delete();
         }
         return localFile;
+    }
+
+    public static ColdDataStatus getColdDataStatus() {
+        final int status = Integer.parseInt(
+            MetaDbInstConfigManager.getInstance().getInstProperty(
+                ConnectionProperties.COLD_DATA_STATUS,
+                ConnectionParams.COLD_DATA_STATUS.getDefault()
+            )
+        );
+        return ColdDataStatus.of(status);
+    }
+
+    private static String getColumnarDirectory() {
+        String columnarDirectory = DynamicConfig.getInstance().getColumnarOssDirectory();
+        return StringUtils.isEmpty(columnarDirectory) ? ServerInstIdManager.getInstance().getMasterInstId() :
+            columnarDirectory;
+    }
+
+    private static String getColdDataDirectory() {
+        return ServerInstIdManager.getInstance().getMasterInstId();
+    }
+
+    public static GuavaFileSystemRateLimiter newRateLimiter() {
+        // fetch rate params
+        Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
+            ConnectionParams.OSS_FS_MAX_READ_RATE,
+            ConnectionParams.OSS_FS_MAX_WRITE_RATE
+        );
+        Long maxReadRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_READ_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_READ_RATE.getDefault()));
+        Long maxWriteRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
+
+        return new GuavaFileSystemRateLimiter(
+            maxReadRate == null ? -1 : maxReadRate,
+            maxWriteRate == null ? -1 : maxWriteRate
+        );
     }
 }

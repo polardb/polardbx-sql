@@ -18,15 +18,18 @@ package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.calc.Aggregator;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.frame.OverWindowFrame;
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
+import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.AvgV2;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 
@@ -86,21 +89,28 @@ public class OverWindowFramesExec extends AbstractExecutor {
             Arrays.stream(overWindowFrames).map(OverWindowFrame::getAggregators).flatMap(List::stream)
                 .collect(Collectors.toList());
         targetTypes = new DataType[collect.size()];
+        converts = new boolean[collect.size()];
         for (int i = 0; i < blockBuilders.length; i++) {
             DataType dataType = columnMetas.get(input.getDataTypes().size() + i);
             targetTypes[i] = dataType;
+            if (dataType == DataTypes.DoubleType && collect.get(i) instanceof AvgV2) {
+                converts[i] = true;
+                continue;
+            }
+            if (collect.get(i).getAggTargetIndexes() == null || collect.get(i).getAggTargetIndexes().length == 0) {
+                converts[i] = false;
+                continue;
+            }
+            int aggTargetIndex = collect.get(i).getAggTargetIndexes()[0];
+            converts[i] = input.getDataTypes().get(aggTargetIndex) != dataType;
         }
+
     }
 
     // open的时候儿就放一个chunk进去
     @Override
     void doOpen() {
         input.open();
-        List<Aggregator> collect =
-            Arrays.stream(overWindowFrames).map(OverWindowFrame::getAggregators).flatMap(List::stream)
-                .collect(Collectors.toList());
-        collect.forEach(t -> t.open(1));
-        collect.forEach(Aggregator::appendInitValue);
     }
 
     @Override
@@ -264,20 +274,21 @@ public class OverWindowFramesExec extends AbstractExecutor {
             return;
         }
         for (int i = 0, m = 0; i < overWindowFrames.length; i++) {
-            overWindowFrames[i].processData(lastRowInPreviousChunk + rowIndex);
-            List<Aggregator> aggregators = overWindowFrames[i].getAggregators();
+            List<Object> result = overWindowFrames[i].processData(lastRowInPreviousChunk + rowIndex);
             if (rowIndex == 0) {
-                for (int j = 0; j < aggregators.size(); j++) {
-                    //aggregator 
+                List<Aggregator> aggregator = overWindowFrames[i].getAggregators();
+                for (int j = 0; j < aggregator.size(); j++) {
+                    //aggregator
                     int aggPosition = m + j;
                     blockBuilders[aggPosition] = BlockBuilders
                         .create(targetTypes[aggPosition], context);
                 }
             }
-            for (int j = 0; j < aggregators.size(); j++) {
-                aggregators.get(j).writeResultTo(0, blockBuilders[m + j]);
+            for (int j = 0; j < overWindowFrames[i].getAggregators().size(); j++) {
+                blockBuilders[m + j].writeObject(
+                    converts[m + j] ? DataTypeUtils.convert(targetTypes[m + j], result.get(j)) : result.get(j));
             }
-            m += aggregators.size();
+            m += overWindowFrames[i].getAggregators().size();
         }
     }
 
@@ -321,5 +332,6 @@ public class OverWindowFramesExec extends AbstractExecutor {
     public ListenableFuture<?> produceIsBlocked() {
         return blocked;
     }
+
 }
 

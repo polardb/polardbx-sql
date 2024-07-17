@@ -1,0 +1,19 @@
+# clean
+drop table if exists `heavy_qps_table`;
+
+CREATE TABLE `heavy_qps_table` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3;
+
+# create cci on partition table without covering column
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE CLUSTERED COLUMNAR INDEX `heavy_qps_table_cci` ON `heavy_qps_table`(`id`) PARTITION BY HASH(id) PARTITIONS 4;
+show full create table `heavy_qps_table`;
+check columnar index `heavy_qps_table_cci` on `heavy_qps_table` meta;
+DROP INDEX `heavy_qps_table_cci` ON `heavy_qps_table`;
+  
+# cleanup
+drop table if exists `heavy_qps_table`;

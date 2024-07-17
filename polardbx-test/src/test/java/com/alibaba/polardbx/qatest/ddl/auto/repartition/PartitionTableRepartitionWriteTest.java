@@ -95,11 +95,12 @@ public class PartitionTableRepartitionWriteTest extends PartitionTableRepartitio
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(1));
 
-        //因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 更新 delete only 下，UPDATE 在GSI表上还是 UPDATE
         sql = MessageFormat.format("UPDATE {0} SET c_timestamp = NOW() WHERE c_int_32 = 1", primaryTableName);
         executeDml("trace " + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = MessageFormat.format("DELETE FROM {0} WHERE c_int_32 = 1", primaryTableName);
@@ -131,11 +132,12 @@ public class PartitionTableRepartitionWriteTest extends PartitionTableRepartitio
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(2));
 
-        //预期：select + delete + insert
         sql = MessageFormat
             .format("INSERT IGNORE INTO {0} (id, c_int_32, c_timestamp, c_timestamp_1, c_timestamp_3, c_timestamp_6) \n"
                 + "VALUES (232, 3, now(), now(), now(), now())", primaryTableName);
         executeDml(dmlHintStr + sql);
+
+        //预期：select + delete + replace
         sql = MessageFormat
             .format("REPLACE INTO {0} (id, c_int_32, c_timestamp, c_timestamp_1, c_timestamp_3, c_timestamp_6) \n"
                 + "VALUES (232, 3, now(), now(), now(), now())", primaryTableName);
@@ -242,11 +244,12 @@ public class PartitionTableRepartitionWriteTest extends PartitionTableRepartitio
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(phyGroupNum));
 
-        //因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 更新 delete only 下，UPDATE 在GSI表上还是 UPDATE
         sql = MessageFormat.format("UPDATE {0} SET c_timestamp = NOW() WHERE c_int_32 = 1", primaryTableName);
         executeDml("trace " + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = MessageFormat.format("DELETE FROM {0} WHERE c_int_32 = 1", primaryTableName);

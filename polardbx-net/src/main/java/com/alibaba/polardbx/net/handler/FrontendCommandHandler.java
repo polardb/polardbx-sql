@@ -32,6 +32,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 public class FrontendCommandHandler implements NIOHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(FrontendCommandHandler.class);
+    private static final Logger cdcLogger = LoggerFactory.getLogger("cdc_log");
 
     protected final FrontendConnection source;
     protected final CommandCount commandCount;
@@ -118,6 +119,10 @@ public class FrontendCommandHandler implements NIOHandler {
             PacketOutputProxyFactory.getInstance().createProxy(source).writeArrayAsPacket(OkPacket.OK);
             break;
         case Commands.COM_BINLOG_DUMP:
+            if (cdcLogger.isInfoEnabled()) {
+                cdcLogger.info("receive a binlog dump request.");
+            }
+            source.setIsBinlogDumpConn(true);
             source.binlogDump(data);
             break;
         default:

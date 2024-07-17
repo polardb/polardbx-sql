@@ -1,7 +1,6 @@
 package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Assert;
@@ -15,7 +14,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 
-@FileStoreIgnore
 public class ProcedureInputParamTest extends BaseTestCase {
     protected Connection tddlConnection;
 

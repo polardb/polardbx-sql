@@ -19,8 +19,9 @@ public class AlterTableCompatShuffleTest extends AlterTableCompatBaseTest {
     protected String error;
 
     public AlterTableCompatShuffleTest(String createTable, String alterTable, String error) {
+        String hint = "/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
         this.createTable = createTable;
-        this.alterTable = alterTable;
+        this.alterTable = hint + alterTable;
         this.error = error;
     }
 
@@ -155,37 +156,37 @@ public class AlterTableCompatShuffleTest extends AlterTableCompatBaseTest {
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s modify column a int after b, drop column b, add column c int, change column c b int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s modify column a int after b, change column c b int, drop column b, add column c int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s modify column a int after b, change column c b int, add column c int, drop column b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s modify column a int after b, add column c int, drop column b, change column c b int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s modify column a int after b, add column c int, change column c b int, drop column b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s drop column b, modify column a int after b, change column c b int, add column c int",
-                "Unknown column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s drop column b, modify column a int after b, add column c int, change column c b int",
-                "Unknown column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
@@ -200,207 +201,207 @@ public class AlterTableCompatShuffleTest extends AlterTableCompatBaseTest {
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s drop column b, add column c int, modify column a int after b, change column c b int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s drop column b, add column c int, change column c b int, modify column a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c b int, modify column a int after b, drop column b, add column c int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c b int, modify column a int after b, add column c int, drop column b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c b int, drop column b, modify column a int after b, add column c int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c b int, drop column b, add column c int, modify column a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c b int, add column c int, modify column a int after b, drop column b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c b int, add column c int, drop column b, modify column a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column c int, modify column a int after b, drop column b, change column c b int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column c int, modify column a int after b, change column c b int, drop column b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column c int, drop column b, modify column a int after b, change column c b int",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column c int, drop column b, change column c b int, modify column a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column c int, change column c b int, modify column a int after b, drop column b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column c int, change column c b int, drop column b, modify column a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column a b int after c, change column b c double after d, change column c d varchar(10) after a, change column d a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column a b int after c, change column b c double after d, change column d a int after b, change column c d varchar(10) after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column a b int after c, change column c d varchar(10) after a, change column b c double after d, change column d a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column a b int after c, change column c d varchar(10) after a, change column d a int after b, change column b c double after d",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column a b int after c, change column d a int after b, change column b c double after d, change column c d varchar(10) after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column a b int after c, change column d a int after b, change column c d varchar(10) after a, change column b c double after d",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column b c double after d, change column a b int after c, change column c d varchar(10) after a, change column d a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column b c double after d, change column a b int after c, change column d a int after b, change column c d varchar(10) after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column b c double after d, change column c d varchar(10) after a, change column a b int after c, change column d a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column b c double after d, change column c d varchar(10) after a, change column d a int after b, change column a b int after c",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column b c double after d, change column d a int after b, change column a b int after c, change column c d varchar(10) after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column b c double after d, change column d a int after b, change column c d varchar(10) after a, change column a b int after c",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c d varchar(10) after a, change column a b int after c, change column b c double after d, change column d a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c d varchar(10) after a, change column a b int after c, change column d a int after b, change column b c double after d",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c d varchar(10) after a, change column b c double after d, change column a b int after c, change column d a int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c d varchar(10) after a, change column b c double after d, change column d a int after b, change column a b int after c",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c d varchar(10) after a, change column d a int after b, change column a b int after c, change column b c double after d",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column c d varchar(10) after a, change column d a int after b, change column b c double after d, change column a b int after c",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column d a int after b, change column a b int after c, change column b c double after d, change column c d varchar(10) after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column d a int after b, change column a b int after c, change column c d varchar(10) after a, change column b c double after d",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column d a int after b, change column b c double after d, change column a b int after c, change column c d varchar(10) after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column d a int after b, change column b c double after d, change column c d varchar(10) after a, change column a b int after c",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column d a int after b, change column c d varchar(10) after a, change column a b int after c, change column b c double after d",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s change column d a int after b, change column c d varchar(10) after a, change column b c double after d, change column a b int after c",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column a int, add column b double, change column a x int after a, change column b y int after b",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column a int, add column b double, change column b y int after b, change column a x int after a",
-                "Duplicate column"
+                "OK"
             },
             {
                 "create table %s(a int, b double, c varchar(10), d bigint)",
                 "alter table %s add column a int, change column a x int after a, add column b double, change column b y int after b",
-                "Duplicate column"
+                "OK"
             }
         };
         return Arrays.asList(statements);

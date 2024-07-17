@@ -1,0 +1,71 @@
+DROP TABLE IF EXISTS tb1;
+CREATE TABLE IF NOT EXISTS tb1 (
+	a int NOT NULL,
+	b int NOT NULL,
+	c varchar(10) NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY KEY (a);
+ALTER TABLE tb1
+	ADD GLOBAL INDEX omc_g1 (a, b) COVERING (c) PARTITION BY KEY (a);
+ALTER TABLE tb1
+	ADD CLUSTERED INDEX omc_c1 (a) PARTITION BY KEY (a);
+SHOW FULL CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` varchar(10) NOT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* omc_c1_$ */ `omc_c1` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* omc_g1_$ */ `omc_g1` (`a`, `b`) COVERING (`c`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE tb1
+	CHANGE COLUMN b bb bigint,
+	DROP COLUMN c,
+	ADD COLUMN f int,
+	ALGORITHM = OMC;
+SHOW FULL CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`bb` bigint(20) DEFAULT NULL,
+	`f` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	CLUSTERED INDEX /* omc_c1_$ */ `omc_c1` (`a`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* omc_g1_$ */ `omc_g1` (`a`, `bb`)
+		PARTITION BY KEY(`a`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW CREATE TABLE omc_g1;
+Table,Create Table
+omc_g1_$,CREATE TABLE `omc_g1_$` (
+	`a` int(11) NOT NULL,
+	`bb` bigint(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	KEY `i_a_bb` USING BTREE (`a`, `bb`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW CREATE TABLE omc_c1;
+Table,Create Table
+omc_c1_$,CREATE TABLE `omc_c1_$` (
+	`a` int(11) NOT NULL,
+	`bb` bigint(20) DEFAULT NULL,
+	`f` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3

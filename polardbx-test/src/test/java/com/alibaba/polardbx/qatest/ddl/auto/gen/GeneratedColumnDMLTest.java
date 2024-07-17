@@ -16,6 +16,7 @@ import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddlAssertErrorAtomic;
@@ -65,9 +66,10 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
         new String[] {"(id,a)", "select 13,14 union select 14,14+1", "(id,a)", "values (13,14),(14,15)"},
         new String[] {"(id)", "select 14+1", "(id,a)", "values (15,1)"},
         new String[] {
-            "(id,a)", String.format("select * from %s where id=100", SOURCE_TABLE_NAME), "(id,a)", "values (100,101)"},
+            "(id,a)", String.format("select id,a from %s where id=100", SOURCE_TABLE_NAME), "(id,a)",
+            "values (100,101)"},
         new String[] {
-            "(id,a)", String.format("select * from %s where id>100 order by id", SOURCE_TABLE_NAME), "(id,a)",
+            "(id,a)", String.format("select id,a from %s where id>100 order by id", SOURCE_TABLE_NAME), "(id,a)",
             "values (101,102),(102,103)"},
         new String[] {
             "(id,a)", String.format("select a,a from %s where id=100", SOURCE_TABLE_NAME), "(id,a)",
@@ -83,9 +85,10 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
         new String[] {"(id,a)", "values (3,0+2)", "(id,a)", "values (3,2)"},
         new String[] {"(id,a)", "values (1,2),(2,3)", "(id,a)", "values (1,2),(2,3)"},
         new String[] {
-            "(id,a)", String.format("select * from %s where id=100", SOURCE_TABLE_NAME), "(id,a)", "values (100,101)"},
+            "(id,a)", String.format("select id,a from %s where id=100", SOURCE_TABLE_NAME), "(id,a)",
+            "values (100,101)"},
         new String[] {
-            "(id,a)", String.format("select * from %s where id>100 order by id", SOURCE_TABLE_NAME), "(id,a)",
+            "(id,a)", String.format("select id,a from %s where id>100 order by id", SOURCE_TABLE_NAME), "(id,a)",
             "values (101,102),(102,103)"}
     };
 
@@ -108,10 +111,10 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
             "(id,a)", "values (200,300) on duplicate key update id=id+10,a=a", "(id,a)",
             "values (200,300) on duplicate key update id=id+10,a=a"},
         new String[] {
-            "(id,a)", String.format("select * from %s where id=100 order by id ", SOURCE_TABLE_NAME)
+            "(id,a)", String.format("select id,a from %s where id=100 order by id ", SOURCE_TABLE_NAME)
             + "on duplicate key update id=id+10", "(id,a)", "values (100,101) on duplicate key update id=id+10"},
         new String[] {
-            "(id,a)", String.format("select * from %s where id>100 order by id ", SOURCE_TABLE_NAME)
+            "(id,a)", String.format("select id,a from %s where id>100 order by id ", SOURCE_TABLE_NAME)
             + "on duplicate key update id=id+10", "(id,a)",
             "values (101,102),(102,103) on duplicate key update id=id+10"}
     };
@@ -131,10 +134,12 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
         // Create source table for insert select
         dropTableIfExists(SOURCE_TABLE_NAME);
         String createSourceTableSql =
-            String.format("create table if not exists %s (id int, a int)", SOURCE_TABLE_NAME);
+            String.format(
+                "create table if not exists %s (`pk` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY, id int, a int)",
+                SOURCE_TABLE_NAME);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createSourceTableSql);
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "insert into " + SOURCE_TABLE_NAME + " values(100,101),(101,102),(102,103)");
+            "insert into " + SOURCE_TABLE_NAME + " (id, a) values(100,101),(101,102),(102,103)");
 
         tddlSqlMode = JdbcUtil.getSqlMode(tddlConnection);
         mysqlSqlMode = JdbcUtil.getSqlMode(mysqlConnection);
@@ -276,6 +281,10 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
             executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, insert, null, true);
         }
 
+        List<String> columns = JdbcUtil.getTableColumns(tddlConnection, tableName);
+        String selectColumns =
+            columns.stream().filter(name -> !"pk".equalsIgnoreCase(name)).collect(Collectors.joining(","));
+
         for (int i = 0; i < dml.length; i++) {
             // System.out.println(dml[i]);
             // System.out.println(mysqlDml[i]);
@@ -283,13 +292,15 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
             if (writeOnly) {
                 selectContentSameAssert("select id,a from " + tableName, null, mysqlConnection, tddlConnection);
             } else {
-                selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                selectContentSameAssert("select " + selectColumns + " from " + tableName, null, mysqlConnection,
+                    tddlConnection);
             }
         }
 
         if (writeOnly) {
             updateColumnStatus(tddlDatabase1, tableName, 1);
-            selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+            selectContentSameAssert("select " + selectColumns + " from " + tableName, null, mysqlConnection,
+                tddlConnection);
         }
 
         if (withGsi) {
@@ -327,7 +338,8 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
             for (int i = 0; i < dml.length; i++) {
                 executeOnMysqlAndTddlAssertErrorAtomic(mysqlConnection, tddlConnection, mysqlDml[i], dml[i], null,
                     false);
-                selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+                selectContentSameAssert("select " + selectColumns + " from " + tableName, null, mysqlConnection,
+                    tddlConnection);
                 checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
                 checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName2));
                 checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName3));
@@ -362,13 +374,15 @@ public class GeneratedColumnDMLTest extends DDLBaseNewDBTestCase {
 
         String createTable =
             String.format(
-                "create table %s (id int, a int default 1, b int default 2, ts timestamp default '2022-10-10 12:00:00' on update current_timestamp(), %s) ",
+                "create table %s (`pk` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY, id int, a int default 1, b int default 2, ts timestamp default '2022-10-10 12:00:00' on update current_timestamp(), %s) ",
                 tableName, colDef);
         // UPSERT in broadcast table will not update timestamp properly, skip timestamp column for now
         if (partDef.contains("broadcast") && Arrays.stream(params)
             .anyMatch(param -> param[1].contains("on duplicate key update"))) {
             createTable =
-                String.format("create table %s (id int, a int default 1, b int default 2, %s) ", tableName, colDef);
+                String.format(
+                    "create table %s (`pk` bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY, id int, a int default 1, b int default 2, %s) ",
+                    tableName, colDef);
         }
 
         System.out.println(createTable + partDef);

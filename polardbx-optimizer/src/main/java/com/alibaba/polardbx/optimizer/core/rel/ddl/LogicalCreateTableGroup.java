@@ -69,6 +69,10 @@ public class LogicalCreateTableGroup extends BaseDdlOperation {
         }
     }
 
+    public boolean isSingle() {
+        return ((SqlCreateTableGroup) nativeSqlNode).isSingle();
+    }
+
     public static LogicalCreateTableGroup create(CreateTableGroup input) {
         return new LogicalCreateTableGroup(input);
     }
@@ -76,7 +80,8 @@ public class LogicalCreateTableGroup extends BaseDdlOperation {
     @Override
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         // prevent creating table group like 'oss_%'
-        return TableGroupNameUtil.isOssTg(getTableGroupName());
+        // prevent creating table group like 'columnar_tg%'
+        return TableGroupNameUtil.isFileStorageTg(getTableGroupName());
     }
 
     public CreateTableGroupPreparedData getPreparedData() {
@@ -94,5 +99,6 @@ public class LogicalCreateTableGroup extends BaseDdlOperation {
         preparedData.setSchemaName(getSchemaName());
         preparedData.setLocality(getLocality());
         preparedData.setPartitionBy(getPartitionBy());
+        preparedData.setSingle(isSingle());
     }
 }

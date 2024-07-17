@@ -17,18 +17,19 @@
 package com.alibaba.polardbx.executor.balancer.splitpartition;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.datatype.IntPartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
@@ -36,11 +37,9 @@ import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.TreeSet;
 
@@ -89,11 +88,18 @@ class StatisticsBasedSplitPointBuilder implements SplitPointBuilder {
             return result;
         }
 
-        final TableGroupInfoManager tableGroupInfoManager =
-            OptimizerContext.getContext(tableSchema).getTableGroupInfoManager();
+        OptimizerContext oc = OptimizerContext.getContext(tableSchema);
+        final TableGroupInfoManager tableGroupInfoManager = oc.getTableGroupInfoManager();
+
+        PartitionInfo partitionInfo = oc.getPartitionInfoManager().getPartitionInfo(tableName);
+        List<String> partNames = new ArrayList<>();
+        List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+        PartitionInfoUtil.getPartitionName(partitionInfo, partNames, subPartNamePairs);
+
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         List<String> newPartitionNames =
-            PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, splitBounds.size() + 1,
+            PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig.getTableGroupRecord(), partNames,
+                subPartNamePairs, splitBounds.size() + 1,
                 new TreeSet<>(String::compareToIgnoreCase), false);
 
         if (newPartitionNames.size() != splitBounds.size() + 1) {

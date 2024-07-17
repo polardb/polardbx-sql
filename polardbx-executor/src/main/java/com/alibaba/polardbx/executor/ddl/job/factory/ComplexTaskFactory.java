@@ -164,8 +164,7 @@ public class ComplexTaskFactory {
         if (!skipBackFill) {
             taskList
                 .add(new AlterTableGroupBackFillTask(schemaName, logicalTableName, sourcePhyTables, targetPhyTables,
-
-                    isBroadcast, ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION == taskType, false));
+                    isBroadcast, ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION == taskType, false, false));
         }
         taskList.add(writeReOrgTask);
         taskList.add(
@@ -195,8 +194,7 @@ public class ComplexTaskFactory {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
         if (complexTaskType != ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP) {
-            for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-                String logicalTable = tablePartRecordInfoContext.getLogTbRec().getTableName();
+            for (String logicalTable : tableGroupConfig.getAllTables()) {
                 TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTable);
                 if (tableMeta.isGsi()) {
                     //all the gsi table version change will be behavior by primary table
@@ -610,7 +608,7 @@ public class ComplexTaskFactory {
 
         taskList
             .add(new MoveTableBackFillTask(schemaName, logicalTableName, sourcePhyTables, targetPhyTables,
-                sourceAndTargetGroupMap, false));
+                sourceAndTargetGroupMap, false, false));
         taskList.add(writeReOrgTask);
         taskList.add(
             new TableSyncTask(schemaName, relatedTables.get(0), enablePreemptiveMdl, initWait, interval,
@@ -649,7 +647,8 @@ public class ComplexTaskFactory {
         List<PhyDdlTableOperation> physicalPlans = dropPhyTableBuilder.getPhysicalPlans();
         physicalPlans.forEach(o -> o.setPartitionInfo(partitionInfo));
 
-        PhysicalPlanData physicalPlanData = DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans);
+        PhysicalPlanData physicalPlanData =
+            DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, executionContext);
 
         return new DropTablePhyDdlTask(schemaName, physicalPlanData);
     }

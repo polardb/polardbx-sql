@@ -37,8 +37,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import java.util.Locale;
 import java.util.Map;
 
-import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_HANDLE_DATA;
-
 public class ShowStatistic {
 
     private static final int FIELD_COUNT = 4;
@@ -86,7 +84,7 @@ public class ShowStatistic {
         }
 
         // write rows
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
 
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {

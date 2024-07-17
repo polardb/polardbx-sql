@@ -29,12 +29,12 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.calcite.rel.RelNode;
 
 import static java.util.Objects.requireNonNull;

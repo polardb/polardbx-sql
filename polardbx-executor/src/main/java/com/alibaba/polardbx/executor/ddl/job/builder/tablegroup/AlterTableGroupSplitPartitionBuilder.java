@@ -51,7 +51,7 @@ public class AlterTableGroupSplitPartitionBuilder extends AlterTableGroupBaseBui
                 OptimizerContext.getContext(splitData.getSchemaName()).getTableGroupInfoManager();
             TableGroupConfig tableGroupConfig =
                 tableGroupInfoManager.getTableGroupConfigByName(splitData.getTableGroupName());
-            String firstTableName = tableGroupConfig.getTables().get(0).getTableName();
+            String firstTableName = tableGroupConfig.getTables().get(0);
             PartitionInfo firstPartitionInfo =
                 OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
                     .getPartitionInfo(firstTableName);

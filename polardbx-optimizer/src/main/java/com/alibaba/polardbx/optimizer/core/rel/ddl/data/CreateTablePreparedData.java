@@ -17,10 +17,11 @@
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityEntity;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Data;
 import org.apache.calcite.rex.RexNode;
@@ -28,6 +29,7 @@ import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Data
 public class CreateTablePreparedData extends DdlPreparedData {
@@ -52,6 +54,10 @@ public class CreateTablePreparedData extends DdlPreparedData {
     private SqlNode partitioning;
     private SqlNode localPartitioning;
     private SqlNode tableGroupName;
+    // if true the tablegroup should no-exist or create automatically
+    private boolean withImplicitTableGroup;
+    //if value=true, the no-exist tablegroup will be created before create table/gsi
+    private Map<String, Boolean> relatedTableGroupInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private SqlNode joinGroupName;
     private Map<SqlNode, RexNode> partBoundExprInfo;
 
@@ -86,5 +92,17 @@ public class CreateTablePreparedData extends DdlPreparedData {
 
     private String sourceSql;
     private boolean needToGetTableGroupLock;
+
+    private boolean importTable;
+
+    private boolean reimportTable;
+
+    /**
+     * lbac
+     */
+    private LBACSecurityEntity tableEAS;
+    private List<LBACSecurityEntity> colEASList;
+
+    LikeTableInfo likeTableInfo;
 
 }

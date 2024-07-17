@@ -59,6 +59,7 @@ public class DdlContext {
     private boolean isGSI = false;
     private DdlState pausedPolicy = DdlState.RUNNING;
     private DdlState rollbackPausedPolicy = DdlState.ROLLBACK_RUNNING;
+    private String cdcRewriteDdlStmt;
 
     private ConcurrentHashMap<Long, AtomicBoolean> physicalDdlInjectionFlag = new ConcurrentHashMap<>();
 
@@ -272,6 +273,14 @@ public class DdlContext {
 
     public void setDdlStmt(String ddlStmt) {
         this.ddlStmt = ddlStmt;
+    }
+
+    public String getCdcRewriteDdlStmt() {
+        return cdcRewriteDdlStmt;
+    }
+
+    public void setCdcRewriteDdlStmt(String cdcRewriteDdlStmt) {
+        this.cdcRewriteDdlStmt = cdcRewriteDdlStmt;
     }
 
     public String getResponseNode() {

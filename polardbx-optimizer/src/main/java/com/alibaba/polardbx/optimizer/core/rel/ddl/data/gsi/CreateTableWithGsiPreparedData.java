@@ -16,14 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
-public class CreateTableWithGsiPreparedData {
+public class CreateTableWithGsiPreparedData extends DdlPreparedData {
 
     private CreateTablePreparedData primaryTablePreparedData;
     private Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap = new LinkedHashMap<>();
@@ -62,4 +65,10 @@ public class CreateTableWithGsiPreparedData {
         return indexTablePreparedDataMap.size() > 0;
     }
 
+    public void setDdlVersionId(@NotNull Long versionId) {
+        super.setDdlVersionId(versionId);
+        if (null != indexTablePreparedDataMap) {
+            indexTablePreparedDataMap.values().forEach(p -> p.setDdlVersionId(versionId));
+        }
+    }
 }

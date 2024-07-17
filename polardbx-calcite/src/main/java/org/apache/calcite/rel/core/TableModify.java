@@ -747,6 +747,8 @@ public abstract class TableModify extends SingleRel {
       if (table instanceof SqlIdentifier || table instanceof SqlDynamicParam) {
         // Table
         this.columnCount = refTables.get(0).getRowType().getFieldCount();
+      } else if (RelOptUtil.isUnion(table)) {
+        this.columnCount = RelOptUtil.getColumnCount(table);
       } else {
         // Subquery
         SqlSelect subquery = (SqlSelect) table;

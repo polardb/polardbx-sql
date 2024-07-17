@@ -18,11 +18,21 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
+import io.airlift.slice.Slice;
+import org.apache.hadoop.yarn.webapp.hamlet2.Hamlet;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.Random;
+import java.util.TimeZone;
 
 public class DataTypeTest {
     @Test
@@ -168,5 +178,63 @@ public class DataTypeTest {
         Assert.assertEquals(Decimal.fromString("1E66"), bdType.getMaxValue());
         Assert.assertTrue(bdType.getMaxValueToDecimal().compareTo(new BigDecimal("1E66")) == 0);
         Assert.assertTrue(bdType.getMinValueToDecimal().compareTo(new BigDecimal("-1E66")) == 0);
+    }
+
+    @Test
+    public void testTimestampFsp() {
+        Random random = new Random();
+        for (int i = 0; i < 1000; i++) {
+            MysqlDateTime mysqlDateTime = new MysqlDateTime(2024, 1, 31, 0, 0, 0, random.nextInt(1000 * 1000) * 1000);
+
+            MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(
+                mysqlDateTime,
+                null,
+                TimeZone.getDefault().toZoneId()
+            );
+            long timeValLong = XResultUtil.timeValToLong(timeVal);
+
+            MySQLTimeVal newTimeVal = XResultUtil.longToTimeValue(timeValLong);
+            Assert.assertEquals(timeVal.getSeconds(), newTimeVal.getSeconds());
+            Assert.assertEquals(timeVal.getNano(), newTimeVal.getNano());
+        }
+    }
+
+    @Test
+    public void testBinary() {
+        BytesType bytesType = new BytesType();
+        Assert.assertTrue(bytesType.compare("abcd", "bcd") < 0);
+        Assert.assertTrue(bytesType.compare("bcd", "abcd") > 0);
+        Assert.assertTrue(bytesType.compare("aaaaaa", "aaaaaa") == 0);
+        Assert.assertTrue(bytesType.compare("aaaaa", "aaaaaa") < 0);
+        Assert.assertTrue(bytesType.compare("aaaaaa", "aaaaa") > 0);
+    }
+
+    @Test
+    public void testEnum() {
+        EnumType enumType = new EnumType(Arrays.asList("a", "b", "c"));
+
+        // Test for valid enum value
+        Assert.assertEquals("a", enumType.convertTo(1));
+        Assert.assertEquals("b", enumType.convertTo(2));
+        Assert.assertEquals("c", enumType.convertTo(3));
+
+        // Test for default invalid enum value
+        Assert.assertEquals("", enumType.convertTo(0));
+        // Test for null enum value
+        Assert.assertNull(enumType.convertTo(4));
+
+        EnumValue enumValueA = new EnumValue(enumType, "a");
+        EnumValue enumValueB = new EnumValue(enumType, "b");
+        EnumValue enumValueEmpty = new EnumValue(enumType, "");
+
+        LongType longType = new LongType();
+        Assert.assertEquals(1L, enumType.convertTo(longType, enumValueA));
+        Assert.assertEquals(2L, enumType.convertTo(longType, enumValueB));
+        Assert.assertEquals(0L, enumType.convertTo(longType, enumValueEmpty));
+
+        VarcharType varcharType = new VarcharType();
+        Assert.assertArrayEquals("a".getBytes(), ((Slice) enumType.convertTo(varcharType, enumValueA)).getBytes());
+        Assert.assertArrayEquals("b".getBytes(), ((Slice) enumType.convertTo(varcharType, enumValueB)).getBytes());
+        Assert.assertArrayEquals("".getBytes(), ((Slice) enumType.convertTo(varcharType, enumValueEmpty)).getBytes());
     }
 }

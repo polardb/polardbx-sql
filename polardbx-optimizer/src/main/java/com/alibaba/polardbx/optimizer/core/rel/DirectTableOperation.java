@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.google.common.collect.ImmutableList;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -57,6 +58,13 @@ public class DirectTableOperation extends BaseTableOperation {
         super(src);
         tableNames = src.tableNames;
         logicalTableNames = src.logicalTableNames;
+    }
+
+    /**
+     * for ut test only
+     */
+    public DirectTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
+        super(cluster, traitSet);
     }
 
     @Override

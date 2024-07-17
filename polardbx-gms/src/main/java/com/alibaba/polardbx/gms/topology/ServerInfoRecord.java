@@ -28,9 +28,10 @@ import java.sql.Timestamp;
 public class ServerInfoRecord implements SystemTableRecord {
 
     public static int INST_TYPE_MASTER = 0;
-    public static int INST_TYPE_SLAVE = 1;
+    public static int INST_TYPE_ROW_SLAVE = 1;
     public static int INST_TYPE_HTAP_SLAVE = 2;
     public static int INST_TYPE_STANDBY = 3;
+    public static int INST_TYPE_COLUMNAR_SLAVE = 4;
 
     public static int SERVER_STATUS_READY = 0;
     public static int SERVER_STATUS_NOT_READY = 1;
@@ -40,7 +41,7 @@ public class ServerInfoRecord implements SystemTableRecord {
     public Timestamp gmtCreated;
     public Timestamp gmtModified;
     public String instId;
-    // 0:master, 1:slave, 2: htap slave, 3: standby
+    // 0:master, 1:slave, 2: htap slave, 3: standby, 4: columnar
     public int instType;
     public String ip;
     public int port;

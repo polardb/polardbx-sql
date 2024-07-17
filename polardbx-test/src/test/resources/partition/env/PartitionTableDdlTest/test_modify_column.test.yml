@@ -1,0 +1,18 @@
+drop table if exists `t_order`;
+
+CREATE TABLE `t_order` (
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL
+) partition by key(order_id);
+
+alter table t_order modify column seller_id varchar(20) COMMENT '抖音卖家'  collate  utf8mb4_bin;
+
+show create table t_order;
+
+alter table t_order default charset utf8;
+
+show create table t_order;
+
+alter table t_order add column tmp_id varchar(20) COMMENT 'test-test'  collate  utf8mb4_general_ci;
+
+show create table t_order;

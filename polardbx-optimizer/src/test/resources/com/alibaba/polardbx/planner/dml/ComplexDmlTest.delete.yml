@@ -355,3 +355,31 @@
   plan: |
 
     logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `test_broadcast` from `test_broadcast` as `test_broadcast` where ((`id` > ?) and (exists (select `test_broadcast_b`.`id` as `id` from `test_broadcast_b` as `test_broadcast_b` where (`test_broadcast`.`name` = `test_broadcast_b`.`name`))))", params="0")
+
+- sql: |
+    delete m from test_hash_tb m,( select 'byname1' as name,'2024-05-10 11:50:00' as create_time, 1 as id union all select 'byname2' ,'2024-05-10 11:51:00', 2 ) r where m.id = r.id
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_tb")
+      project(id0="id0", name0="name0", create_time0="create_time0", name="name", create_time="create_time", id="id")
+        bkajoin(condition="id = id", type="inner")
+          dynamicvalues(tuples=[{ ?0, ?1, ?2 }, { ?3, ?4, ?5 }])
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` where (`id` in (...)) for update")
+
+- sql: |
+    delete m from test_hash_tb m,( select 'byname1' as name,'2024-05-10 11:50:00' as create_time, 1 as id union all select name, create_time, id from test_hash_ta ) r where m.id = r.id
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_tb")
+      project(id="id0", name="name0", create_time="create_time0", name0="name", create_time0="create_time", id0="id")
+        bkajoin(condition="id = id", type="inner")
+          unionall(concurrent=true)
+            project(name="?0", create_time="?1", id="?2")
+              values(table="dual")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `name`, `create_time`, `id` from `test_hash_ta` as `test_hash_ta` for update")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` where (`id` in (...)) for update")

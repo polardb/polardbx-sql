@@ -17,16 +17,10 @@
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import org.apache.calcite.rel.core.DDL;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 public class RenamePartitionTableBuilder extends RenameTableBuilder {
 

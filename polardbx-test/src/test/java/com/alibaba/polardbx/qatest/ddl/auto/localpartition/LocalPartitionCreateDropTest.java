@@ -22,6 +22,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.ParserException;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
@@ -41,6 +42,7 @@ import java.time.LocalDate;
  * <p>
  * 4. 校验各个数值类型字面量的取值范围
  */
+@BinlogIgnore(ignoreReason = "drop local partition的动作目前无法透传给下游，导致binlog实验室上下游数据不一致，暂时忽略")
 public class LocalPartitionCreateDropTest extends LocalPartitionBaseTest {
 
     private String primaryTableName;

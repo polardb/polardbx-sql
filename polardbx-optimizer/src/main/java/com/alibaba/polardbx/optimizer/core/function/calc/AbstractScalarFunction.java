@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc;
 
+import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -37,6 +39,12 @@ public abstract class AbstractScalarFunction implements IScalarFunction {
     protected List<DataType> operandTypes;
 
     protected DataType resultType;
+
+    protected Field resultField;
+
+    protected List<Field> operandFields;
+
+    protected CollationName collation = CollationName.defaultCollation();
 
     protected AbstractScalarFunction(List<DataType> operandTypes, DataType resultType) {
         this.operandTypes = operandTypes;
@@ -117,5 +125,36 @@ public abstract class AbstractScalarFunction implements IScalarFunction {
             coronaFunctionSignatures[i] = FunctionSignature.getFunctionSignature(null, getFunctionNames()[i]);
         }
         return coronaFunctionSignatures;
+    }
+
+    public DataType getOperandType(int index) {
+        if (operandTypes == null || index >= operandTypes.size()) {
+            return null;
+        }
+        return operandTypes.get(index);
+    }
+
+    public Field getResultField() {
+        return resultField;
+    }
+
+    public void setResultField(Field resultField) {
+        this.resultField = resultField;
+    }
+
+    public List<Field> getOperandFields() {
+        return operandFields;
+    }
+
+    public void setOperandFields(List<Field> operandFields) {
+        this.operandFields = operandFields;
+    }
+
+    public CollationName getCollation() {
+        return collation;
+    }
+
+    public void setCollation(CollationName collation) {
+        this.collation = collation;
     }
 }

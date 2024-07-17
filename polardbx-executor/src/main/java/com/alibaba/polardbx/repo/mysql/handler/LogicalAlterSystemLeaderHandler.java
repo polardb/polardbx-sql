@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.AlterSystemReloadLeaderSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemLeader;
 import org.apache.calcite.rel.RelNode;
@@ -57,7 +58,7 @@ public class LogicalAlterSystemLeaderHandler extends HandlerCommon {
         List<List<Map<String, Object>>> results;
         try {
             results = SyncManagerHelper.sync(
-                new AlterSystemReloadLeaderSyncAction(nodeId));
+                new AlterSystemReloadLeaderSyncAction(nodeId), SyncScope.MASTER_ONLY);
         } catch (Throwable e) {
             logger.error(e);
             throw new TddlNestableRuntimeException(e);

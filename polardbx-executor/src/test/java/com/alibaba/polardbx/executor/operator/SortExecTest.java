@@ -52,8 +52,6 @@ public class SortExecTest extends BaseExecTest {
     public static void beforeClass() {
         List<Path> spillPaths = new ArrayList<>();
         spillPaths.add(tempPath);
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().addAll(spillPaths);
         AsyncFileSingleStreamSpillerFactory singleStreamSpillerFactory =
             new AsyncFileSingleStreamSpillerFactory(new SyncFileCleaner(), ImmutableList.of(tempPath), 2);
         spillerFactory = new GenericSpillerFactory(singleStreamSpillerFactory);

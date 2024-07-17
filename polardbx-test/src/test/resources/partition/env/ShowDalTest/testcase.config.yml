@@ -1,1 +1,3 @@
 test_show_profiles
+test_query_tables
+select_db

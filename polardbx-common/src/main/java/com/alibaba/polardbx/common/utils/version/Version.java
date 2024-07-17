@@ -34,6 +34,9 @@ public final class Version {
     private Version() {
     }
 
+    // TODO get product version from config property
+    public static final String PRODUCT_VERSION = "2.4.0";
+
     private static final Logger logger = LoggerFactory.getLogger(Version.class);
     private static final Package myPackage = VersionAnnotation.class.getPackage();
     private static final VersionAnnotation va = myPackage.getAnnotation(VersionAnnotation.class);
@@ -129,7 +132,7 @@ public final class Version {
                         + defaultVersion);
                 } else {
                     String file = codeSource.getLocation().getFile();
-                    version = getVerionByPath(file);
+                    version = getVersionByPath(file);
                 }
             }
 
@@ -159,7 +162,7 @@ public final class Version {
                 if (url != null) {
                     String file = url.getFile();
                     if (file != null && file.length() > 0) {
-                        String version = getVerionByPath(file);
+                        String version = getVersionByPath(file);
                         if (checkVersionNecessary(version)) {
                             Long ver = convertVersion(version);
                             if (ver < minv) {
@@ -237,7 +240,7 @@ public final class Version {
         return false;
     }
 
-    public static String getVerionByPath(String file) {
+    public static String getVersionByPath(String file) {
         if (file != null && file.length() > 0 && StringUtils.contains(file, ".jar")) {
             int index = StringUtils.lastIndexOf(file, ".jar");
             file = file.substring(0, index);

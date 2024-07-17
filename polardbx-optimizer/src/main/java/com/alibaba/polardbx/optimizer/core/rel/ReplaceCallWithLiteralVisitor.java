@@ -29,6 +29,7 @@ import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -132,7 +133,9 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             logicalInsert.getDefaultExprColRexNodes(),
             logicalInsert.getDefaultExprEvalFieldsMapping(),
             logicalInsert.isPushablePrimaryKeyCheck(),
-            logicalInsert.isPushableForeignConstraintCheck());
+            logicalInsert.isPushableForeignConstraintCheck(),
+            logicalInsert.isModifyForeignKey(),
+            logicalInsert.isUkContainsAllSkAndGsiContainsAllUk());
         return newInsert;
     }
 
@@ -496,6 +499,24 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             }
             return node;
         }
+    }
+
+    @Override
+    public RelNode visit(TableScan scan) {
+        if (scan.getFlashback() == null) {
+            return super.visit(scan);
+        }
+        RexNode flashback = scan.getFlashback();
+
+        if (flashback instanceof RexCall) {
+            //遇到特殊函数，需要计算flashback
+            RexNode newNode = rexVisitor.mayCompute(flashback);
+            if (newNode != flashback) {
+                scan.setFlashback(newNode);
+            }
+        }
+
+        return super.visit(scan);
     }
 
     public boolean isReplaceRexCallParam() {

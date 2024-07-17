@@ -48,7 +48,9 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlDdl;
+import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -122,6 +124,12 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             if (tableName.isSimple()) {
                 this.tableName = tableName.getSimple();
                 this.schemaName = PlannerContext.getPlannerContext(ddl).getSchemaName();
+            } else if (tableName.names.size() > 2) {
+                throw new TddlNestableRuntimeException(
+                    String.format(
+                        "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server "
+                            + "version for the right syntax to use near '%s'",
+                        String.join(".", tableName.names)));
             } else {
                 final String schemaName = tableName.names.get(0);
                 if (OptimizerContext.getContext(schemaName) == null) {
@@ -273,6 +281,8 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             return DdlType.CREATE_INDEX;
         case DROP_INDEX:
             return DdlType.DROP_INDEX;
+        case CHECK_COLUMNAR_INDEX:
+            return DdlType.CHECK_COLUMNAR_INDEX;
         case CHECK_GLOBAL_INDEX:
             return DdlType.CHECK_GLOBAL_INDEX;
         case MOVE_DATABASE:
@@ -285,6 +295,10 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             return DdlType.REBALANCE;
         case REFRESH_TOPOLOGY:
             return DdlType.REFRESH_TOPOLOGY;
+        case CREATE_VIEW:
+            return DdlType.CREATE_VIEW;
+        case DROP_VIEW:
+            return DdlType.DROP_VIEW;
         case CREATE_FUNCTION:
             return DdlType.CREATE_FUNCTION;
         case DROP_FUNCTION:

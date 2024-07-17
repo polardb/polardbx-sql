@@ -16,13 +16,9 @@
 
 package com.alibaba.polardbx.common.charset;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
-
-import java.nio.charset.Charset;
-import java.util.Optional;
 
 public class MySQLUnicodeUtils {
     public static byte[][] LATIN1_TO_UTF8_BYTES = {
@@ -94,20 +90,45 @@ public class MySQLUnicodeUtils {
         return sliceOutput.slice();
     }
 
-    public static int utf8ToLatin1(byte[] buff, int begin, int end, byte[] res) {
+    public static boolean utf8ToLatin1(byte[] buff, int begin, int end, byte[] res) {
         int pos = 0;
+        boolean isUtf8FromLatin1 = true;
         while (begin < end && pos < res.length) {
             int uc1 = ((int) buff[begin++]) & 0xFF;
             // 0xxxxxxx
             if (uc1 < 0x80) {
                 res[pos++] = (byte) uc1;
             } else if (begin < end) {
+                if (uc1 != 0xC2 && uc1 != 0xC3) {
+                    isUtf8FromLatin1 = false;
+                }
                 int uc2 = ((int) buff[begin++]) & 0xFF;
                 res[pos++] = (byte) (((uc1 & 0x1f) << 6) | (uc2 ^ 0x80));
             } else {
                 res[pos++] = (byte) 0xFF;
             }
         }
-        return pos;
+        return isUtf8FromLatin1;
+    }
+
+    public static boolean utf8ToLatin1(Slice slice, byte[] res, int len) {
+        int pos = 0, begin = 0, end = slice.length();
+        boolean isUtf8FromLatin1 = true;
+        while (begin < end && pos < len) {
+            int uc1 = ((int) slice.getByte(begin++)) & 0xFF;
+            // 0xxxxxxx
+            if (uc1 < 0x80) {
+                res[pos++] = (byte) uc1;
+            } else if (begin < end) {
+                if (uc1 != 0xC2 && uc1 != 0xC3) {
+                    isUtf8FromLatin1 = false;
+                }
+                int uc2 = ((int) slice.getByte(begin++)) & 0xFF;
+                res[pos++] = (byte) (((uc1 & 0x1f) << 6) | (uc2 ^ 0x80));
+            } else {
+                res[pos++] = (byte) 0xFF;
+            }
+        }
+        return isUtf8FromLatin1;
     }
 }

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
@@ -339,6 +340,10 @@ public class DataTypeUtil {
             return DataTypes.BitType;
         }
 
+        if (v instanceof RowValue) {
+            return DataTypes.RowType;
+        }
+
         throw new OptimizerException("type: " + v.getClass().getSimpleName() + " is not supported");
     }
 
@@ -392,7 +397,8 @@ public class DataTypeUtil {
             || DataTypeUtil.equalsSemantically(DataTypes.MediumIntType, type)
             || DataTypeUtil.equalsSemantically(DataTypes.UMediumIntType, type)
             || DataTypeUtil.equalsSemantically(DataTypes.IntegerType, type)
-            || DataTypeUtil.equalsSemantically(DataTypes.BooleanType, type));
+            || DataTypeUtil.equalsSemantically(DataTypes.BooleanType, type)
+            || DataTypeUtil.equalsSemantically(DataTypes.ByteType, type));
     }
 
     public static boolean isIntType(DataType type) {
@@ -427,6 +433,10 @@ public class DataTypeUtil {
 
     public static boolean isUnderBigintType(DataType dataType) {
         return isUnderLongType(dataType) || dataType.getSqlType() == Types.BIGINT;
+    }
+
+    public static boolean isUnderBigintUnsignedType(DataType dataType) {
+        return isUnderBigintType(dataType) || isBigintUnsigned(dataType);
     }
 
     public static boolean isStringType(DataType type) {
@@ -646,6 +656,13 @@ public class DataTypeUtil {
                 RelDataType calciteType = factory.createEnumSqlType(calciteTypeName, build);
                 return calciteType;
             }
+            if (columnTypeUpper.startsWith("SET")) {
+                SetType setType = parseSetType(columnTypeName);
+                // keep compatible with old manners
+                calciteTypeName = SqlTypeName.CHAR;
+                return factory.createSetSqlType(calciteTypeName, (int) Long.min(precision, Integer.MAX_VALUE),
+                    setType.getSetValues());
+            }
             boolean unsigned = columnTypeUpper.contains("UNSIGNED");
             if (unsigned) {
                 // Some unsigned types are not supported in DRDS, such as DECIMAL/FLOAT/DOUBLE UNSIGNED
@@ -721,6 +738,14 @@ public class DataTypeUtil {
             enums[i] = TStringUtil.substringBetween(enums[i], "'");
         }
         return new EnumType(Arrays.asList(enums));
+    }
+
+    public static SetType parseSetType(String typeSpec) {
+        String[] setValues = TStringUtil.substringBetween(typeSpec, "(", ")").split(",");
+        for (int i = 0; i < setValues.length; i++) {
+            setValues[i] = TStringUtil.substringBetween(setValues[i], "'");
+        }
+        return new SetType(Arrays.asList(setValues));
     }
 
     /**
@@ -884,6 +909,7 @@ public class DataTypeUtil {
         switch (sqlKind) {
         case COUNT:
         case CHECK_SUM:
+        case CHECK_SUM_V2:
             return DataTypes.LongType;
         case MIN:
         case MAX:

@@ -20,8 +20,7 @@ import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.SortAggExec;
 import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.core.rel.SortAgg;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
@@ -55,25 +54,20 @@ public class SortAggExecFactory extends ExecutorFactory {
         if (executors.isEmpty()) {
             for (int k = 0; k < parallelism; k++) {
                 MemoryAllocatorCtx memoryAllocator = context.getMemoryPool().getMemoryAllocatorCtx();
-                Executor input = getInputs().get(0).createExecutor(context, k);
-                List<DataType> outputDataTypes = CalciteUtils.getTypes(sortAgg.getRowType());
                 List<Aggregator> aggregators =
-                    AggregateUtils.convertAggregators(input.getDataTypes(), outputDataTypes
-                            .subList(sortAgg.getGroupCount(), sortAgg.getGroupCount() + sortAgg.getAggCallList().size()),
-                        sortAgg.getAggCallList(), context, memoryAllocator);
+                    AggregateUtils.convertAggregators(sortAgg.getAggCallList(), context, memoryAllocator);
 
+                Executor input = getInputs().get(0).createExecutor(context, k);
                 ImmutableBitSet gp = sortAgg.getGroupSet();
                 int[] groups = AggregateUtils.convertBitSet(gp);
                 Executor exec =
                     new SortAggExec(
                         input, groups, aggregators, CalciteUtils.getTypes(sortAgg.getRowType()), context);
-                exec.setId(sortAgg.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(sortAgg, exec, context);
-                }
+                registerRuntimeStat(exec, sortAgg, context);
                 executors.add(exec);
             }
         }
         return executors;
     }
+
 }

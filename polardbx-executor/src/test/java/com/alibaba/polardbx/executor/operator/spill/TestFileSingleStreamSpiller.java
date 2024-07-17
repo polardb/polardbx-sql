@@ -29,15 +29,14 @@
  */
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterators;
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeFactory;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterators;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -46,9 +45,9 @@ import org.junit.Test;
 import java.io.File;
 import java.nio.file.Paths;
 
-import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static com.alibaba.polardbx.executor.operator.BaseExecTest.assertExecResultByRow;
 import static com.alibaba.polardbx.executor.operator.util.RowChunkBuilder.rowChunkBuilder;
+import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static junit.framework.TestCase.assertEquals;
 
@@ -60,8 +59,6 @@ public class TestFileSingleStreamSpiller {
     @Before
     public void setUp() throws Exception {
         spillPath.mkdirs();
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().add(spillPath.toPath());
     }
 
     @After
@@ -78,7 +75,7 @@ public class TestFileSingleStreamSpiller {
             DataTypes.LongType, DataTypes.DoubleType));
         FileSingleStreamSpiller spiller =
             new FileSingleStreamSpiller(serde, executor, new SyncFileCleaner(), spillPath.toPath(),
-                new QuerySpillSpaceMonitor().newLocalSpillMonitor());
+                new QuerySpillSpaceMonitor("test").newLocalSpillMonitor());
 
         Chunk page = buildPage();
 

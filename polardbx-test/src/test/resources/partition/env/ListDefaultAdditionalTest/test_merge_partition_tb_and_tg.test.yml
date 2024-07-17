@@ -6,7 +6,7 @@ create table tb1(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -28,8 +28,8 @@ select b from tb1 partition(p2sp2) order by b;
 select b from tb1 partition(pdsp1_d) order by b;
 select b from tb1 partition(pdsp2) order by b;
 show create table tb1;
-
-# non-template
+  
+  # non-template
 create tablegroup tg2;
 create table tb2(
 a int,
@@ -59,14 +59,14 @@ select b from tb2 partition(p2) order by b;
 select b from tb2 partition(p2sp1_d) order by b;
 select b from tb2 partition(p2sp2) order by b;
 show create table tb2;
-
-# logical-template
+  
+  # logical-template
 create tablegroup tg3;
 create table tb3(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -85,8 +85,8 @@ select b from tb3 partition(p1_dsp1) order by b;
 select b from tb3 partition(p1_dsp2) order by b;
 select b from tb3 partition(p1_dspd) order by b;
 show create table tb3;
-
-# logical non-template
+  
+  # logical non-template
 create tablegroup tg4;
 create table tb4(
 a int,
@@ -138,7 +138,7 @@ create table tb6(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -161,7 +161,7 @@ select b from tb6 partition(pdsp1_d) order by b;
 select b from tb6 partition(pdsp2) order by b;
 show create table tb6;
   
-# non-template
+  # non-template
 create table tb7(
 a int,
 b varchar(20)
@@ -196,7 +196,7 @@ create table tb8(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -216,7 +216,7 @@ select b from tb8 partition(p1_dsp2) order by b;
 select b from tb8 partition(p1_dspd) order by b;
 show create table tb8;
   
-# logical non-template
+  # logical non-template
 create table tb9(
 a int,
 b varchar(20)
@@ -245,7 +245,7 @@ alter table tb9 merge partitions p2, pd to p2_d;
 select b from tb9 partition(p2_d) order by b;
 show create table tb9;
   
-# normal partition
+  # normal partition
 create table tb10(
 a int,
 b int

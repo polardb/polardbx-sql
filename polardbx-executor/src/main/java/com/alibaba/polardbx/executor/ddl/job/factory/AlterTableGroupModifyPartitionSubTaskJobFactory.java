@@ -27,12 +27,12 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePrepa
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupModifyPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
-import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
@@ -52,7 +52,6 @@ import org.apache.calcite.sql.SqlPartitionValueItem;
 import org.apache.calcite.sql.SqlSubPartition;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;

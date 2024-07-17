@@ -68,7 +68,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
     private static final String ALTER_TABLE_UTF8MB4 = "ALTER TABLE `" + TABLE_NAME + "` CHARACTER SET = UTF8MB4";
 
     private static final String SELECT_SQL =
-        "SELECT SCHEMA_NAME, TABLE_NAME, COLUMN_NAME, CARDINALITY, CMSKETCH, HISTOGRAM, TOPN, NULL_COUNT, SAMPLE_RATE, UNIX_TIMESTAMP(GMT_MODIFIED) AS UNIX_TIME FROM `"
+        "SELECT SCHEMA_NAME, TABLE_NAME, COLUMN_NAME, CARDINALITY, CMSKETCH, HISTOGRAM, TOPN, NULL_COUNT, SAMPLE_RATE, UNIX_TIMESTAMP(GMT_MODIFIED) AS UNIX_TIME, EXTEND_FIELD FROM `"
             + TABLE_NAME + "` ";
 
     private static final String DELETE_TABLE_SQL = "DELETE FROM `" + TABLE_NAME + "` WHERE SCHEMA_NAME = '%s' AND "
@@ -86,7 +86,7 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
      * select table rows sql, need to concat with values
      */
     private static final String REPLACE_SQL = "REPLACE INTO `" + TABLE_NAME + "` (`SCHEMA_NAME`, `TABLE_NAME`, "
-        + "`COLUMN_NAME`, `CARDINALITY`, `CMSKETCH`, `HISTOGRAM`, `TOPN`, `NULL_COUNT`, `SAMPLE_RATE`) VALUES ";
+        + "`COLUMN_NAME`, `CARDINALITY`, `CMSKETCH`, `HISTOGRAM`, `TOPN`, `NULL_COUNT`, `SAMPLE_RATE`, `EXTEND_FIELD`) VALUES ";
 
     private static final int batchSize = 30;
 
@@ -272,7 +272,8 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
                         TopN.deserializeFromJson(rs.getString("TOPN")),
                         rs.getLong("NULL_COUNT"),
                         rs.getFloat("SAMPLE_RATE"),
-                        rs.getLong("UNIX_TIME"));
+                        rs.getLong("UNIX_TIME"),
+                        rs.getString("EXTEND_FIELD"));
 
                     rows.add(row);
                 } catch (Exception e) {
@@ -324,33 +325,34 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
                     } else {
                         sqlBuilder.append(",");
                     }
-                    sqlBuilder.append("(?,?,?,?,?,?,?,?,?)");
+                    sqlBuilder.append("(?,?,?,?,?,?,?,?,?,?)");
                 }
                 pps = conn.prepareStatement(sql = sqlBuilder.toString());
                 for (int k = 0; k < batchCount; k++) {
                     SystemTableColumnStatistic.Row row = rowList.get(k + index - batchCount);
-                    pps.setString(k * 9 + 1, row.getSchema().toLowerCase());
-                    pps.setString(k * 9 + 2, row.getTableName().toLowerCase());
-                    pps.setString(k * 9 + 3, row.getColumnName().toLowerCase());
-                    pps.setLong(k * 9 + 4, row.getCardinality());
+                    pps.setString(k * 10 + 1, row.getSchema().toLowerCase());
+                    pps.setString(k * 10 + 2, row.getTableName().toLowerCase());
+                    pps.setString(k * 10 + 3, row.getColumnName().toLowerCase());
+                    pps.setLong(k * 10 + 4, row.getCardinality());
                     String cmSketchString =
                         Base64.encodeBase64String(CountMinSketch.serialize(new CountMinSketch(1, 1, 1)));
-                    pps.setString(k * 9 + 5, cmSketchString);
+                    pps.setString(k * 10 + 5, cmSketchString);
                     String histogramString;
                     if (row.getHistogram() != null) {
                         histogramString = Histogram.serializeToJson(row.getHistogram());
                     } else {
                         histogramString = Histogram.serializeToJson(new Histogram(1, DataTypes.IntegerType, 1));
                     }
-                    pps.setString(k * 9 + 6, histogramString);
+                    pps.setString(k * 10 + 6, histogramString);
 
                     String topN = null;
                     if (row.getTopN() != null) {
                         topN = TopN.serializeToJson(row.getTopN());
                     }
-                    pps.setString(k * 9 + 7, topN);
-                    pps.setLong(k * 9 + 8, row.getNullCount());
-                    pps.setFloat(k * 9 + 9, row.getSampleRate());
+                    pps.setString(k * 10 + 7, topN);
+                    pps.setLong(k * 10 + 8, row.getNullCount());
+                    pps.setFloat(k * 10 + 9, row.getSampleRate());
+                    pps.setString(k * 10 + 10, row.getExtendField());
                 }
                 pps.executeUpdate();
                 pps.close();

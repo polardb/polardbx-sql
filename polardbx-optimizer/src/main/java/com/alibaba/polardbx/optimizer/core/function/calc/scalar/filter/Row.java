@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 
+import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -40,24 +40,6 @@ public class Row extends AbstractCollationScalarFunction {
             list.add(arg);
         }
         return new RowValue(list);
-    }
-
-    public static class RowValue {
-
-        private List<Object> values;
-
-        public RowValue(List<Object> values) {
-            this.values = values;
-        }
-
-        public List<Object> getValues() {
-            return values;
-        }
-
-        public void setValues(List<Object> values) {
-            this.values = values;
-        }
-
     }
 
     @Override

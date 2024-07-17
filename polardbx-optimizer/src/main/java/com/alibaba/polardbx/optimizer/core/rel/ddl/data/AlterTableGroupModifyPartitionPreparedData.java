@@ -18,20 +18,21 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -71,12 +72,12 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
     }
 
     @Override
-    public void prepareInvisiblePartitionGroup() {
+    public void prepareInvisiblePartitionGroup(Boolean hasSubPartition) {
         List<PartitionGroupRecord> inVisiblePartitionGroups = new ArrayList<>();
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
             .getTableGroupConfigByName(getTableGroupName());
         assert tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getAllTables());
-        String firstTbName = tableGroupConfig.getAllTables().get(0).getLogTbRec().getTableName();
+        String firstTbName = tableGroupConfig.getAllTables().get(0);
         PartitionInfo firstTblPartInfo =
             OptimizerContext.getContext(getSchemaName()).getPartitionInfoManager().getPartitionInfo(firstTbName);
         Long tableGroupId = firstTblPartInfo.getTableGroupId();
@@ -96,6 +97,11 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
             useSubPart = true;
             useSubPartTemp = firstTblPartInfo.getPartitionBy().getSubPartitionBy().isUseSubPartTemplate();
         }
+
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        List<String> partNames = new ArrayList<>();
+        List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+        PartitionInfoUtil.getPartitionName(firstTblPartInfo, partNames, subPartNamePairs);
 
         if (isDropVal()) {
 
@@ -118,8 +124,9 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
                      * For generation the names of phy subpart specs  for templated subpart,
                      * should use the format: partName + newSubPartTempName
                      */
-                    List<String> tmpSubPartTempNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
-                        1, alreadyExistsSubPartNames, isModifySubPart);
+                    List<String> tmpSubPartTempNames =
+                        PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                            1, alreadyExistsSubPartNames, isModifySubPart);
 
                     String tmpSubPartTemp = tmpSubPartTempNames.get(0);
                     List<PartitionSpec> firstPartLevelSpecs = firstTblPartInfo.getPartitionBy().getPartitions();
@@ -138,8 +145,9 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
                      * For generation the names of phy subpart specs,
                      * should use the format: spxxx
                      */
-                    tempPartitionNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
-                        oldPartNameCountToBeModified, alreadyExistsSubPartNames, isModifySubPart);
+                    tempPartitionNames =
+                        PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                            oldPartNameCountToBeModified, alreadyExistsSubPartNames, isModifySubPart);
                 }
             } else {
                 if (useSubPart) {
@@ -163,8 +171,9 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
                      * which contains all the values to be dropped
                      */
                     int parentPartCnt = oldParentPartInfoMap.keySet().size();
-                    List<String> newTmpParentPartNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
-                        parentPartCnt, alreadyExistsSubPartNames, false);
+                    List<String> newTmpParentPartNames =
+                        PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                            parentPartCnt, alreadyExistsSubPartNames, false);
 
                     List<String> parentParts = oldParentPartInfoMap.keySet().stream().collect(Collectors.toList());
                     for (int j = 0; j < parentPartCnt; j++) {
@@ -194,7 +203,8 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
                              */
                             int subPartCnt = subPartSpecs.size();
                             List<String> newTmpSubPartNames =
-                                PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
+                                PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames,
+                                    subPartNamePairs,
                                     subPartCnt, alreadyExistsSubPartNames, true);
                             for (int k = 0; k < newTmpSubPartNames.size(); k++) {
                                 parentPartNames.add(newTempPartName);
@@ -207,9 +217,10 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
                      * For generation the names of part specs,
                      * should use the format: pxxx
                      */
-                    tempPartitionNames = PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig,
-                        oldPartNameCountToBeModified, alreadyExistsSubPartNames,
-                        isModifySubPart);
+                    tempPartitionNames =
+                        PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
+                            oldPartNameCountToBeModified, alreadyExistsSubPartNames,
+                            isModifySubPart);
 
                 }
             }

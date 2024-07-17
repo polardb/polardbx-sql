@@ -64,7 +64,7 @@ public class ReadOnlyInstanceTest extends CrudBasedLockTestCase {
 
     private boolean checkReadOnlyInstance() throws SQLException {
         try (Statement stmt = tddlConnection.createStatement();
-            ResultSet rs = stmt.executeQuery("show variables like 'drds_instance_role'")) {
+            ResultSet rs = stmt.executeQuery("show variables like 'polardbx_instance_role'")) {
             Assert.assertTrue(rs.next());
             String role = rs.getString("Value");
             return !"MASTER".equals(role);

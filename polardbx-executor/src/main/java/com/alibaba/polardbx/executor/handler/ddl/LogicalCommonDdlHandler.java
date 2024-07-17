@@ -19,31 +19,34 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLNullExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnPrimaryKey;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnReference;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraintImpl;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableChangeColumn;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableModifyColumn;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
+import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.RecycleBinManager;
@@ -57,12 +60,11 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.serializable.SerializableClassMapper;
-import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -72,6 +74,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
@@ -87,7 +90,6 @@ import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlChangeColumn;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
-import org.apache.calcite.sql.SqlDropPrimaryKey;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlModifyColumn;
@@ -100,16 +102,15 @@ import org.apache.calcite.util.Litmus;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
-import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 import static com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler.reorgLogicalColumnOrder;
+import static com.alibaba.polardbx.executor.handler.ddl.LogicalCreateTableHandler.generateCreateTableSqlForLike;
+import static com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter.unwrapGsiName;
 
 public abstract class LogicalCommonDdlHandler extends HandlerCommon {
 
@@ -231,7 +232,9 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
 
         executionContext.setDdlContext(ddlContext);
 
-        rewriteOriginSqlWithForeignKey(logicalDdlPlan, executionContext, schemaName, objectName);
+        ForeignKeyUtils.rewriteOriginSqlWithForeignKey(logicalDdlPlan, executionContext, schemaName, objectName);
+
+        rewriteOriginSqlToCdcMarkSql(logicalDdlPlan, executionContext, schemaName, objectName);
     }
 
     protected void handleDdlRequest(DdlJob ddlJob, ExecutionContext executionContext) {
@@ -332,196 +335,6 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
         }
     }
 
-    protected Pair<String, SqlCreateTable> genPrimaryTableInfoAfterModifyColumn(BaseDdlOperation logicalDdlPlan,
-                                                                                ExecutionContext executionContext,
-                                                                                Map<String, String> virtualColumnMap,
-                                                                                Map<String, String> columnNewDef,
-                                                                                List<String> oldPrimaryKeys) {
-        Pair<String, SqlCreateTable> primaryTableInfo = genPrimaryTableInfo(logicalDdlPlan, executionContext);
-        oldPrimaryKeys.addAll(primaryTableInfo.getValue().getPrimaryKey().getColumns()
-            .stream().map(e -> e.getColumnNameStr().toLowerCase()).collect(Collectors.toList()));
-
-        SqlAlterTable sqlAlterTable = (SqlAlterTable) logicalDdlPlan.getNativeSqlNode();
-
-        final List<SQLStatement> statementList =
-            SQLUtils.parseStatementsWithDefaultFeatures(primaryTableInfo.getKey(), JdbcConstants.MYSQL);
-        final MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
-
-        boolean isFirst = false;
-        String alterSourceSql;
-        SqlIdentifier colName = null;
-        SqlIdentifier afterColName = null;
-        SqlColumnDeclaration newColumnDef = null;
-        SQLColumnDefinition newColumnDefinition = null;
-        for (SqlAlterSpecification sqlAlterSpecification : sqlAlterTable.getAlters()) {
-            if (sqlAlterSpecification instanceof SqlModifyColumn) {
-                SqlModifyColumn sqlModifyColumn = (SqlModifyColumn) sqlAlterSpecification;
-                isFirst = sqlModifyColumn.isFirst();
-                afterColName = sqlModifyColumn.getAfterColumn();
-                colName = sqlModifyColumn.getColName();
-                alterSourceSql = sqlModifyColumn.getSourceSql();
-
-                final List<SQLStatement> alterStatement =
-                    SQLUtils.parseStatementsWithDefaultFeatures(alterSourceSql, JdbcConstants.MYSQL);
-                newColumnDefinition = ((MySqlAlterTableModifyColumn) alterStatement.get(0)
-                    .getChildren().get(1)).getNewColumnDefinition();
-            } else if (sqlAlterSpecification instanceof SqlChangeColumn) {
-                SqlChangeColumn sqlChangeColumn = (SqlChangeColumn) sqlAlterSpecification;
-                if (!sqlChangeColumn.getOldName()
-                    .equalsDeep(sqlChangeColumn.getNewName(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                        "Do not support changing column name of sharding key");
-                }
-
-                isFirst = sqlChangeColumn.isFirst();
-                afterColName = sqlChangeColumn.getAfterColumn();
-                colName = sqlChangeColumn.getOldName();
-                alterSourceSql = sqlChangeColumn.getSourceSql();
-
-                final List<SQLStatement> alterStatement =
-                    SQLUtils.parseStatementsWithDefaultFeatures(alterSourceSql, JdbcConstants.MYSQL);
-                newColumnDefinition = ((MySqlAlterTableChangeColumn) alterStatement.get(0)
-                    .getChildren().get(1)).getNewColumnDefinition();
-            } else if (sqlAlterSpecification instanceof SqlDropPrimaryKey) {
-                final Iterator<SQLTableElement> it = stmt.getTableElementList().iterator();
-                while (it.hasNext()) {
-                    SQLTableElement tableElement = it.next();
-                    if (tableElement instanceof SQLColumnDefinition) {
-                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
-                        if (null != columnDefinition.getConstraints()) {
-                            final Iterator<SQLColumnConstraint> constraintIt =
-                                columnDefinition.getConstraints().iterator();
-                            while (constraintIt.hasNext()) {
-                                final SQLColumnConstraint constraint = constraintIt.next();
-                                if (constraint instanceof SQLColumnPrimaryKey) {
-                                    constraintIt.remove();
-                                } else if (constraint instanceof SQLColumnReference) {
-                                    // remove foreign key
-                                    constraintIt.remove();
-                                }
-                            }
-                        }
-                    } else if (tableElement instanceof MySqlPrimaryKey) {
-                        it.remove();
-                    }
-                }
-                continue;
-            } else if (sqlAlterSpecification instanceof SqlAddPrimaryKey) {
-                SqlAddPrimaryKey sqlAddPrimaryKey = (SqlAddPrimaryKey) sqlAlterSpecification;
-                final Iterator<SQLTableElement> it = stmt.getTableElementList().iterator();
-                Set<String> colNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-                sqlAddPrimaryKey.getColumns().forEach(e -> colNameSet.add(e.getColumnNameStr()));
-
-                boolean hasImplicitKey = false;
-                while (it.hasNext()) {
-                    SQLTableElement tableElement = it.next();
-                    if (tableElement instanceof SQLColumnDefinition) {
-                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
-                        if (colNameSet.contains(SQLUtils.normalizeNoTrim(columnDefinition.getColumnName()))) {
-                            SQLNotNullConstraint sqlNotNullConstraint = new SQLNotNullConstraint();
-                            columnDefinition.addConstraint(sqlNotNullConstraint);
-                            if (columnDefinition.getDefaultExpr() instanceof SQLNullExpr) {
-                                columnDefinition.setDefaultExpr(null);
-                            }
-                            colNameSet.remove(SQLUtils.normalizeNoTrim(columnDefinition.getColumnName()));
-                        }
-                        if (StringUtils.equalsIgnoreCase(IMPLICIT_COL_NAME,
-                            SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName()))) {
-                            hasImplicitKey = true;
-                        }
-                    } else if (tableElement instanceof MySqlPrimaryKey) {
-                        it.remove();
-                    }
-                }
-
-                if (!colNameSet.isEmpty()) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                        "Unknown column " + colNameSet);
-                }
-
-                // add new primary key
-                List<SQLSelectOrderByItem> colNames = sqlAddPrimaryKey.getColumns().stream()
-                    .map(e -> new SQLSelectOrderByItem(new SQLIdentifierExpr(e.getColumnNameStr())))
-                    .collect(Collectors.toList());
-
-                MySqlPrimaryKey newPrimaryKey = new MySqlPrimaryKey();
-                SQLIndexDefinition indexDefinition = newPrimaryKey.getIndexDefinition();
-                indexDefinition.setKey(true);
-                indexDefinition.setType("PRIMARY");
-
-                indexDefinition.getColumns().addAll(colNames);
-
-                stmt.getTableElementList().add(newPrimaryKey);
-
-                // add local index for implicit key (auto increment)
-                if (hasImplicitKey) {
-                    MySqlKey implicitKey = new MySqlKey();
-                    implicitKey.setName(IMPLICIT_KEY_NAME);
-                    SQLIndexDefinition indexDef = implicitKey.getIndexDefinition();
-                    indexDef.setKey(true);
-                    indexDef.getColumns().add(new SQLSelectOrderByItem(new SQLIdentifierExpr(IMPLICIT_COL_NAME)));
-
-                    stmt.getTableElementList().add(implicitKey);
-                }
-                continue;
-            } else {
-                continue;
-            }
-
-            int first = -1;
-            int m = 0;
-            boolean isAutoIncrement = false;
-            for (; m < stmt.getTableElementList().size(); ++m) {
-                SQLTableElement tableElement = stmt.getTableElementList().get(m);
-                if (tableElement instanceof SQLColumnDefinition) {
-                    first = first == -1 ? m : first;
-                    final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
-                    final String columnName = SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName());
-                    if (columnName.equalsIgnoreCase(colName.getLastName())) {
-                        isAutoIncrement = columnDefinition.isAutoIncrement();
-                        stmt.getTableElementList().remove(m);
-                        break;
-                    }
-                }
-            }
-
-            int n = 0;
-            if (afterColName != null) {
-                for (; n < stmt.getTableElementList().size(); ++n) {
-                    SQLTableElement tableElement = stmt.getTableElementList().get(n);
-                    if (tableElement instanceof SQLColumnDefinition) {
-                        final SQLColumnDefinition columnDefinition = (SQLColumnDefinition) tableElement;
-                        final String columnName =
-                            SQLUtils.normalizeNoTrim(columnDefinition.getName().getSimpleName());
-                        if (columnName.equalsIgnoreCase(afterColName.getLastName())) {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (isFirst) {
-                stmt.getTableElementList().add(first, newColumnDefinition);
-            } else if (afterColName != null) {
-                stmt.getTableElementList().add(n + 1, newColumnDefinition);
-            } else {
-                stmt.getTableElementList().add(m, newColumnDefinition);
-            }
-
-            if (!isAutoIncrement) {
-                String colNameStr = colName.getLastName();
-                virtualColumnMap.put(colNameStr, GsiUtils.generateRandomGsiName(colNameStr));
-                columnNewDef.put(colNameStr, TableColumnUtils.getDataDefFromColumnDefNoDefault(newColumnDefinition));
-            }
-        }
-
-        String sourceSql = stmt.toString();
-        SqlCreateTable primaryTableNode =
-            (SqlCreateTable) new FastsqlParser().parse(sourceSql, executionContext).get(0);
-
-        return new Pair<>(sourceSql, primaryTableNode);
-    }
-
     protected boolean isAvailableForRecycleBin(String tableName, ExecutionContext executionContext) {
         final String appName = executionContext.getAppName();
         final RecycleBin recycleBin = RecycleBinManager.instance.getByAppName(appName);
@@ -530,48 +343,171 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
             recycleBin != null && !recycleBin.hasForeignConstraint(appName, tableName);
     }
 
-    protected void rewriteOriginSqlWithForeignKey(BaseDdlOperation logicalDdlPlan, ExecutionContext ec,
-                                                  String schemaName, String tableName) {
-        // rewrite origin sql for different naming behaviours in 5.7 & 8.0
-        boolean createTableWithFk = logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE
-            && !((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().getAddedForeignKeys().isEmpty();
-        boolean alterTableAddFk =
-            logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE && logicalDdlPlan instanceof LogicalAlterTable
-                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().size() == 1
-                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
-                == SqlKind.ADD_FOREIGN_KEY;
-        boolean alterTableDropFk =
-            logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE && logicalDdlPlan instanceof LogicalAlterTable
-                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().size() == 1
-                && ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0).getKind()
-                == SqlKind.DROP_FOREIGN_KEY;
-        if (createTableWithFk) {
-            ec.getDdlContext().setForeignKeyOriginalSql(
-                ((LogicalCreateTable) logicalDdlPlan).getSqlCreateTable().toString());
-        } else if (alterTableAddFk) {
-            final SqlAlterTable sqlTemplate = ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable();
+    // rewrite sql for cdc, @see com.alibaba.polardbx.cdc.ImplicitTableGroupUtil
+    // rewrite reason : adding a name for anonymous indexes, then we can add implicit table-group for the indexes
+    protected void rewriteOriginSqlToCdcMarkSql(BaseDdlOperation logicalDdlPlan, ExecutionContext ec,
+                                                String schemaName, String tableName) {
+        // some sql has no schema name.
+        // e.g. rebalance database policy='partition_balance'
+        if (StringUtils.isEmpty(logicalDdlPlan.getSchemaName())) {
+            return;
+        }
 
-            SqlAddForeignKey sqlAddForeignKey =
-                (SqlAddForeignKey) ((LogicalAlterTable) logicalDdlPlan).getSqlAlterTable().getAlters().get(0);
-            // create foreign key constraints symbol
-            String symbol =
-                ForeignKeyUtils.getForeignKeyConstraintName(schemaName, tableName);
-            if (sqlAddForeignKey.getConstraint() == null) {
-                sqlAddForeignKey.setConstraint(new SqlIdentifier(SQLUtils.normalizeNoTrim(symbol), SqlParserPos.ZERO));
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName());
+
+        // only auto mode database support rewrite, because drds mode do not support table group and do not support using same GSI name in different table
+        // rewrite create like to actual create sql for adding implicit table group
+        // because target table`s table-group may be different from the base table`s table-group
+        if (logicalDdlPlan instanceof LogicalCreateTable) {
+            LogicalCreateTable logicalCreateTable = (LogicalCreateTable) logicalDdlPlan;
+            SqlCreateTable sqlCreateTable = (SqlCreateTable) logicalCreateTable.relDdl.sqlNode;
+            if (sqlCreateTable.getLikeTableName() != null) {
+                if (isNewPartDb) {
+                    final String sourceCreateTableSql = generateCreateTableSqlForLike(sqlCreateTable, ec);
+                    MySqlCreateTableStatement stmt =
+                        (MySqlCreateTableStatement) FastsqlUtils.parseSql(sourceCreateTableSql).get(0);
+                    stmt.getTableSource()
+                        .setSimpleName(SqlIdentifier.surroundWithBacktick(logicalCreateTable.getTableName()));
+                    ec.getDdlContext().setCdcRewriteDdlStmt(stmt.toString(VisitorFeature.OutputHashPartitionsByRange));
+                }
+                return;
             }
-            SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
-            writer.setAlwaysUseParentheses(true);
-            writer.setSelectListItemsOnSeparateLines(false);
-            writer.setIndentation(0);
-            final int leftPrec = sqlTemplate.getOperator().getLeftPrec();
-            final int rightPrec = sqlTemplate.getOperator().getRightPrec();
-            sqlTemplate.getAlters().clear();
-            sqlTemplate.getAlters().add(sqlAddForeignKey);
-            sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
+        }
 
-            ec.getDdlContext().setForeignKeyOriginalSql(writer.toSqlString().getSql());
-        } else if (alterTableDropFk) {
-            ec.getDdlContext().setForeignKeyOriginalSql(ec.getOriginSql());
+        String originSql = ec.getOriginSql();
+        final List<SQLStatement> statementList =
+            SQLParserUtils.createSQLStatementParser(originSql, DbType.mysql, SQL_PARSE_FEATURES).parseStatementList();
+        if (statementList.isEmpty()) {
+            return;
+        }
+
+        if (logicalDdlPlan.getDdlType() == DdlType.CREATE_TABLE &&
+            statementList.get(0) instanceof MySqlCreateTableStatement) {
+            // MySqlExplainStatement also  belongs to CREATE_TABLE
+            final MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
+
+            Set<String> indexNamesSet = new HashSet<>();
+            for (final SQLTableElement tableElement : stmt.getTableElementList()) {
+                if (tableElement instanceof SQLConstraintImpl) {
+                    final SQLConstraintImpl constraint = (SQLConstraintImpl) tableElement;
+                    final SQLName indexName = constraint.getName();
+                    if (indexName != null && indexName.getSimpleName() != null
+                        && !indexName.getSimpleName().isEmpty()) {
+                        indexNamesSet.add(indexName.getSimpleName());
+                    }
+                }
+            }
+
+            for (final SQLTableElement tableElement : stmt.getTableElementList()) {
+                if (tableElement instanceof SQLConstraintImpl) {
+                    final SQLConstraintImpl constraint = (SQLConstraintImpl) tableElement;
+
+                    // Assign name if no name.
+                    if (!(tableElement instanceof MySqlPrimaryKey) &&
+                        (null == constraint.getName() || constraint.getName().getSimpleName().isEmpty())) {
+                        String baseName = null;
+                        int prob = 0;
+                        if (tableElement instanceof MySqlKey) {
+                            baseName = ((MySqlKey) tableElement).getColumns().get(0).getExpr().toString();
+                        } else if (tableElement instanceof MySqlTableIndex) {
+                            SQLExpr expr = ((MySqlTableIndex) tableElement).getColumns().get(0).getExpr();
+                            if (expr instanceof SQLMethodInvokeExpr) {
+                                baseName = ((SQLMethodInvokeExpr) expr).getMethodName();
+                            } else {
+                                baseName = expr.toString();
+                            }
+                        }
+                        if (baseName != null) {
+                            baseName = SQLUtils.normalizeNoTrim(baseName);
+                            if (!indexNamesSet.contains(baseName)) {
+                                constraint.setName(baseName);
+                                indexNamesSet.add(baseName);
+                            } else {
+                                prob = 2;
+                                baseName = baseName + "_";
+                                while (indexNamesSet.contains(baseName + prob)) {
+                                    ++prob;
+                                }
+                                constraint.setName(baseName + prob);
+                                indexNamesSet.add(baseName + prob);
+                            }
+                        } else {
+                            if (tableElement instanceof MysqlForeignKey) {
+                                baseName = tableName.toLowerCase() + "_ibfk_";
+                                prob++;
+                            } else {
+                                baseName = "i_";
+                            }
+                            while (indexNamesSet.contains(baseName + prob)) {
+                                ++prob;
+                            }
+                            constraint.setName(baseName + prob);
+                            indexNamesSet.add(baseName + prob);
+                        }
+                    }
+                }
+            }
+            ec.getDdlContext().setCdcRewriteDdlStmt(stmt.toString(VisitorFeature.OutputHashPartitionsByRange));
+        } else if (logicalDdlPlan.getDdlType() == DdlType.ALTER_TABLE &&
+            statementList.get(0) instanceof SQLAlterTableStatement) {
+            final SQLAlterTableStatement stmt = (SQLAlterTableStatement) statementList.get(0);
+
+            final Set<String> existsNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+            tableMeta.getSecondaryIndexes().forEach(meta -> existsNames.add(meta.getPhysicalIndexName()));
+            if (tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().indexMap != null) {
+                tableMeta.getGsiTableMetaBean().indexMap.forEach((k, v) -> existsNames.add(unwrapGsiName(k)));
+            }
+
+            for (final SQLAlterTableItem item : stmt.getItems()) {
+                if (item instanceof SQLAlterTableAddIndex) {
+                    SQLName indexName = ((SQLAlterTableAddIndex) item).getName();
+
+                    if (null == indexName || null == indexName.getSimpleName() || indexName.getSimpleName().isEmpty()) {
+                        String realName;
+                        String baseName = ((SQLAlterTableAddIndex) item).getColumns().get(0).getExpr().toString();
+                        baseName = SQLUtils.normalizeNoTrim(baseName);
+                        if (!existsNames.contains(baseName)) {
+                            realName = baseName;
+                            existsNames.add(realName);
+                        } else {
+                            baseName = baseName + "_";
+                            int prob = 2;
+                            while (existsNames.contains(baseName + prob)) {
+                                ++prob;
+                            }
+                            realName = baseName + prob;
+                            existsNames.add(realName);
+                        }
+                        ((SQLAlterTableAddIndex) item).setName(new SQLIdentifierExpr(realName));
+                    }
+                } else if (item instanceof SQLAlterTableAddConstraint) {
+                    SQLConstraint constraint = ((SQLAlterTableAddConstraint) item).getConstraint();
+                    SQLName indexName = constraint.getName();
+
+                    if (constraint instanceof MySqlUnique && (null == indexName || null == indexName.getSimpleName()
+                        || indexName.getSimpleName().isEmpty())) {
+                        String realName;
+                        String baseName = ((MySqlUnique) ((SQLAlterTableAddConstraint) item).getConstraint())
+                            .getIndexDefinition().getColumns().get(0).getExpr().toString();
+                        baseName = SQLUtils.normalizeNoTrim(baseName);
+
+                        if (!existsNames.contains(baseName)) {
+                            realName = baseName;
+                        } else {
+                            baseName = baseName + "_";
+                            int prob = 2;
+                            while (existsNames.contains(baseName + prob)) {
+                                ++prob;
+                            }
+                            realName = baseName + prob;
+                            existsNames.add(realName);
+                        }
+                        ((SQLAlterTableAddConstraint) item).getConstraint().setName(new SQLIdentifierExpr(realName));
+                    }
+                }
+            }
+            ec.getDdlContext().setCdcRewriteDdlStmt(stmt.toString(VisitorFeature.OutputHashPartitionsByRange));
         }
     }
 }

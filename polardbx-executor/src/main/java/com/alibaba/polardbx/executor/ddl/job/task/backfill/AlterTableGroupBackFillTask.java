@@ -23,10 +23,13 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.AlterTableGroupBackfill;
+import com.alibaba.polardbx.optimizer.core.rel.PhysicalBackfill;
 import lombok.Getter;
+import org.apache.calcite.rel.RelNode;
 
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +44,7 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
     boolean broadcast;
     boolean movePartitions;
     boolean useChangeSet;
+    boolean usePhysicalBackfill;
 
     @JSONCreator
     public AlterTableGroupBackFillTask(String schemaName,
@@ -49,7 +53,8 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
                                        Map<String, Set<String>> targetPhyTables,
                                        boolean broadcast,
                                        boolean movePartitions,
-                                       boolean useChangeSet) {
+                                       boolean useChangeSet,
+                                       boolean usePhysicalBackfill) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.sourcePhyTables = sourcePhyTables;
@@ -57,10 +62,19 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
         this.broadcast = broadcast;
         this.movePartitions = movePartitions;
         this.useChangeSet = useChangeSet;
+        this.usePhysicalBackfill = usePhysicalBackfill;
         if (useChangeSet) {
             // onExceptionTryRollback, such as dn ha
-            onExceptionTryRollback();
+            onExceptionTryRecoveryThenRollback();
         }
+    }
+
+    @Override
+    protected void beforeTransaction(ExecutionContext executionContext) {
+        if (usePhysicalBackfill) {
+            updateTaskStateInNewTxn(DdlTaskState.DIRTY);
+        }
+        executeImpl(executionContext);
     }
 
     @Override
@@ -69,19 +83,30 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
         executionContext.setSchemaName(schemaName);
-        AlterTableGroupBackfill backFillPlan =
-            AlterTableGroupBackfill
-                .createAlterTableGroupBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
-                    targetPhyTables, broadcast, movePartitions, useChangeSet);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        ExecutorHelper.execute(backFillPlan, executionContext);
+        if (usePhysicalBackfill && !broadcast) {
+            final RelNode executablePhyBackfillPlan =
+                PhysicalBackfill.createPhysicalBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
+                    targetPhyTables, broadcast, null);
+            ExecutorHelper.execute(executablePhyBackfillPlan, executionContext);
+        } else {
+            final RelNode executableLogicalBackfillPlan = AlterTableGroupBackfill
+                .createAlterTableGroupBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
+                    targetPhyTables, broadcast, movePartitions, useChangeSet);
+            ExecutorHelper.execute(executableLogicalBackfillPlan, executionContext);
+        }
     }
 
     @Override
     protected void rollbackImpl(ExecutionContext executionContext) {
-        GsiBackfillManager gsiBackfillManager = new GsiBackfillManager(schemaName);
-        gsiBackfillManager.deleteByBackfillId(getTaskId());
+        if (usePhysicalBackfill) {
+            //cleanup idb file
+            PhysicalBackfillUtils.rollbackCopyIbd(getTaskId(), schemaName, logicalTableName, 0, executionContext);
+        } else {
+            GsiBackfillManager gsiBackfillManager = new GsiBackfillManager(schemaName);
+            gsiBackfillManager.deleteByBackfillId(getTaskId());
+        }
     }
 
     public static String getTaskName() {

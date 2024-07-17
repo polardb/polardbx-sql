@@ -55,6 +55,7 @@ import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
@@ -74,6 +75,7 @@ import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
@@ -361,7 +363,7 @@ public class DdlHelper {
                                                    int delay) {
         String phyTableDDL = null;
 
-        String sql = String.format("SHOW CREATE TABLE %s", phyTableName);
+        String sql = "SHOW CREATE TABLE " + phyTableName;
         String errMsg = String.format("fetch the DDL of %s on %s. Caused by: %%s", phyTableName, groupName);
 
         try (Connection conn = getPhyConnection(schemaName, groupName);
@@ -513,7 +515,7 @@ public class DdlHelper {
 
     public static void interruptJobs(String schemaName, List<Long> jobIds) {
         DdlRequest ddlRequest = new DdlRequest(schemaName, jobIds);
-        GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), schemaName);
+        GmsSyncManagerHelper.sync(new DdlInterruptSyncAction(ddlRequest), schemaName, SyncScope.ALL);
     }
 
     public static void killActivePhyDDLs(String schemaName, List<String> traceIds) {

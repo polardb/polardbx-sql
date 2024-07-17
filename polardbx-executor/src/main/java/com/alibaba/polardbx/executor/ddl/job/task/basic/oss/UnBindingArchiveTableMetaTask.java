@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -26,14 +24,13 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import lombok.Getter;
-import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -97,7 +94,7 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
         // sync to restore the status of table meta
         SyncManagerHelper.sync(
             new TablesMetaChangePreemptiveSyncAction(schemaName, tables, 1500L, 1500L,
-                TimeUnit.MICROSECONDS));
+                TimeUnit.MICROSECONDS), SyncScope.ALL);
     }
 
     protected void updateTableVersion(Connection metaDbConnection) {

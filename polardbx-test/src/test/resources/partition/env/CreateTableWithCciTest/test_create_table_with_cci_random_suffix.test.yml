@@ -1,0 +1,53 @@
+
+# clean
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+drop table if exists `t_order_2`;
+drop table if exists `t_order_3`;
+
+# explicit clustered columnar 
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_0` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x),
+clustered columnar INDEX (`seller_id`)
+);
+show full create table `t_order_0`;
+
+# explicit clustered columnar and partition
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+CREATE TABLE `t_order_1` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+clustered columnar INDEX (`seller_id`) partition by key(`seller_id`) partitions 2
+);
+show full create table `t_order_1`;
+
+# explicit clustered columnar and name
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask",ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK=true)*/
+CREATE TABLE `t_order_2` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+clustered columnar INDEX i_0(`seller_id`)
+);
+show full create table `t_order_2`;
+  
+# explicit clustered columnar and name
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask",ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK=true)*/
+CREATE TABLE `t_order_3` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+clustered columnar INDEX i_0(`seller_id`)
+);
+show full create table `t_order_3`;
+
+# cleanup
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+drop table if exists `t_order_2`;
+drop table if exists `t_order_3`;

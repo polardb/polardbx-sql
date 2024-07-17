@@ -96,10 +96,7 @@ public class LookupJoinExecFactory extends ExecutorFactory {
                 otherCondition, context, shardCount, parallelism, allowMultiReadConn);
         }
 
-        ret.setId(join.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(join, ret, context);
-        }
+        registerRuntimeStat(ret, join, context);
         return ret;
     }
 

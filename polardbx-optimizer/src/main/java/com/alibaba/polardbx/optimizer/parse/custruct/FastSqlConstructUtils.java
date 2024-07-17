@@ -1099,7 +1099,7 @@ public final class FastSqlConstructUtils {
             }
         }
 
-        return (SqlColumnDeclaration) SqlDdlNodes.column(SqlParserPos.ZERO,
+        SqlColumnDeclaration decl = (SqlColumnDeclaration) SqlDdlNodes.column(SqlParserPos.ZERO,
             tableSourceSqlNode,
             sqlDataTypeSpec,
             columnNull,
@@ -1119,6 +1119,12 @@ public final class FastSqlConstructUtils {
             generatedAlways,
             generatedAlwaysLogical,
             generatedAlwaysExpr);
+
+        if (tableColumn.getSecuredWith() != null) {
+            decl.setSecuredWith(tableColumn.getSecuredWith().getSimpleName().toLowerCase());
+        }
+
+        return decl;
     }
 
     public static boolean collectSourceTable(SqlNode source, List<SqlNode> outTargetTables, List<SqlNode> outAliases,
@@ -1146,9 +1152,13 @@ public final class FastSqlConstructUtils {
 
             // UPDATE t1 JOIN (SELECT t2.id FROM t2) b
             // UPDATE t1 JOIN (SELECT t2.id FROM t2) AS b
+            // UPDATE t1 JOIN (SELECT 1, 2 UNION SELECT 3, 4) b
+            // UPDATE t1 JOIN (SELECT 1, 2 UNION SELECT 3, 4) AS b
             // DELETE t1 FROM t1 JOIN (SELECT t2.id FROM t2) b
             // DELETE FROM t1 USING t1 JOIN (SELECT t2.id FROM t2) AS b
-            if (left instanceof SqlSelect) {
+            // DELETE t1 FROM t1 JOIN (SELECT 1, 2 UNION SELECT 3, 4) b
+            // DELETE FROM t1 USING t1 JOIN (SELECT 1, 2 UNION SELECT 3, 4) AS b
+            if (left instanceof SqlSelect || left instanceof SqlBasicCall && left.getKind() == SqlKind.UNION) {
                 // Get tables in subquery
                 final List<SqlIdentifier> tables = new ArrayList<>();
                 left.accept(new ReplaceTableNameWithSomethingVisitor(DefaultSchema.getSchemaName(), ec) {

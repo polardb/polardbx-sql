@@ -17,35 +17,39 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.core.rel.PhysicalProject;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateMaterializedView;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
-import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 
 public class DrdsMaterializedViewConvertRule extends ConverterRule {
-    public static final DrdsMaterializedViewConvertRule INSTANCE = new DrdsMaterializedViewConvertRule();
+    public static final DrdsMaterializedViewConvertRule SMP_INSTANCE =
+        new DrdsMaterializedViewConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsMaterializedViewConvertRule() {
-        super(LogicalCreateMaterializedView.class, Convention.NONE, DrdsConvention.INSTANCE,
+    public static final DrdsMaterializedViewConvertRule COL_INSTANCE =
+        new DrdsMaterializedViewConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsMaterializedViewConvertRule(Convention outConvention) {
+        super(LogicalCreateMaterializedView.class, Convention.NONE, outConvention,
             "DrdsMaterializedViewConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
     public RelNode convert(RelNode rel) {
         final LogicalCreateMaterializedView materializedView = (LogicalCreateMaterializedView) rel;
         RelNode input = convert(materializedView.getInput(),
-            materializedView.getInput().getTraitSet().replace(DrdsConvention.INSTANCE));
+            materializedView.getInput().getTraitSet().replace(outConvention));
         return materializedView.copy(
-            materializedView.getTraitSet().replace(DrdsConvention.INSTANCE), ImmutableList.of(input));
+            materializedView.getTraitSet().replace(outConvention), ImmutableList.of(input));
     }
 }

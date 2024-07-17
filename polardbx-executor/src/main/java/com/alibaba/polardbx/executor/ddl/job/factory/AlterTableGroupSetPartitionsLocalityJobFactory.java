@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.balancer.policy.PolicyUtils;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupSetPartitionsLocalityChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
@@ -82,8 +81,7 @@ public class AlterTableGroupSetPartitionsLocalityJobFactory extends DdlJobFactor
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+        for (String tableName : tableGroupConfig.getAllTables()) {
             String primaryTableName;
             TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
             if (tableMeta.isGsi()) {
@@ -115,7 +113,7 @@ public class AlterTableGroupSetPartitionsLocalityJobFactory extends DdlJobFactor
         DdlTask validateTask =
             new AlterTableGroupValidateTask(preparedData.getSchemaName(), preparedData.getTableGroupName(),
                 tablesVersion,
-                true, null);
+                true, null, false);
 
         BackgroupRebalanceTask rebalanceTask =
             new BackgroupRebalanceTask(preparedData.getSchemaName(), preparedData.getRebalanceSql());

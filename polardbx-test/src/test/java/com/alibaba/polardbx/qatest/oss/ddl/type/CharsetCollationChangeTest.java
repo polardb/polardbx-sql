@@ -1,7 +1,7 @@
 package com.alibaba.polardbx.qatest.oss.ddl.type;
 
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.qatest.dql.sharding.charset.CharsetTestUtils;
+import com.alibaba.polardbx.qatest.dql.auto.charset.CharsetTestUtils;
 import com.alibaba.polardbx.qatest.oss.ddl.FileStorageColumnTypeTest;
 import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
 import com.alibaba.polardbx.qatest.oss.utils.FullTypeSeparatedTestUtil;

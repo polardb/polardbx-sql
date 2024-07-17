@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionTupleRouteInfo;
@@ -39,6 +40,7 @@ import java.util.List;
  */
 public class PartTupleRouter extends AbstractLifecycle {
     private PartitionInfo partInfo;
+    private PartitionByDefinition partByDef;
     private PartitionTupleRouteInfo routeInfo;
     private PartitionTupleRoutingContext routingContext;
     private ExecutionContext context;

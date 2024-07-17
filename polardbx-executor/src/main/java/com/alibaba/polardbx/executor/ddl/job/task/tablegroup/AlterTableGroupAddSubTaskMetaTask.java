@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;

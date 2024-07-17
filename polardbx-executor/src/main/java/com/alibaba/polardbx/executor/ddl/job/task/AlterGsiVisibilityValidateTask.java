@@ -18,9 +18,6 @@ package com.alibaba.polardbx.executor.ddl.job.task;
 
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
-import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -46,7 +43,7 @@ public class AlterGsiVisibilityValidateTask extends BaseValidateTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
-        GsiValidator.validateGsi(schemaName, indexTableName);
+        GsiValidator.validateGsiOrCci(schemaName, indexTableName);
         GsiValidator.validateAllowDdlOnTable(schemaName, primaryTableName, executionContext);
     }
 }

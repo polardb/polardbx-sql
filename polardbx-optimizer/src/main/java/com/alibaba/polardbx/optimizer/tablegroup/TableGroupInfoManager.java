@@ -21,13 +21,17 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.partition.TablePartitionConfigUtil;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -36,13 +40,16 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -137,20 +144,20 @@ public class TableGroupInfoManager extends AbstractLifecycle {
     public void reloadTableGroupByGroupIdAndTableName(Connection conn, Long id, String dbName, String tableName) {
         TableGroupConfig tableGroupConfig = tableGroupConfigInfoCache.get(id);
         if (tableGroupConfig != null) {
-            TablePartRecordInfoContext tablePartRecordInfoContext = null;
+            String logicTableName = null;
             if (GeneralUtil.isNotEmpty(tableGroupConfig.getAllTables())) {
-                tablePartRecordInfoContext = tableGroupConfig.getAllTables().stream()
-                    .filter(o -> tableName.equalsIgnoreCase(o.getLogTbRec().getTableName())).findFirst().orElse(null);
-                if (tablePartRecordInfoContext != null) {
+                logicTableName = tableGroupConfig.getAllTables().stream()
+                    .filter(o -> tableName.equalsIgnoreCase(o)).findFirst().orElse(null);
+                if (logicTableName != null) {
                     //do nothing
                     return;
                 } else {
-                    tablePartRecordInfoContext =
+                    TablePartRecordInfoContext tablePartRecordInfoContext =
                         TableGroupUtils.getTablePartRecordInfoContextsByDbNameAndTableName(conn, dbName, tableName);
                     if (tablePartRecordInfoContext != null && tablePartRecordInfoContext.getLogTbRec().partStatus
                         == TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC) {
                         synchronized (tableGroupConfig.getAllTables()) {
-                            tableGroupConfig.getAllTables().add(tablePartRecordInfoContext);
+                            tableGroupConfig.getAllTables().add(tablePartRecordInfoContext.getTableName());
                         }
                     }
                 }
@@ -170,7 +177,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
         if (tableGroupConfig != null) {
             synchronized (tableGroupConfig.getAllTables()) {
                 tableGroupConfig.getAllTables().removeIf(
-                    o -> tableName.equalsIgnoreCase(o.getTableName()));
+                    o -> tableName.equalsIgnoreCase(o));
             }
             TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
             if (tableGroupConfig.getAllTables().isEmpty()) {
@@ -231,6 +238,9 @@ public class TableGroupInfoManager extends AbstractLifecycle {
     }
 
     public TableGroupConfig getTableGroupConfigByName(String tableGroupName) {
+        if (StringUtils.isEmpty(tableGroupName)) {
+            return null;
+        }
         Map.Entry<Long, TableGroupConfig> entry = tableGroupConfigInfoCache.entrySet().stream()
             .filter(o -> o.getValue().getTableGroupRecord().tg_name.equalsIgnoreCase(tableGroupName)).findFirst()
             .orElse(null);
@@ -251,7 +261,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
             return null;
         }
 
-        String tableInCurrentGroup = tableGroupConfig.getTables().get(0).getLogTbRec().tableName;
+        String tableInCurrentGroup = tableGroupConfig.getTables().get(0);
         SchemaManager schemaManager = null;
         if (executionContext != null) {
             schemaManager = executionContext.getSchemaManager(dbName);
@@ -316,16 +326,24 @@ public class TableGroupInfoManager extends AbstractLifecycle {
             Map<String, List<TablePartitionRecord>> subPartRecInfos = PartitionInfoUtil
                 .prepareRecordForAllSubpartitions(partRecList, partitionInfo,
                     partitionInfo.getPartitionBy().getPartitions());
+            List<TablePartitionRecord> allPhyPartRecInfos = new ArrayList<>();
+            if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+                for (int i = 0; i < partRecList.size(); i++) {
+                    allPhyPartRecInfos.addAll(subPartRecInfos.get(partRecList.get(i).getPartName()));
+                }
+            } else {
+                allPhyPartRecInfos = partRecList;
+            }
 
             TableGroupRecord tableGroupRecord = null;
             List<PartitionGroupRecord> partitionGroupRecords = null;
 
             boolean found = false;
             for (Map.Entry<Long, TableGroupConfig> entry : tableGroupConfigInfoCache.entrySet()) {
-                TablePartRecordInfoContext tablePartRecordInfoContext =
+                String tableName =
                     entry.getValue().getTables().get(0);
                 PartitionInfo part = partitionInfoManager
-                    .getPartitionInfo(tablePartRecordInfoContext.getLogTbRec().tableName);
+                    .getPartitionInfo(tableName);
                 if (entry.getKey() > maxExistGroupId) {
                     maxExistGroupId = entry.getKey();
                 }
@@ -358,32 +376,25 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
                     partitionGroupRecord.id = maxPartGroupId + 1;
                     maxPartGroupId = maxPartGroupId + 1;
-                    TablePartitionRecord tablePartitionRecord = partRecList.stream()
+                    TablePartitionRecord tablePartitionRecord = allPhyPartRecInfos.stream()
                         .filter(o -> o.partName.equalsIgnoreCase(partitionGroupRecord.partition_name)).findFirst()
                         .orElse(null);
                     assert tablePartitionRecord != null;
                     tablePartitionRecord.groupId = partitionGroupRecord.id;
                 }
-                TablePartRecordInfoContext newTablePartRecordInfoContext = new TablePartRecordInfoContext();
-                newTablePartRecordInfoContext.setLogTbRec(logTableRec);
-                newTablePartRecordInfoContext.setPartitionRecList(partRecList);
-                newTablePartRecordInfoContext.setSubPartitionRecMap(subPartRecInfos);
-                newTablePartRecordInfoContext.setSubPartitionRecList(
-                    TablePartRecordInfoContext.buildAllSubPartitionRecList(subPartRecInfos));
-                List<TablePartRecordInfoContext> newTablePartRecordsInfoContext = new ArrayList<>();
-                newTablePartRecordsInfoContext.add(newTablePartRecordInfoContext);
-
+                List<String> tables = new ArrayList<>();
+                tables.add(logTableRec.getTableName());
                 TableGroupConfig newTableGroupConfig =
                     new TableGroupConfig(
                         tableGroupRecord,
                         partitionGroupRecords,
-                        newTablePartRecordsInfoContext,
+                        tables,
                         tableGroupRecord.getLocality());
                 tableGroupConfigInfoCache.put(tableGroupRecord.id, newTableGroupConfig);
             } else {
-                TablePartRecordInfoContext existsTablePart =
+                String existsTablePart =
                     tableGroupConfigInfoCache.get(logTableRec.groupId).getTables().stream()
-                        .filter(o -> o.getLogTbRec().tableName.equalsIgnoreCase(partitionInfo.getTableName()))
+                        .filter(o -> o.equalsIgnoreCase(partitionInfo.getTableName()))
                         .findFirst().orElse(null);
                 if (existsTablePart != null) {
                     return;
@@ -395,12 +406,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     assert tablePartitionRecord != null;
                     tablePartitionRecord.groupId = partitionGroupRecord.id;
                 }
-                TablePartRecordInfoContext newTablePartRecordInfoContext = new TablePartRecordInfoContext();
-                newTablePartRecordInfoContext.setLogTbRec(logTableRec);
-                newTablePartRecordInfoContext.setPartitionRecList(partRecList);
-                newTablePartRecordInfoContext.setSubPartitionRecMap(subPartRecInfos);
-                tableGroupConfigInfoCache.get(logTableRec.groupId).getTables()
-                    .add(newTablePartRecordInfoContext);
+                tableGroupConfigInfoCache.get(logTableRec.groupId).getTables().add(logTableRec.getTableName());
             }
 
         } else {
@@ -411,6 +417,84 @@ public class TableGroupInfoManager extends AbstractLifecycle {
 
     public static void reload(String schemaName, Long tableGroupId) {
         OptimizerContext.getContext(schemaName).getTableGroupInfoManager().reloadTableGroupByGroupId(tableGroupId);
+    }
+
+    private static Long getTableGroupIdFromMetaDb(String schemaName, String logicalTableName, String gsiName,
+                                                  boolean fromDelta) {
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPartDb) {
+            return null;
+        }
+        if (StringUtils.isEmpty(gsiName)) {
+            TablePartitionRecord tpr =
+                TablePartitionConfigUtil.getTablePartitionByDbTb(schemaName, logicalTableName, fromDelta);
+            if (tpr == null) {
+                return null;
+            }
+            return tpr.getGroupId();
+        } else {
+            Map<String, String> gsiNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            GsiMetaManager.GsiMetaBean gsiMetaBean = OptimizerContext.getContext(schemaName).getLatestSchemaManager()
+                .getGsi(logicalTableName, IndexStatus.ALL);
+            GsiMetaManager.GsiTableMetaBean gsiTableMetaBean = gsiMetaBean.getTableMeta().get(logicalTableName);
+            if (gsiTableMetaBean == null) {
+                return null;
+            }
+            gsiTableMetaBean.indexMap.forEach((key, value) -> {
+                gsiNames.put(TddlSqlToRelConverter.unwrapGsiName(key), key);
+            });
+            String fullGsiName = gsiNames.get(gsiName);
+            if (StringUtils.isEmpty(fullGsiName)) {
+                return null;
+            }
+            TablePartitionRecord tpr =
+                TablePartitionConfigUtil.getTablePartitionByDbTb(schemaName, fullGsiName, fromDelta);
+            if (tpr == null) {
+                return null;
+            }
+            return tpr.getGroupId();
+        }
+    }
+
+    private static Long getTableGroupIdFromMem(String schemaName, String logicalTableName, String gsiName) {
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPartDb) {
+            return null;
+        }
+        SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        TableGroupInfoManager tgInfoManager = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+        TableMeta tableMeta = sm.getTable(logicalTableName);
+        if (StringUtils.isEmpty(gsiName)) {
+            long tableGroupId = tableMeta.getPartitionInfo().getTableGroupId();
+            TableGroupConfig tableGroupConfig = tgInfoManager.getTableGroupConfigById(tableGroupId);
+            return tableGroupConfig.getTableGroupRecord().id;
+        } else {
+            Map<String, String> gsiNames = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            tableMeta.getGsiTableMetaBean().indexMap.forEach((key, value) -> {
+                gsiNames.put(TddlSqlToRelConverter.unwrapGsiName(key), key);
+            });
+            String fullGsiName = gsiNames.get(gsiName);
+            if (StringUtils.isEmpty(fullGsiName)) {
+                return null;
+            }
+            tableMeta = sm.getTable(fullGsiName);
+            long tableGroupId = tableMeta.getPartitionInfo().getTableGroupId();
+            TableGroupConfig tableGroupConfig = tgInfoManager.getTableGroupConfigById(tableGroupId);
+            return tableGroupConfig.getTableGroupRecord().id;
+        }
+    }
+
+    public static Long getTableGroupId(String schemaName, String logicalTableName, String gsiName,
+                                       boolean fromMetadb, boolean fromDelta) {
+        if (fromMetadb) {
+            return getTableGroupIdFromMetaDb(schemaName, logicalTableName, gsiName, fromDelta);
+        } else {
+            return getTableGroupIdFromMem(schemaName, logicalTableName, gsiName);
+        }
+    }
+
+    public static Long getTableGroupId(String schemaName, String logicalTableName, String gsiName) {
+        return getTableGroupIdFromMem(schemaName, logicalTableName, gsiName);
     }
 
     public String getSchemaName() {

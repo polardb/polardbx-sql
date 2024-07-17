@@ -71,6 +71,10 @@ public class OuterJoinAssocRule extends RelOptRule {
     public boolean matches(final RelOptRuleCall call) {
         final LogicalJoin topJoin = call.rel(0);
         final Join bottomJoin = call.rel(1);
+
+        if (!topJoin.getJoinType().isOuterJoin() && !bottomJoin.getJoinType().isOuterJoin()) {
+            return false;
+        }
         if (topJoin.getJoinReorderContext().isHasTopPushThrough()
             || topJoin.getJoinReorderContext().isHasCommute()
             || topJoin.getJoinReorderContext().isHasLeftAssociate()

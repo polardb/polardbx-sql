@@ -16,17 +16,17 @@
  */
 package org.apache.calcite.rel.core;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.externalize.RexExplainVisitor;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.util.Optionality;
 import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
-
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 
 import java.util.List;
 import java.util.Objects;
@@ -38,16 +38,16 @@ import java.util.Objects;
 public class AggregateCall {
   //~ Instance fields --------------------------------------------------------
 
-  private final SqlAggFunction aggFunction;
+  protected final SqlAggFunction aggFunction;
 
-  private final boolean distinct;
-  private final boolean approximate;
+  protected final boolean distinct;
+  protected final boolean approximate;
   public final RelDataType type;
   public final String name;
 
   // We considered using ImmutableIntList but we would not save much memory:
   // since all values are small, ImmutableList uses cached Integer values.
-  private final ImmutableList<Integer> argList;
+  protected final ImmutableList<Integer> argList;
   public final int filterArg;
 
   //~ Constructors -----------------------------------------------------------
@@ -147,7 +147,9 @@ public class AggregateCall {
   public static AggregateCall create(SqlAggFunction aggFunction,
       boolean distinct, boolean approximate, List<Integer> argList,
       int filterArg, RelDataType type, String name) {
-    return new AggregateCall(aggFunction, distinct, approximate, argList,
+    final boolean distinct2 = distinct
+        && (aggFunction.getDistinctOptionality() != Optionality.IGNORED);
+    return new AggregateCall(aggFunction, distinct2, approximate, argList,
         filterArg, type, name);
   }
 
@@ -251,6 +253,10 @@ public class AggregateCall {
     return filterArg >= 0;
   }
 
+  public int getFilterArg() {
+    return filterArg;
+  }
+
   @Override public boolean equals(Object o) {
     if (!(o instanceof AggregateCall)) {
       return false;
@@ -292,19 +298,14 @@ public class AggregateCall {
         filterArg, type, name);
   }
 
-  public AggregateCall copy(List<Integer> args, int filterArg, boolean isDistinct) {
-    return new AggregateCall(aggFunction, isDistinct, approximate, args,
-            filterArg, type, name);
-  }
-
   public AggregateCall copy(List<Integer> args, int filterArg, boolean isDistinct, String newName) {
     return new AggregateCall(aggFunction, isDistinct, approximate, args,
             filterArg, type, newName);
   }
 
-  @Deprecated // to be removed before 2.0
-  public AggregateCall copy(List<Integer> args) {
-    return copy(args, filterArg);
+  public AggregateCall withDistinct(boolean distinct) {
+    return distinct == this.distinct ? this
+        : new AggregateCall(aggFunction, distinct, approximate, argList, filterArg, type, name);
   }
 
   /**

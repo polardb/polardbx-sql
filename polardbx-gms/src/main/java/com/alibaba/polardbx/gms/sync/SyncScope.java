@@ -18,10 +18,13 @@ package com.alibaba.polardbx.gms.sync;
 
 public enum SyncScope {
 
-    /**
-     * A sync scope actually indicates what kinds of nodes.
-     */
-    ALL, MASTER_ONLY, SLAVE_ONLY, CURRENT_ONLY;
+    ALL, //all cn nodes
+    MASTER_ONLY, //the cn nodes on master instance
+    SLAVE_ONLY,  //the cn nodes on row-slave&columnar-slave instance
+    NOT_COLUMNAR_SLAVE,  //the cn nodes on master&row-slave instance
+    ROW_SLAVE_ONLY, //all cn nodes on row-slave instance
+    COLUMNAR_SLAVE_ONLY, //all cn nodes on columnar-slave instance
+    CURRENT_ONLY; //the current nodes on current instance
 
     public static SyncScope DEFAULT_SYNC_SCOPE = ALL;
 

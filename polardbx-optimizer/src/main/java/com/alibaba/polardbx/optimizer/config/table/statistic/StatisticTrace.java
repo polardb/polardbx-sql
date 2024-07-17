@@ -122,15 +122,8 @@ public class StatisticTrace {
     // private method
 
     private void printTrace(String parentCatalogTarget, String parentAction, PrintWriter printWriter, int level) {
-        //if parent already print the same catalogTarget, avoid print it in child repeatedly
-        if (!catalogTarget.equals(parentCatalogTarget)) {
-            println(printWriter, level, "Catalog:" + catalogTarget);
-        }
-
-        //if parent already print the same action, avoid print it in child repeatedly
-        if (!action.equals(parentAction)) {
-            println(printWriter, level, "Action:" + action);
-        }
+        println(printWriter, level, "Catalog:" + catalogTarget);
+        println(printWriter, level, "Action:" + action);
 
         // print value
         StringBuilder sb = new StringBuilder();

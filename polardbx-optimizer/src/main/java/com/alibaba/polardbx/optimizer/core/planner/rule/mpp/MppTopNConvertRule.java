@@ -50,6 +50,12 @@ public class MppTopNConvertRule extends ConverterRule {
         RelNode input = convert(topNInput, emptyTraitSet.replace(MppConvention.INSTANCE));
         RexNode fetch = RuleUtils.getPartialFetch(topN);
 
+        if (topN.getTraitSet().contains(RelDistributions.SINGLETON)
+            && topNInput.getTraitSet().contains(RelDistributions.SINGLETON)) {
+            return topN.copy(topN.getTraitSet().replace(MppConvention.INSTANCE),
+                input, topN.getCollation(), topN.offset, topN.fetch);
+        }
+
         TopN partialTopN = topN.copy(
             topNInput.getTraitSet().replace(MppConvention.INSTANCE).replace(topN.getCollation()),
             input, topN.getCollation(), null, fetch);

@@ -16,27 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
-import com.alibaba.polardbx.optimizer.rule.Partitioner;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.rule.TableRule;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRule;
@@ -48,7 +44,6 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.metadata.RelMdPredicates;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
@@ -225,7 +220,7 @@ public class PushJoinRule extends RelOptRule {
                 return false;
             }
 
-            if (leftPartitionInfo.isSingleTable() && rightPartitionInfo.isSingleTable()) {
+            if (TableTopologyUtil.supportPushTheSingleAutoTable(leftTable, rightTable, tddlRuleManager)) {
                 return true;
             }
 
@@ -242,17 +237,12 @@ public class PushJoinRule extends RelOptRule {
 
             if (ConnectionParams.ConnectionParamValues.PUSH_POLICY_BROADCAST.equals(pushPolicy)
                 || ConnectionParams.ConnectionParamValues.PUSH_POLICY_FULL.equals(pushPolicy)) {
-                /**
-                 * 一个广播表，判断是否下推
-                 */
-                if (pushOneBroadCast(joinType, leftTable, rightTable, tddlRuleManager)) {
-                    return true;
-                }
 
                 /**
-                 * 两个单表/广播表，下推，需要包含在broadcast规则内
+                 * 基于单表/广播表判断下推
                  */
-                if (pushAllSingle(leftTable, rightTable, tddlRuleManager)) {
+                if (TableTopologyUtil.supportPushSingleOrBroadcastDrdsTable(
+                    leftTable, rightTable, tddlRuleManager, joinType)) {
                     return true;
                 }
 
@@ -516,7 +506,7 @@ public class PushJoinRule extends RelOptRule {
                                                boolean last) {
         List<Integer> refs = new ArrayList<>();
         for (String col : columns) {
-            int ref = logicalView.getRefByColumnName(tableName, col, last);
+            int ref = logicalView.getRefByColumnName(tableName, col, last, false);
 
             /**
              * 在LogicalView 中不存在对于分区键的引用,不能下推
@@ -568,89 +558,6 @@ public class PushJoinRule extends RelOptRule {
         newLeftView.pushJoin(newLogicalJoin, newRightView, leftFilters, rightFilters);
         RelUtils.changeRowType(newLeftView, join.getRowType());
         call.transformTo(newLeftView);
-    }
-
-    protected boolean pushAllSingle(String leftTable, String rightTable, TddlRuleManager or) {
-        final String shardingTable = allSingleTableCanPush(leftTable, rightTable, or);
-
-        if (TStringUtil.isNotBlank(shardingTable)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * 单表和广播表的下推判断
-     */
-    protected String allSingleTableCanPush(String leftTable, String rightTable, TddlRuleManager or) {
-        // 两个单表，可以下推
-        if (or.isTableInSingleDb(leftTable) && or.isTableInSingleDb(rightTable)) {
-            return rightTable;
-        }
-
-        // 两个广播表
-        if (or.isBroadCast(leftTable) && or.isBroadCast(rightTable)) {
-            return rightTable;
-        }
-
-        // 一个广播表，一个单表
-        if (or.isTableInSingleDb(leftTable) && or.isBroadCast(rightTable)) {
-            return leftTable;
-        }
-
-        if (or.isBroadCast(leftTable) && or.isTableInSingleDb(rightTable)) {
-            return rightTable;
-        }
-
-        return null;
-    }
-
-    protected boolean pushOneBroadCast(JoinRelType joinType, String leftTable, String rightTable, TddlRuleManager or) {
-        final String shardingTable = oneBroadCastTableCanPush(joinType, leftTable, rightTable, or);
-        if (TStringUtil.isNotBlank(shardingTable)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * 有一个广播表时，判断其是否可以下推
-     */
-    protected String oneBroadCastTableCanPush(JoinRelType joinType, String leftTable, String rightTable,
-                                              TddlRuleManager or) {
-        /**
-         * inner join, 任意一个是广播表就可以下推
-         */
-        if (joinType == JoinRelType.INNER) {
-            if (or.isBroadCast(leftTable)) {
-                return rightTable;
-            } else if (or.isBroadCast(rightTable)) {
-                return leftTable;
-            }
-        }
-
-        /**
-         * left join，右表是广播表
-         */
-        if (joinType == JoinRelType.LEFT && (or.isBroadCast(rightTable))) {
-            return leftTable;
-        }
-
-        /**
-         * right join, 左表是广播表
-         */
-        if (joinType == JoinRelType.RIGHT && (or.isBroadCast(leftTable))) {
-            return rightTable;
-        }
-
-        if ((joinType == JoinRelType.SEMI || joinType == JoinRelType.ANTI || joinType == JoinRelType.LEFT_SEMI)
-            && or.isBroadCast(rightTable)) {
-            return rightTable;
-        }
-
-        return null;
     }
 
     private boolean checkAllowPushDownForPartitions(LogicalView leftView, LogicalView rightView) {

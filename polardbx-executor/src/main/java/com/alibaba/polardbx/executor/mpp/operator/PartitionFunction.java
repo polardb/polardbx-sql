@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.mpp.operator;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 
 public interface PartitionFunction {
-    int getPartitionCount();
 
     int getPartition(Chunk page, int position);
 }

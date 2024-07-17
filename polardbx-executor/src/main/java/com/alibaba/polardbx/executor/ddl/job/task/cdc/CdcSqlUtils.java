@@ -24,8 +24,16 @@ import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 public class CdcSqlUtils {
     public final static SQLParserFeature[] SQL_PARSE_FEATURES = {
         SQLParserFeature.EnableSQLBinaryOpExprGroup,
-        SQLParserFeature.UseInsertColumnsCache, SQLParserFeature.OptimizedForParameterized,
-        SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
-        SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
+        SQLParserFeature.UseInsertColumnsCache,
+        SQLParserFeature.OptimizedForParameterized,
+        SQLParserFeature.TDDLHint,
+        SQLParserFeature.EnableCurrentUserExpr,
+        SQLParserFeature.DRDSAsyncDDL,
+        SQLParserFeature.DRDSBaseline,
+        SQLParserFeature.DrdsMisc,
+        SQLParserFeature.DrdsGSI,
+        SQLParserFeature.DrdsCCL,
+        SQLParserFeature.KeepComments,
+        SQLParserFeature.EnableFillKeyName
     };
 }

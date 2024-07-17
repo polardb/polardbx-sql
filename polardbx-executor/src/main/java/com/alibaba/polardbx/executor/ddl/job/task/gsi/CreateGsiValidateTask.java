@@ -19,24 +19,17 @@ package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
-import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
-import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @TaskName(name = "CreateGsiValidateTask")
 @Getter

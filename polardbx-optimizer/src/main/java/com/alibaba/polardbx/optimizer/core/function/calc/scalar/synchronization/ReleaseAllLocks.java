@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.synchronization;
 
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
@@ -33,13 +32,7 @@ public class ReleaseAllLocks extends AbstractScalarFunction {
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
         LockingFunctionHandle handle = ec.getConnection().getLockHandle(ec);
-        Integer count = 0;
-        try {
-            count = handle.releaseAllLocks();
-        } catch (SQLException e) {
-            GeneralUtil.nestedException("fail to call release_all_locks", e);
-        }
-        return count;
+        return handle.releaseAllLocks();
     }
 
     @Override

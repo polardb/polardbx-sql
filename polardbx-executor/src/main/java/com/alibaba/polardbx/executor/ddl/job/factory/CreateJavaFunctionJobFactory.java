@@ -19,22 +19,28 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateJavaFunctionRegisterMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.CreateJavaFunctionSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcCreateJavaFunctionMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.utils.StringUtils;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.core.expression.JavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJavaFunction;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.utils.CompileUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlCreateJavaFunction;
 
 import java.util.List;
+import java.util.Optional;
 
 public class CreateJavaFunctionJobFactory extends AbstractFunctionJobFactory {
 
@@ -58,6 +64,7 @@ public class CreateJavaFunctionJobFactory extends AbstractFunctionJobFactory {
                 String.format("internal function: %s already exist, please choose another name", udfName));
         }
         checkJavaCodeValid();
+        checkDataTypeValid();
     }
 
     private void checkReachedMaxNum() {
@@ -76,8 +83,23 @@ public class CreateJavaFunctionJobFactory extends AbstractFunctionJobFactory {
         String javaCode = sqlCreateFunction.getJavaCode();
         String functionName = sqlCreateFunction.getFuncName();
         String className = StringUtils.funcNameToClassName(functionName);
-        if (InstConfUtil.getBool(ConnectionParams.CHECK_INVALID_JAVA_UDF)) {
-            CompileUtils.checkInvalidJavaCode(javaCode, className);
+        CompileUtils.checkInvalidJavaCode(javaCode, className);
+    }
+
+    private void checkDataTypeValid() {
+        SqlCreateJavaFunction sqlCreateFunction = createFunction.getSqlCreateFunction();
+        String returnType = sqlCreateFunction.getReturnType();
+        // validate return type
+        SQLDataType returnDataType = FastsqlUtils.parseDataType(returnType).get(0);
+        DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), returnDataType);
+        String inputTypes = Optional.ofNullable(sqlCreateFunction.getInputTypes())
+            .map(types -> String.join(",", types)).orElse("");
+        if (!org.apache.commons.lang.StringUtils.isEmpty(inputTypes)) {
+            // validate input types
+            List<SQLDataType> inputDataTypes = FastsqlUtils.parseDataType(inputTypes);
+            for (SQLDataType type : inputDataTypes) {
+                DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), type);
+            }
         }
     }
 
@@ -92,9 +114,10 @@ public class CreateJavaFunctionJobFactory extends AbstractFunctionJobFactory {
 
         DdlTask addMetaTask = new CreateJavaFunctionRegisterMetaTask(schema, null,
             functionName, javaCode, returnType, inputTypes == null ? "" : String.join(",", inputTypes), noState);
+        DdlTask cdcMarkTask = new CdcCreateJavaFunctionMarkTask(schema, functionName);
         DdlTask syncTask = new CreateJavaFunctionSyncTask(schema, functionName);
 
-        return Lists.newArrayList(addMetaTask, syncTask);
+        return Lists.newArrayList(addMetaTask, syncTask, cdcMarkTask);
     }
 
     public static ExecutableDdlJob createFunction(LogicalCreateJavaFunction logicalCreateFunction,

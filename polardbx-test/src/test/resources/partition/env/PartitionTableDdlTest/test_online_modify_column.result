@@ -1,0 +1,74 @@
+DROP TABLE IF EXISTS tb1;
+CREATE TABLEGROUP IF NOT EXISTS `wumu_tg`;
+CREATE TABLE IF NOT EXISTS tb1 (
+	a int NOT NULL,
+	b int NOT NULL,
+	c varchar(10) NOT NULL,
+	PRIMARY KEY (`a`)
+)
+PARTITION BY KEY (a)
+TABLEGROUP = `wumu_tg`;
+INSERT INTO tb1
+VALUES (101, 101, 'a'),
+	(102, 102, 'b'),
+	(103, 103, 'c'),
+	(201, 201, 'd'),
+	(202, 202, 'e'),
+	(203, 203, 'f');
+SELECT *
+FROM tb1
+ORDER BY a;
+a,b,c
+101,101,a
+102,102,b
+103,103,c
+201,201,d
+202,202,e
+203,203,f
+ALTER TABLE tb1
+	MODIFY COLUMN c text,
+	ALGORITHM = OMC;
+SHOW FULL CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` text,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+tablegroup = `wumu_tg`
+SELECT *
+FROM tb1
+ORDER BY a;
+a,b,c
+101,101,a
+102,102,b
+103,103,c
+201,201,d
+202,202,e
+203,203,f
+ALTER TABLE tb1
+	MODIFY COLUMN a bigint;
+SHOW FULL CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` text,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM tb1
+ORDER BY a;
+a,b,c
+101,101,a
+102,102,b
+103,103,c
+201,201,d
+202,202,e
+203,203,f

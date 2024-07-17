@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.gsi.group3;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
@@ -31,9 +32,14 @@ import org.junit.runners.Parameterized;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
@@ -2386,6 +2392,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly() {
         final String tableName = "test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -2468,6 +2475,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly_usingGsi() {
         final String tableName = "test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -4401,5 +4409,69 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName1, indexName1));
+    }
+
+    @Test
+    public void testUGsiMultiWrite() throws Exception {
+
+        //useAffectedRows to control this case only run once, ignore Parameterized.Parameters
+        if (!supportReturning || useAffectedRows) {
+            return;
+        }
+        final String TABLE_NAME = "returning_table";
+        final String GSI_NAME = "g_i_returning_table";
+        dropTableWithGsi(TABLE_NAME, ImmutableList.of(GSI_NAME));
+
+        final String createTable = MessageFormat.format("CREATE PARTITION TABLE {0} (\n"
+                + "        `a` bigint(20) NOT NULL AUTO_INCREMENT,\n"
+                + "        `b` varchar(32) NOT NULL,\n"
+                + "        `c` int(11) DEFAULT NULL,\n"
+                + "        PRIMARY KEY (`a`),\n"
+                + "        UNIQUE GLOBAL INDEX {1} (c) PARTITION BY KEY (c) PARTITIONS 5\n"
+                + ")\n"
+                + "PARTITION BY KEY(`a`)\n"
+                + "PARTITIONS 3;",
+            TABLE_NAME, GSI_NAME);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+
+        String sql = MessageFormat.format(
+            "insert into {0} (a, b, c) values (null, \"dsadsadqwe\", 1);",
+            TABLE_NAME);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        String realGsiName = getRealGsiName(tddlConnection, TABLE_NAME, GSI_NAME);
+
+        sql = MessageFormat.format("show topology from {0}", realGsiName);
+        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        Map<String, String> partitionLocations = new TreeMap<>(String::compareToIgnoreCase);
+        while (rs.next()) {
+            partitionLocations.put(rs.getString("PARTITION_NAME"), rs.getString("DN_ID"));
+        }
+        if (partitionLocations.isEmpty()) {
+            return;
+        }
+        String movePart = "p1";
+        String targetLoc = "p2";
+        if (partitionLocations.get(movePart).equalsIgnoreCase(partitionLocations.get(targetLoc))) {
+            return;
+        }
+        sql =
+            "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=false, TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='WRITE_ONLY')*/ alter table "
+                + realGsiName + " move partitions p1 to '" + partitionLocations.get(targetLoc) + "'";
+
+        String ignoreErr = "Please use SHOW DDL";
+        Set<String> ignoreErrs = new HashSet<>();
+        ignoreErrs.add(ignoreErr);
+        JdbcUtil.executeUpdateSuccessIgnoreErr(tddlConnection, sql, ignoreErrs);
+
+        sql = MessageFormat.format(
+            "trace insert ignore into {0} (a, b, c) values (null, \"dsadsadqwe\", 2);",
+            TABLE_NAME);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        sql = "show trace";
+        JdbcUtil.executeQuery(sql, tddlConnection);
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertFalse(trace.toString().toLowerCase().contains("ignore"));
     }
 }

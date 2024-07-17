@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
+import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateRoleStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
@@ -29,6 +32,8 @@ import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.audit.AuditPrivilege;
+import com.google.common.collect.Maps;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -67,6 +72,11 @@ public class PolarCreateRoleHandler extends AbstractPrivilegeCommandHandler {
         PolarPrivManager.getInstance().createAccount(granter, getServerConn().getActiveRoles(),
             grantees, stmt.isIfNotExists());
         AuditPrivilege.polarAudit(getServerConn().getConnectionInfo(), getSql().toString(), AuditAction.CREATE_ROLE);
+    }
+
+    @Override
+    protected SqlKind getSqlKind() {
+        return SqlKind.CREATE_ROLE;
     }
 
     private List<PolarAccountInfo> checkAndGetGrantees() {

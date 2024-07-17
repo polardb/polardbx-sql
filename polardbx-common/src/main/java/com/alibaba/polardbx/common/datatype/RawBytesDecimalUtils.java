@@ -62,6 +62,27 @@ public class RawBytesDecimalUtils {
             ? -result : result;
     }
 
+    public static int hashCode(long decimal64, int scale) {
+        if (decimal64 >= DIG_MASK || decimal64 < 0 || scale >= 9) {
+            // go to normal method
+            return 0;
+        }
+
+        int fractionVal = (int) ((decimal64 % POW_10[scale]) * POW_10[9 - scale]);
+        int integerVal = (int) (decimal64 / POW_10[scale]);
+        int result = 1;
+        if (integerVal != 0) {
+            result = 31 * result + integerVal;
+        }
+        if (fractionVal != 0) {
+            result = 31 * result + fractionVal;
+        }
+        return result;
+    }
+
+    /**
+     * compare two decimal values in format of raw bytes.
+     */
     public static boolean equals(Slice left, Slice right) {
 
         Preconditions.checkPositionIndexes(FRACTIONS_OFFSET, FRACTIONS_OFFSET + 1, left.length());
@@ -71,10 +92,10 @@ public class RawBytesDecimalUtils {
             return false;
         }
 
-        int leftIntWords = roundUp(((int)left.getByteUnchecked(INTEGERS_OFFSET) & 0xFF));
-        int leftFracWords = roundUp(((int)left.getByteUnchecked(FRACTIONS_OFFSET) & 0xFF));
-        int rightIntWords = roundUp(((int)right.getByteUnchecked(INTEGERS_OFFSET) & 0xFF));
-        int rightFracWords = roundUp(((int)right.getByteUnchecked(FRACTIONS_OFFSET) & 0xFF));
+        int leftIntWords = roundUp(((int) left.getByteUnchecked(INTEGERS_OFFSET) & 0xFF));
+        int leftFracWords = roundUp(((int) left.getByteUnchecked(FRACTIONS_OFFSET) & 0xFF));
+        int rightIntWords = roundUp(((int) right.getByteUnchecked(INTEGERS_OFFSET) & 0xFF));
+        int rightFracWords = roundUp(((int) right.getByteUnchecked(FRACTIONS_OFFSET) & 0xFF));
 
         int endPos1 = leftIntWords, endPos2 = rightIntWords;
         int bufPos1 = 0, bufPos2 = 0;

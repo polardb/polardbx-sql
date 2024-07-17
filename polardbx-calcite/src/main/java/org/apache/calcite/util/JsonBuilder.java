@@ -19,9 +19,11 @@ package org.apache.calcite.util;
 import org.apache.calcite.avatica.util.Spaces;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builder for JSON documents (represented as {@link List}, {@link Map},
@@ -87,6 +89,8 @@ public class JsonBuilder {
     } else if (o instanceof List) {
       //noinspection unchecked
       appendList(buf, indent, (List) o);
+    } else if (o instanceof Set) {
+      appendList(buf, indent, (Set)o);
     } else if (o instanceof String) {
       buf.append('"')
           .append(
@@ -127,7 +131,7 @@ public class JsonBuilder {
   }
 
   private void appendList(
-      StringBuilder buf, int indent, List<Object> list) {
+      StringBuilder buf, int indent, Collection<Object> list) {
     if (list.isEmpty()) {
       buf.append("[]");
       return;

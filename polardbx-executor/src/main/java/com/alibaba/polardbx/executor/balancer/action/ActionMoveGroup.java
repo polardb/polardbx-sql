@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.balancer.action;
 
+import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -25,18 +26,24 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
+import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
+import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Action that move group between storage nodes
@@ -138,7 +145,49 @@ public class ActionMoveGroup implements BalanceAction, Comparable<ActionMoveGrou
         }
 
         return ActionUtils.convertToDelegatorJob(schema, sql,
-            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize, (long) getLogicalTableCount()));
+    }
+
+    @Override
+    public Long getBackfillRows() {
+        long totalRows = 0L;
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+            for (GroupStats.GroupsOfStorage groupsOfStorage : GeneralUtil.emptyIfNull(stats.getGroups())) {
+                if (groupsOfStorage == null || groupsOfStorage.getGroupDataSizeMap() == null) {
+                    continue;
+                }
+                for (Map.Entry<String, Pair<Long, Long>> entry : groupsOfStorage.groupDataSizeMap.entrySet()) {
+                    if (sourceGroups.contains(entry.getKey())) {
+                        totalRows += entry.getValue().getKey();
+                    }
+                }
+            }
+        }
+        return totalRows;
+    }
+
+    @Override
+    public Long getDiskSize() {
+        long totalSize = 0L;
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+            for (GroupStats.GroupsOfStorage groupsOfStorage : GeneralUtil.emptyIfNull(stats.getGroups())) {
+                if (groupsOfStorage == null || groupsOfStorage.getGroupDataSizeMap() == null) {
+                    continue;
+                }
+                for (Map.Entry<String, Pair<Long, Long>> entry : groupsOfStorage.groupDataSizeMap.entrySet()) {
+                    if (sourceGroups.contains(entry.getKey())) {
+                        totalSize += entry.getValue().getValue();
+                    }
+                }
+            }
+        }
+        return totalSize;
+    }
+
+    @Override
+    public double getLogicalTableCount() {
+        List<String> tables = ScaleOutPlanUtil.getLogicalTables(schema);
+        return tables.size();
     }
 
     @Override

@@ -16,51 +16,33 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelTraitSet;
-import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.DDL;
-
-import java.util.List;
+import org.apache.calcite.rel.ddl.DropView;
+import org.apache.calcite.sql.SqlDropView;
 
 /**
  * @author dylan
  */
-public class LogicalDropView extends DDL {
-
-    private final String schemaName;
-
-    private final String viewName;
-
+public class LogicalDropView extends BaseDdlOperation {
     private final boolean ifExists;
 
-    public LogicalDropView(RelOptCluster cluster, String schemaName, String viewName, boolean ifExists) {
-        super(cluster, cluster.traitSetOf(DrdsConvention.INSTANCE), null);
-        this.schemaName = schemaName;
-        this.viewName = viewName;
-        this.ifExists = ifExists;
-    }
-
-    @Override
-    public LogicalDropView copy(
-        RelTraitSet traitSet, List<RelNode> inputs) {
-        assert traitSet.containsIfApplicable(DrdsConvention.INSTANCE);
-        return new LogicalDropView(this.getCluster(), schemaName, viewName, ifExists);
+    public LogicalDropView(DDL ddl) {
+        super(ddl);
+        SqlDropView sqlDropView = (SqlDropView) ddl.getSqlNode();
+        this.ifExists = sqlDropView.isIfExists();
     }
 
     public String getViewName() {
-        return viewName;
+        return tableName;
     }
 
     public boolean isIfExists() {
         return ifExists;
     }
 
-    @Override
-    public String getSchemaName() {
-        return schemaName;
+    public static LogicalDropView create(DropView dropView) {
+        return new LogicalDropView(dropView);
     }
 
     @Override
@@ -70,7 +52,7 @@ public class LogicalDropView extends DDL {
         if (ifExists) {
             sqlBuilder.append("IF EXISTS ");
         }
-        sqlBuilder.append("`").append(schemaName).append("`.`").append(viewName).append("`");
+        sqlBuilder.append("`").append(schemaName).append("`.`").append(tableName).append("`");
         return pw.item("sql", sqlBuilder.toString());
     }
 }

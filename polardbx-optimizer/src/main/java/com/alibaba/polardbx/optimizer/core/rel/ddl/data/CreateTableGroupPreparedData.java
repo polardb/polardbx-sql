@@ -26,4 +26,5 @@ public class CreateTableGroupPreparedData extends DdlPreparedData {
     private String locality;
     private String sourceSql;
     private String partitionBy;
+    private boolean single;
 }

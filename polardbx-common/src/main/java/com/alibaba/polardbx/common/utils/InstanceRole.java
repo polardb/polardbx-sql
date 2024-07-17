@@ -25,7 +25,17 @@ public enum InstanceRole {
     MASTER,
 
     /**
-     * 云上流量型只读实例
+     * 行存只读实例
      */
-    SLAVE,
+    ROW_SLAVE,
+
+    /**
+     * 列存只读实例
+     */
+    COLUMNAR_SLAVE,
+
+    /**
+     * MOCK模式
+     */
+    FAST_MOCK
 }

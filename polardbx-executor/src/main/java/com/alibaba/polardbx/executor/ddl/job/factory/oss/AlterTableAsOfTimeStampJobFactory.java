@@ -32,9 +32,9 @@ public class AlterTableAsOfTimeStampJobFactory extends DdlJobFactory {
     private AlterTablePreparedData alterTablePreparedData;
 
     public AlterTableAsOfTimeStampJobFactory(String schemaName,
-                                           String logicalTableName,
-                                           AlterTablePreparedData alterTablePreparedData,
-                                           ExecutionContext executionContext) {
+                                             String logicalTableName,
+                                             AlterTablePreparedData alterTablePreparedData,
+                                             ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.logicalTableName = logicalTableName;
         this.executionContext = executionContext;

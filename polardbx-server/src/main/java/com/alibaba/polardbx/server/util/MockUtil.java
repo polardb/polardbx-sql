@@ -99,9 +99,9 @@ public class MockUtil {
         ds.setTraceIdGenerator(TrxIdGenerator.getInstance().getIdGenerator());
 
         ds.setRecorder(
-            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold(), system.getSlowSqlTime()));
+            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold()));
         ds.setPhysicalRecorder(
-            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold(), system.getSlowSqlTime()));
+            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold()));
 
         ds.init();
         schemaConfig.setDataSource(ds);

@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.RenameTableBuilder;
@@ -29,7 +31,9 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
@@ -74,6 +78,11 @@ public class LogicalRenameTableHandler extends LogicalCommonDdlHandler {
 
         TableValidator.validateTableNamesForRename(schemaName, sourceTableName, targetTableName);
 
+        if (LBACSecurityManager.getInstance().getTablePolicy(schemaName, sourceTableName) != null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_LBAC,
+                "table with security policy is not allowed to be renamed");
+        }
+
         return false;
     }
 
@@ -87,6 +96,7 @@ public class LogicalRenameTableHandler extends LogicalCommonDdlHandler {
         if (executionContext.getParamManager().getBoolean(ConnectionParams.FLASHBACK_RENAME)) {
             physicalPlanData.setFlashbackRename(true);
         }
+        physicalPlanData.setRenamePhyTable(renameTablePreparedData.isNeedRenamePhyTable());
 
         Map<String, Long> tableVersions = new HashMap<>();
 
@@ -94,8 +104,9 @@ public class LogicalRenameTableHandler extends LogicalCommonDdlHandler {
             renameTablePreparedData.getTableVersion());
         ValidateTableVersionTask validateTableVersionTask =
             new ValidateTableVersionTask(renameTablePreparedData.getSchemaName(), tableVersions);
+        Long versionId = DdlUtils.generateVersionId(executionContext);
 
-        ExecutableDdlJob result = new RenameTableJobFactory(physicalPlanData, executionContext).create();
+        ExecutableDdlJob result = new RenameTableJobFactory(physicalPlanData, executionContext, versionId).create();
         result.addTask(validateTableVersionTask);
         result.addTaskRelationship(validateTableVersionTask, result.getHead());
 

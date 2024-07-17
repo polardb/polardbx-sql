@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
@@ -26,6 +25,7 @@ import com.alibaba.polardbx.executor.operator.util.MergeSortedChunks;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 import java.util.function.BiPredicate;

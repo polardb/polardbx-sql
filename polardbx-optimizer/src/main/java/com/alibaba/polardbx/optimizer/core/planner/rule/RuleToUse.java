@@ -16,6 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLAggJoinToToHashGroupJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalAggToHashAggRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalJoinToHashJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalJoinToNLJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalSemiJoinToSemiHashJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalSemiJoinToSemiNLJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalSortToSortRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalViewConvertRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalWindowToHashWindowRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalWindowToSortWindowRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLProjectJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MPPMaterializedViewConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppBKAJoinConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppCorrelateConvertRule;
@@ -54,6 +65,22 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFBuil
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFBuilderProjectTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFilterJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.RFilterProjectTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPAggJoinToToHashGroupJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPJoinTableLookupToBKAJoinTableLookupRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalAggToHashAggRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalJoinToBKAJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalJoinToHashJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalJoinToNLJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalSemiJoinToMaterializedSemiJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalSemiJoinToSemiBKAJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalSemiJoinToSemiHashJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalSemiJoinToSemiNLJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalSortToSortRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalViewConvertRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalWindowToHashWindowRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalWindowToSortWindowRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPSemiJoinTableLookupToMaterializedSemiJoinTableLookupRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPSemiJoinTableLookupToSemiBKAJoinTableLookupRule;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.rel.rules.AggregateProjectMergeRule;
@@ -199,7 +226,8 @@ public class RuleToUse {
         PushSemiJoinDirectRule.INSTANCE,
         PushJoinRule.INSTANCE,
         PushFilterRule.VIRTUALVIEW,
-        RemoveJoinConditionFilterRule.INSTANCE);
+        RemoveJoinConditionFilterRule.INSTANCE
+    );
 
     /**
      * <pre>
@@ -409,8 +437,7 @@ public class RuleToUse {
         OuterJoinAssocRule.INSTANCE,
         OuterJoinLAsscomRule.INSTANCE,
         CBOLogicalSemiJoinLogicalJoinTransposeRule.INSTANCE,
-        SemiJoinSemiJoinTransposeRule.INSTANCE,
-        SemiJoinProjectTransposeRule.INSTANCE
+        SemiJoinSemiJoinTransposeRule.INSTANCE
     );
 
     public static final ImmutableList<RelOptRule> CBO_JOIN_TABLELOOKUP_REORDER_RULE = ImmutableList.of(
@@ -419,28 +446,28 @@ public class RuleToUse {
 
     public static final ImmutableList<RelOptRule> CBO_BASE_RULE = ImmutableList.of(
         // Join Algorithm
-        LogicalJoinToBKAJoinRule.LOGICALVIEW_NOT_RIGHT,
-        LogicalJoinToBKAJoinRule.LOGICALVIEW_RIGHT,
-        LogicalJoinToBKAJoinRule.TABLELOOKUP_NOT_RIGHT,
-        LogicalJoinToBKAJoinRule.TABLELOOKUP_RIGHT,
-        LogicalJoinToNLJoinRule.INSTANCE,
-        LogicalJoinToHashJoinRule.INSTANCE,
-        LogicalJoinToHashJoinRule.OUTER_INSTANCE,
+        SMPLogicalJoinToBKAJoinRule.LOGICALVIEW_NOT_RIGHT,
+        SMPLogicalJoinToBKAJoinRule.LOGICALVIEW_RIGHT,
+        SMPJoinTableLookupToBKAJoinTableLookupRule.TABLELOOKUP_NOT_RIGHT,
+        SMPJoinTableLookupToBKAJoinTableLookupRule.TABLELOOKUP_RIGHT,
+        SMPLogicalJoinToNLJoinRule.INSTANCE,
+        SMPLogicalJoinToHashJoinRule.INSTANCE,
+        SMPLogicalJoinToHashJoinRule.OUTER_INSTANCE,
         LogicalJoinToSortMergeJoinRule.INSTANCE,
-        LogicalSemiJoinToMaterializedSemiJoinRule.INSTANCE,
-        LogicalSemiJoinToMaterializedSemiJoinRule.TABLELOOKUP,
-        LogicalSemiJoinToSemiNLJoinRule.INSTANCE,
-        LogicalSemiJoinToSemiHashJoinRule.INSTANCE,
+        SMPLogicalSemiJoinToMaterializedSemiJoinRule.INSTANCE,
+        SMPSemiJoinTableLookupToMaterializedSemiJoinTableLookupRule.INSTANCE,
+        SMPLogicalSemiJoinToSemiNLJoinRule.INSTANCE,
+        SMPLogicalSemiJoinToSemiHashJoinRule.INSTANCE,
         LogicalSemiJoinToSemiSortMergeJoinRule.INSTANCE,
-        LogicalSemiJoinToSemiBKAJoinRule.INSTANCE,
-        LogicalSemiJoinToSemiBKAJoinRule.TABLELOOKUP,
+        SMPLogicalSemiJoinToSemiBKAJoinRule.INSTANCE,
+        SMPSemiJoinTableLookupToSemiBKAJoinTableLookupRule.INSTANCE,
         // Agg Algorithm
         LogicalAggToSortAggRule.INSTANCE,
-        LogicalAggToHashAggRule.INSTANCE,
-        AggJoinToToHashGroupJoinRule.INSTANCE,
+        SMPLogicalAggToHashAggRule.INSTANCE,
+        SMPAggJoinToToHashGroupJoinRule.INSTANCE,
         // window
-        LogicalWindowToSortWindowRule.INSTANCE,
-        LogicalWindowToHashWindowRule.INSTANCE,
+        SMPLogicalWindowToSortWindowRule.INSTANCE,
+        SMPLogicalWindowToHashWindowRule.INSTANCE,
         // Push Sort
         PushSortRule.PLAN_ENUERATE,
         // Push Filter
@@ -470,28 +497,83 @@ public class RuleToUse {
         PushModifyRule.VIEW,
         PushModifyRule.MERGESORT,
         PushModifyRule.SORT_VIEW,
+
+        // Convert Sort
+        SMPLogicalSortToSortRule.INSTANCE,
+        SMPLogicalSortToSortRule.TOPN,
         // Convert
-        DrdsExpandConvertRule.INSTANCE,
-        DrdsProjectConvertRule.INSTANCE,
-        DrdsRecursiveCTEAnchorConvertRule.INSTANCE,
-        DrdsRecursiveCTEConvertRule.INSTANCE,
-        DrdsFilterConvertRule.INSTANCE,
-        DrdsCorrelateConvertRule.INSTANCE,
-        DrdsSortConvertRule.INSTANCE,
-        DrdsSortConvertRule.TOPN,
+        SMPLogicalViewConvertRule.INSTANCE,
+        DrdsExpandConvertRule.SMP_INSTANCE,
+        DrdsProjectConvertRule.SMP_INSTANCE,
+        DrdsRecursiveCTEAnchorConvertRule.SMP_INSTANCE,
+        DrdsRecursiveCTEConvertRule.SMP_INSTANCE,
+        DrdsFilterConvertRule.SMP_INSTANCE,
+        DrdsCorrelateConvertRule.SMP_INSTANCE,
+
         DrdsMergeSortConvertRule.INSTANCE,
-        DrdsValuesConvertRule.INSTANCE,
-        DrdsUnionConvertRule.INSTANCE,
+        DrdsValuesConvertRule.SMP_INSTANCE,
+        DrdsUnionConvertRule.SMP_INSTANCE,
+        DrdsLogicalTableLookupConvertRule.SMP_INSTANCE,
+        DrdsVirtualViewConvertRule.SMP_INSTANCE,
+        DrdsDynamicConvertRule.SMP_INSTANCE,
+        DrdsMaterializedViewConvertRule.SMP_INSTANCE,
+
         DrdsModifyConvertRule.INSTANCE,
         DrdsInsertConvertRule.INSTANCE,
         DrdsRelocateConvertRule.INSTANCE,
         DrdsRecyclebinConvertRule.INSTANCE,
-        DrdsLogicalViewConvertRule.INSTANCE,
-        DrdsLogicalTableLookupConvertRule.INSTANCE,
-        DrdsVirtualViewConvertRule.INSTANCE,
-        DrdsDynamicConvertRule.INSTANCE,
-        DrdsMaterializedViewConvertRule.INSTANCE,
         DrdsOutFileConvertRule.INSTANCE
+    );
+
+    public static final ImmutableList<RelOptRule> COLUMNAR_CBO_RULE = ImmutableList.of(
+        // Join Algorithm
+        COLLogicalJoinToNLJoinRule.INSTANCE,
+        COLLogicalJoinToHashJoinRule.INSTANCE,
+        COLLogicalJoinToHashJoinRule.OUTER_INSTANCE,
+        COLLogicalSemiJoinToSemiNLJoinRule.INSTANCE,
+        COLLogicalSemiJoinToSemiHashJoinRule.INSTANCE,
+        COLLogicalSemiJoinToSemiHashJoinRule.OUTER_INSTANCE,
+        JoinAggToJoinAggSemiJoinRule.INSTANCE,
+        // Agg Algorithm
+        COLLogicalAggToHashAggRule.INSTANCE,
+        COLAggJoinToToHashGroupJoinRule.INSTANCE,
+        // window
+        COLLogicalWindowToSortWindowRule.INSTANCE,
+        COLLogicalWindowToHashWindowRule.INSTANCE,
+        // Push Sort
+        PushSortRule.PLAN_ENUERATE,
+        // Push Filter
+        PushFilterRule.LOGICALVIEW,
+        PushFilterRule.MERGE_SORT,
+        PushFilterRule.PROJECT_FILTER_LOGICALVIEW,
+        // Join Window Transpose
+        CBOJoinWindowTransposeRule.INSTANCE,
+        // Agg Join Transpose
+        DrdsAggregateJoinTransposeRule.EXTENDED,
+        DrdsAggregateJoinTransposeRule.PROJECT_EXTENDED,
+        new COLProjectJoinTransposeRule(3),
+        // Sort Join Transpose
+        DrdsSortJoinTransposeRule.INSTANCE,
+        DrdsSortProjectTransposeRule.INSTANCE,
+        // Convert Sort
+        COLLogicalSortToSortRule.INSTANCE,
+        COLLogicalSortToSortRule.TOPN,
+        // Convert Logicalview
+        COLLogicalViewConvertRule.INSTANCE,
+
+        // Convert
+        DrdsExpandConvertRule.COL_INSTANCE,
+        DrdsProjectConvertRule.COL_INSTANCE,
+        DrdsRecursiveCTEAnchorConvertRule.COL_INSTANCE,
+        DrdsRecursiveCTEConvertRule.COL_INSTANCE,
+        DrdsFilterConvertRule.COL_INSTANCE,
+        DrdsCorrelateConvertRule.COL_INSTANCE,
+        DrdsMergeSortConvertRule.INSTANCE,
+        DrdsValuesConvertRule.COL_INSTANCE,
+        DrdsUnionConvertRule.COL_INSTANCE,
+        DrdsVirtualViewConvertRule.COL_INSTANCE,
+        DrdsDynamicConvertRule.COL_INSTANCE,
+        DrdsMaterializedViewConvertRule.COL_INSTANCE
     );
 
     public static final ImmutableList<RelOptRule> MPP_CBO_RULE = ImmutableList.of(

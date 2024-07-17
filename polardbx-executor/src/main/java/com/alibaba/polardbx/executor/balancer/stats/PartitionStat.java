@@ -21,11 +21,11 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 

@@ -27,29 +27,29 @@ public class ${className} extends AbstractVectorizedExpression {
         }
 
         @Override
-        public void eval(EvaluationContext ctx) {
-        super.evalChildren(ctx);
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		public void eval(EvaluationContext ctx) {
+		super.evalChildren(ctx);
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType}[] inputArray = ((${type.inputVectorType}) inputVectorSlot).${type.inputType}Array();
-        boolean[] inputNulls = inputVectorSlot.nulls();
-        boolean inputHasNull = inputVectorSlot.hasNull();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
-        boolean[] outputNulls = outputVectorSlot.nulls();
-        outputVectorSlot.setHasNull(inputVectorSlot.hasNull());
+        ${type.inputType}[] inputArray = (inputVectorSlot.cast(${type.inputVectorType}.class)).${type.inputType}Array();
+		boolean[] inputNulls = inputVectorSlot.nulls();
+		boolean inputHasNull = inputVectorSlot.hasNull();
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		outputVectorSlot.setHasNull(inputVectorSlot.hasNull());
 
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                outputNulls[j] = false;
-                boolean inputNull = !inputHasNull ? false : inputNulls[j];
-                <#if operator.classHeader = "IsNull">
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		outputNulls[j] = false;
+		boolean inputNull = !inputHasNull ? false : inputNulls[j];
+        <#if operator.classHeader = "IsNull">
                 res[j] = inputNull ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 </#if>
                 <#if operator.classHeader = "IsNotNull">

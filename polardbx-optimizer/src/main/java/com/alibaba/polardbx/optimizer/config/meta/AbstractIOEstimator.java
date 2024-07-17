@@ -54,12 +54,12 @@ public class AbstractIOEstimator extends RexVisitorImpl<Double> {
 
     public Double evaluate(RexNode predicate) {
         if (predicate == null) {
-            return 1.0;
+            return maxIO;
         } else {
             RexNode simplifiedPredicate =
                 new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, true, RexUtil.EXECUTOR).simplify(predicate);
             if (simplifiedPredicate.isAlwaysTrue()) {
-                return 1.0;
+                return maxIO;
             } else if (simplifiedPredicate.isAlwaysFalse()) {
                 return 0.0;
             } else {

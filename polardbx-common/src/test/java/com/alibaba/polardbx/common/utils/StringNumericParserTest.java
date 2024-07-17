@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.common.utils;
 
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import org.junit.Test;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.Random;
 import java.util.stream.IntStream;
 
@@ -28,6 +30,7 @@ public class StringNumericParserTest {
     private static final Random R = new Random();
     private static final String NUMBER_STR = "0123456789";
     private static final int MAX_PRECISION = 15;
+
     private static byte[] generateDecimal() {
         int precision = R.nextInt(MAX_PRECISION) + 1;
         int scale = Math.min(R.nextInt(precision) + 1, 5);
@@ -60,7 +63,8 @@ public class StringNumericParserTest {
                     StringNumericParser.parseStringWithRound(bytes, 0, bytes.length, false, result);
                     String actual = String.valueOf(result[StringNumericParser.NUMERIC_INDEX]);
                     String expect = new BigDecimal(new String(bytes)).setScale(0, RoundingMode.HALF_UP).toPlainString();
-                    Assert.assertTrue(actual.equals(expect), "original bytes = " + new String(bytes) + ", actual = " + actual + ", expect = " + expect);
+                    Assert.assertTrue(actual.equals(expect),
+                        "original bytes = " + new String(bytes) + ", actual = " + actual + ", expect = " + expect);
                 }
             );
     }
@@ -79,7 +83,8 @@ public class StringNumericParserTest {
 
                     StringNumericParser.parseStringWithRound(newBytes, 0, newBytes.length, false, result);
                     String actual = String.valueOf(result[StringNumericParser.NUMERIC_INDEX]);
-                    String expect = new BigDecimal(new String(newBytes)).setScale(0, RoundingMode.HALF_UP).toPlainString();
+                    String expect =
+                        new BigDecimal(new String(newBytes)).setScale(0, RoundingMode.HALF_UP).toPlainString();
                     Assert.assertTrue(actual.equals(expect), "actual = " + actual + ", expect = " + expect);
                 }
             );
@@ -95,7 +100,8 @@ public class StringNumericParserTest {
                     StringNumericParser.parseStringWithRound(bytes, 0, bytes.length, true, result);
                     String actual = String.valueOf(result[StringNumericParser.NUMERIC_INDEX]);
                     String expect = new BigDecimal(new String(bytes)).setScale(0, RoundingMode.HALF_UP).toPlainString();
-                    Assert.assertTrue(actual.equals(expect), "original bytes = " + new String(bytes) + ", actual = " + actual + ", expect = " + expect);
+                    Assert.assertTrue(actual.equals(expect),
+                        "original bytes = " + new String(bytes) + ", actual = " + actual + ", expect = " + expect);
                 }
             );
     }
@@ -118,5 +124,44 @@ public class StringNumericParserTest {
                     Assert.assertTrue(actual.equals(expect), "actual = " + actual + ", expect = " + expect);
                 }
             );
+    }
+
+    @Test
+    public void testResultTooBig() {
+        long signedMinLong = -0x7fffffffffffffffL - 1;
+        long signedMaxLong = 0x7fffffffffffffffL;
+        long unsignedLongMax = 0xffffffffffffffffL;
+
+        byte[] bigNegVal = "-184467440737095516150".getBytes();
+        byte[] bigPosVal = "184467440737095516160".getBytes();
+
+        long[] results = new long[3];
+        InstanceVersion.setMYSQL80(false);
+        StringNumericParser.parseStringWithRound(bigNegVal, 0, bigNegVal.length, true, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == unsignedLongMax);
+
+        StringNumericParser.parseStringWithRound(bigNegVal, 0, bigNegVal.length, false, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == signedMinLong);
+
+        InstanceVersion.setMYSQL80(true);
+        StringNumericParser.parseStringWithRound(bigNegVal, 0, bigNegVal.length, true, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == 0);
+
+        StringNumericParser.parseStringWithRound(bigNegVal, 0, bigNegVal.length, false, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == signedMinLong);
+
+        InstanceVersion.setMYSQL80(false);
+        StringNumericParser.parseStringWithRound(bigPosVal, 0, bigPosVal.length, true, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == unsignedLongMax);
+
+        StringNumericParser.parseStringWithRound(bigPosVal, 0, bigPosVal.length, false, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == signedMaxLong);
+
+        InstanceVersion.setMYSQL80(true);
+        StringNumericParser.parseStringWithRound(bigPosVal, 0, bigPosVal.length, true, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == unsignedLongMax);
+
+        StringNumericParser.parseStringWithRound(bigPosVal, 0, bigPosVal.length, false, results);
+        Assert.assertTrue(results[StringNumericParser.NUMERIC_INDEX] == signedMaxLong);
     }
 }

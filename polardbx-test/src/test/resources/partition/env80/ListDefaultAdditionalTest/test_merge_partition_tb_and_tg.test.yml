@@ -6,7 +6,7 @@ create table tb1(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -66,7 +66,7 @@ create table tb3(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -138,7 +138,7 @@ create table tb6(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -196,7 +196,7 @@ create table tb8(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)

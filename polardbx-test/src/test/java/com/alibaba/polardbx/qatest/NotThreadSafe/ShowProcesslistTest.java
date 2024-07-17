@@ -23,7 +23,6 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -43,7 +42,7 @@ public class ShowProcesslistTest extends BaseTestCase {
             final StringBuilder error = new StringBuilder();
             showProcesslistConnection = getPolardbxDirectConnection();
 
-            final String sql = "/*TDDL:NODE=0*/ select sleep(5);";
+            final String sql = "/*+TDDL:NODE=0*/ select sleep(5);";
             for (int i = 0; i < 4; i++) {
                 final Connection sleepConnection = getPolardbxDirectConnection();
                 connections.add(sleepConnection);
@@ -56,7 +55,7 @@ public class ShowProcesslistTest extends BaseTestCase {
                     }
                 }).start();
             }
-            Thread.sleep(2000);
+            Thread.sleep(1000);
 
             int count = 0;
 
@@ -133,7 +132,7 @@ public class ShowProcesslistTest extends BaseTestCase {
             final StringBuilder error = new StringBuilder();
             showProcesslistConnection = getPolardbxDirectConnection();
 
-            final String sql = "/*TDDL:NODE=0*/ select sleep(5);";
+            final String sql = "/*+TDDL:NODE=0*/ select sleep(5);";
             for (int i = 0; i < 4; i++) {
                 final Connection sleepConnection = getPolardbxDirectConnection();
                 connections.add(sleepConnection);
@@ -146,7 +145,7 @@ public class ShowProcesslistTest extends BaseTestCase {
                     }
                 }).start();
             }
-            Thread.sleep(2000);
+            Thread.sleep(1000);
 
             int count = 0;
 
@@ -224,25 +223,21 @@ public class ShowProcesslistTest extends BaseTestCase {
             killConnection = getPolardbxDirectConnection();
             final Connection sleepConnection = getPolardbxDirectConnection();
             refSleepConnection = sleepConnection;
-            new Thread(new Runnable() {
-
-                @Override
-                public void run() {
-                    try {
-                        final long startTime = System.currentTimeMillis();
-                        sleepConnection.createStatement()
-                            .execute(
-                                " /*TDDL:scan and socket_timeout=100000 and merge_concurrent=true*/select sleep(100);");
-                        final long stopTime = System.currentTimeMillis();
-                        if (stopTime - startTime < 7000) {
-                            // Note: In Xproto, only session killed and sleep finish.
-                            error.append("Communications link failure");
-                        }
-                        sleepConnection.close();
-                    } catch (SQLException e) {
-                        e.printStackTrace();
-                        error.append(e.getMessage());
+            new Thread(() -> {
+                try {
+                    final long startTime = System.currentTimeMillis();
+                    sleepConnection.createStatement()
+                        .execute(
+                            " /*+TDDL:scan and socket_timeout=100000 and merge_concurrent=true*/select sleep(100);");
+                    final long stopTime = System.currentTimeMillis();
+                    if (stopTime - startTime < 7000) {
+                        // Note: In Xproto, only session killed and sleep finish.
+                        error.append("Communications link failure");
                     }
+                    sleepConnection.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                    error.append(e.getMessage());
                 }
             }).start();
             Thread.sleep(5000);
@@ -255,15 +250,24 @@ public class ShowProcesslistTest extends BaseTestCase {
             }
 
             // 清理下被关的
-            killConnection.createStatement().executeUpdate("reload datasources");
             killConnection.close();
             killConnection = null;
+
+            while (true) {
+                try (Connection conn = getPolardbxDirectConnection()) {
+                    conn.createStatement().executeUpdate("reload datasources");
+                    break;
+                } catch (Exception e) {
+                    System.out.println(e.getMessage());
+                }
+            }
             Thread.sleep(1000);
 
             Assert.assertTrue(error.toString(),
                 error.toString().contains("Communications link failure") || error.toString()
                     .contains("XResult stream fetch result timeout") || error.toString()
-                    .contains("Session was killed"));
+                    .contains("Session was killed") || error.toString()
+                    .contains("Fatal error when fetch data: Query execution was interrupted"));
         } finally {
             if (killConnection != null) {
                 killConnection.close();

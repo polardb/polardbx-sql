@@ -118,6 +118,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAX_UNIT_SIZE;
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyPartitionBalance.MAX_TABLEGROUP_SOLVED_BY_LP;
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyUtils.getGroupDetails;
 
@@ -215,6 +216,82 @@ public class PolicyDrainNode implements BalancePolicy {
         return moveDataActions;
     }
 
+    /**
+     * Apply to multiple tenant database
+     */
+    @Override
+    public List<BalanceAction> applyToMultiTenantDb(ExecutionContext ec,
+                                                    Map<String, BalanceStats> stats,
+                                                    BalanceOptions options,
+                                                    String storagePoolName,
+                                                    List<String> schemaNameList) {
+        DrainNodeInfo drainNodeInfo = DrainNodeInfo.parse(options.drainNode);
+        drainNodeInfo.validate();
+
+        List<String> dnInstIdList = drainNodeInfo.getDnInstIdList();
+        List<String> cnIpPortList = new ArrayList<>();
+        cnIpPortList.addAll(drainNodeInfo.getCnROIpPortList());
+        cnIpPortList.addAll(drainNodeInfo.getCnRWIpPortList());
+        LOG.info(String.format("apply drain_node policy: schemas=%s options=%s",
+            schemaNameList, options, stats));
+
+        boolean ignoreRollback = true;
+        BalanceAction updateStatusNotReady =
+            new ActionTaskAdapter(
+                DefaultDbSchema.NAME,
+                new UpdateNodeStatusTask(
+                    DefaultDbSchema.NAME,
+                    new ArrayList<>(dnInstIdList),
+                    Collections.emptyList(),
+                    StorageInfoRecord.STORAGE_STATUS_READY,
+                    StorageInfoRecord.STORAGE_STATUS_NOT_READY,
+                    ignoreRollback)
+            );
+
+        BalanceAction updateStatusRemoved =
+            new ActionTaskAdapter(
+                DefaultDbSchema.NAME,
+                new UpdateNodeStatusTask(
+                    DefaultDbSchema.NAME,
+                    new ArrayList<>(dnInstIdList),
+                    new ArrayList<>(cnIpPortList),
+                    StorageInfoRecord.STORAGE_STATUS_NOT_READY,
+                    StorageInfoRecord.STORAGE_STATUS_REMOVED,
+                    ignoreRollback));
+
+        BalanceAction drainCDC =
+            new ActionTaskAdapter(DefaultDbSchema.NAME, new DrainCDCTask(DefaultDbSchema.NAME, dnInstIdList));
+
+        String resName = ActionUtils.genRebalanceTenantResourceName(storagePoolName);
+        ActionLockResource lock = new ActionLockResource(
+            DefaultDbSchema.NAME,
+            com.google.common.collect.Sets.newHashSet(resName));
+
+        List<BalanceAction> moveDataActions = new ArrayList<>();
+        moveDataActions.add(lock);
+        moveDataActions.add(updateStatusNotReady);
+
+        SqlRebalance node = new SqlRebalance(SqlParserPos.ZERO);
+        node.setRebalanceDatabase();
+        node.setPolicy(options.policy);
+        node.setDrainNode(options.drainNode);
+        node.setLogicalDdl(false);
+        node.setAsync(options.async);
+        node.setDebug(options.debug);
+        node.setExplain(options.explain);
+        node.setMaxActions(options.maxActions);
+        node.setMaxPartitionSize((int) options.maxPartitionSize);
+
+        List<BalanceAction> moveDataActionForBalance = schemaNameList.stream()
+            .flatMap(schema -> applyToTenantDb(ec, stats.get(schema), options, storagePoolName, schema).stream())
+            .collect(Collectors.toList());
+        moveDataActions.addAll(moveDataActionForBalance);
+
+        moveDataActions.add(drainCDC);
+        moveDataActions.add(updateStatusRemoved);
+        return moveDataActions;
+    }
+
     protected void doValidate(DrainNodeInfo drainNodeInfo) {
         drainNodeInfo.validate();
     }
@@ -238,6 +315,19 @@ public class PolicyDrainNode implements BalancePolicy {
         List<GroupStats.GroupsOfStorage> groupList = stats.getGroups();
         if (CollectionUtils.isEmpty(groupList)) {
             return Collections.emptyList();
+        }
+        if (StoragePoolManager.getInstance().isTriggered()) {
+            List<String> storageInsts =
+                StoragePoolManager.getInstance().getStoragePoolInfo(StoragePoolManager.DEFAULT_STORAGE_POOL_NAME)
+                    .getDnLists();
+            groupList =
+                groupList.stream()
+                    .filter(o -> storageInsts.contains(o.storageInst) || drainNodeInfo.containsDnInst(o.storageInst))
+                    .collect(Collectors.toList());
+            dnDiskInfo =
+                dnDiskInfo.stream()
+                    .filter(o -> storageInsts.contains(o.instance) || drainNodeInfo.containsDnInst(o.instance))
+                    .collect(Collectors.toList());
         }
         Map<String, Long> groupDataSizeMap = groupList.stream()
             .flatMap(x -> x.getGroupDataSizeMap().entrySet().stream())
@@ -524,8 +614,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> toSyncTableGroup = new ArrayList<>(toSyncTableGroupSet);
         List<List<String>> toSyncTables = tableGroupConfigList.stream()
             .filter(tableGroupConfig -> toSyncTableGroup.contains(tableGroupConfig.getTableGroupRecord().tg_name)).map(
-                tableGroupConfig -> tableGroupConfig.getTables().stream().map(o -> o.getTableName())
-                    .collect(Collectors.toList())).collect(Collectors.toList());
+                tableGroupConfig -> tableGroupConfig.getTables()).collect(Collectors.toList());
 //        List<ActionMovePartition> actionMovePartitions = new ArrayList<>();
         // prepare move action
 
@@ -901,8 +990,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> toSyncTableGroup = new ArrayList<>(toMoveTableGroup);
         List<List<String>> toSyncTables = tableGroupConfigList.stream()
             .filter(tableGroupConfig -> toSyncTableGroup.contains(tableGroupConfig.getTableGroupRecord().tg_name)).map(
-                tableGroupConfig -> tableGroupConfig.getTables().stream().map(o -> o.getTableName())
-                    .collect(Collectors.toList())).collect(Collectors.toList());
+                tableGroupConfig -> tableGroupConfig.getTables()).collect(Collectors.toList());
 
         List<ActionMovePartition> actionMovePartitions = new ArrayList<>();
         // prepare move action
@@ -1255,8 +1343,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> toSyncTableGroup = new ArrayList<>(toSyncTableGroupSet);
         List<List<String>> toSyncTables = tableGroupConfigList.stream()
             .filter(tableGroupConfig -> toSyncTableGroup.contains(tableGroupConfig.getTableGroupRecord().tg_name)).map(
-                tableGroupConfig -> tableGroupConfig.getTables().stream().map(o -> o.getTableName())
-                    .collect(Collectors.toList())).collect(Collectors.toList());
+                tableGroupConfig -> tableGroupConfig.getTables()).collect(Collectors.toList());
         List<ActionMovePartition> actionMovePartitions = new ArrayList<>();
         // prepare move action
 
@@ -1625,8 +1712,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> toSyncTableGroup = new ArrayList<>(toSyncTableGroupSet);
         List<List<String>> toSyncTables = tableGroupConfigList.stream()
             .filter(tableGroupConfig -> toSyncTableGroup.contains(tableGroupConfig.getTableGroupRecord().tg_name))
-            .map(tableGroupConfig -> tableGroupConfig.getTables().stream().map(o -> o.getTableName())
-                .collect(Collectors.toList()))
+            .map(tableGroupConfig -> tableGroupConfig.getTables())
             .collect(Collectors.toList());
         List<ActionMovePartition> actionMovePartitions = new ArrayList<>();
         // prepare move action
@@ -1799,12 +1885,16 @@ public class PolicyDrainNode implements BalancePolicy {
 //        Map<String, List<PolicyDrainNode.MoveInfo>> movesGroupByTg = moves.stream().collect(
 //            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
 //        );
+            long maxTaskUnitSize = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_SIZE);
+            if (maxTaskUnitSize < 1024) {
+                maxTaskUnitSize = options.maxTaskUnitSize;
+            }
             List<BalanceAction> moveDataActions = new ArrayList<>();
             for (int i = 0; i < moves.size(); ) {
                 Long sumMoveSizes = 0L;
                 int j = i;
                 int nextI;
-                for (; j < moves.size() && sumMoveSizes <= options.maxTaskUnitSize * 1024 * 1024; j++) {
+                for (; j < moves.size() && sumMoveSizes <= maxTaskUnitSize * 1024 * 1024; j++) {
                     sumMoveSizes += moves.get(j).dataSize;
                 }
                 nextI = j;

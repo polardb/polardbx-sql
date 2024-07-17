@@ -210,4 +210,8 @@ public class SQLUnique extends SQLConstraintImpl implements SQLUniqueConstraint,
     public List<SQLName> getCovering() {
         return indexDefinition.getCovering();
     }
+
+    public List<SQLName> getClusteredKeys() {
+        return indexDefinition.getClusteredKeys();
+    }
 }

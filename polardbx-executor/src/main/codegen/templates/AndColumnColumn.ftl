@@ -67,21 +67,21 @@ public class ${className} extends AbstractVectorizedExpression {
         </#list>
 
         <#list 1..(operator.operandCount) as i>
-        long[] array${i} = ((LongBlock) inputVec${i}).longArray();
-        boolean[] nulls${i} = inputVec${i}.nulls();
-        boolean input${i}HasNull = inputVec${i}.hasNull();
+            long[] array${i} = (inputVec${i}.cast(LongBlock.class)).longArray();
+            boolean[] nulls${i} = inputVec${i}.nulls();
+            boolean input${i}HasNull = inputVec${i}.hasNull();
 
         </#list>
 
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
-        boolean[] outputNulls = outputVectorSlot.nulls();
+    long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+    boolean[] outputNulls = outputVectorSlot.nulls();
 
-        boolean outputVectorHasNull = false;
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
+    boolean outputVectorHasNull = false;
+    if (isSelectionInUse) {
+    for (int i = 0; i < batchSize; i++) {
+    int j = sel[i];
 
-                <#list 1..(operator.operandCount) as c>
+    <#list 1..(operator.operandCount) as c>
                 boolean null${c} = !input${c}HasNull ? false : nulls${c}[j];
                 </#list>
 

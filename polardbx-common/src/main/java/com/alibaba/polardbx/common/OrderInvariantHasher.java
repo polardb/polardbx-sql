@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.common;
 
-public class OrderInvariantHasher {
+public class OrderInvariantHasher implements IOrderInvariantHash {
     private final long p;
     private final long q;
     private final long r;
@@ -30,14 +30,17 @@ public class OrderInvariantHasher {
         result = null;
     }
 
-    public void add(long x) {
+    @Override
+    public OrderInvariantHasher add(long x) {
         if (result == null) {
             result = x;
         } else {
             result = p + q * (result + x) + r * result * x;
         }
+        return this;
     }
 
+    @Override
     public Long getResult() {
         return result;
     }

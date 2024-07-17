@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
 import com.alibaba.polardbx.optimizer.core.rel.TopN;
@@ -116,7 +115,7 @@ public class SortTableLookupTransposeRule extends RelOptRule {
         }
 
         RelNode result = tableLookup.copy(sort.getTraitSet().replace(sort.getCollation()).replace(
-            RelDistributions.SINGLETON),
+                RelDistributions.SINGLETON),
             newLeftInput, tableLookup.getJoin().getRight(),
             tableLookup.getIndexTable(),
             tableLookup.getPrimaryTable(),

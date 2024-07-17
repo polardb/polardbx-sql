@@ -29,7 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -39,6 +38,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPool;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
+import com.google.common.base.Preconditions;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

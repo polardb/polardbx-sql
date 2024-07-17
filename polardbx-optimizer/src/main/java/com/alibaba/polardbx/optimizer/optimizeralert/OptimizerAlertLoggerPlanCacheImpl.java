@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.optimizeralert;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
@@ -38,9 +39,16 @@ public class OptimizerAlertLoggerPlanCacheImpl extends OptimizerAlertLoggerBaseI
                 long lastTime = lastAccessTime.get();
                 long currentTime = System.currentTimeMillis();
                 if (currentTime >= lastTime + DynamicConfig.getInstance().getOptimizerAlertLogInterval()) {
+                    lastAccessTime.set(currentTime);
+                    // ec == null can only happen in test
+                    if (ec != null
+                        && (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST))
+                        && (PlanCache.getInstance().getCacheKeyCountForSelect()
+                        <= PlanCache.getInstance().getCurrentCapacity() * 0.75)) {
+                        return false;
+                    }
                     // add here
                     totalCount.increment();
-                    lastAccessTime.set(currentTime);
                     logger.info(String.format("%s: current cache size { %d }", optimizerAlertType.name(),
                         PlanCache.getInstance().getCache().size()));
                     return true;

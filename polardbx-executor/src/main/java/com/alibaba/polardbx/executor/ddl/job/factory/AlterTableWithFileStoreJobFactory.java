@@ -50,6 +50,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 /**
  * alter table which binding to an oss table
  */
@@ -115,7 +117,7 @@ public class AlterTableWithFileStoreJobFactory extends AlterTableJobFactory {
         physicalPlanData.setAlterTablePreparedData(prepareData);
         physicalPlanFileStoreData.setAlterTablePreparedData(preparedFileStoreData);
         DdlTask cdcDdlMarkTask = this.prepareData.isOnlineModifyColumnIndexTask() ? null :
-            new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
+            new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
 
         List<String> schemas = Lists.newArrayList(schemaName, fileStoreSchema);
         List<String> tables = Lists.newArrayList(logicalTableName, fileStoreTable);

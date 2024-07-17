@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.validator;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -27,6 +29,7 @@ import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -231,17 +234,10 @@ public class ForeignKeyValidator {
 
             if (!data.refTableName.equalsIgnoreCase(tableName)) {
                 // charset and collation must be same
-
-                if (!StringUtils.equalsIgnoreCase(sqlCreateTable.getDefaultCharset(),
-                    referringTableMeta.getDefaultCharset())) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
-                        schemaName, tableName, data.refSchema, data.refTableName);
-                }
-                if (!StringUtils.equalsIgnoreCase(sqlCreateTable.getDefaultCollation(),
-                    referringTableMeta.getDefaultCollation())) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
-                        schemaName, tableName, data.refSchema, data.refTableName);
-                }
+                validateCharset(schemaName, tableName, data.refSchema, data.refTableName,
+                    sqlCreateTable.getDefaultCharset(), referringTableMeta.getDefaultCharset());
+                validateCollate(schemaName, tableName, data.refSchema, data.refTableName,
+                    sqlCreateTable.getDefaultCollation(), referringTableMeta.getDefaultCollation());
             }
 
             // engine must be innodb
@@ -258,21 +254,6 @@ public class ForeignKeyValidator {
                         def.getDataType().getTypeName().getLastName()
                             .toUpperCase());
 
-                    String charSetName = def.getDataType().getCharSetName();
-                    String collationName =
-                        def.getDataType().getCollationName();
-
-                    RelDataTypeFactory factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
-                    boolean nullable =
-                        Optional.ofNullable(def.getNotNull()).map(cn -> SqlColumnDeclaration.ColumnNull.NULL == cn)
-                            .orElse(true);
-                    RelDataType type = def.getDataType().deriveType(factory, nullable);
-
-                    if (charSetName == null && SqlTypeUtil.inCharFamily(type)) {
-                        charSetName = sqlCreateTable.getDefaultCharset();
-                        collationName = sqlCreateTable.getDefaultCollation();
-                    }
-
                     if (!columnTypeName.equals(
                         SqlDataTypeSpec.DrdsTypeName.from(column.getDataType().getStringSqlType().toUpperCase()))) {
                         throw new TddlRuntimeException(ErrorCode.ERR_CHANGE_COLUMN_FK_CONSTRAINT,
@@ -280,16 +261,15 @@ public class ForeignKeyValidator {
                             data.refTableName, data.constraint);
                     }
 
-                    if (charSetName != null && !StringUtils.equalsIgnoreCase(charSetName,
-                        column.getDataType().getCharsetName().name())) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
-                            schemaName, tableName, data.refSchema, data.refTableName);
-                    }
+                    Pair<String, String> charsetCollationName = getCharsetCollationName(def, sqlCreateTable);
+                    if (charsetCollationName != null) {
+                        String charSetName = charsetCollationName.getKey();
+                        String collationName = charsetCollationName.getValue();
 
-                    if (collationName != null && !StringUtils.equalsIgnoreCase(collationName,
-                        column.getDataType().getCollationName().name())) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
-                            schemaName, tableName, data.refSchema, data.refTableName);
+                        validateCharset(schemaName, tableName, data.refSchema, data.refTableName, charSetName,
+                            column.getDataType().getCharsetName().name());
+                        validateCollate(schemaName, tableName, data.refSchema, data.refTableName, collationName,
+                            column.getDataType().getCollationName().name());
                     }
 
                     // can not add fk on generated column
@@ -316,6 +296,58 @@ public class ForeignKeyValidator {
                     throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_GENERATED_COLUMN, column);
                 }
             }
+        }
+    }
+
+    public static Pair<String, String> getCharsetCollationName(SqlColumnDeclaration def,
+                                                               SqlCreateTable sqlCreateTable) {
+        String charSetName;
+        String collationName;
+
+        CollationName collationNameOfColSpec =
+            CollationName.findCollationName(def.getDataType().getCollationName());
+        CharsetName charsetNameOfColSpec = CollationName.getCharsetOf(collationNameOfColSpec);
+
+        RelDataTypeFactory factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+        boolean nullable =
+            Optional.ofNullable(def.getNotNull()).map(cn -> SqlColumnDeclaration.ColumnNull.NULL == cn)
+                .orElse(true);
+        RelDataType type = def.getDataType().deriveType(factory, nullable);
+
+        if (charsetNameOfColSpec != null) {
+            charSetName = charsetNameOfColSpec.name();
+            collationName = collationNameOfColSpec.name();
+        } else if (SqlTypeUtil.inCharFamily(type)) {
+            charSetName = sqlCreateTable.getDefaultCharset();
+            collationName = sqlCreateTable.getDefaultCollation();
+        } else {
+            return null;
+        }
+
+        return new Pair<>(charSetName, collationName);
+    }
+
+    public static void validateCharset(String srcSchemaName, String srcTableName, String refSchemaName,
+                                       String refTableName, String srcCharSet, String refTableCharset) {
+        CharsetName srcTableCharsetName = CharsetName.of(srcCharSet);
+        CharsetName refTableCharsetName = CharsetName.of(refTableCharset);
+
+        if (!StringUtils.equalsIgnoreCase(srcTableCharsetName.name(),
+            refTableCharsetName.name())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
+                srcSchemaName, srcTableName, refSchemaName, refTableName);
+        }
+    }
+
+    public static void validateCollate(String srcSchemaName, String srcTableName, String refSchemaName,
+                                       String refTableName, String srcCollate, String refTableCollate) {
+        CollationName srcTableCollateName = CollationName.of(srcCollate);
+        CollationName refTableCollateName = CollationName.of(refTableCollate);
+
+        if (!StringUtils.equalsIgnoreCase(srcTableCollateName.name(),
+            refTableCollateName.name())) {
+            throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CHARSET_COLLATION,
+                srcSchemaName, srcTableName, refSchemaName, refTableName);
         }
     }
 
@@ -452,7 +484,7 @@ public class ForeignKeyValidator {
         // BLOB/TEXT can not be fk columns
         for (String column : data.columns) {
             SqlDataTypeSpec.DrdsTypeName columnTypeName = SqlDataTypeSpec.DrdsTypeName.from(
-                tableMeta.getColumn(column).getField().getRelType().getSqlTypeName().getName().toUpperCase());
+                tableMeta.getColumn(column).getDataType().getStringSqlType().toUpperCase());
             if (columnTypeName.equals(SqlDataTypeSpec.DrdsTypeName.BLOB) || columnTypeName.equals(
                 SqlDataTypeSpec.DrdsTypeName.TEXT)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CONSTRAINT,
@@ -499,8 +531,8 @@ public class ForeignKeyValidator {
         for (ColumnMeta column : referringTableMeta.getAllColumns()) {
             if (data.refColumns.stream().anyMatch(column.getName()::equalsIgnoreCase)) {
                 SqlDataTypeSpec.DrdsTypeName columnTypeName = SqlDataTypeSpec.DrdsTypeName.from(
-                    tableMeta.getColumn(columnMap.get(column.getName())).getField().getRelType().getSqlTypeName()
-                        .getName().toUpperCase());
+                    tableMeta.getColumn(columnMap.get(column.getName())).getDataType().getStringSqlType()
+                        .toUpperCase());
 
                 String charSetName =
                     tableMeta.getColumn(columnMap.get(column.getName())).getDataType().getCharsetName().name();
@@ -536,7 +568,7 @@ public class ForeignKeyValidator {
         refGeneratedReferencedColumns.addAll(
             GeneratedColumnUtil.getAllReferencedColumnByRef(referringTableMeta).keySet());
         GeneratedColumnUtil.getAllReferencedColumnByRef(referringTableMeta).values()
-            .forEach(r -> refGeneratedReferencedColumns.addAll(r));
+            .forEach(refGeneratedReferencedColumns::addAll);
         for (String column : data.refColumns) {
             if (refGeneratedReferencedColumns.contains(column)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_GENERATED_COLUMN, column);
@@ -553,7 +585,7 @@ public class ForeignKeyValidator {
         Set<String> generatedReferencedColumns = new TreeSet<>(String::compareToIgnoreCase);
         generatedReferencedColumns.addAll(GeneratedColumnUtil.getAllReferencedColumnByRef(tableMeta).keySet());
         GeneratedColumnUtil.getAllReferencedColumnByRef(tableMeta).values()
-            .forEach(r -> generatedReferencedColumns.addAll(r));
+            .forEach(generatedReferencedColumns::addAll);
         for (String column : data.columns) {
             if (generatedReferencedColumns.contains(column)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_GENERATED_COLUMN, column);
@@ -569,16 +601,37 @@ public class ForeignKeyValidator {
 
         // table referenced itself
         if (sqlCreateTable != null && data.refTableName.equalsIgnoreCase(tableName)) {
+            List<Pair<SqlIdentifier, SqlIndexDefinition>> keys = new ArrayList<>();
             if (sqlCreateTable.getKeys() != null) {
-                for (Pair<SqlIdentifier, SqlIndexDefinition> key : sqlCreateTable.getKeys()) {
-                    if (hasFkColumnIndex(key.getValue(), columnsHash)) {
-                        return;
-                    }
+                keys.addAll(sqlCreateTable.getKeys());
+            }
+            if (sqlCreateTable.getUniqueKeys() != null) {
+                keys.addAll(sqlCreateTable.getUniqueKeys());
+            }
+            if (sqlCreateTable.getClusteredKeys() != null) {
+                keys.addAll(sqlCreateTable.getClusteredKeys());
+            }
+            if (sqlCreateTable.getGlobalKeys() != null) {
+                keys.addAll(sqlCreateTable.getGlobalKeys());
+            }
+            if (sqlCreateTable.getGlobalUniqueKeys() != null) {
+                keys.addAll(sqlCreateTable.getGlobalUniqueKeys());
+            }
+
+            for (Pair<SqlIdentifier, SqlIndexDefinition> key : keys) {
+                List<String> indexColumnList = new ArrayList<>();
+                key.getValue().getColumns().stream().map(c -> c.getColumnName().getLastName())
+                    .forEach(indexColumnList::add);
+                if (hasFkColumnIndex(indexColumnList, columnsHash)) {
+                    return;
                 }
             }
 
             if (sqlCreateTable.getPrimaryKey() != null) {
-                if (hasFkColumnIndex(sqlCreateTable.getPrimaryKey(), columnsHash)) {
+                List<String> indexColumnList = new ArrayList<>();
+                sqlCreateTable.getPrimaryKey().getColumns().stream().map(c -> c.getColumnName().getLastName())
+                    .forEach(indexColumnList::add);
+                if (hasFkColumnIndex(indexColumnList, columnsHash)) {
                     return;
                 }
             }
@@ -602,43 +655,34 @@ public class ForeignKeyValidator {
         List<IndexMeta> indexes = tableMeta.getIndexes();
 
         for (IndexMeta im : indexes) {
-            boolean hasFkColumnIndex = true;
-
             final List<String> indexColumnList = new ArrayList<>();
             im.getKeyColumns().stream().map(ColumnMeta::getName).forEach(indexColumnList::add);
 
-            final Set<String> indexColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            indexColumns.addAll(indexColumnList);
-
-            if (indexColumns.containsAll(columnsHash)) {
-                for (int i = 0; i < columnsHash.size(); i++) {
-                    if (!columnsHash.contains(indexColumnList.get(i))) {
-                        hasFkColumnIndex = false;
-                        break;
-                    }
-                }
-            } else {
-                hasFkColumnIndex = false;
-            }
-
-            if (hasFkColumnIndex) {
+            if (hasFkColumnIndex(indexColumnList, columnsHash)) {
                 return;
+            }
+        }
+
+        if (tableMeta.withGsi()) {
+            for (GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean : tableMeta.getGsiTableMetaBean().indexMap.values()) {
+                final List<String> indexColumnList = new ArrayList<>();
+                gsiIndexMetaBean.indexColumns.forEach(c -> indexColumnList.add(c.columnName));
+                if (hasFkColumnIndex(indexColumnList, columnsHash)) {
+                    return;
+                }
             }
         }
 
         throw new TddlRuntimeException(ErrorCode.ERR_CREATE_FK_MISSING_INDEX);
     }
 
-    private static boolean hasFkColumnIndex(SqlIndexDefinition key, Set<String> columnsHash) {
-        boolean hasFkColumnIndex = true;
-
-        final List<String> indexColumnList = new ArrayList<>();
-        key.getColumns().stream().map(c -> c.getColumnName().getLastName())
-            .forEach(indexColumnList::add);
-
-        final Set<String> indexColumns = new HashSet<>(indexColumnList);
+    private static boolean hasFkColumnIndex(List<String> indexColumnList, Set<String> columnsHash) {
+        boolean hasFkColumnIndex = false;
+        final Set<String> indexColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexColumns.addAll(indexColumnList);
 
         if (indexColumns.containsAll(columnsHash)) {
+            hasFkColumnIndex = true;
             for (int i = 0; i < columnsHash.size(); i++) {
                 if (!columnsHash.contains(indexColumnList.get(i))) {
                     hasFkColumnIndex = false;
@@ -647,11 +691,7 @@ public class ForeignKeyValidator {
             }
         }
 
-        if (hasFkColumnIndex) {
-            return true;
-        }
-
-        return false;
+        return hasFkColumnIndex;
     }
 
     public static void validateDropReferredTableFkIndex(TableMeta tableMeta, String indexName) {
@@ -674,7 +714,8 @@ public class ForeignKeyValidator {
             HashSet<String> columnsHash = new HashSet<>(e.getValue().refColumns);
 
             boolean hasFkColumnIndex = true;
-            final Set<String> indexColumns = new HashSet<>(indexColumnList);
+            final Set<String> indexColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            indexColumns.addAll(indexColumnList);
 
             if (indexColumns.containsAll(columnsHash)) {
                 for (int i = 0; i < columnsHash.size(); i++) {

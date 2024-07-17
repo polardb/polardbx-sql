@@ -16,14 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.core.rel.CheckMysqlIndexNLJoinRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlHashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlIndexNLJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlNLJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -32,7 +34,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.JoinInfo;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalJoin;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
 /**
  * @author dylan
@@ -73,7 +74,7 @@ public class MysqlJoinRule extends RelOptRule {
                 logicalJoin.isSemiJoinDone(),
                 ImmutableList.copyOf(logicalJoin.getSystemFieldList()),
                 logicalJoin.getHints());
-            RelOptCost mysqlHashJoinCost = RelMetadataQuery.instance().getCumulativeCost(mysqlHashJoin);
+            RelOptCost mysqlHashJoinCost = PlannerUtils.newMetadataQuery().getCumulativeCost(mysqlHashJoin);
             RelOptCost mysqlIndexNLJoinCost = null;
 
             // MysqlIndexNLJoin
@@ -99,7 +100,7 @@ public class MysqlJoinRule extends RelOptRule {
                 if (mysqlTableScan != null) {
                     mysqlTableScan.setJoin(mysqlIndexNLJoin);
                     mysqlIndexNLJoin.setMysqlTableScan(mysqlTableScan);
-                    mysqlIndexNLJoinCost = RelMetadataQuery.instance().getCumulativeCost(mysqlIndexNLJoin);
+                    mysqlIndexNLJoinCost = PlannerUtils.newMetadataQuery().getCumulativeCost(mysqlIndexNLJoin);
                     mysqlTableScan.setJoin(null);
                 }
             }

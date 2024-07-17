@@ -90,7 +90,7 @@
         ]]></Change>
     </SystemTable>
     <SystemTable name="changeset_objects">
-        <Create><![CDATA[
+    <Create><![CDATA[
             create table if not exists `changeset_objects` (
               `id` bigint unsigned not null auto_increment,
               `changeset_id` bigint unsigned not null,
@@ -119,11 +119,44 @@
               key `i_job_id_status` (`job_id`, `status`)
             ) charset=utf8mb4
         ]]></Create>
-        <Change><![CDATA[
+    <Change><![CDATA[
             ALTER TABLE `changeset_objects` CONVERT TO CHARACTER SET utf8mb4
         ]]></Change>
         <Change><![CDATA[
             ALTER TABLE `changeset_objects` add index `i_job_id_status` (`job_id`, `status`)
         ]]></Change>
+    </SystemTable>
+    <SystemTable name="physical_backfill_objects">
+    <Create><![CDATA[
+        create table `physical_backfill_objects` (
+          `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+         `job_id` bigint(20) unsigned NOT NULL,
+         `table_schema` varchar(64) NOT NULL,
+         `table_name` varchar(64) NOT NULL,
+         `index_schema` varchar(64) NOT NULL,
+         `index_name` varchar(64) NOT NULL,
+         `physical_db` varchar(128) DEFAULT NULL COMMENT 'Group key',
+         `physical_table` varchar(64) DEFAULT NULL COMMENT 'Physical table name',
+         `physical_partition` varchar(64) DEFAULT NULL COMMENT 'Physical partition name',
+         `source_group_name` varchar(64) NOT NULL,
+         `target_group_name` varchar(64) NOT NULL,
+         `source_file_name` text,
+         `source_dir_name` text,
+         `target_file_name` text,
+         `target_dir_name` text,
+         `status` smallint NOT NULL DEFAULT '0' COMMENT '0:INIT,1:RUNNING,2:SUCCESS,3:FAILED',
+         `detail_info` longtext COMMENT '{src_host,src_port},list<{target_host,target_port}>,bitSet:longArray=[]',
+         `total_batch` bigint unsigned NOT NULL,
+         `batch_size` int unsigned NOT NULL COMMENT 'unit:KB',
+         `offset` int unsigned NOT NULL DEFAULT 0,
+         `success_batch_count` bigint unsigned NOT NULL,
+         `start_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         `end_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         `extra` longtext,
+          `lsn` bigint unsigned not null default 0,
+          PRIMARY KEY (`id`),
+          KEY `i_job_id_status` (`job_id`,`status`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ]]></Create>
     </SystemTable>
 </SystemTables>

@@ -77,6 +77,7 @@ public class ChangeSetCatchUpTask extends BaseBackfillTask {
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+        FailPoint.injectSuspendFromHint("FP_CATCHUP_TASK_SUSPEND", executionContext);
 
         changeSetManager.logicalTableChangeSetCatchUp(
             logicalTableName,

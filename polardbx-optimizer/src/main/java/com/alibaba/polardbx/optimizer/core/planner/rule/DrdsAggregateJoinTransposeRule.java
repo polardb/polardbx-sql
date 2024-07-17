@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -81,7 +81,8 @@ public class DrdsAggregateJoinTransposeRule extends AbstractAggregsteJoinTranspo
     public static final DrdsAggregateJoinTransposeRule PROJECT_EXTENDED =
         new DrdsAggregateJoinTransposeRule(operand(LogicalAggregate.class, null,
             agg -> isAggregateSupported(agg, true),
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
             RelFactories.LOGICAL_BUILDER, true, "PROJECT_EXTENDED");
 
     private final boolean allowFunctions;

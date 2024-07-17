@@ -1,0 +1,72 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `ch_t1_u_o` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`tid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 8;
+show create table ch_t1_u_o;
+
+CREATE TABLE `ch_t2_u_o` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`tid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 8;
+show create table ch_t2_u_o;
+
+CREATE TABLE `ch_t3_u_o` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`tid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 4;
+show create table ch_t3_u_o;
+
+insert into ch_t1_u_o(id, order_id, user_id) values (null, 123456,123456),(null,123458,123458),(null,123459,123459);
+insert into ch_t2_u_o(id, order_id, user_id) values (null, 123456,123456),(null,123458,123458),(null,123459,123459);
+insert into ch_t3_u_o(id, order_id, user_id) values (null, 123456,123456),(null,123458,123458),(null,123459,123459);
+
+explain
+select id,sid from ch_t1_u_o where
+order_id in (select user_id from ch_t2_u_o where order_id in (123456, 123458, 123459)) order by user_id;
+
+## route: p8
+explain select id from ch_t1_u_o where order_id in (111234);
+## route: p3,p5,p7
+select user_id from ch_t2_u_o where user_id in (123456, 123458, 123459) order by user_id;
+
+trace /*TDDL:merge_union=false*/ select id,sid from ch_t1_u_o where user_id in (111234) or order_id in (select user_id from ch_t2_u_o where user_id in (123456, 123458, 123459)) order by user_id;
+
+## total phy sql num: 7 all->p8,p3,p5,p7, sq->p3,p5,p7)##
+
+select count(1) from information_schema.trace;
+
+trace /*TDDL:merge_union=false*/ select id,sid from ch_t1_u_o where order_id in (111234) or user_id in (select order_id from ch_t2_u_o where order_id in (123456, 123458, 123459)) order by user_id;
+
+## total phy sql num: 7 (all->p8,p3,p5,p7 sq->p3,p5,p7)##
+select count(1) from information_schema.trace;
+
+trace /*TDDL:merge_union=false*/ select id,sid from ch_t1_u_o where user_id in (select order_id from ch_t2_u_o where user_id in (111234)) or order_id in ( select user_id from ch_t2_u_o where user_id in (123456, 123458, 123459) ) order by user_id;
+
+## total phy sql num: 7 (all->p3,p5,p7, sq1->p8(no data),sp2->p3,p5,p7)##
+
+select count(1) from information_schema.trace;
+
+

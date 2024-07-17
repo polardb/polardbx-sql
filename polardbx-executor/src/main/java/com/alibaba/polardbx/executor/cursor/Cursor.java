@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.cursor;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 

@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.RenameTableSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -40,7 +41,8 @@ public class RenameTableSyncTask extends BaseSyncTask {
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new RenameTableSyncAction(schemaName, logicalTableName, newLogicalTableName), true);
+        SyncManagerHelper.sync(new RenameTableSyncAction(schemaName, logicalTableName, newLogicalTableName),
+            SyncScope.ALL, true);
     }
 
 }

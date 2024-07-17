@@ -37,9 +37,5 @@ public class VersionTest {
         Assert.assertEquals(15181806l, l);
         l = Version.convertVersion("0.2.6-SNAPSHOT");
         Assert.assertEquals(20600, l);
-
-        String v = Version.getVerionByPath("yunos-yunying-strom-1.0.0-jar-with-dependencies.jar");
-        System.out.println(v);
-
     }
 }

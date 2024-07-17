@@ -100,7 +100,7 @@ public class AlterTableGroupReorgPartitionPreparedData extends AlterTableGroupBa
     }
 
     @Override
-    public void prepareInvisiblePartitionGroup() {
+    public void prepareInvisiblePartitionGroup(Boolean hasSubPartition) {
         if (!reorgSubPartition && hasSubPartition) {
             List<PartitionGroupRecord> inVisiblePartitionGroups = new ArrayList<>();
             TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
@@ -122,7 +122,7 @@ public class AlterTableGroupReorgPartitionPreparedData extends AlterTableGroupBa
 
             setInvisiblePartitionGroups(inVisiblePartitionGroups);
         } else {
-            super.prepareInvisiblePartitionGroup();
+            super.prepareInvisiblePartitionGroup(hasSubPartition);
         }
     }
 }

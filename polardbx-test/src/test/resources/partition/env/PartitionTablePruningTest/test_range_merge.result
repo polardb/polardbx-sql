@@ -27,7 +27,7 @@ rng_cols,CREATE TABLE `rng_cols` (
 	`b` bigint(20) NOT NULL,
 	`c` bigint(20) NOT NULL,
 	KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
-) ENGINE = InnoDB AUTO_INCREMENT = 400002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
 (PARTITION p0 VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (100,2000,10000) ENGINE = InnoDB,
@@ -45,4 +45,4 @@ WHERE (a = 200
 	AND c IN (9999);
 Logical ExecutionPlan
 Gather(concurrent=true)
-  LogicalView(tables="rng_cols[p3,p5,p6]", shardCount=3, sql="SELECT `a`, `b`, `c` FROM `rng_cols` AS `rng_cols` WHERE ((`c` IN(?)) AND ((`a` = ?) OR (`a` >= ?)) AND ((`b` <= ?) OR (`b` >= ?)))", isDynamicParam="true")
+  LogicalView(tables="rng_cols[p3,p5,p6]", shardCount=3, sql="SELECT `a`, `b`, `c` FROM `rng_cols` AS `rng_cols` WHERE ((`c` IN(?)) AND ((`a` = ?) OR (`a` >= ?)) AND ((`b` <= ?) OR (`b` >= ?)))")

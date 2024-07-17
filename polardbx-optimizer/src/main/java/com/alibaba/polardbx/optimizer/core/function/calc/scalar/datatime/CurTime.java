@@ -20,12 +20,12 @@ import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
-import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
+import com.alibaba.polardbx.optimizer.utils.TimestampUtils;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -66,11 +66,7 @@ public class CurTime extends AbstractScalarFunction {
         MysqlDateTime t = MySQLTimeTypeUtil.fromZonedDatetime(zonedDateTime);
         t = MySQLTimeConverter.datetimeToTime(t);
         t = MySQLTimeCalculator.roundTime(t, scale);
-        return DataTypeUtil.fromMySQLDatetime(resultType, t,
-            Optional.ofNullable(ec)
-                .map(ExecutionContext::getTimeZone)
-                .map(InternalTimeZone::getTimeZone)
-                .orElseGet(() -> TimeZone.getDefault()));
+        return DataTypeUtil.fromMySQLDatetime(resultType, t, TimestampUtils.getTimeZone(ec));
     }
 
     @Override

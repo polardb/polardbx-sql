@@ -1,0 +1,62 @@
+DROP DATABASE IF EXISTS d_multi_part_ddl;
+CREATE DATABASE d_multi_part_ddl MODE 'auto';
+USE d_multi_part_ddl;
+DROP TABLE IF EXISTS test_multi_change_column1;
+CREATE TABLE test_multi_change_column1 (
+	c1 int,
+	c2 double,
+	c3 varchar(10),
+	c4 varchar(40)
+);
+ALTER TABLE test_multi_change_column1
+	ADD LOCAL INDEX i_c1c2 (c1, c2),
+	ADD LOCAL INDEX i_c2c3 (c2, c3),
+	ADD LOCAL INDEX i_c3c4 (c3, c4);
+ALTER TABLE test_multi_change_column1
+	CHANGE COLUMN c1 c2 int AFTER c1,
+	CHANGE COLUMN c2 c1 double;
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.test_multi_change_column1:Topology,check,status,OK
+d_multi_part_ddl.test_multi_change_column1:Columns,check,status,OK
+test_multi_change_column1.i_c1c2:Local Index,check,status,OK
+test_multi_change_column1.i_c2c3:Local Index,check,status,OK
+test_multi_change_column1.i_c3c4:Local Index,check,status,OK
+ALTER TABLE test_multi_change_column1
+	CHANGE COLUMN c1 c3 int AFTER c4,
+	CHANGE COLUMN c3 c1 varchar(30) AFTER c2,
+	ADD COLUMN c5 varchar(50);
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.test_multi_change_column1:Topology,check,status,OK
+d_multi_part_ddl.test_multi_change_column1:Columns,check,status,OK
+test_multi_change_column1.i_c1c2:Local Index,check,status,OK
+test_multi_change_column1.i_c2c3:Local Index,check,status,OK
+test_multi_change_column1.i_c3c4:Local Index,check,status,OK
+ALTER TABLE `test_multi_change_column1`
+	MODIFY COLUMN `c2` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+	MODIFY COLUMN `c3` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+	MODIFY COLUMN `c4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`,
+	MODIFY COLUMN `c1` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`;
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.test_multi_change_column1:Topology,check,status,OK
+d_multi_part_ddl.test_multi_change_column1:Columns,check,status,OK
+test_multi_change_column1.i_c1c2:Local Index,check,status,OK
+test_multi_change_column1.i_c2c3:Local Index,check,status,OK
+test_multi_change_column1.i_c3c4:Local Index,check,status,OK
+ALTER TABLE `test_multi_change_column1`
+	CHANGE COLUMN `c3` `c8` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+	CHANGE COLUMN `c5` `c2` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c8`,
+	CHANGE COLUMN `c2` `c5` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+	CHANGE COLUMN `c4` `c3` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c5`,
+	MODIFY COLUMN `c1` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+Table,Op,Msg_type,Msg_text
+d_multi_part_ddl.test_multi_change_column1:Topology,check,status,OK
+d_multi_part_ddl.test_multi_change_column1:Columns,check,status,OK
+test_multi_change_column1.i_c1c2:Local Index,check,status,OK
+test_multi_change_column1.i_c2c3:Local Index,check,status,OK
+test_multi_change_column1.i_c3c4:Local Index,check,status,OK
+USE polardbx;
+DROP DATABASE IF EXISTS d_multi_part_ddl;

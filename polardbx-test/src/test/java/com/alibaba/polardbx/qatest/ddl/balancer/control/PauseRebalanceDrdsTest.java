@@ -23,6 +23,7 @@ public class PauseRebalanceDrdsTest extends DDLBaseNewDBTestCase {
     // 本地测试环境需要加该hint 或者 set global
     private static final String LOCAL_HINT =
         "SHARE_STORAGE_MODE=true,SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true";
+    private static final String DROP_DB_HINT = "ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE=true";
 
     private static final int TABLE_COUNT = 4;
     static private final String DATABASE_NAME = "PauseRebalanceDrdsTest";
@@ -224,7 +225,7 @@ public class PauseRebalanceDrdsTest extends DDLBaseNewDBTestCase {
 
     void doClearDatabase() {
         JdbcUtil.executeUpdate(getTddlConnection1(), "use information_schema");
-        String tddlSql = "drop database if exists " + DATABASE_NAME;
+        String tddlSql = buildCmdExtra(DROP_DB_HINT) + "drop database if exists " + DATABASE_NAME;
         JdbcUtil.executeUpdate(getTddlConnection1(), tddlSql);
     }
 }

@@ -21,6 +21,7 @@ import java.io.EOFException;
 import java.io.IOException;
 
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
+import org.apache.orc.customized.ORCProfile;
 
 public final class BitFieldReader {
   private final RunLengthByteReader input;
@@ -38,6 +39,10 @@ public final class BitFieldReader {
     } else {
       throw new EOFException("Read past end of bit field from " + this);
     }
+  }
+
+  public void setMemoryCounter(ORCProfile memoryCounter) {
+    input.setMemoryCounter(memoryCounter);
   }
 
   public int next() throws IOException {

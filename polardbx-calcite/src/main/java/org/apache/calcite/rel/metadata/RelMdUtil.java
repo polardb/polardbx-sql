@@ -416,6 +416,15 @@ public class RelMdUtil {
         RexNode predicate,
         boolean artificialOnly) {
         double sel = 1.0;
+        if (predicate instanceof RexLiteral) {
+            if (((RexLiteral)predicate).isAlwaysTrueIntOrBoolean()) {
+                return sel;
+            }
+            if (((RexLiteral)predicate).isAlwaysFalseIntOrBoolean()) {
+                return 0.0;
+            }
+        }
+
         if ((predicate == null) || predicate.isAlwaysTrue()) {
             return sel;
         }
@@ -438,6 +447,8 @@ public class RelMdUtil {
                 sel *= .15;
             } else if (pred.isA(SqlKind.COMPARISON)) {
                 sel *= .5;
+            } else if (pred.isA(SqlKind.LIKE)) {
+                sel *= .05;
             } else {
                 sel *= .25;
             }
@@ -569,6 +580,23 @@ public class RelMdUtil {
                 }
             }
         }
+    }
+
+    public static ImmutableBitSet keyThroughChildKeys(
+        ImmutableBitSet currentGroupKey,
+        ImmutableBitSet childGroupKey) {
+        final int childGroupCount = childGroupKey.cardinality();
+        for (int bit : currentGroupKey) {
+            if (bit >= childGroupCount) {
+                return null;
+            }
+        }
+
+        ImmutableBitSet.Builder result = ImmutableBitSet.builder();
+        for (int bit : currentGroupKey) {
+            result.set(childGroupKey.nth(bit));
+        }
+        return result.build();
     }
 
     /**

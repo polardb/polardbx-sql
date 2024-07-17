@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
@@ -48,6 +51,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
@@ -63,6 +67,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+
+import static com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility.Private;
+import static com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility.Protected;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE_SET_TABLEGROUP;
 
 /**
  * @author guxu wumu
@@ -86,12 +96,15 @@ public class RepartitionJobFactory extends DdlJobFactory {
     private final List<Pair<String, String>> addForeignKeySql;
     private final List<Pair<String, String>> dropForeignKeySql;
     private final Map<String, Set<String>> foreignKeyChildTable;
+    private final List<Pair<String, String>> addCciSql;
+    private final List<Pair<String, String>> dropCciSql;
 
     private final ExecutionContext executionContext;
 
     private final RelOptCluster cluster;
 
     private final Boolean modifyLocality;
+    private final Boolean repartitionGsi;
 
     public RepartitionJobFactory(CreateGlobalIndexPreparedData globalIndexPreparedData,
                                  RepartitionPrepareData repartitionPrepareData,
@@ -115,6 +128,9 @@ public class RepartitionJobFactory extends DdlJobFactory {
         this.dropForeignKeySql = repartitionPrepareData.getDropForeignKeySql();
         this.foreignKeyChildTable = repartitionPrepareData.getForeignKeyChildTable();
         this.modifyLocality = repartitionPrepareData.getModifyLocality();
+        this.repartitionGsi = repartitionPrepareData.getRepartitionGsi();
+        this.addCciSql = repartitionPrepareData.getAddCciSql();
+        this.dropCciSql = repartitionPrepareData.getDropCciSql();
         this.physicalPlanData = physicalPlanData;
         this.executionContext = executionContext;
         this.cluster = cluster;
@@ -172,12 +188,31 @@ public class RepartitionJobFactory extends DdlJobFactory {
             CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, executionContext);
         createGsiJobFactory.stayAtBackFill = true;
         ExecutableDdlJob createGsiJob = createGsiJobFactory.create();
+        if (globalIndexPreparedData.getRelatedTableGroupInfo().values().stream().anyMatch(o -> o.booleanValue())
+            || globalIndexPreparedData.isNeedToGetTableGroupLock()) {
+            return createGsiJob;
+        }
 
         RepartitionCutOverTask cutOverTask =
-            new RepartitionCutOverTask(schemaName, primaryTableName, indexTableName, isSingle, isBroadcast, false);
+            new RepartitionCutOverTask(schemaName, primaryTableName, indexTableName, isSingle, isBroadcast, false,
+                repartitionGsi != null && repartitionGsi);
         RepartitionSyncTask repartitionSyncTask = new RepartitionSyncTask(schemaName, primaryTableName, indexTableName);
 
-        DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(schemaName, primaryTableName, SqlKind.ALTER_TABLE);
+        DdlTask cdcDdlMarkTask = null;
+        if (executionContext.getDdlContext().isSubJob()) {
+            DdlContext rootDdlContext = getRootParentDdlContext(executionContext.getDdlContext());
+            DdlType rootDdlType = rootDdlContext.getDdlType();
+            if (ALTER_TABLE_SET_TABLEGROUP != rootDdlType && ALTER_TABLE != rootDdlType
+                && ALTER_TABLEGROUP != rootDdlType) {
+                throw new RuntimeException("unexpected parent ddl job " + rootDdlContext.getDdlType());
+            }
+
+            CdcDdlMarkVisibility visibility = rootDdlType == ALTER_TABLE ? Protected : Private;
+            cdcDdlMarkTask = new CdcRepartitionMarkTask(schemaName, primaryTableName, SqlKind.ALTER_TABLE, visibility);
+        } else {
+            cdcDdlMarkTask = new CdcRepartitionMarkTask(
+                schemaName, primaryTableName, SqlKind.ALTER_TABLE, Protected);
+        }
 
         DropGlobalIndexPreparedData dropGlobalIndexPreparedData =
             new DropGlobalIndexPreparedData(schemaName, primaryTableName, indexTableName, false);
@@ -252,6 +287,24 @@ public class RepartitionJobFactory extends DdlJobFactory {
             return repartitionJob;
         }
 
+        if (GeneralUtil.isNotEmpty(dropCciSql)) {
+            List<SubJobTask> dropCciSubJobTasks = new ArrayList<>();
+            for (Pair<String, String> sql : dropCciSql) {
+                SubJobTask dropCciSubJobTask =
+                    new SubJobTask(schemaName, sql.getKey(), sql.getValue());
+                dropCciSubJobTask.setParentAcquireResource(true);
+                dropCciSubJobTasks.add(dropCciSubJobTask);
+            }
+
+            for (int i = 0; i < dropCciSubJobTasks.size(); i++) {
+                if (i == 0) {
+                    repartitionJob.addTaskRelationship(validateTask, dropCciSubJobTasks.get(i));
+                } else {
+                    repartitionJob.addTaskRelationship(dropCciSubJobTasks.get(i - 1), dropCciSubJobTasks.get(i));
+                }
+            }
+        }
+
         // 2. drop foreign keys on child table
         if (dropForeignKeySql != null && !dropForeignKeySql.isEmpty()) {
             // drop foreign key subJob
@@ -270,17 +323,13 @@ public class RepartitionJobFactory extends DdlJobFactory {
                     repartitionJob.addTaskRelationship(dropFkSubJobTasks.get(i - 1), dropFkSubJobTasks.get(i));
                 }
             }
-
-            for (Map.Entry<String, Set<String>> entry : foreignKeyChildTable.entrySet()) {
-                for (String table : entry.getValue()) {
-                    TableSyncTask tableSyncTask = new TableSyncTask(entry.getKey(), table);
-                    repartitionJob.addTask(tableSyncTask);
-                }
-            }
         }
 
         // 3. create gsi
         repartitionJob.appendJob2(createGsiJob);
+
+        // drop cci
+//        dropColumnarClusterIndexJobs.forEach(repartitionJob::appendJob2);
 
         // 4. cut over
         final boolean skipCutOver = StringUtils.equalsIgnoreCase(
@@ -304,6 +353,27 @@ public class RepartitionJobFactory extends DdlJobFactory {
         // 6. drop gsi tables
         dropGlobalIndexJobs.forEach(repartitionJob::appendJob2);
 
+        // create cci
+//        repartitionJob.appendJob2(createCciJob);
+
+        if (GeneralUtil.isNotEmpty(addCciSql)) {
+            List<SubJobTask> addCciSubJobTasks = new ArrayList<>();
+            for (Pair<String, String> sql : addCciSql) {
+                SubJobTask addCciSubJobTask =
+                    new SubJobTask(schemaName, sql.getKey(), sql.getValue());
+                addCciSubJobTask.setParentAcquireResource(true);
+                addCciSubJobTasks.add(addCciSubJobTask);
+            }
+
+            for (int i = 0; i < addCciSubJobTasks.size(); i++) {
+                if (i == 0) {
+                    repartitionJob.appendTask(addCciSubJobTasks.get(i));
+                } else {
+                    repartitionJob.addTaskRelationship(addCciSubJobTasks.get(i - 1), addCciSubJobTasks.get(i));
+                }
+            }
+        }
+
         // 7. drop/create fk on related table
         if (addForeignKeySql != null && !addForeignKeySql.isEmpty()) {
             // change fk meta
@@ -311,6 +381,12 @@ public class RepartitionJobFactory extends DdlJobFactory {
                 schemaName, primaryTableName, modifyForeignKeys);
 
             repartitionJob.appendTask(repartitionChangeFkMetaTask);
+
+            for (ForeignKeyData fk : modifyForeignKeys) {
+                repartitionJob.appendTask(new TableSyncTask(fk.refSchema, fk.refTableName));
+            }
+            TableSyncTask syncTask = new TableSyncTask(schemaName, primaryTableName);
+            repartitionJob.appendTask(syncTask);
 
             // add foreign key subJob
             List<SubJobTask> addFkSubJobTasks = new ArrayList<>();
@@ -323,7 +399,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
 
             for (int i = 0; i < addFkSubJobTasks.size(); i++) {
                 if (i == 0) {
-                    repartitionJob.addTaskRelationship(repartitionChangeFkMetaTask, addFkSubJobTasks.get(i));
+                    repartitionJob.addTaskRelationship(syncTask, addFkSubJobTasks.get(i));
                 } else {
                     repartitionJob.addTaskRelationship(addFkSubJobTasks.get(i - 1), addFkSubJobTasks.get(i));
                 }
@@ -463,4 +539,11 @@ public class RepartitionJobFactory extends DdlJobFactory {
         return dropGsiLastTask;
     }
 
+    private DdlContext getRootParentDdlContext(DdlContext ddlContext) {
+        if (ddlContext.getParentDdlContext() != null) {
+            return getRootParentDdlContext(ddlContext.getParentDdlContext());
+        } else {
+            return ddlContext;
+        }
+    }
 }

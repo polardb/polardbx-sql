@@ -22,7 +22,7 @@ import java.util.Locale;
  * @author fangwu
  */
 public enum Module {
-    SPM, STATISTICS, SCHEDULE_JOB, MODULE_LOG, UNKNOWN, OSS, TRX, OPTIMIZER;
+    SPM, STATISTICS, SCHEDULE_JOB, MODULE_LOG, UNKNOWN, OSS, TRX, OPTIMIZER, COLUMNAR_PRUNE;
 
     private ModuleInfo moduleInfo;
 
@@ -31,6 +31,9 @@ public enum Module {
     }
 
     public String getLoggerName() {
+        if (this == STATISTICS) {
+            return "STATISTICS";
+        }
         return this.name().toLowerCase(Locale.ROOT);
     }
 

@@ -87,7 +87,7 @@ public class ProcedureResultHandler implements QueryResultHandler {
         if (!selectForDeeperUse) {
             lastAffectRows = 0;
             proxy =
-                ResultSetUtil.resultSetToPacket(resultSet, serverConnection.getCharset(), serverConnection,
+                ResultSetUtil.resultSetToPacket(resultSet, serverConnection.getResultSetCharset(), serverConnection,
                     outAffectedRows,
                     proxy, sqlSelectLimit);
             lastFoundRows = outAffectedRows.get();

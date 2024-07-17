@@ -82,10 +82,7 @@ public class LoopJoinExecutorFactory extends ExecutorFactory {
                     synchronizer
                 );
                 exec.setStreamJoin(streamJoin);
-                exec.setId(join.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(join, exec, context);
-                }
+                registerRuntimeStat(exec, join, context);
                 executors.add(exec);
             }
         }

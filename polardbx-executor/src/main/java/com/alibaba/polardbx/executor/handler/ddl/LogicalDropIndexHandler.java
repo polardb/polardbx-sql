@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar.DropColumnarIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropIndex;
@@ -59,11 +61,15 @@ public class LogicalDropIndexHandler extends LogicalCommonDdlHandler {
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        final Long versionId = DdlUtils.generateVersionId(executionContext);
         LogicalDropIndex logicalDropIndex = (LogicalDropIndex) logicalDdlPlan;
         logicalDropIndex.prepareData();
+        logicalDropIndex.setDdlVersionId(versionId);
 
         if (logicalDropIndex.isGsi()) {
             return buildDropGsiJob(logicalDropIndex, executionContext);
+        } else if (logicalDropIndex.isColumnar()) {
+            return buildDropColumnarIndexJob(logicalDropIndex, executionContext);
         } else {
             return buildDropLocalIndexJob(logicalDropIndex, executionContext);
         }
@@ -167,4 +173,20 @@ public class LogicalDropIndexHandler extends LogicalCommonDdlHandler {
         return null;
     }
 
+    public DdlJob buildDropColumnarIndexJob(LogicalDropIndex logicalDropIndex, ExecutionContext executionContext) {
+        DropIndexWithGsiPreparedData dropIndexPreparedData = logicalDropIndex.getDropIndexWithGsiPreparedData();
+        DropGlobalIndexPreparedData preparedData = dropIndexPreparedData.getGlobalIndexPreparedData();
+
+        ExecutableDdlJob gsiJob = DropColumnarIndexJobFactory.create(preparedData, executionContext, false, true);
+
+        Map<String, Long> tableVersions = new HashMap<>();
+        tableVersions.put(preparedData.getPrimaryTableName(), preparedData.getTableVersion());
+        ValidateTableVersionTask validateTableVersionTask =
+            new ValidateTableVersionTask(preparedData.getSchemaName(), tableVersions);
+
+        gsiJob.addTask(validateTableVersionTask);
+        gsiJob.addTaskRelationship(validateTableVersionTask, gsiJob.getHead());
+
+        return gsiJob;
+    }
 }

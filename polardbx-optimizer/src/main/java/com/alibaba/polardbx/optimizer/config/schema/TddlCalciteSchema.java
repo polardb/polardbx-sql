@@ -17,18 +17,12 @@
 package com.alibaba.polardbx.optimizer.config.schema;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableList.Builder;
-import com.google.common.collect.ImmutableSortedMap;
-import com.google.common.collect.ImmutableSortedSet;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.biv.MockDataManager;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
@@ -39,6 +33,10 @@ import com.alibaba.polardbx.optimizer.view.DrdsViewTable;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableList.Builder;
+import com.google.common.collect.ImmutableSortedMap;
+import com.google.common.collect.ImmutableSortedSet;
 import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -140,15 +138,20 @@ public class TddlCalciteSchema extends CalciteSchema {
             if (ds == null) {
                 return null;
             } else {
+                if (schemaManagers == null) {
+                    return null;
+                }
                 TddlSchema tddlSchema;
-                if (schemaManagers != null && schemaManagers.containsKey(schemaName)) {
+                if (schemaManagers.containsKey(schemaName)) {
                     tddlSchema = new TddlSchema(schemaName, schemaManagers.get(schemaName));
                 } else {
-                    if (OptimizerContext.getContext(schemaName) == null) {
+                    OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+                    if (optimizerContext == null) {
                         return null;
                     }
-                    tddlSchema =
-                        new TddlSchema(schemaName, OptimizerContext.getContext(schemaName).getLatestSchemaManager());
+                    SchemaManager schemaManager = optimizerContext.getLatestSchemaManager();
+                    schemaManagers.put(schemaName, schemaManager);
+                    tddlSchema = new TddlSchema(schemaName, schemaManager);
                 }
                 return new TddlCalciteSchema(schemaName, schemaManagers, this, tddlSchema, schemaName);
             }
@@ -215,10 +218,6 @@ public class TddlCalciteSchema extends CalciteSchema {
         Table table;
 
         try {
-            // use logical table name to acquaire table meta in cache
-//            if (ConfigDataMode.isFastMock()) {
-//                tableName = MockDataManager.phyTableToLogicalTableName.get(tableName.toLowerCase());
-//            }
             table = schema.getTable(tableName);
             if (table instanceof TableMeta && ((TableMeta) table).getStatus() != TableStatus.PUBLIC) {
                 throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, tableName);

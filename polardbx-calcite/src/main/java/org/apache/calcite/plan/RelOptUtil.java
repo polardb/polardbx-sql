@@ -96,12 +96,14 @@ import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.runtime.CalciteContextException;
 import org.apache.calcite.runtime.PredicateImpl;
 import org.apache.calcite.schema.ModifiableView;
+import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.MultisetSqlType;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -235,7 +237,7 @@ public abstract class RelOptUtil {
    */
   public static List<RelOptTable> findAllTables(RelNode rel) {
     final Multimap<Class<? extends RelNode>, RelNode> nodes =
-        RelMetadataQuery.instance().getNodeTypes(rel);
+       rel.getCluster().getMetadataQuery().getNodeTypes(rel);
     final List<RelOptTable> usedTables = new ArrayList<>();
     for (Entry<Class<? extends RelNode>, Collection<RelNode>> e : nodes.asMap().entrySet()) {
       if (TableScan.class.isAssignableFrom(e.getKey())) {
@@ -259,7 +261,7 @@ public abstract class RelOptUtil {
    */
   public static List<RelNode> findAllCorrelate(RelNode rel) {
     final Multimap<Class<? extends RelNode>, RelNode> nodes =
-        RelMetadataQuery.instance().getNodeTypes(rel);
+        rel.getCluster().getMetadataQuery().getNodeTypes(rel);
     final List<RelNode> usedTables = new ArrayList<>();
     for (Entry<Class<? extends RelNode>, Collection<RelNode>> e : nodes.asMap().entrySet()) {
       if (Correlate.class.isAssignableFrom(e.getKey())) {
@@ -1925,6 +1927,11 @@ public abstract class RelOptUtil {
       return litmus.succeed();
     }
 
+    if (type1.getSqlTypeName() == SqlTypeName.DECIMAL
+        && type2.getSqlTypeName() ==  SqlTypeName.DECIMAL) {
+      return litmus.succeed();
+    }
+
     if (type1 != type2) {
       return litmus.fail("type mismatch:\n{}:\n{}\n{}:\n{}",
           desc1, type1.getFullTypeString(),
@@ -2877,7 +2884,7 @@ public abstract class RelOptUtil {
     try {
       new RelVisitor() {
         public void visit(RelNode node, int ordinal, RelNode parent) {
-          if (node instanceof Sort) {
+          if (node instanceof Sort&&((Sort)node).withLimit()) {
             throw Util.FoundOne.NULL;
           }
           super.visit(node, ordinal, parent);
@@ -4349,6 +4356,26 @@ public abstract class RelOptUtil {
       return traits.getCollation().isTop() && traits.getDistribution().isTop();
     }
   };
+
+  public static boolean isUnion(SqlNode node) {
+    return node instanceof SqlBasicCall && node.getKind() == SqlKind.UNION;
+  }
+
+  public static int getColumnCount(SqlNode node) {
+    if (isUnion(node)) {
+      final SqlNode[] children = ((SqlBasicCall) node).getOperands();
+      for (int i = 0; i < children.length; i++) {
+        final int columnCount = getColumnCount(children[i]);
+        if (columnCount > 0) {
+          return columnCount;
+        }
+      }
+      return -1;
+    } else if (node instanceof SqlSelect) {
+      return ((SqlSelect) node).getSelectList().size();
+    }
+    return -1;
+  }
 }
 
 // End RelOptUtil.java

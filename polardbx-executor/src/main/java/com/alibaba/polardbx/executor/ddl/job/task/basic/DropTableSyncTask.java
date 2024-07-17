@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.DropTableSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -37,7 +38,7 @@ public class DropTableSyncTask extends BaseSyncTask {
 
     @Override
     protected void executeImpl(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new DropTableSyncAction(schemaName, logicalTableName), true);
+        SyncManagerHelper.sync(new DropTableSyncAction(schemaName, logicalTableName), SyncScope.ALL, true);
     }
 
 }

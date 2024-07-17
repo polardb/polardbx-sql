@@ -86,7 +86,7 @@ public class MergeIndexRule extends RelOptRule {
 
     public MergeIndexRule(String schemaName, List<String> gsiNameList, SqlSelect.LockMode lockMode) {
         super(operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none())),
-                "MergeIndexRule");
+            "MergeIndexRule");
         this.schemaName = schemaName;
         this.gsiNameList = gsiNameList;
         this.lockMode = lockMode;
@@ -106,7 +106,7 @@ public class MergeIndexRule extends RelOptRule {
         }
 
         if (RexUtil.containsCorrelation(logicalFilter.getCondition())
-                || (null != logicalFilter.getVariablesSet() && logicalFilter.getVariablesSet().size() > 0)) {
+            || (null != logicalFilter.getVariablesSet() && logicalFilter.getVariablesSet().size() > 0)) {
             return;
         }
 
@@ -131,8 +131,8 @@ public class MergeIndexRule extends RelOptRule {
 
         // lookup primary table
         LogicalTableLookup logicalTableLookup = RelUtils.createTableLookup(LogicalView.create(logicalTableScan,
-                        logicalTableScan.getTable()),
-                mergeIndexScan, indexTable);
+                logicalTableScan.getTable()),
+            mergeIndexScan, indexTable);
 
         LogicalFilter newFilter = logicalFilter.copy(logicalFilter.getTraitSet(), logicalTableLookup, condition);
         work = true;
@@ -197,10 +197,10 @@ public class MergeIndexRule extends RelOptRule {
             String columnName = null;
 
             if ((predicate.isA(SqlKind.EQUALS)
-                    || predicate.isA(SqlKind.GREATER_THAN_OR_EQUAL)
-                    || predicate.isA(SqlKind.LESS_THAN)
-                    || predicate.isA(SqlKind.GREATER_THAN)
-                    || predicate.isA(SqlKind.LESS_THAN_OR_EQUAL)) && predicate instanceof RexCall) {
+                || predicate.isA(SqlKind.GREATER_THAN_OR_EQUAL)
+                || predicate.isA(SqlKind.LESS_THAN)
+                || predicate.isA(SqlKind.GREATER_THAN)
+                || predicate.isA(SqlKind.LESS_THAN_OR_EQUAL)) && predicate instanceof RexCall) {
                 RexCall rexCall = (RexCall) predicate;
                 RexNode operand1 = rexCall.getOperands().get(0);
                 RexNode operand2 = rexCall.getOperands().get(1);
@@ -224,7 +224,7 @@ public class MergeIndexRule extends RelOptRule {
                     columnName = columnMeta.getName();
                 }
             } else if ((predicate.isA(SqlKind.BETWEEN) || predicate.isA(SqlKind.IS_NULL))
-                    && predicate instanceof RexCall) {
+                && predicate instanceof RexCall) {
                 RexCall rexCall = (RexCall) predicate;
                 RexNode operand1 = rexCall.getOperands().get(0);
                 if (operand1 instanceof RexInputRef) {
@@ -295,7 +295,7 @@ public class MergeIndexRule extends RelOptRule {
                 predicate = set.iterator().next();
             } else {
                 predicate = rexBuilder.makeCall(SqlStdOperatorTable.AND,
-                        set.stream().collect(Collectors.toList()));
+                    set.stream().collect(Collectors.toList()));
             }
             RelNode indexAccess = buildPrimaryIndexAccess(primaryTable, predicate, logicalTableScan);
             if (indexAccess != null) {
@@ -303,11 +303,10 @@ public class MergeIndexRule extends RelOptRule {
             }
         }
 
-
         // gsi
         for (String gsiName : gsiNameList) {
             final RelOptSchema catalog = RelUtils.buildCatalogReader(schemaName,
-                    PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext());
+                PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext());
             RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsiName));
             TableMeta indexTableMeta = CBOUtil.getTableMeta(indexTable);
             List<IndexMeta> indexMetaList = indexTableMeta.getSecondaryIndexes();
@@ -330,7 +329,7 @@ public class MergeIndexRule extends RelOptRule {
                         predicate = set.iterator().next();
                     } else {
                         predicate = rexBuilder.makeCall(SqlStdOperatorTable.AND,
-                                set.stream().collect(Collectors.toList()));
+                            set.stream().collect(Collectors.toList()));
                     }
                     RelNode indexAccess = buildIndexAccess(indexTable, primaryTable, predicate, logicalTableScan);
                     if (indexAccess != null) {
@@ -345,8 +344,8 @@ public class MergeIndexRule extends RelOptRule {
     private RelNode buildPrimaryIndexAccess(RelOptTable primary, RexNode predicate,
                                             LogicalTableScan logicalTableScan) {
         final LogicalTableScan primaryScan =
-                LogicalTableScan.create(logicalTableScan.getCluster(), primary, logicalTableScan.getHints(), null,
-                        logicalTableScan.getFlashback(), null);
+            LogicalTableScan.create(logicalTableScan.getCluster(), primary, logicalTableScan.getHints(), null,
+                logicalTableScan.getFlashback(), logicalTableScan.getFlashbackOperator(), null);
         LogicalView logicalView = LogicalView.create(primaryScan, primary);
         logicalView.setFromMergeIndex(true);
         LogicalFilter logicalFilter = LogicalFilter.create(logicalView, predicate);
@@ -355,26 +354,26 @@ public class MergeIndexRule extends RelOptRule {
         TableMeta primaryTableMeta = CBOUtil.getTableMeta(primary);
         final String primaryTableName = primaryTableMeta.getTableName();
         final TableMeta primaryTable =
-                PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext().getSchemaManager(schemaName)
-                        .getTable(primaryTableName);
+            PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext().getSchemaManager(schemaName)
+                .getTable(primaryTableName);
 
         final List<String> pkList = Optional.ofNullable(primaryTable.getPrimaryKey())
-                .map(cmList -> cmList.stream().map(ColumnMeta::getName).collect(Collectors.toList()))
-                .orElse(ImmutableList.of());
+            .map(cmList -> cmList.stream().map(ColumnMeta::getName).collect(Collectors.toList()))
+            .orElse(ImmutableList.of());
 
         final List<String> skList = OptimizerContext.getContext(schemaName)
-                .getRuleManager()
-                .getSharedColumns(primaryTableName)
-                .stream()
-                .filter(sk -> !pkList.contains(sk))
-                .collect(Collectors.toList());
+            .getRuleManager()
+            .getSharedColumns(primaryTableName)
+            .stream()
+            .filter(sk -> !pkList.contains(sk))
+            .collect(Collectors.toList());
 
         final Map<String, Integer> indexColumnRefMap = logicalView.getRowType().getFieldList()
-                .stream()
-                .collect(Collectors.toMap(RelDataTypeField::getName,
-                        RelDataTypeField::getIndex,
-                        (x, y) -> y,
-                        TreeMaps::caseInsensitiveMap));
+            .stream()
+            .collect(Collectors.toMap(RelDataTypeField::getName,
+                RelDataTypeField::getIndex,
+                (x, y) -> y,
+                TreeMaps::caseInsensitiveMap));
 
         List<String> fieldNames = new ArrayList<>();
         List<RexNode> projects = new ArrayList<>();
@@ -402,39 +401,39 @@ public class MergeIndexRule extends RelOptRule {
 
         final String primaryTableName = primaryTableMeta.getTableName();
         final TableMeta primaryTable =
-                PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext().getSchemaManager(schemaName)
-                        .getTable(primaryTableName);
+            PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext().getSchemaManager(schemaName)
+                .getTable(primaryTableName);
 
         final List<String> pkList = Optional.ofNullable(primaryTable.getPrimaryKey())
-                .map(cmList -> cmList.stream().map(ColumnMeta::getName).collect(Collectors.toList()))
-                .orElse(ImmutableList.of());
+            .map(cmList -> cmList.stream().map(ColumnMeta::getName).collect(Collectors.toList()))
+            .orElse(ImmutableList.of());
 
         final List<String> skList = OptimizerContext.getContext(schemaName)
-                .getRuleManager()
-                .getSharedColumns(primaryTableName)
-                .stream()
-                .filter(sk -> !pkList.contains(sk))
-                .collect(Collectors.toList());
+            .getRuleManager()
+            .getSharedColumns(primaryTableName)
+            .stream()
+            .filter(sk -> !pkList.contains(sk))
+            .collect(Collectors.toList());
 
         final Map<String, Integer> indexColumnRefMap = indexRowType.getFieldList()
-                .stream()
-                .collect(Collectors.toMap(RelDataTypeField::getName,
-                        RelDataTypeField::getIndex,
-                        (x, y) -> y,
-                        TreeMaps::caseInsensitiveMap));
+            .stream()
+            .collect(Collectors.toMap(RelDataTypeField::getName,
+                RelDataTypeField::getIndex,
+                (x, y) -> y,
+                TreeMaps::caseInsensitiveMap));
 
         // build index scan
         final LogicalTableScan indexTableScan =
-                LogicalTableScan.create(logicalTableScan.getCluster(), index, logicalTableScan.getHints(), null,
-                        logicalTableScan.getFlashback(), null);
+            LogicalTableScan.create(logicalTableScan.getCluster(), index, logicalTableScan.getHints(), null,
+                logicalTableScan.getFlashback(), logicalTableScan.getFlashbackOperator(), null);
         final LogicalIndexScan indexScan = new LogicalIndexScan(index, indexTableScan, lockMode);
 
         // filter, the predicate must be cover by indexScan
         RelOptUtil.InputReferencedVisitor inputReferencedVisitor = new RelOptUtil.InputReferencedVisitor();
         predicate.accept(inputReferencedVisitor);
         boolean cover = inputReferencedVisitor.inputPosReferenced.stream()
-                .map(i -> primaryRowType.getFieldList().get(i).getName())
-                .allMatch(col -> indexColumnRefMap.get(col) != null);
+            .map(i -> primaryRowType.getFieldList().get(i).getName())
+            .allMatch(col -> indexColumnRefMap.get(col) != null);
 
         if (!cover) {
             return null;
@@ -447,7 +446,7 @@ public class MergeIndexRule extends RelOptRule {
         }
 
         Mappings.TargetMapping mapping = Mappings.target(
-                map, primaryRowType.getFieldCount(), indexRowType.getFieldCount());
+            map, primaryRowType.getFieldCount(), indexRowType.getFieldCount());
 
         RexNode newPredicate = predicate.accept(new RexPermuteInputsShuttle(mapping, indexScan));
 
@@ -530,10 +529,10 @@ public class MergeIndexRule extends RelOptRule {
         }
         for (Map.Entry<String, RexNode> entry : m.entrySet()) {
             final RelOptSchema catalog = RelUtils.buildCatalogReader(schemaName,
-                    PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext());
+                PlannerContext.getPlannerContext(logicalTableScan).getExecutionContext());
             RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, entry.getKey()));
             RelNode newPath = buildIndexAccess(indexTable, logicalTableScan.getTable(), entry.getValue(),
-                    logicalTableScan);
+                logicalTableScan);
             unionInputs.add(newPath);
         }
         LogicalUnion logicalUnion = LogicalUnion.create(unionInputs, false);

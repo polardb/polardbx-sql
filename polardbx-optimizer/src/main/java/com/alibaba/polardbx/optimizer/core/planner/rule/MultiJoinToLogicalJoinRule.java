@@ -16,20 +16,20 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.NLJoin;
 import com.alibaba.polardbx.optimizer.hint.operator.HintType;
+import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptRuleCall;

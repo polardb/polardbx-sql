@@ -54,10 +54,12 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t12_cancel_modify_then_rollback() throws SQLException {
+    public void t12_cancel_modify_then_rollback_legacy() throws SQLException {
         // Expected: MODIFY COLUMN can be rolled back only if there isn't any shard done yet.
         String columnInfo = "c2 varchar(300)";
         String sql = String.format(ALTER_TABLE, MODIFY_COLUMN, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, true);
         cancelDDL(job);
         checkPhyProcess(job);
@@ -66,15 +68,17 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t13_cancel_modify_then_recover() throws SQLException {
+    public void t13_cancel_modify_then_recover_legacy() throws SQLException {
         // Expected: MODIFY COLUMN cannot be rolled back if any shard has been done,
         // so the state MUST be PAUSED instead of ROLLBACK_PAUSED in such invalid state
         // the DDL job won't be able to be rolled back or recovered.
         String columnInfo = "c2 varchar(300)";
         String sql = String.format(ALTER_TABLE, MODIFY_COLUMN, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, false);
         waitForSeconds(2);
-        cancelDDLFailed(job, "the DDL job has been paused instead");
+        cancelDDLFailed(job, "");
         checkPhyProcess(job);
         checkJobPaused();
         cancelDDLFailed(job, "the DDL operations cannot be rolled back. Please try: continue ddl");
@@ -120,10 +124,12 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t31_kill_logical_modify_then_recover() throws SQLException {
+    public void t31_kill_logical_modify_then_recover_legacy() throws SQLException {
         // Expected: MODIFY COLUMN can be killed, then recovered (equivalent to PAUSE DDL).
         String columnInfo = "c2 varchar(500)";
         String sql = String.format(ALTER_TABLE, MODIFY_COLUMN, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         JobInfo job = executeSeparateDDL(sql, ALTER_PREFIX, false);
         waitForSeconds(2);
         killLogicalProcess(ALTER_PREFIX);
@@ -154,10 +160,10 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t41_kill_physical_modify_with_auto_rollback() throws SQLException {
+    public void t41_kill_physical_modify_with_auto_rollback_legacy() throws SQLException {
         // Expected: All physical DDLs are killed (have to kill them one by one).
         String columnInfo = "c2 varchar(600)";
-        String rollbackHint = "/*+TDDL:cmd_extra(PHYSICAL_DDL_TASK_RETRY=false)*/";
+       String rollbackHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false,PHYSICAL_DDL_TASK_RETRY=false)*/";
         String sql = rollbackHint + String.format(ALTER_TABLE, MODIFY_COLUMN, columnInfo);
         JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, true);
         waitForSeconds(2);
@@ -168,10 +174,10 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t42_kill_physical_modify_then_recover() throws SQLException {
+    public void t42_kill_physical_modify_then_recover_legacy() throws SQLException {
         // Expected: Partial physical DDLs are killed (have to kill them one by one).
         String columnInfo = "c2 varchar(600)";
-        String rollbackHint = "/*+TDDL:cmd_extra(PHYSICAL_DDL_TASK_RETRY=false)*/";
+        String rollbackHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false,PHYSICAL_DDL_TASK_RETRY=false)*/";
         String sql = rollbackHint + String.format(ALTER_TABLE, MODIFY_COLUMN, columnInfo);
         JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, false);
         waitForSeconds(2);
@@ -185,10 +191,10 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t43_kill_physical_add_with_auto_rollback() throws SQLException {
+    public void t43_kill_physical_add_with_auto_rollback_legacy() throws SQLException {
         // Expected: All physical DDLs are killed (have to kill them one by one).
         String columnInfo = "c5 int(11)";
-        String rollbackHint = "/*+TDDL:cmd_extra(PHYSICAL_DDL_TASK_RETRY=false)*/";
+        String rollbackHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false,PHYSICAL_DDL_TASK_RETRY=false)*/";
         String sql = rollbackHint + String.format(ALTER_TABLE, ADD_COLUMN, columnInfo);
         JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, true);
         waitForSeconds(2);
@@ -231,13 +237,15 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t52_partial_physical_add_with_timeout() throws SQLException {
+    public void t52_partial_physical_add_with_timeout_legacy() throws SQLException {
         // Expected: partial shards hit timeout, but tolerated.
         String columnInfo = "c5 int(11)";
         if (isMySQL80()) {
             columnInfo = "c5 int";
         }
         String sql = String.format(ALTER_TABLE, ADD_COLUMN, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         try {
             injectDDLTimeout(1000);
             JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, false);

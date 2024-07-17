@@ -30,10 +30,15 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.google.common.collect.ImmutableList;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -46,19 +51,22 @@ public class FilesAccessor extends AbstractAccessor {
 
     private static final String FILES_TABLE = wrap(GmsSystemTables.FILES);
 
+    private static final String COLUMNAR_TABLE_MAPPING_TABLE = wrap(GmsSystemTables.COLUMNAR_TABLE_MAPPING);
+
     public static final String PLACE_HOLDER = "?";
     public static final String DELIMITER = ",";
 
     private static final String INSERT_FILE_RECORD =
         "insert into " + FILES_TABLE
-            + "(`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,`table_schema`,`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`check_time`,`checksum`,`status`,`extra`,`task_id`,`life_cycle`,`local_path`, `logical_schema_name`, `logical_table_name`, `local_partition_name`) "
-            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "(`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,`table_schema`,`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`check_time`,`checksum`,`status`,`extra`,`task_id`,`life_cycle`,`local_path`, `logical_schema_name`, `logical_table_name`, `local_partition_name`, `partition_name`) "
+            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String INSERT_FILE_RECORD_WITH_TSO =
         "insert into " + FILES_TABLE
-            + "(`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,`table_schema`,`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`check_time`,`checksum`,`status`,`extra`,`task_id`,`life_cycle`,`local_path`, `logical_schema_name`, `logical_table_name`, `local_partition_name`, `commit_ts`, `remove_ts`) "
-            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    private static final String CHANGE_FILE_RECORD =
+            + "(`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,`table_schema`,`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`check_time`,`checksum`,`status`,`extra`,`task_id`,`life_cycle`,`local_path`, `logical_schema_name`, `logical_table_name`, `local_partition_name`, `partition_name`, `commit_ts`, `remove_ts`, `schema_ts`) "
+            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+  private static final String CHANGE_FILE_RECORD =
         "update " + FILES_TABLE + " set `file_meta` = ? ,`extent_size`= ?, `table_rows` = ? where `file_id` = ?";
 
     private static final String CHANGE_FILE_META_SIZE_ROW_HASH_LIFE =
@@ -91,6 +99,47 @@ public class FilesAccessor extends AbstractAccessor {
     private static final String SELECT_FILES_BY_LOGICAL_SCHEMA =
         "select * from " + FILES_TABLE + " where `logical_schema_name` = ? order by `create_time`";
 
+    private static final String SELECT_FILES_BY_TSO =
+        "select * from " + FILES_TABLE + " where "
+            + "`commit_ts` <= ? and (`remove_ts` is null or `remove_ts` > ?)"
+            + " and `logical_schema_name` = ? and `logical_table_name` = ? and `partition_name` = ?"
+            + " order by `create_time`";
+
+    private static final String SELECT_COLUMNAR_FILES =
+        "select `file_id`,`file_name`,`file_type`, `file_meta`, `tablespace_name`,`table_catalog`,a.`table_schema`,a.`table_name`,`logfile_group_name`,`logfile_group_number`,`engine`,`fulltext_keys`,`deleted_rows`,`update_count`,`free_extents`,`total_extents`,`extent_size`,`initial_size`,`maximum_size`,`autoextend_size`,`creation_time`,`last_update_time`,`last_access_time`,`recover_time`,`transaction_counter`,`version`,`row_format`,`table_rows`,`avg_row_length`,`data_length`,`max_data_length`,`index_length`,`data_free`,`create_time`,`update_time`,`check_time`,`checksum`,`deleted_checksum`,a.`status`,a.`extra`,`task_id`,`life_cycle`,`local_path`, b.`table_schema` as `logical_schema_name`, a.`logical_table_name` as `logical_table_name`, `local_partition_name`,`commit_ts`,`remove_ts`,`file_hash`,`partition_name`,`local_partition_name`,`schema_ts` from "
+            + FILES_TABLE + "a join " + COLUMNAR_TABLE_MAPPING_TABLE
+            + " b on a.`logical_table_name` = b.`table_id`";
+
+    private static final String SELECT_SIMPLIFIED_FILES =
+        "select `file_name`, `partition_name`, `commit_ts`, `remove_ts`, `schema_ts` from " + FILES_TABLE;
+
+    private static final String SELECT_COLUMNAR_FILES_BY_TSO_AND_TABLE_ID = SELECT_SIMPLIFIED_FILES
+        + " force index (`columnar_ts_idx`)"
+        + " where `commit_ts` > ? and `commit_ts` <= ?"
+        + " and `logical_schema_name` = ? and `logical_table_name` = ?"
+        + " and `file_type` = 'TABLE_FILE'"
+        + " union all "/* loadUntilTso should be idempotent */
+        + SELECT_SIMPLIFIED_FILES
+        + " force index (`columnar_rm_ts_idx`)"
+        + " where `remove_ts` > ? and `remove_ts` <= ? and `remove_ts` is not null"
+        + " and `logical_schema_name` = ? and `logical_table_name` = ?"
+        + " and `file_type` = 'TABLE_FILE'";
+
+    private static final String SELECT_COLUMNAR_FILES_BY_FILE_NAME = SELECT_COLUMNAR_FILES
+        + " where a.`file_name` = ?";
+
+    private static final String SELECT_FILES_BY_TSO_IN_SCHEMA =
+        "select * from " + FILES_TABLE + " where "
+            + "`commit_ts` <= ? and (`remove_ts` is null or `remove_ts` > ?)"
+            + " and `logical_schema_name` = ? "
+            + " order by `create_time`";
+
+    private static final String SELECT_FILES_BY_TSO_IN_PARTITION =
+        "select * from " + FILES_TABLE + " where "
+            + "`commit_ts` <= ? and (`remove_ts` is null or `remove_ts` > ?)"
+            + " and `logical_schema_name` = ? and `logical_table_name` = ? and `partition_name` = ?"
+            + " order by `create_time`";
+
     private static final String SELECT_FILES_BY_FILE_NAME =
         "select * from " + FILES_TABLE + " where `file_name` = ?";
 
@@ -110,6 +159,44 @@ public class FilesAccessor extends AbstractAccessor {
         "select * from " + FILES_TABLE +
             " where `task_id` = ? and `logical_schema_name` = ? and `logical_table_name` = ? "
             + "and `life_cycle` = " + OSSMetaLifeCycle.CREATING.ordinal();
+
+    /**
+     * For PK IDX.
+     */
+
+    private static final String SELECT_BY_PARTITION_AND_TYPE_ORDER_BY_TSO_WITH_LIMIT =
+        "select * from " + FILES_TABLE +
+            " where `logical_schema_name` = ? and `logical_table_name` = ? and `partition_name` = ? and `file_type` = ? and `engine` = ?"
+            + " order by `commit_ts` desc, `version` desc limit ?";
+
+    private static final String SELECT_BY_ID =
+        "select * from " + FILES_TABLE + " where `file_id` = ?";
+
+    private static final String SELECT_BY_IDS =
+        "select * from " + FILES_TABLE + " where `file_id` in (%s)";
+
+    private static final String SELECT_BY_PARTITION_AND_TYPE =
+        "select * from " + FILES_TABLE +
+            " where `logical_schema_name` = ? and `logical_table_name` = ? and `partition_name` = ? and `file_type` = ? and `engine` = ?";
+
+    private static final String LOCK_IN_SHARE_MODE =
+        "select * from " + FILES_TABLE + " where `file_id` = ? lock in share mode";
+
+    private static final String LOCK_FOR_UPDATE =
+        "select * from " + FILES_TABLE + " where `file_id` = ? for update";
+
+    private static final String LOCK_FOR_INIT =
+        "select * from " + FILES_TABLE +
+            " where `logical_schema_name` = ? and `logical_table_name` = ? and `partition_name` = ? and `file_type` = ? and `engine` = ?"
+            + " for update";
+
+    private static final String DELETE_FILES_BY_PARTITION_AND_TYPE =
+        "delete from " + FILES_TABLE +
+            " where `logical_schema_name` = ? and `logical_table_name` = ? and `partition_name` = ? and `file_type` = ? and `engine` = ?";
+
+    private static final String DELETE_FILES_BY_TABLE_AND_TYPE =
+        "delete from " + FILES_TABLE +
+            " where `logical_schema_name` = ? and `logical_table_name` = ? and `file_type` = ? and `engine` = ?";
 
     private static final String DELETE_UNCOMMITTED_FOR_ROLLBACK =
         "delete from " + FILES_TABLE
@@ -149,6 +236,44 @@ public class FilesAccessor extends AbstractAccessor {
     private static final String VALID_BY_FILE_NAME =
         "update " + FILES_TABLE + " set `life_cycle`= " + OSSMetaLifeCycle.READY.ordinal() + " where `file_name` = ?";
 
+    /**
+     * 统计
+     */
+    private static final String SELECT_SUM_ORC_FILES_BY_TSO_AND_TABLE = "select\n"
+        + "    count(*) AS file_counts, \n"
+        + "    sum(table_rows) AS row_counts, \n"
+        + "    sum(extent_size) AS file_sizes \n"
+        + " from \n"
+        + FILES_TABLE
+        + " where \n"
+        + "    `commit_ts` <= ? \n"
+        + "    and (\n"
+        + "        `remove_ts` is null \n"
+        + "        or `remove_ts` > ? \n"
+        + "    )\n"
+        + "    and `logical_schema_name` = ? \n"
+        + "    and `logical_table_name` = ? \n"
+        + "    and `file_type` = 'TABLE_FILE' \n"
+        + "    and RIGHT(file_name, 3) = 'orc';";
+
+    private static final String SELECT_FILES_BY_NAMES =
+        "select * from " + FILES_TABLE
+            + " where `file_name` in (%s)";
+
+    private static final String UPDATE_INVALID_CHECKSUM =
+        "update " + FILES_TABLE
+            + " set `deleted_checksum` = -1, update_time = now() "
+            + " where `file_name` in (%s) ";
+
+    private static final String UPDATE_DELETED_CHECKSUM =
+        "update " + FILES_TABLE
+            + " set `deleted_checksum` = "
+            + " case `file_id` "
+            + " %s " // batch when `file_id` then `deleted_checksum`
+            + " else `deleted_checksum` "
+            + " end "
+            + " where `file_id` in (%s)";
+
     public int[] insert(List<FilesRecord> records, String tableSchema, String tableName) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
         for (FilesRecord record : records) {
@@ -176,8 +301,8 @@ public class FilesAccessor extends AbstractAccessor {
                 record.commitTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.commitTs);
             MetaDbUtil.setParameter(++index, params,
                 record.removeTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.removeTs);
-            //MetaDbUtil.setParameter(++index, params,
-            //record.schemaTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.schemaTs);
+            MetaDbUtil.setParameter(++index, params,
+                record.schemaTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.schemaTs);
             paramsBatch.add(params);
         }
         try {
@@ -196,7 +321,29 @@ public class FilesAccessor extends AbstractAccessor {
         paramsBatch.add(record.buildInsertParams());
         try {
             DdlMetaLogUtil.logSql(INSERT_FILE_RECORD, paramsBatch);
-            return MetaDbUtil.insertAndRetureLastInsertId(INSERT_FILE_RECORD, paramsBatch, connection);
+            return MetaDbUtil.insertAndReturnLastInsertId(INSERT_FILE_RECORD, paramsBatch, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to insert a batch of new records into " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public Long insertWithTsoAndReturnLastInsertId(FilesRecord record) {
+        final Map<Integer, ParameterContext> params = record.buildInsertParams();
+        try {
+            // add commit tso and remove tso based on normal parameters.
+            int index = params.size();
+            MetaDbUtil.setParameter(++index, params,
+                record.commitTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.commitTs);
+            MetaDbUtil.setParameter(++index, params,
+                record.removeTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.removeTs);
+            MetaDbUtil.setParameter(++index, params,
+                record.schemaTs == null ? ParameterMethod.setNull1 : ParameterMethod.setLong, record.schemaTs);
+            final List<Map<Integer, ParameterContext>> paramsBatch = ImmutableList.of(params);
+            DdlMetaLogUtil.logSql(INSERT_FILE_RECORD_WITH_TSO, paramsBatch);
+            return MetaDbUtil.insertAndReturnLastInsertId(INSERT_FILE_RECORD_WITH_TSO, paramsBatch, connection);
         } catch (SQLException e) {
             LOGGER.error("Failed to insert a batch of new records into " + FILES_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",
@@ -285,6 +432,114 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
+    public List<FilesRecord> queryByTso(long tso, String logicalSchema, String logicalTable, String partName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(8);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, logicalTable);
+            MetaDbUtil.setParameter(5, params, ParameterMethod.setString, partName);
+
+            return MetaDbUtil.query(SELECT_FILES_BY_TSO, params, FilesRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<FilesRecord> queryColumnarByFileName(String fileName) {
+        return query(SELECT_COLUMNAR_FILES_BY_FILE_NAME, FILES_TABLE, FilesRecord.class, fileName);
+    }
+
+    public List<FilesRecordSimplified> queryColumnarDeltaFilesByTsoAndTableId(long tso, long lastTso,
+                                                                              String logicalSchema, String tableId) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(9);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, lastTso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tableId);
+            MetaDbUtil.setParameter(5, params, ParameterMethod.setLong, lastTso);
+            MetaDbUtil.setParameter(6, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(7, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(8, params, ParameterMethod.setString, tableId);
+
+            DdlMetaLogUtil.logSql(SELECT_COLUMNAR_FILES_BY_TSO_AND_TABLE_ID, params);
+            return MetaDbUtil.query(SELECT_COLUMNAR_FILES_BY_TSO_AND_TABLE_ID, params, FilesRecordSimplified.class,
+                connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Query all files record in schema which are visible in given tso.
+     */
+    public List<FilesRecord> queryByTso(long tso, String logicalSchema) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(8);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalSchema);
+
+            return MetaDbUtil.query(SELECT_FILES_BY_TSO_IN_SCHEMA, params, FilesRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Query all files record in partition which are visible in given tso.
+     */
+    public List<FilesRecord> queryByTsoAndPartName(long tso, String logicalSchema, String tableId, String partName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(5);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tableId);
+            MetaDbUtil.setParameter(5, params, ParameterMethod.setString, partName);
+
+            return MetaDbUtil.query(SELECT_FILES_BY_TSO_IN_PARTITION, params, FilesRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    /**
+     * Query all files record in partition which are visible in given tso.
+     * 不读取file_meta列，orc文件的file_meta量巨大
+     */
+    public List<OrcFileStatusRecord> queryOrcFileStatusByTsoAndTableId(long tso, String logicalSchema, String tableId) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(5);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tableId);
+
+            return MetaDbUtil.query(SELECT_SUM_ORC_FILES_BY_TSO_AND_TABLE, params, OrcFileStatusRecord.class,
+                connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
     public void updateFilesCommitTs(Long ts, String logicalSchemaName, String logicalTableName, Long taskId) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         if (ts == null) {
@@ -330,7 +585,193 @@ public class FilesAccessor extends AbstractAccessor {
         }
     }
 
-    public void deleteUncommited(Long taskId, String logicalSchemaName, String logicalTableName) {
+    public List<FilesRecord> queryByPartitionAndTypeOrderByCommitTsDesc(
+        String logicalSchemaName, String logicalTableName, String partitionName, String fileType, String engine,
+        int limit) {
+        Map<Integer, ParameterContext> params = new HashMap<>(6);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, partitionName);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, fileType);
+        MetaDbUtil.setParameter(5, params, ParameterMethod.setString, engine);
+        MetaDbUtil.setParameter(6, params, ParameterMethod.setInt, limit);
+        try {
+            DdlMetaLogUtil.logSql(SELECT_BY_PARTITION_AND_TYPE_ORDER_BY_TSO_WITH_LIMIT, params);
+            return MetaDbUtil.query(SELECT_BY_PARTITION_AND_TYPE_ORDER_BY_TSO_WITH_LIMIT, params, FilesRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<FilesRecord> queryById(long id) {
+        Map<Integer, ParameterContext> params = new HashMap<>(1);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, id);
+        try {
+            DdlMetaLogUtil.logSql(SELECT_BY_ID, params);
+            return MetaDbUtil.query(SELECT_BY_ID, params, FilesRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<FilesRecord> queryByIds(Collection<Long> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        int paramIndex = 1;
+        for (Long fileId : ids) {
+            MetaDbUtil.setParameter(paramIndex++, params, ParameterMethod.setLong, fileId);
+        }
+        StringBuilder buf = new StringBuilder();
+        for (int i = 0; i < ids.size(); i++) {
+            buf.append(COMMA).append(QUESTION_MARK);
+        }
+        String questionMark = buf.deleteCharAt(0).toString();
+        try {
+            DdlMetaLogUtil.logSql(String.format(SELECT_BY_IDS, questionMark), params);
+            return MetaDbUtil.query(String.format(SELECT_BY_IDS, questionMark), params, FilesRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<FilesRecord> queryByPartitionAndType(
+        String logicalSchemaName, String logicalTableName, String partitionName, String fileType, String engine) {
+        Map<Integer, ParameterContext> params = new HashMap<>(5);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, partitionName);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, fileType);
+        MetaDbUtil.setParameter(5, params, ParameterMethod.setString, engine);
+        try {
+            DdlMetaLogUtil.logSql(SELECT_BY_PARTITION_AND_TYPE, params);
+            return MetaDbUtil.query(
+                SELECT_BY_PARTITION_AND_TYPE, params,
+                FilesRecord.class,
+                connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<FilesRecord> lock(long id, boolean shareMode) {
+        Map<Integer, ParameterContext> params = new HashMap<>(1);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, id);
+        try {
+            DdlMetaLogUtil.logSql(shareMode ? LOCK_IN_SHARE_MODE : LOCK_FOR_UPDATE, params);
+            return MetaDbUtil.query(
+                shareMode ? LOCK_IN_SHARE_MODE : LOCK_FOR_UPDATE, params,
+                FilesRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<FilesRecord> lockForInit(
+        String logicalSchemaName, String logicalTableName, String partitionName, String fileType, String engine) {
+        Map<Integer, ParameterContext> params = new HashMap<>(5);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, partitionName);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, fileType);
+        MetaDbUtil.setParameter(5, params, ParameterMethod.setString, engine);
+        try {
+            DdlMetaLogUtil.logSql(LOCK_FOR_INIT, params);
+            return MetaDbUtil.query(LOCK_FOR_INIT, params, FilesRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public int deleteByPartitionAndType(
+        String logicalSchemaName, String logicalTableName, String partitionName, String fileType, String engine) {
+        Map<Integer, ParameterContext> params = new HashMap<>(5);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, partitionName);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, fileType);
+        MetaDbUtil.setParameter(5, params, ParameterMethod.setString, engine);
+        try {
+            DdlMetaLogUtil.logSql(DELETE_FILES_BY_PARTITION_AND_TYPE, params);
+            return MetaDbUtil.delete(DELETE_FILES_BY_PARTITION_AND_TYPE, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public int deleteByTableAndType(
+        String logicalSchemaName, String logicalTableName, String fileType, String engine) {
+        Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTableName);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, fileType);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, engine);
+        try {
+            DdlMetaLogUtil.logSql(DELETE_FILES_BY_TABLE_AND_TYPE, params);
+            return MetaDbUtil.delete(DELETE_FILES_BY_TABLE_AND_TYPE, params, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    /**
+     * @return checksums of orc files which contains no deleted data.
+     */
+    public List<FilesRecord> queryFilesByNames(List<String> files) {
+        List<FilesRecord> results = new ArrayList<>();
+        try (Statement stmt = connection.createStatement()) {
+            final int maxBatchSize = 128;
+            int start = 0, end;
+            while (start < files.size()) {
+                end = Math.min(start + maxBatchSize, files.size());
+                String batch = files
+                    .subList(start, end)
+                    .stream()
+                    .map(FilesAccessor::wrapWithQuotes)
+                    .collect(Collectors.joining(","));
+                ResultSet rs = stmt.executeQuery(String.format(SELECT_FILES_BY_NAMES, batch));
+                while (rs.next()) {
+                    results.add(new FilesRecord().fill(rs));
+                }
+                start = end;
+            }
+            return results;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public int updateChangedFiles(List<String> fileNameList) {
+        // Invalidate checksum of files.
+        try {
+            final int maxBatchSize = 2048;
+            int updateCount = 0, start = 0, end;
+            while (start < fileNameList.size()) {
+                end = Math.min(start + maxBatchSize, fileNameList.size());
+                String batch = fileNameList
+                    .subList(start, end)
+                    .stream()
+                    .map(FilesAccessor::wrapWithQuotes)
+                    .collect(Collectors.joining(","));
+                try (PreparedStatement ps = connection.prepareStatement(
+                    String.format(UPDATE_INVALID_CHECKSUM, batch))) {
+                    updateCount += ps.executeUpdate();
+                }
+                start = end;
+            }
+            return updateCount;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    private static String wrapWithQuotes(String s) {
+        return "'" + s + "'";
+    }
+
+    public void deleteUncommitted(Long taskId, String logicalSchemaName, String logicalTableName) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, taskId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchemaName);

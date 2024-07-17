@@ -1,0 +1,105 @@
+## DISABLE_FAST_SQL_PARSER
+  ## error_msg: $# must be the same #$
+create table ch_t1_sbi_svc
+(
+id bigint not null auto_increment,
+sid varchar(32),
+user_id int,
+order_id varchar(14),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash(substr(user_id, -4),substr(order_id, -4))
+partitions 8;
+must be the same
+## error_msg: $# must be the same #$
+create table ch_t1_svc6_svc8
+(
+id bigint not null auto_increment,
+sid varchar(32),
+order_id varchar(6),
+user_id varchar(8),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash(substr(order_id, 1),substr(user_id, 1))
+partitions 8;
+must be the same
+#  * <pre>
+#  * TINYINT (1 Byte): -128~127
+#  * TINYINT UNSIGNED (1 Byte): 0~255
+#  * SMALLINT (2 Bytes): -32768~32767
+#  * SMALLINT UNSIGNED (2 Bytes): 0~65535
+#  * MEDIUMINT (3 Bytes): -8388608~8388607
+#  * MEDIUMINT UNSIGNED (3 Bytes): 0~16777215
+#  * INT (4 Bytes): -2147483648~2147483647
+#  * INT UNSIGNED (4 Bytes): 0~4294967295
+#  * BIGINT (8 Bytes): -9223372036854775808 ~ 9223372036854775807
+#  * BIGINT UNSIGNED (8 Bytes): 0~18446744073709551615
+#create table ch_t1_sbi_svc
+#(
+#id bigint not null auto_increment,
+#sid varchar(32),
+#user_id int,
+#order_id varchar(14),
+#order_time datetime,
+#primary key(id)
+#)
+#partition by co_hash(substr(user_id, -4),substr(order_id, -4))
+#partitions 8;
+#
+#insert into ch_t1_sbi_svc( user_id, order_id) values (12349999, '12349999');
+#explain select * from ch_t1_sbi_svc where order_id='12349999';
+#explain select * from ch_t1_sbi_svc where order_id=12349999;
+#explain select * from ch_t1_sbi_svc where user_id=12349999;
+#explain select * from ch_t1_sbi_svc where user_id='12349999';
+#set sql_mode='';
+#
+### truncate 214748364800 to 2147483647, substr(user_id, -4) = 3647, p3
+#explain select * from ch_t1_sbi_svc where user_id=214748364800;
+### no-truncate, substr(order_id, -4) = 4800, p1
+#explain select * from ch_t1_sbi_svc where order_id='214748364800';
+### p1,p3
+#explain select * from ch_t1_sbi_svc where order_id='214748364800' or user_id='214748364800';
+### error_msg: $# no partition #$
+#insert into ch_t1_sbi_svc( user_id, order_id) values (214748364800, '214748364800');
+### route to the same partition,
+### truncate 214748364800 of user_id to 2147483647, substr(user_id,-4)=3647
+#insert into ch_t1_sbi_svc( user_id, order_id) values (214748364800, '214748363647');
+#
+#
+#create table ch_t1_svc_sbi
+#(
+#id bigint not null auto_increment,
+#sid varchar(32),
+#user_id int,
+#order_id varchar(14),
+#order_time datetime,
+#primary key(id)
+#)
+#partition by co_hash(substr(order_id, 1),substr(user_id, 1))
+#partitions 8;
+#
+### error_msg: $# no partition #$
+#insert into ch_t1_svc_sbi( user_id, order_id) values (214748364800, '214748364800');
+### route to the same partition
+#insert into ch_t1_svc_sbi( user_id, order_id) values (2147483647, '2147483647');
+#
+#create table ch_t1_svc6_svc8
+#(
+#id bigint not null auto_increment,
+#sid varchar(32),
+#order_id varchar(6),
+#user_id varchar(8),
+#order_time datetime,
+#primary key(id)
+#)
+#partition by co_hash(substr(order_id, 1),substr(user_id, 1))
+#partitions 8;
+#
+### error_msg: $# no partition #$
+#insert into ch_t1_svc6_svc8 (user_id, order_id) values ('1234abcdefg', '1234abcdefg');
+#explain select * from ch_t1_svc6_svc8 where user_id='1234abcdefg';
+#explain select * from ch_t1_svc6_svc8 where order_id='1234abcdefg';
+#explain select * from ch_t1_svc6_svc8 where user_id='1234abcdefg' and order_id='1234abcdefg';
+#explain select * from ch_t1_svc6_svc8 where user_id='1234abcdefg' or order_id='1234abcdefg';

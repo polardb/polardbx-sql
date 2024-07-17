@@ -19,8 +19,10 @@ package com.alibaba.polardbx.qatest.protocol;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import com.google.common.truth.Truth;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -91,6 +93,8 @@ public class XPlanTest extends ReadBaseTestCase {
 
     private static final String INSERT_TEMPLATE = "insert into {0} values "
         + "(1,101,1001,10001),(2,102,null,10002),(3,103,1003,null),(4,104,null,null),(5,105,1005,10005);";
+
+    private static final String ANALYZE_TEMPLATE = "analyze table {0}";
 
     private final String partition;
 
@@ -163,6 +167,15 @@ public class XPlanTest extends ReadBaseTestCase {
             MessageFormat.format(INSERT_TEMPLATE, quoteSpecialName(COMPOSITE_PK_TABLE_NAME)));
         JdbcUtil.executeUpdateSuccess(mysqlConnection,
             MessageFormat.format(INSERT_TEMPLATE, quoteSpecialName(MULTI_KEY_TABLE_NAME)));
+
+        JdbcUtil.executeUpdateSuccess(mysqlConnection,
+            MessageFormat.format(ANALYZE_TEMPLATE, quoteSpecialName(PK_TABLE_NAME)));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection,
+            MessageFormat.format(ANALYZE_TEMPLATE, quoteSpecialName(NO_PK_TABLE_NAME)));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection,
+            MessageFormat.format(ANALYZE_TEMPLATE, quoteSpecialName(COMPOSITE_PK_TABLE_NAME)));
+        JdbcUtil.executeUpdateSuccess(mysqlConnection,
+            MessageFormat.format(ANALYZE_TEMPLATE, quoteSpecialName(MULTI_KEY_TABLE_NAME)));
     }
 
     private final static Pair<String, Boolean>[] simpleTestTemplates = new Pair[] {
@@ -225,6 +238,28 @@ public class XPlanTest extends ReadBaseTestCase {
         Thread.sleep(3000);
     }
 
+    private boolean explainExecuteXplan(String sql) {
+        final List<List<String>> res =
+            JdbcUtil.getAllStringResult(JdbcUtil.executeQuery("explain execute " + sql, tddlConnection), false,
+                ImmutableList.of());
+        boolean useXplan = (!StringUtils.isEmpty(res.get(0).get(11))) && res.get(0).get(11).contains("Using XPlan");
+        if (useXplan) {
+            Truth.assertThat(res.get(0).get(5)).contains(res.get(0).get(6));
+            Truth.assertThat(res.get(0).get(6)).isNotEmpty();
+            Truth.assertThat(Double.valueOf(res.get(0).get(10))).isAtMost(100D);
+            Truth.assertThat(Double.valueOf(res.get(0).get(10))).isAtLeast(0D);
+        }
+        return useXplan;
+    }
+
+    private boolean traceXplan(String sql) {
+        JdbcUtil.executeQuerySuccess(tddlConnection, "trace " + sql);
+        final List<List<String>> res =
+            JdbcUtil.getAllStringResult(JdbcUtil.executeQuery("show trace", tddlConnection), false, ImmutableList.of());
+        final String trace = res.get(0).get(11);
+        return trace.contains("/*PolarDB-X Connection*/") && trace.contains("plan_digest");
+    }
+
     private void assertX(String sql, boolean genX, boolean useX) {
         final String exp = getExplainResult(tddlConnection, "/*+TDDL: cmd_extra(EXPLAIN_X_PLAN=true)*/" + sql);
         final boolean actualGenX = exp.contains("XPlan=");
@@ -257,8 +292,19 @@ public class XPlanTest extends ReadBaseTestCase {
             System.out.println(trace);
             System.out.println("----------------------------------------");
         }
-        // TODO @方物 修复好后打开下面的assert
-        // Assert.assertTrue("Bad XPlan trace. " + sql+" trace: "+trace, useX == actualUseX);
+        Assert.assertTrue("Bad XPlan trace. " + sql + " trace: " + trace, useX == actualUseX);
+    }
+
+    private void assertExplainExecute(String sql) {
+        // check trace and explain execute
+        String hint = "/*+TDDL:cmd_extra(merge_union=false)*/ ";
+        Truth.assertWithMessage("Bad explain execute " + sql)
+            .that(explainExecuteXplan(sql))
+            .isEqualTo(traceXplan(sql));
+
+        Truth.assertWithMessage("Bad explain execute " + hint + sql)
+            .that(explainExecuteXplan(hint + sql))
+            .isEqualTo(traceXplan(hint + sql));
     }
 
     @Test
@@ -269,8 +315,6 @@ public class XPlanTest extends ReadBaseTestCase {
         enableXPlanTableScan();
 
         try {
-            final boolean with_partition = partition.contains("dbpartition");
-
             for (final Pair<String, Boolean> pair : simpleTestTemplates) {
                 final String sql = pair.left;
                 final boolean useX = pair.right;
@@ -291,6 +335,24 @@ public class XPlanTest extends ReadBaseTestCase {
             }
         } finally {
             disableXPlanTableScan();
+        }
+
+        JdbcUtil.executeQuerySuccess(tddlConnection, "clear plancache");
+        for (final Pair<String, Boolean> pair : simpleTestTemplates) {
+            final String sql = pair.left;
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(PK_TABLE_NAME)));
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(NO_PK_TABLE_NAME)));
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(COMPOSITE_PK_TABLE_NAME)));
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(MULTI_KEY_TABLE_NAME)));
+        }
+
+        // Again for cache.
+        for (final Pair<String, Boolean> pair : simpleTestTemplates) {
+            final String sql = pair.left;
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(PK_TABLE_NAME)));
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(NO_PK_TABLE_NAME)));
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(COMPOSITE_PK_TABLE_NAME)));
+            assertExplainExecute(MessageFormat.format(sql, quoteSpecialName(MULTI_KEY_TABLE_NAME)));
         }
     }
 

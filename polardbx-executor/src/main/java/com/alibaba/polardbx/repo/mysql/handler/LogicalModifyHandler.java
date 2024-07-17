@@ -110,8 +110,10 @@ public class LogicalModifyHandler extends HandlerCommon {
         final RelNode input = modify.getInput();
         checkModifyLimitation(modify, executionContext);
 
+        TableMeta tableMeta =
+            executionContext.getSchemaManager(modify.getSchemaName()).getTable(modify.getLogicalTableName());
         final boolean checkForeignKey =
-            executionContext.foreignKeyChecks();
+            executionContext.foreignKeyChecks() && (tableMeta.hasForeignKey() || tableMeta.hasReferencedForeignKey());
         final boolean foreignKeyChecksForUpdateDelete =
             executionContext.getParamManager().getBoolean(ConnectionParams.FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE);
 
@@ -154,6 +156,8 @@ public class LogicalModifyHandler extends HandlerCommon {
 
         final boolean skipUnchangedRow =
             executionContext.getParamManager().getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW);
+        final boolean checkJsonByStringCompare =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
         int affectRows = 0;
         Cursor selectCursor = null;
@@ -211,7 +215,7 @@ public class LogicalModifyHandler extends HandlerCommon {
                                         return rowSet.distinctRowSetWithoutNullThenRemoveSameRow(distinctWriter,
                                             modify.getSetColumnTargetMappings().get(tableIndex),
                                             modify.getSetColumnSourceMappings().get(tableIndex),
-                                            modify.getSetColumnMetas().get(tableIndex));
+                                            modify.getSetColumnMetas().get(tableIndex), checkJsonByStringCompare);
                                     }
                                 };
 
@@ -525,16 +529,17 @@ public class LogicalModifyHandler extends HandlerCommon {
             final RelOptTable table = logicalModify.getTableInfo().getSrcInfos().get(tableIndex).getRefTable();
             final Pair<String, String> qn = RelUtils.getQualifiedTableName(table);
             final TableMeta tableMeta = executionContext.getSchemaManager(qn.left).getTable(qn.right);
+            int columnCnt = tableMeta.getAllColumns().size();
 
             List<List<Object>> rows = new ArrayList<>();
             for (List<Object> value : values) {
                 List<Object> row = new ArrayList<>();
-                for (int i = 0; i < tableMeta.getAllColumns().size(); i++) {
+                for (int i = 0; i < columnCnt; i++) {
                     row.add(value.get(i + index));
                 }
                 rows.add(row);
             }
-            index += tableMeta.getAllColumns().size();
+            index += columnCnt;
 
             if (logicalModify.getOperation() == TableModify.Operation.DELETE) {
                 LogicalModify modify = null;

@@ -18,11 +18,18 @@
  */
 package com.alibaba.polardbx.parser;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.parser.Token;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
+import com.alibaba.polardbx.optimizer.parse.visitor.FastSqlToCalciteNodeVisitor;
 import junit.framework.TestCase;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.junit.Assert;
 
 public class DDLParserTest extends TestCase {

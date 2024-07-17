@@ -12,12 +12,12 @@ EXPLAIN SELECT a
 FROM tbl_ubigint
 WHERE a = 18446744073709551611;
 Logical ExecutionPlan
-LogicalView(tables="tbl_ubigint[p3]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_ubigint[p3]", sql="SELECT `tbl_ubigint`.`a` AS `a` FROM ? AS `tbl_ubigint` WHERE (`tbl_ubigint`.`a` = ?)", params="18446744073709551611")
 EXPLAIN SELECT a
 FROM tbl_ubigint
 WHERE a = 18446744073709551609;
 Logical ExecutionPlan
-LogicalView(tables="tbl_ubigint[p2]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_ubigint[p2]", sql="SELECT `tbl_ubigint`.`a` AS `a` FROM ? AS `tbl_ubigint` WHERE (`tbl_ubigint`.`a` = ?)", params="18446744073709551609")
 EXPLAIN SELECT a
 FROM tbl_ubigint
 WHERE a < 9223372036854775808;

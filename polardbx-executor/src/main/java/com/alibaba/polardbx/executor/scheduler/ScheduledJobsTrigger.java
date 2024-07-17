@@ -29,11 +29,11 @@ public interface ScheduledJobsTrigger {
 
     static ScheduledJobsTrigger restoreTrigger(ScheduledJobsRecord record,
                                                ScheduledJobsAccessor scheduledJobsAccessor,
-                                               FiredScheduledJobsAccessor firedScheduledJobsScanner){
-        if(record==null || StringUtils.isEmpty(record.getScheduleType())){
+                                               FiredScheduledJobsAccessor firedScheduledJobsScanner) {
+        if (record == null || StringUtils.isEmpty(record.getScheduleType())) {
             return null;
         }
-        if(StringUtils.equalsIgnoreCase(record.getScheduleType(), SchedulerType.QUARTZ_CRON.name())){
+        if (StringUtils.equalsIgnoreCase(record.getScheduleType(), SchedulerType.QUARTZ_CRON.name())) {
             return new DefaultQuartzCronTrigger(record, scheduledJobsAccessor, firedScheduledJobsScanner);
         }
 
@@ -42,19 +42,16 @@ public interface ScheduledJobsTrigger {
 
     /**
      * 获取下次定时任务的调度时间，这个函数是有状态的，因为它的值会根据上一次调度的时间生成
-     * @return
      */
     Optional<ZonedDateTime> getNextFireTime();
 
     /**
      * 调度定时任务，会修改getNextFireTime
-     * @return
      */
     boolean fire();
 
     /**
      * 立刻调度一次定时任务，不影响getNextFireTime
-     * @return
      */
     boolean fireOnceNow();
 

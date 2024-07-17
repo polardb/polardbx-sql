@@ -46,7 +46,9 @@ public final class ServerParseSelect {
     public static final int SEQ_NEXTVAL_BENCHMARK = 14;
     public static final int SEQ_SKIP_BENCHMARK = 15;
     public static final int POLARDB_VERSION = 16;
-    public static final int SESSION_TRANSACTION_READ_ONLY = 17;
+    public static final int COMPATIBILITY_LEVEL = 17;
+    public static final int ENCDB_PROCESS_MESSAGE = 18;
+    public static final int SESSION_TRANSACTION_READ_ONLY = 19;
 
     public static final Set<Integer> PREPARE_UNSUPPORTED_SELECT_TYPE;
     private static final char[] _VERSION_COMMENT = "VERSION_COMMENT".toCharArray();
@@ -61,6 +63,8 @@ public final class ServerParseSelect {
     private static final char[] _SEQ_SKIP_BENCHMARK = "SEQ_SKIP_BENCHMARK".toCharArray();
     private static final char[] _POLARDB_VERSION = "POLARDB_VERSION".toCharArray();
     private static final char[] _SESSION_TRANSACTION_READ_ONLY = "SESSION.TRANSACTION_READ_ONLY".toCharArray();
+    private static final char[] _COMPATIBILITY_LEVEL = "COMPATIBILITY_LEVEL".toCharArray();
+    private static final char[] _ENCDB_PROCESS_MESSAGE = "ENCDB_PROCESS_MESSAGE".toCharArray();
 
     static {
         PREPARE_UNSUPPORTED_SELECT_TYPE = new HashSet<>();
@@ -78,6 +82,8 @@ public final class ServerParseSelect {
         PREPARE_UNSUPPORTED_SELECT_TYPE.add(EXTRACT_TRACE_ID);
         PREPARE_UNSUPPORTED_SELECT_TYPE.add(SEQ_NEXTVAL_BENCHMARK);
         PREPARE_UNSUPPORTED_SELECT_TYPE.add(SEQ_SKIP_BENCHMARK);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(COMPATIBILITY_LEVEL);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(ENCDB_PROCESS_MESSAGE);
     }
 
     public static int parse(String stmt, int offset, Object[] exData) {
@@ -113,7 +119,7 @@ public final class ServerParseSelect {
                 return lastTxcXid(stmt, i, exData);
             case 'C':
             case 'c':
-                return currentTransCheck(stmt, i);
+                return cCheck(stmt, i);
             case '0':
             case '1':
             case '2':
@@ -130,7 +136,11 @@ public final class ServerParseSelect {
                 return tsoTimestampCheck(stmt, i);
             case 'e':
             case 'E':
-                return extractTraceIdCheck(stmt, i, exData);
+                int kind = extractTraceIdCheck(stmt, i, exData);
+                if (kind == OTHER) {
+                    return extractEncdbProcessMessage(stmt, i, exData);
+                }
+                return kind;
             case 's':
             case 'S':
                 return parseSeqBenchmark(stmt, i, exData);
@@ -556,7 +566,7 @@ public final class ServerParseSelect {
         return OTHER;
     }
 
-    private static int currentTransCheck(ByteString stmt, int offset) {
+    private static int cCheck(ByteString stmt, int offset) {
         if (ParseUtil.compare(stmt, offset, _CURRENT_TRANS_ID)) {
             offset = ParseUtil.move(stmt, offset + _CURRENT_TRANS_ID.length, 0);
             if (offset + 1 < stmt.length() && stmt.charAt(offset) == '(') {
@@ -573,6 +583,8 @@ public final class ServerParseSelect {
                     return CURRENT_TRANS_POLICY;
                 }
             }
+        } else if (ParseUtil.compare(stmt, offset, _COMPATIBILITY_LEVEL)) {
+            return COMPATIBILITY_LEVEL;
         }
         return OTHER;
     }
@@ -621,6 +633,12 @@ public final class ServerParseSelect {
     static int select2SCheck(ByteString stmt, int offset) {
         if (ParseUtil.compare(stmt, offset, _SESSION_TX_READ_ONLY)) {
             int length = offset + _SESSION_TX_READ_ONLY.length;
+            if (stmt.length() > length && stmt.charAt(length) != ' ') {
+                return OTHER;
+            }
+            return SESSION_TX_READ_ONLY;
+        } else if (ParseUtil.compare(stmt, offset, _SESSION_TRANSACTION_READ_ONLY)) {
+            int length = offset + _SESSION_TRANSACTION_READ_ONLY.length;
             if (stmt.length() > length && stmt.charAt(length) != ' ') {
                 return OTHER;
             }
@@ -704,6 +722,26 @@ public final class ServerParseSelect {
             }
             exData[0] = Long.parseLong(stmt.substring(length + 1, stmt.length() - 1), 16);
             return EXTRACT_TRACE_ID;
+        }
+        return OTHER;
+    }
+
+    private static int extractEncdbProcessMessage(ByteString stmt, int offset, Object[] exData) {
+        if (ParseUtil.compare(stmt, offset, _ENCDB_PROCESS_MESSAGE)) {
+            int length = offset + _ENCDB_PROCESS_MESSAGE.length;
+            if (length == stmt.length() || stmt.charAt(length) != '(' || stmt.charAt(stmt.length() - 1) != ')') {
+                return OTHER;
+            }
+            String str = TStringUtil.trim(stmt.substring(length + 1, stmt.length() - 1));
+            if (TStringUtil.isBlank(str)) {
+                return OTHER;
+            }
+            if ((str.startsWith("\"") && str.endsWith("\""))
+                || (str.startsWith("'")) && str.endsWith("'")) {
+                str = str.substring(1, str.length() - 1);
+            }
+            exData[0] = str;
+            return ENCDB_PROCESS_MESSAGE;
         }
         return OTHER;
     }

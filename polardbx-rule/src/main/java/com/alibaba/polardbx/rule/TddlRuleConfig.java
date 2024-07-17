@@ -18,6 +18,7 @@ package com.alibaba.polardbx.rule;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.rule.exception.TddlRuleException;
@@ -58,6 +59,8 @@ public abstract class TddlRuleConfig extends AbstractLifecycle implements Lifecy
     protected String defaultDbIndex;
     // 规则最后一次变更的时间戳
     protected long lastTimestamp = System.currentTimeMillis();
+
+    protected String schemaName;
 
     /**
      * <pre>
@@ -140,13 +143,5 @@ public abstract class TddlRuleConfig extends AbstractLifecycle implements Lifecy
 
     public long getLastTimestamp() {
         return lastTimestamp;
-    }
-
-    public String getAppRuleString() {
-        return appRuleString;
-    }
-
-    public void setAppRuleString(String appRuleString) {
-        this.appRuleString = appRuleString;
     }
 }

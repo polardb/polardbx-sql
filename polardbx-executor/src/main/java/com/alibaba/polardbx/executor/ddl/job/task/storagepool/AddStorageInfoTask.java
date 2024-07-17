@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.AlterStoragePoolSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoExtraFieldJSON;
@@ -157,12 +158,12 @@ public class AddStorageInfoTask extends BaseDdlTask {
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         //ComplexTaskMetaManager.getInstance().reload();
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
 }

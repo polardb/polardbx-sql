@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
@@ -47,6 +48,7 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -56,8 +58,10 @@ import com.alibaba.polardbx.common.utils.logger.support.LogFormat;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.chunk.DecimalBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
@@ -182,7 +186,7 @@ public class TableScanClient {
         this.useTransaction = useTransaction;
         this.socketTimeout = (int) context.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         this.prefetchNum = prefetchNum;
-        this.slowTimeThreshold = context.getPhysicalRecorder().getSlowSqlTime();
+        this.slowTimeThreshold = context.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
         this.enableTaskCpu = ExecUtils.isSQLMetricEnabled(context);
         if (context.getRuntimeStatistics() != null) {
             this.runtimeStat = (RuntimeStatistics) context.getRuntimeStatistics();
@@ -582,6 +586,9 @@ public class TableScanClient {
         }
 
         protected String getCurrentDbkey() {
+            if (ConfigDataMode.isColumnarMode()) {
+                return ANONAMOUS_DBKEY;
+            }
             IDataSource o = ExecutorContext.getContext(jdbcSplit.getSchemaName())
                 .getTopologyHandler().get(jdbcSplit.getDbIndex()).getDataSource();
             String currentDbKey = ANONAMOUS_DBKEY;
@@ -673,7 +680,14 @@ public class TableScanClient {
                 if (pureAsync) {
                     final XPreparedStatement xPreparedStatement = stmt.unwrap(XPreparedStatement.class);
                     assert xPreparedStatement.getConnection().unwrap(XConnection.class).isStreamMode();
-                    xPreparedStatement.getConnection().unwrap(XConnection.class).getSession().setChunkResult(true);
+                    boolean chunkResult = true;
+                    if (TableScanClient.this.context.isEnableOrcRawTypeBlock()) {
+                        // For raw type block, do not enable chunk result.
+                        // Normal query should not get here.
+                        chunkResult = false;
+                    }
+                    xPreparedStatement.getConnection().unwrap(XConnection.class).getSession()
+                        .setChunkResult(chunkResult);
                     xResult = xPreparedStatement.executeQueryX(); // Return immediately when stream mode.
                 } else {
                     startTimeNano = System.nanoTime();
@@ -970,6 +984,10 @@ public class TableScanClient {
                     }
                 }
             } else if (clazz == Decimal.class) {
+                DecimalBlockBuilder decBuilder = (DecimalBlockBuilder) dst;
+                boolean useDecimal64 = DynamicConfig.getInstance().enableXResultDecimal64()
+                    && decBuilder.canWriteDecimal64()
+                    && type.getScale() != DecimalTypeBase.DEFAULT_SCALE;
                 for (int i = 0; i < rowCount; ++i) {
                     src.next();
                     if (src.isNull()) {
@@ -977,7 +995,11 @@ public class TableScanClient {
                     } else {
                         final com.alibaba.polardbx.rpc.result.chunk.Decimal decimal = src.getDecimal();
                         if (null == decimal.getBigUnscaled()) {
-                            dst.writeDecimal(new Decimal(decimal.getUnscaled(), decimal.getScale()));
+                            if (useDecimal64) {
+                                dst.writeLong(decimal.getUnscaled());
+                            } else {
+                                dst.writeDecimal(new Decimal(decimal.getUnscaled(), decimal.getScale()));
+                            }
                         } else {
                             dst.writeDecimal(
                                 Decimal.fromBigDecimal(new BigDecimal(decimal.getBigUnscaled(), decimal.getScale())));
@@ -1094,6 +1116,16 @@ public class TableScanClient {
             }
         }
 
+        protected void fillRawOrcTypeRow(DataType[] dataTypes, BlockBuilder[] blockBuilders,
+                                         ExecutionContext context) throws Exception {
+            assert xResult != null;
+            XResultObject resultObject = xResult.current();
+            if (resultObject.getRow() != null) {
+                XRowSet.appendRawOrcTypeRowForX(xResult, dataTypes, blockBuilders, context);
+                ++count;
+            }
+        }
+
         private boolean chunkNext() throws SQLException {
             final XResultObject current = xResult.current();
             if (null == current || current.getRow() != null) {
@@ -1140,7 +1172,7 @@ public class TableScanClient {
                     logger.warn(context.getTraceId() + " here occur error, but current scan is closed!", e);
                 } else {
                     throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_MYSQL, e, jdbcSplit.getDbIndex(),
-                        getCurrentDbkey(), e.getMessage());
+                        getCurrentDbkey(), context.getTraceId() + "," + e.getMessage());
                 }
             }
             return false;

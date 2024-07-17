@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
-import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -26,9 +26,9 @@ import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 
 import java.sql.Connection;
@@ -38,6 +38,8 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_P
 @Getter
 @TaskName(name = "CreateTableShowTableMetaTask")
 public class CreateTableShowTableMetaTask extends BaseGmsTask {
+
+    protected static final Logger LOGGER = SQLRecorderLogger.ddlLogger;
 
     public CreateTableShowTableMetaTask(String schemaName, String logicalTableName) {
         super(schemaName, logicalTableName);
@@ -51,13 +53,12 @@ public class CreateTableShowTableMetaTask extends BaseGmsTask {
 
         SequenceBaseRecord sequenceRecord =
             tableInfoManager.fetchSequence(schemaName, AUTO_SEQ_PREFIX + logicalTableName);
-
         TableMetaChanger.triggerSchemaChange(metaDbConnection, schemaName, logicalTableName, sequenceRecord,
             tableInfoManager);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        SyncManagerHelper.syncWithDefaultDB(new BaselinePlanValidCheckSyncAction());
+        SyncManagerHelper.syncWithDefaultDB(new BaselinePlanValidCheckSyncAction(), SyncScope.ALL);
     }
 
     @Override
@@ -68,7 +69,7 @@ public class CreateTableShowTableMetaTask extends BaseGmsTask {
     @Override
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.hideTableMeta(metaDbConnection, schemaName, logicalTableName);
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
     }
 
 }

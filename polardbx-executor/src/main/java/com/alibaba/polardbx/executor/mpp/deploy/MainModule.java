@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
-import com.google.inject.Binder;
-import com.google.inject.Provides;
-import com.google.inject.Scopes;
-import com.google.inject.TypeLiteral;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.version.Version;
 import com.alibaba.polardbx.executor.mpp.Threads;
@@ -55,6 +51,10 @@ import com.alibaba.polardbx.gms.node.AllNodes;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.NodeVersion;
+import com.google.inject.Binder;
+import com.google.inject.Provides;
+import com.google.inject.Scopes;
+import com.google.inject.TypeLiteral;
 import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;

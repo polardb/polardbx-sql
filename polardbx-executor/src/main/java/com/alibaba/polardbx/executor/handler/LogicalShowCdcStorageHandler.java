@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -27,6 +26,7 @@ import com.alibaba.polardbx.gms.metadb.cdc.BinlogTaskRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 
 import java.sql.Connection;
@@ -38,7 +38,7 @@ import java.util.Optional;
  **/
 public class LogicalShowCdcStorageHandler extends HandlerCommon {
 
-    private static final Logger logger = LoggerFactory.getLogger(LogicalShowCdcStorageHandler.class);
+    private static final Logger cdcLogger = SQLRecorderLogger.cdcLogger;
 
     public LogicalShowCdcStorageHandler(IRepository repo) {
         super(repo);
@@ -59,7 +59,7 @@ public class LogicalShowCdcStorageHandler extends HandlerCommon {
                 }
             }
         } catch (Exception e) {
-            logger.error("get final task info error", e);
+            cdcLogger.error("show cdc storage error!", e);
             throw new TddlNestableRuntimeException(e);
         }
         return result;

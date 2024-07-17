@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.view;
 
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
@@ -25,8 +24,6 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
-import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
-import org.apache.calcite.sql.type.SqlTypeName;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 import java.util.Arrays;
@@ -189,6 +186,19 @@ public class InformationSchemaViewManager extends ViewManager {
             "STATE",
             "SCHEDULE_EXPR",
             "COMMENT"
+        });
+
+        defineVirtualView(VirtualViewType.STATISTICS_DATA, new String[] {
+            "HOST",
+            "SCHEMA_NAME",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "TABLE_ROWS",
+            "NDV",
+            "NDV_SOURCE",
+            "TOPN",
+            "HISTOGRAM",
+            "SAMPLE_RATE"
         });
 
         defineView("SCHEDULE_JOBS_HISTORY", new String[] {
@@ -369,6 +379,21 @@ public class InformationSchemaViewManager extends ViewManager {
             "REFERENCED_COLUMN_NAME"
         });
 
+//        defineVirtualView(VirtualViewType.KEY_COLUMN_USAGE, new String[] {
+//            "CONSTRAINT_CATALOG",
+//            "CONSTRAINT_SCHEMA",
+//            "CONSTRAINT_NAME",
+//            "TABLE_CATALOG",
+//            "TABLE_SCHEMA",
+//            "TABLE_NAME",
+//            "COLUMN_NAME",
+//            "ORDINAL_POSITION",
+//            "POSITION_IN_UNIQUE_CONSTRAINT",
+//            "REFERENCED_TABLE_SCHEMA",
+//            "REFERENCED_TABLE_NAME",
+//            "REFERENCED_COLUMN_NAME"
+//        });
+
         defineView("COLUMN_STATISTICS", new String[] {
                 "SCHEMA_NAME",
                 "TABLE_NAME",
@@ -541,13 +566,13 @@ public class InformationSchemaViewManager extends ViewManager {
                         + ".ROW_FORMAT, "
                         + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
                         + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
-                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT * FROM %s.TABLE_PARTITIONS "
-                        + "GROUP BY TABLE_SCHEMA, TABLE_NAME) AS E ON T"
+                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT TABLE_SCHEMA, TABLE_NAME, PART_FLAGS, TBL_TYPE FROM %s.TABLE_PARTITIONS "
+                        + "WHERE PART_LEVEL=0) AS E ON T"
                         + ".TABLE_SCHEMA"
-                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND can_access_table"
+                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND E.TBL_TYPE != 7 AND can_access_table"
                         + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
                         + "UNION ALL "
-                        + "select TABLE_CATALOG, LOWER(TABLE_SCHEMA), LOWER(TABLE_NAME), TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
+                        + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
                         + "TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
                         + "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, CHECKSUM, "
                         + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables"
@@ -563,10 +588,10 @@ public class InformationSchemaViewManager extends ViewManager {
                         + ".ROW_FORMAT, "
                         + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
                         + "T.AUTO_INCREMENT, T.CREATE_TIME, T.UPDATE_TIME, T.CHECK_TIME, T.TABLE_COLLATION, T.CHECKSUM, "
-                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT * FROM %s.TABLE_PARTITIONS "
-                        + "GROUP BY TABLE_SCHEMA, TABLE_NAME) AS E ON T"
+                        + "T.CREATE_OPTIONS, T.TABLE_COMMENT, case when (E.part_Flags & 0x2)!=0 then 'YES' else 'NO' end  AUTO_PARTITION  from %s.TABLES AS T Join (SELECT TABLE_SCHEMA, TABLE_NAME, PART_FLAGS, TBL_TYPE FROM %s.TABLE_PARTITIONS "
+                        + "WHERE PART_LEVEL=0) AS E ON T"
                         + ".TABLE_SCHEMA"
-                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND can_access_table"
+                        + " = E.TABLE_SCHEMA AND T.TABLE_NAME = E.TABLE_NAME WHERE E.TBL_TYPE != 1 AND E.TBL_TYPE != 7 AND can_access_table"
                         + "(T.TABLE_SCHEMA, T.TABLE_NAME) AND T.status = 1 "
                         + "UNION ALL "
                         + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
@@ -624,7 +649,7 @@ public class InformationSchemaViewManager extends ViewManager {
                         + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
                         + "from %s.COLUMNS AS C JOIN %s.TABLES_EXT AS E ON C"
                         + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
-                        + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 "
+                        + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 and E.TABLE_TYPE != 4 "
                         + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
                         + "UNION ALL "
                         + "select C.TABLE_CATALOG, LOWER(C.TABLE_SCHEMA), LOWER(C.TABLE_NAME), C.COLUMN_NAME, C.ORDINAL_POSITION, "
@@ -648,13 +673,13 @@ public class InformationSchemaViewManager extends ViewManager {
                         + "C.PRIVILEGES, C.COLUMN_COMMENT, "
                         + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN
                         + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
-                        + "from %s.COLUMNS AS C JOIN (SELECT * FROM %s.TABLE_PARTITIONS GROUP BY TABLE_SCHEMA, TABLE_NAME)"
+                        + "from %s.COLUMNS AS C JOIN (SELECT TABLE_SCHEMA,TABLE_NAME,TBL_TYPE FROM %s.TABLE_PARTITIONS WHERE PART_LEVEL=0)"
                         + " AS E ON C"
                         + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
-                        + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 "
+                        + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 and E.TBL_TYPE != 7 "
                         + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
                         + "UNION ALL "
-                        + "select TABLE_CATALOG, LOWER(TABLE_SCHEMA), LOWER(TABLE_NAME), COLUMN_NAME, ORDINAL_POSITION, "
+                        + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, "
                         + "COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, "
                         + "NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, CHARACTER_SET_NAME, COLLATION_NAME, "
                         + "COLUMN_TYPE, COLUMN_KEY, EXTRA, PRIVILEGES, COLUMN_COMMENT, GENERATION_EXPRESSION "
@@ -682,7 +707,7 @@ public class InformationSchemaViewManager extends ViewManager {
                     + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
                     + "from %s.COLUMNS AS C JOIN %s.TABLES_EXT AS E ON C"
                     + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
-                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 "
+                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TABLE_TYPE != 3 and E.TABLE_TYPE != 4 "
                     + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
                     + "UNION ALL "
                     + "select C.TABLE_CATALOG, C.TABLE_SCHEMA, C.TABLE_NAME, C.COLUMN_NAME, C.ORDINAL_POSITION, "
@@ -706,10 +731,10 @@ public class InformationSchemaViewManager extends ViewManager {
                     + "C.PRIVILEGES, C.COLUMN_COMMENT, "
                     + "IF((C.FLAG & " + FLAG_LOGICAL_GENERATED_COLUMN
                     + "),C.COLUMN_DEFAULT,C.GENERATION_EXPRESSION) AS GENERATION_EXPRESSION "
-                    + "from %s.COLUMNS AS C JOIN (SELECT * FROM %s.TABLE_PARTITIONS GROUP BY TABLE_SCHEMA, TABLE_NAME)"
+                    + "from %s.COLUMNS AS C JOIN (SELECT TABLE_SCHEMA,TABLE_NAME,TBL_TYPE FROM %s.TABLE_PARTITIONS WHERE PART_LEVEL=0)"
                     + " AS E ON C"
                     + ".TABLE_SCHEMA = E.TABLE_SCHEMA and C.TABLE_NAME = E.TABLE_NAME "
-                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 "
+                    + "where can_access_table(C.TABLE_SCHEMA, C.TABLE_NAME) and C.status = 1 and E.TBL_TYPE != 1 and E.TBL_TYPE != 7 "
                     + "and C.column_name != '" + IMPLICIT_COL_NAME + "'"
                     + "UNION ALL "
                     + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, "
@@ -795,297 +820,6 @@ public class InformationSchemaViewManager extends ViewManager {
             PlanManager.getInstance().invalidateSchema(TddlConstants.INFORMATION_SCHEMA);
             this.enableLower = currentEnableLower;
         }
-    }
-
-    private void defineDrdsView() {
-        defineCommonView();
-
-        defineView("views", new String[] {
-                "TABLE_CATALOG",
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "VIEW_DEFINITION",
-                "CHECK_OPTION",
-                "IS_UPDATABLE",
-                "DEFINER",
-                "SECURITY_TYPE",
-                "CHARACTER_SET_CLIENT",
-                "COLLATION_CONNECTION"
-            },
-            "select 'def', t.schema_name, t.view_name, t.view_definition," +
-                " 'NONE', 'NO', t.definer, 'DEFINER', 'utf8', 'utf8_general_ci' " +
-                " from " + SystemTables.DRDS_SYSTABLE_VIEW + " as t " +
-                "where can_access_table(schema_name, view_name) ");
-
-        defineVirtualView(VirtualViewType.CHARACTER_SETS, new String[] {
-            "CHARACTER_SET_NAME",
-            "DEFAULT_COLLATE_NAME",
-            "DESCRIPTION",
-            "MAXLEN"
-        });
-
-        defineVirtualView(VirtualViewType.COLLATION_CHARACTER_SET_APPLICABILITY, new String[] {
-            "COLLATION_NAME",
-            "CHARACTER_SET_NAME"
-        });
-
-        defineVirtualView(VirtualViewType.COLLATIONS, new String[] {
-            "COLLATION_NAME",
-            "CHARACTER_SET_NAME",
-            "ID",
-            "IS_DEFAULT",
-            "IS_COMPILED",
-            "SORTLEN",
-            "PAD_ATTRIBUTE"
-        });
-
-        defineVirtualView(VirtualViewType.ENGINES, new String[] {
-            "ENGINE",
-            "SUPPORT",
-            "COMMENT",
-            "TRANSACTIONS",
-            "XA",
-            "SAVEPOINTS"
-        });
-
-        defineVirtualView(VirtualViewType.GLOBAL_VARIABLES, new String[] {
-            "VARIABLE_NAME",
-            "VARIABLE_VALUE"
-        });
-
-        defineVirtualView(VirtualViewType.SESSION_VARIABLES, new String[] {
-            "VARIABLE_NAME",
-            "VARIABLE_VALUE"
-        });
-
-        defineVirtualView(VirtualViewType.STATISTICS, new String[] {
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "NON_UNIQUE",
-            "INDEX_SCHEMA",
-            "INDEX_NAME",
-            "SEQ_IN_INDEX",
-            "COLUMN_NAME",
-            "COLLATION",
-            "CARDINALITY",
-            "SUB_PART",
-            "PACKED",
-            "NULLABLE",
-            "INDEX_TYPE",
-            "COMMENT",
-            "INDEX_COMMENT"
-        });
-
-        defineVirtualView(VirtualViewType.SCHEMATA, new String[] {
-            "CATALOG_NAME",
-            "SCHEMA_NAME",
-            "DEFAULT_CHARACTER_SET_NAME",
-            "DEFAULT_COLLATION_NAME",
-            "SQL_PATH",
-            "DEFAULT_ENCRYPTION"
-        });
-
-        defineVirtualView(VirtualViewType.TABLES, new String[] {
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "TABLE_TYPE",
-            "ENGINE",
-            "VERSION",
-            "ROW_FORMAT",
-            "TABLE_ROWS",
-            "AVG_ROW_LENGTH",
-            "DATA_LENGTH",
-            "MAX_DATA_LENGTH",
-            "INDEX_LENGTH",
-            "DATA_FREE",
-            "AUTO_INCREMENT",
-            "CREATE_TIME",
-            "UPDATE_TIME",
-            "CHECK_TIME",
-            "TABLE_COLLATION",
-            "CHECKSUM",
-            "CREATE_OPTIONS",
-            "TABLE_COMMENT"
-        });
-
-        defineVirtualView(VirtualViewType.COLUMNS, new String[] {
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "COLUMN_NAME",
-            "ORDINAL_POSITION",
-            "COLUMN_DEFAULT",
-            "IS_NULLABLE",
-            "DATA_TYPE",
-            "CHARACTER_MAXIMUM_LENGTH",
-            "CHARACTER_OCTET_LENGTH",
-            "NUMERIC_PRECISION",
-            "NUMERIC_SCALE",
-            "DATETIME_PRECISION",
-            "CHARACTER_SET_NAME",
-            "COLLATION_NAME",
-            "COLUMN_TYPE",
-            "COLUMN_KEY",
-            "EXTRA",
-            "PRIVILEGES",
-            "COLUMN_COMMENT",
-            "GENERATION_EXPRESSION"
-        });
-
-        defineVirtualView(VirtualViewType.KEY_COLUMN_USAGE, new String[] {
-            "CONSTRAINT_CATALOG",
-            "CONSTRAINT_SCHEMA",
-            "CONSTRAINT_NAME",
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "COLUMN_NAME",
-            "ORDINAL_POSITION",
-            "POSITION_IN_UNIQUE_CONSTRAINT",
-            "REFERENCED_TABLE_SCHEMA",
-            "REFERENCED_TABLE_NAME",
-            "REFERENCED_COLUMN_NAME"
-        });
-
-//        defineView("PARTITIONS", new String[] {
-//            "TABLE_CATALOG",
-//            "TABLE_SCHEMA",
-//            "TABLE_NAME",
-//            "PARTITION_NAME",
-//            "SUBPARTITION_NAME",
-//            "PARTITION_ORDINAL_POSITION",
-//            "SUBPARTITION_ORDINAL_POSITION",
-//            "PARTITION_METHOD",
-//            "SUBPARTITION_METHOD",
-//            "PARTITION_EXPRESSION",
-//            "SUBPARTITION_EXPRESSION",
-//            "PARTITION_DESCRIPTION",
-//            "TABLE_ROWS",
-//            "AVG_ROW_LENGTH",
-//            "DATA_LENGTH",
-//            "MAX_DATA_LENGTH",
-//            "INDEX_LENGTH",
-//            "DATA_FREE",
-//            "CREATE_TIME",
-//            "UPDATE_TIME",
-//            "CHECK_TIME",
-//            "CHECKSUM",
-//            "PARTITION_COMMENT",
-//            "NODEGROUP",
-//            "TABLESPACE_NAME"
-//        }, String.format("select \n"
-//            + "'def' as TABLE_CATALOG,\n"
-//            + "tables.table_schema as TABLE_SCHEMA,\n"
-//            + "tables.table_name as TABLE_NAME,\n"
-//            + "null as PARTITION_NAME,\n"
-//            + "null as SUBPARTITION_NAME,\n"
-//            + "null as PARTITION_ORDINAL_POSITION,\n"
-//            + "null as SUBPARTITION_ORDINAL_POSITION,\n"
-//            + "null as PARTITION_METHOD,\n"
-//            + "null as SUBPARTITION_METHOD,\n"
-//            + "null as PARTITION_EXPRESSION,\n"
-//            + "null as SUBPARTITION_EXPRESSION,\n"
-//            + "null as PARTITION_DESCRIPTION,\n"
-//            + "tables.TABLE_ROWS as TABLE_ROWS,\n"
-//            + "tables.AVG_ROW_LENGTH as AVG_ROW_LENGTH,\n"
-//            + "tables.DATA_LENGTH as DATA_LENGTH,\n"
-//            + "tables.MAX_DATA_LENGTH as MAX_DATA_LENGTH,\n"
-//            + "tables.INDEX_LENGTH as INDEX_LENGTH,\n"
-//            + "tables.DATA_FREE as DATA_FREE,\n"
-//            + "tables.create_time as CREATE_TIME,\n"
-//            + "tables.update_time as UPDATE_TIME,\n"
-//            + "tables.check_time as CHECK_TIME,\n"
-//            + "tables.checksum as CHECKSUM,\n"
-//            + "tables.table_comment as PARTITION_COMMENT,\n"
-//            + "'default' as NODEGROUP,\n"
-//            + "null as TABLESPACE_NAME\n"
-//            + "from %s.tables \n", InformationSchema.NAME));
-
-        defineVirtualView(VirtualViewType.TABLE_CONSTRAINTS, new String[] {
-            "CONSTRAINT_CATALOG",
-            "CONSTRAINT_SCHEMA",
-            "CONSTRAINT_NAME",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "CONSTRAINT_TYPE",
-            "ENFORCED"
-        });
-
-        defineVirtualView(VirtualViewType.REFERENTIAL_CONSTRAINTS, new String[] {
-            "CONSTRAINT_CATALOG",
-            "CONSTRAINT_SCHEMA",
-            "CONSTRAINT_NAME",
-            "UNIQUE_CONSTRAINT_CATALOG",
-            "UNIQUE_CONSTRAINT_SCHEMA",
-            "UNIQUE_CONSTRAINT_NAME",
-            "MATCH_OPTION",
-            "UPDATE_RULE",
-            "DELETE_RULE",
-            "TABLE_NAME",
-            "REFERENCED_TABLE_NAME"
-        });
-
-        defineVirtualView(VirtualViewType.COLUMNS, new String[] {
-            "TABLE_CATALOG",
-            "TABLE_SCHEMA",
-            "TABLE_NAME",
-            "COLUMN_NAME",
-            "ORDINAL_POSITION",
-            "COLUMN_DEFAULT",
-            "IS_NULLABLE",
-            "DATA_TYPE",
-            "CHARACTER_MAXIMUM_LENGTH",
-            "CHARACTER_OCTET_LENGTH",
-            "NUMERIC_PRECISION",
-            "NUMERIC_SCALE",
-            "DATETIME_PRECISION",
-            "CHARACTER_SET_NAME",
-            "COLLATION_NAME",
-            "COLUMN_TYPE",
-            "COLUMN_KEY",
-            "EXTRA",
-            "PRIVILEGES",
-            "COLUMN_COMMENT",
-            "GENERATION_EXPRESSION"
-        });
-
-        defineVirtualView(VirtualViewType.COLUMN_STATISTICS, new String[] {
-            "SCHEMA_NAME",
-            "TABLE_NAME",
-            "COLUMN_NAME",
-            "HISTOGRAM"
-        });
-
-        defineVirtualView(VirtualViewType.ENGINES, new String[] {
-            "ENGINE",
-            "SUPPORT",
-            "COMMENT",
-            "TRANSACTIONS",
-            "XA",
-            "SAVEPOINTS"
-        });
-
-        defineVirtualView(VirtualViewType.KEYWORDS, new String[] {
-            "WORD",
-            "RESERVED"
-        });
-
-        defineVirtualView(VirtualViewType.COLLATION_CHARACTER_SET_APPLICABILITY, new String[] {
-            "COLLATION_NAME",
-            "CHARACTER_SET_NAME"
-        });
-
-        defineVirtualView(VirtualViewType.COLLATIONS, new String[] {
-            "COLLATION_NAME",
-            "CHARACTER_SET_NAME",
-            "ID",
-            "IS_DEFAULT",
-            "IS_COMPILED",
-            "SORTLEN",
-            "PAD_ATTRIBUTE"
-        });
     }
 
     private void defineCommonView() {
@@ -1841,6 +1575,44 @@ public class InformationSchemaViewManager extends ViewManager {
             "SIZE_IN_MB"
         });
 
+        defineVirtualView(VirtualViewType.COLUMNAR_INDEX_STATUS, new String[] {
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "INDEX_NAME",
+            "STATUS",
+            "ORC_FILE_COUNT",
+            "ORC_ROW_COUNT",
+            "ORC_FILE_SIZE",
+            "CSV_FILE_COUNT",
+            "CSV_ROW_COUNT",
+            "CSV_FILE_SIZE",
+            "DEL_FILE_COUNT",
+            "DEL_ROW_COUNT",
+            "DEL_FILE_SIZE",
+            "TOTAL_SIZE"
+        });
+
+        defineVirtualView(VirtualViewType.COLUMNAR_STATUS, new String[] {
+            "TSO",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "INDEX_NAME",
+            "INDEX_ID",
+            "PARTITION_NUM",
+            "CSV_FILE_COUNT",
+            "CSV_ROW_COUNT",
+            "CSV_FILE_SIZE",
+            "ORC_FILE_COUNT",
+            "ORC_ROW_COUNT",
+            "ORC_FILE_SIZE",
+            "DEL_FILE_COUNT",
+            "DEL_ROW_COUNT",
+            "DEL_FILE_SIZE",
+            "ROW_COUNT",
+            "TOTAL_SIZE",
+            "STATUS",
+        });
+
         defineVirtualView(VirtualViewType.METADATA_LOCK, new String[] {
             "NODE",
             "CONN_ID",
@@ -2144,6 +1916,8 @@ public class InformationSchemaViewManager extends ViewManager {
         });
 
         defineVirtualView(VirtualViewType.SPM, new String[] {
+            "HOST",
+            "INST_ID",
             "BASELINE_ID",
             "SCHEMA_NAME",
             "PLAN_ID",
@@ -2435,7 +2209,22 @@ public class InformationSchemaViewManager extends ViewManager {
             "APPROXIMATE_TOTAL_ROWS"
         });
 
-        defineVirtualView(VirtualViewType.CREATE_DATABASE_AS_BACKFILL, new String[] {
+        defineVirtualView(VirtualViewType.REBALANCE_PROGRESS, new String[] {
+                "JOB_ID",
+                "TABLE_SCHEMA",
+                "STAGE",
+                "STATE",
+                "PROGRESS",
+                "TOTAL_TABLECOUNT",
+                "FINISHED_TABLECOUNT",
+                "RUNNING_TABLECOUNT",
+                "NOTSTARTED_TABLECOUNT",
+                "FAILED_TABLECOUNT",
+                "INFO",
+                "START_TIME",
+                "LAST_UPDATE_TIME",
+                "DDL_STMT"
+            });defineVirtualView(VirtualViewType.CREATE_DATABASE_AS_BACKFILL, new String[] {
             "DDL_JOB_ID",
             "BACKFILL_ID",
             "SOURCE_SCHEMA",
@@ -2664,6 +2453,17 @@ public class InformationSchemaViewManager extends ViewManager {
             "BQUAL_LENGTH",
             "DATA"
         });
-    }
+            defineVirtualView(VirtualViewType.PREPARED_TRX_BRANCH, new String[] {
+                "DN_INSTANCE_ID",
+                "FORMAT_ID",
+                "GTRID_LENGTH",
+                "BQUAL_LENGTH",
+                "DATA"
+            });
 
+            defineVirtualView(VirtualViewType.SHOW_HELP, new String[] {
+                "STATEMENT",
+            });
+        }
 }
+

@@ -47,7 +47,7 @@ import java.util.concurrent.ExecutionException;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-public class NFSFileSystem extends FileSystem {
+public class NFSFileSystem extends FileSystem implements RateLimitable {
     private static final Logger LOG =
         LoggerFactory.getLogger(NFSFileSystem.class);
 
@@ -380,6 +380,7 @@ public class NFSFileSystem extends FileSystem {
         }
     }
 
+    @Override
     public FileSystemRateLimiter getRateLimiter() {
         return this.rateLimiter;
     }

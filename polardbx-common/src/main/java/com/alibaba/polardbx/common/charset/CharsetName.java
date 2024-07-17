@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.charset;
 
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.google.common.collect.ImmutableList;
 
 import com.google.common.collect.ImmutableMap;
@@ -418,6 +419,7 @@ public enum CharsetName {
         .put("utf8mb3", UTF8)
         .put("UTF8MB3", UTF8)
 
+        // for utf8mb4
         .put("utf8mb4", UTF8MB4)
         .put("UTF8MB4", UTF8MB4)
 
@@ -819,6 +821,16 @@ public enum CharsetName {
     }
 
     public CollationName getDefaultCollationName() {
+        if (InstanceVersion.isMYSQL80()) {
+            // We should dynamically decide the default collation name here, because the initialization of default
+            // collation name happens before the setting of MySQL version in InstanceVersion.
+            switch (defaultCollationName) {
+            case UTF8MB4_GENERAL_CI:
+                return UTF8MB4_0900_AI_CI;
+            default:
+                return defaultCollationName;
+            }
+        }
         return defaultCollationName;
     }
 

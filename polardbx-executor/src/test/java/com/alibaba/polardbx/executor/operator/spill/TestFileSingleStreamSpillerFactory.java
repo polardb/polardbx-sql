@@ -70,9 +70,6 @@ public class TestFileSingleStreamSpillerFactory {
         closer.register(() -> FileUtils.deleteDirectory(spillPath1));
         spillPath2 = Paths.get("./tmp/" + this.getClass().getSimpleName() + "2").toAbsolutePath().toFile();
         closer.register(() -> FileUtils.deleteDirectory(spillPath2));
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().add(spillPath1.toPath());
-        MppConfig.getInstance().getSpillPaths().add(spillPath2.toPath());
     }
 
     @After
@@ -97,7 +94,8 @@ public class TestFileSingleStreamSpillerFactory {
         List<SingleStreamSpiller> spillers = new ArrayList<>();
         for (int i = 0; i < 10; ++i) {
             SingleStreamSpiller singleStreamSpiller = spillerFactory.create(
-                "testDistributesSpillOverPaths", types, new QuerySpillSpaceMonitor().newLocalSpillMonitor(), null);
+                "testDistributesSpillOverPaths", types, new QuerySpillSpaceMonitor("test").newLocalSpillMonitor(),
+                null);
             getUnchecked(singleStreamSpiller.spill(page));
             singleStreamSpiller.flush();
             spillers.add(singleStreamSpiller);
@@ -125,6 +123,7 @@ public class TestFileSingleStreamSpillerFactory {
             spillPaths,
             0.0);
 
-        spillerFactory.create("throwsIfNoDiskSpace", types, new QuerySpillSpaceMonitor().newLocalSpillMonitor(), null);
+        spillerFactory.create("throwsIfNoDiskSpace", types, new QuerySpillSpaceMonitor("test").newLocalSpillMonitor(),
+            null);
     }
 }

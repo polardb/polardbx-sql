@@ -29,7 +29,10 @@ public enum PartitionBoundValueKind {
     DATUM_MAX_VALUE(1),
 
     /* default value for catch-all partition, not participate in comparison*/
-    DATUM_DEFAULT_VALUE(2);
+    DATUM_DEFAULT_VALUE(2),
+
+    /* any values between DATUM_MIN_VALUE and DATUM_MAX_VALUE */
+    DATUM_ANY_VALUE(3);
 
     protected int kind = 0;
 

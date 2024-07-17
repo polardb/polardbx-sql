@@ -23,6 +23,7 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 
 /**
  * ${DESCRIPTION}
@@ -34,8 +35,8 @@ public class ParallelTableScan extends TableScan {
     private boolean paralleled;
 
     public ParallelTableScan(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table, SqlNodeList hints,
-                             SqlNode indexNode, RexNode flashback, SqlNode partitions) {
-        super(cluster, traitSet, table, hints, indexNode, flashback, partitions);
+                             SqlNode indexNode, RexNode flashback, SqlOperator flashbackOperator, SqlNode partitions) {
+        super(cluster, traitSet, table, hints, indexNode, flashback, flashbackOperator, partitions);
     }
 
     public boolean isParalleled() {
@@ -49,7 +50,8 @@ public class ParallelTableScan extends TableScan {
     public static ParallelTableScan copy(TableScan tableScan, boolean paralleled) {
         final ParallelTableScan parallelTableScan =
             new ParallelTableScan(tableScan.getCluster(), tableScan.getTraitSet(), tableScan.getTable(),
-                tableScan.getHints(), tableScan.getIndexNode(), tableScan.getFlashback(), tableScan.getPartitions());
+                tableScan.getHints(), tableScan.getIndexNode(), tableScan.getFlashback(),
+                tableScan.getFlashbackOperator(), tableScan.getPartitions());
         parallelTableScan.setParalleled(paralleled);
         return parallelTableScan;
     }

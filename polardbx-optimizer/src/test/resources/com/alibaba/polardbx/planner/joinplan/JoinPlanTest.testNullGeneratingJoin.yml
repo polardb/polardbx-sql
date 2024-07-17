@@ -1,0 +1,87 @@
+- sql: |
+    /*+TDDL:cmd_extra(PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000000)*/select count(*) from test_hash_tb a left join test_hash_tb b on a.id=b.id group by b.id;
+  plan: |
+    project(count(*)="count(*)")
+      hashagg(group="id0", count(*)="sum(count(*))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb0`.`id` as `id0`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb0`.`id`")
+- sql: |
+    /*+TDDL:cmd_extra(PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000000)*/select count(*) from test_hash_tb a right join test_hash_tb b on a.id=b.id group by b.id;
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` right join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb0`.`id`")
+- sql: |
+    /*+TDDL:cmd_extra(PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000000)*/select count(*) from test_hash_tb a join test_hash_tb b on a.id=b.id group by b.id;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb0`.`id`")
+- sql: |
+    select count(*) from test_hash_tb a left join test_hash_tb b on a.id=b.id group by b.id;
+  plan: |
+    project(count(*)="count(*)")
+      hashagg(group="id0", count(*)="count()")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb0`.`id` as `id0` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`)")
+- sql: |
+    /*+TDDL:cmd_extra(PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000000)*/select count(a.id) from test_hash_tb a left join test_hash_tb b on a.id=b.id group by b.id;
+  plan: |
+    project(count(a.id)="count(a.id)")
+      hashagg(group="id0", count(a.id)="sum(count(a.id))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb0`.`id` as `id0`, count(*) as `count(a.id)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb0`.`id`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false)*/ select count(*) from test_hash_tb a left join test_hash_tb2 b on a.id=b.id left join test_broadcast c on b.id = c.id;
+  plan: |
+    hashagg(count(*)="sum(count(*))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2,test_broadcast", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) left join `test_broadcast` as `test_broadcast` on (`test_hash_tb2`.`id` = `test_broadcast`.`id`)")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false)*/ select count(*) from test_hash_tb a left join test_hash_tb2 b on a.id=b.id left join test_hash_tb c on a.id = c.id;
+  plan: |
+    hashagg(count(*)="sum(count(*))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`)")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false)*/ select count(*) from test_hash_tb a left join test_hash_tb2 b on a.id=b.id left join test_hash_tb c on b.id = c.id;
+  plan: |
+    hashagg(count(*)="sum(count(*))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb2`.`id` = `test_hash_tb0`.`id`)")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000000)*/ select count(*) from test_hash_tb a left join test_hash_tb2 b on a.id=b.id left join test_hash_tb c on b.id = c.id group by b.id;
+  plan: |
+    project(count(*)="count(*)")
+      hashagg(group="id0", count(*)="sum(count(*))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `test_hash_tb2`.`id` as `id0`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb2`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb2`.`id`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000000)*/ select count(*) from test_hash_tb a left join test_hash_tb2 b on a.id=b.id left join test_hash_tb c on b.id = c.id group by c.id;
+  plan: |
+    project(count(*)="count(*)")
+      hashagg(group="id1", count(*)="sum(count(*))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `test_hash_tb0`.`id` as `id1`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`) left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb2`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb0`.`id`")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false)*/ select count(*) from test_hash_tb a left join test_hash_tb b on a.id=b.id left join test_hash_tb2 c on b.id = c.id;
+  plan: |
+    hashagg(count(*)="sum(count(*))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) left join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb0`.`id` = `test_hash_tb2`.`id`)")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false)*/ select count(*) from test_hash_tb a left join test_broadcast b on a.id=b.id left join test_hash_tb c on b.id = c.id;
+  plan: |
+    hashagg(count(*)="sum(count(*))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_broadcast", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` left join `test_broadcast` as `test_broadcast` on (`test_hash_tb`.`id` = `test_broadcast`.`id`) left join `test_hash_tb` as `test_hash_tb0` on (`test_broadcast`.`id` = `test_hash_tb0`.`id`)")
+- sql: |
+    /*+TDDL:cmd_extra(enable_outer_join_reorder=false)*/ select count(*) from test_broadcast a left join test_hash_tb b on a.id=b.id left join test_hash_tb c on b.id = c.id;
+  plan: |
+    hashagg(count(*)="count()")
+      hashjoin(condition="id0 = id", type="left")
+        hashjoin(condition="id = id", type="left")
+          logicalview(tables="optest_0000.test_broadcast", sql="select `id` from `test_broadcast` as `test_broadcast`")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")

@@ -73,10 +73,7 @@ public class LocalMergeSortExecutorFactory extends ExecutorFactory {
                 }
             }
             MergeSortExec sortExec = new MergeSortExec(inputs, orderBys, offset, limit, context);
-            sortExec.setId(sort.getRelatedId());
-            if (context.getRuntimeStatistics() != null) {
-                RuntimeStatHelper.registerStatForExec(sort, sortExec, context);
-            }
+            registerRuntimeStat(sortExec, sort, context);
             executors.add(sortExec);
         }
         return executors;

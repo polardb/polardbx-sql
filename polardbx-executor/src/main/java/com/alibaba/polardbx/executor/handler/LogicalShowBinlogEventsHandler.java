@@ -31,8 +31,11 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlShowBinlogEvents;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Iterator;
+
+import static com.alibaba.polardbx.executor.utils.CdcExeUtil.tryExtractStreamNameFromUser;
 
 public class LogicalShowBinlogEventsHandler extends HandlerCommon {
     public LogicalShowBinlogEventsHandler(IRepository repo) {
@@ -48,15 +51,19 @@ public class LogicalShowBinlogEventsHandler extends HandlerCommon {
             offset = ((SqlNodeList) sqlShowBinlogEvents.getLimit()).get(0);
             rowCount = ((SqlNodeList) sqlShowBinlogEvents.getLimit()).get(1);
         }
+
+        String fileName = sqlShowBinlogEvents.getLogName() == null ? "" :
+            RelUtils.lastStringValue(sqlShowBinlogEvents.getLogName());
         SqlNode with = sqlShowBinlogEvents.getWith();
-        String streamName = with == null ? "" : RelUtils.lastStringValue(with);
+        String streamName = with == null ?
+            extractStreamName(fileName, executionContext) : RelUtils.lastStringValue(with);
+
         CdcServiceBlockingStub cdcServiceBlockingStub =
-            with == null ? CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub() :
+            StringUtils.isBlank(streamName) ? CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub() :
                 CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub(streamName);
         Iterator<BinlogEvent> binlogEvents = cdcServiceBlockingStub.showBinlogEvents(
             ShowBinlogEventsRequest.newBuilder()
-                .setLogName(sqlShowBinlogEvents.getLogName() == null ? ""
-                    : RelUtils.lastStringValue(sqlShowBinlogEvents.getLogName()))
+                .setLogName(fileName)
                 .setPos(sqlShowBinlogEvents.getPos() == null ? -1
                     : RelUtils.longValue(sqlShowBinlogEvents.getPos()).intValue())
                 .setOffset(offset == null ? -1 : RelUtils.longValue(offset).intValue())
@@ -73,5 +80,18 @@ public class LogicalShowBinlogEventsHandler extends HandlerCommon {
         result.addColumn("Info", DataTypes.StringType);
         result.initMeta();
         return result;
+    }
+
+    private String extractStreamName(String fileName, ExecutionContext executionContext) {
+        if (StringUtils.isNotBlank(fileName)) {
+            int idx = fileName.lastIndexOf('_');
+            if (idx == -1) {
+                return "";
+            } else {
+                return fileName.substring(0, idx);
+            }
+        } else {
+            return tryExtractStreamNameFromUser(executionContext);
+        }
     }
 }

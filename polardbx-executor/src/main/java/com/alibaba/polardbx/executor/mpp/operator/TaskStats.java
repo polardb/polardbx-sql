@@ -30,6 +30,7 @@
 package com.alibaba.polardbx.executor.mpp.operator;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -37,6 +38,7 @@ import org.joda.time.DateTime;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -53,9 +55,9 @@ public class TaskStats {
     private final DateTime firstStartTime;
     private final DateTime endTime;
 
-    private final long elapsedTime;
-    private final long queuedTime;
-    private final long deliveryTime;
+    private final long elapsedTimeMillis;
+    private final long queuedTimeMillis;
+    private final long deliveryTimeMillis;
 
     private final int totalPipelineExecs;
     private final int queuedPipelineExecs;
@@ -66,10 +68,10 @@ public class TaskStats {
     private final long memoryReservation;
     private final long peakMemory;
 
-    private final long totalScheduledTime;
-    private final long totalCpuTime;
-    private final long totalUserTime;
-    private final long totalBlockedTime;
+    private final long totalScheduledTimeNanos;
+    private final long totalCpuTimeNanos;
+    private final long totalUserTimeNanos;
+    private final long totalBlockedTimeNanos;
     private final boolean fullyBlocked;
     private final Set<BlockedReason> blockedReasons;
 
@@ -80,6 +82,8 @@ public class TaskStats {
     private final long outputPositions;
 
     private final List<OperatorStats> operatorStats;
+    private final List<DriverStats> driverStats;
+    private final Map<Integer, List<Integer>> pipelineDeps;
 
     public TaskStats(DateTime createTime, DateTime endTime, long size) {
         this(createTime,
@@ -105,7 +109,9 @@ public class TaskStats {
             0,
             size,
             0,
-            ImmutableList.of());
+            ImmutableList.of(),
+            ImmutableList.of(),
+            null);
     }
 
     public TaskStats(DateTime createTime, DateTime endTime) {
@@ -132,65 +138,71 @@ public class TaskStats {
             0,
             0,
             0,
-            ImmutableList.of());
+            ImmutableList.of(),
+            ImmutableList.of(),
+            null);
     }
 
     @JsonCreator
     public TaskStats(
         @JsonProperty("createTime")
-            DateTime createTime,
+        DateTime createTime,
         @JsonProperty("firstStartTime")
-            DateTime firstStartTime,
+        DateTime firstStartTime,
         @JsonProperty("endTime")
-            DateTime endTime,
-        @JsonProperty("elapsedTime")
-            long elapsedTime,
+        DateTime endTime,
+        @JsonProperty("elapsedTimeMillis")
+        long elapsedTimeMillis,
         @JsonProperty("queuedTime")
-            long queuedTime,
+        long queuedTimeMillis,
         @JsonProperty("deliveryTime")
-            long deliveryTime,
+        long deliveryTimeMillis,
         @JsonProperty("totalPipelineExecs")
-            int totalPipelineExecs,
+        int totalPipelineExecs,
         @JsonProperty("queuedPipelineExecs")
-            int queuedPipelineExecs,
+        int queuedPipelineExecs,
         @JsonProperty("runningPipelineExecs")
-            int runningPipelineExecs,
+        int runningPipelineExecs,
         @JsonProperty("completedPipelineExecs")
-            int completedPipelineExecs,
+        int completedPipelineExecs,
         @JsonProperty("cumulativeMemory")
-            double cumulativeMemory,
+        double cumulativeMemory,
         @JsonProperty("memoryReservation")
-            long memoryReservation,
+        long memoryReservation,
         @JsonProperty("peakMemory")
-            long peakMemory,
-        @JsonProperty("totalScheduledTime")
-            long totalScheduledTime,
-        @JsonProperty("totalCpuTime")
-            long totalCpuTime,
-        @JsonProperty("totalUserTime")
-            long totalUserTime,
-        @JsonProperty("totalBlockedTime")
-            long totalBlockedTime,
+        long peakMemory,
+        @JsonProperty("totalScheduledTimeNanos")
+        long totalScheduledTimeNanos,
+        @JsonProperty("totalCpuTimeNanos")
+        long totalCpuTimeNanos,
+        @JsonProperty("totalUserTimeNanos")
+        long totalUserTimeNanos,
+        @JsonProperty("totalBlockedTimeNanos")
+        long totalBlockedTimeNanos,
         @JsonProperty("fullyBlocked")
-            boolean fullyBlocked,
+        boolean fullyBlocked,
         @JsonProperty("blockedReasons")
-            Set<BlockedReason> blockedReasons,
+        Set<BlockedReason> blockedReasons,
         @JsonProperty("processedInputDataSize")
-            long processedInputDataSize,
+        long processedInputDataSize,
         @JsonProperty("processedInputPositions")
-            long processedInputPositions,
+        long processedInputPositions,
         @JsonProperty("outputDataSize")
-            long outputDataSize,
+        long outputDataSize,
         @JsonProperty("outputPositions")
-            long outputPositions,
+        long outputPositions,
         @JsonProperty("operatorStats")
-            List<OperatorStats> operatorStats) {
+        List<OperatorStats> operatorStats,
+        @JsonProperty("driverStats")
+        List<DriverStats> driverStats,
+        @JsonProperty("pipelineDeps")
+        Map<Integer, List<Integer>> pipelineDeps) {
         this.createTime = requireNonNull(createTime, "createTime is null");
         this.firstStartTime = firstStartTime;
         this.endTime = endTime;
-        this.elapsedTime = elapsedTime;
-        this.queuedTime = queuedTime;
-        this.deliveryTime = deliveryTime;
+        this.elapsedTimeMillis = elapsedTimeMillis;
+        this.queuedTimeMillis = queuedTimeMillis;
+        this.deliveryTimeMillis = deliveryTimeMillis;
 
         checkArgument(totalPipelineExecs >= 0, "totalPipelineExecs is negative");
         this.totalPipelineExecs = totalPipelineExecs;
@@ -207,10 +219,10 @@ public class TaskStats {
         this.memoryReservation = memoryReservation;
         this.peakMemory = peakMemory;
 
-        this.totalScheduledTime = totalScheduledTime;
-        this.totalCpuTime = totalCpuTime;
-        this.totalUserTime = totalUserTime;
-        this.totalBlockedTime = totalBlockedTime;
+        this.totalScheduledTimeNanos = totalScheduledTimeNanos;
+        this.totalCpuTimeNanos = totalCpuTimeNanos;
+        this.totalUserTimeNanos = totalUserTimeNanos;
+        this.totalBlockedTimeNanos = totalBlockedTimeNanos;
         this.fullyBlocked = fullyBlocked;
         this.blockedReasons = requireNonNull(blockedReasons, "blockedReasons is null");
 
@@ -222,38 +234,43 @@ public class TaskStats {
         checkArgument(outputPositions >= 0, "outputPositions is negative");
         this.outputPositions = outputPositions;
         this.operatorStats = operatorStats;
+        this.driverStats = driverStats;
+        this.pipelineDeps = pipelineDeps;
     }
 
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getCreateTime() {
         return createTime;
     }
 
     @Nullable
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getFirstStartTime() {
         return firstStartTime;
     }
 
     @Nullable
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getEndTime() {
         return endTime;
     }
 
     @JsonProperty
-    public long getElapsedTime() {
-        return elapsedTime;
+    public long getElapsedTimeMillis() {
+        return elapsedTimeMillis;
     }
 
     @JsonProperty
-    public long getQueuedTime() {
-        return queuedTime;
+    public long getQueuedTimeMillis() {
+        return queuedTimeMillis;
     }
 
     @JsonProperty
-    public long getDeliveryTime() {
-        return deliveryTime;
+    public long getDeliveryTimeMillis() {
+        return deliveryTimeMillis;
     }
 
     @JsonProperty
@@ -292,23 +309,23 @@ public class TaskStats {
     }
 
     @JsonProperty
-    public long getTotalScheduledTime() {
-        return totalScheduledTime;
+    public long getTotalScheduledTimeNanos() {
+        return totalScheduledTimeNanos;
     }
 
     @JsonProperty
-    public long getTotalCpuTime() {
-        return totalCpuTime;
+    public long getTotalCpuTimeNanos() {
+        return totalCpuTimeNanos;
     }
 
     @JsonProperty
-    public long getTotalUserTime() {
-        return totalUserTime;
+    public long getTotalUserTimeNanos() {
+        return totalUserTimeNanos;
     }
 
     @JsonProperty
-    public long getTotalBlockedTime() {
-        return totalBlockedTime;
+    public long getTotalBlockedTimeNanos() {
+        return totalBlockedTimeNanos;
     }
 
     @JsonProperty
@@ -344,5 +361,15 @@ public class TaskStats {
     @JsonProperty
     public List<OperatorStats> getOperatorStats() {
         return operatorStats;
+    }
+
+    @JsonProperty
+    public List<DriverStats> getDriverStats() {
+        return driverStats;
+    }
+
+    @JsonProperty
+    public Map<Integer, List<Integer>> getPipelineDeps() {
+        return pipelineDeps;
     }
 }

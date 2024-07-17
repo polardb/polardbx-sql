@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -72,7 +73,8 @@ public class InspectRuleVersionHandler extends AbstractDalHandler {
         Pair<Integer, Integer> tableCount = fetchTableCount(executionContext.getSchemaName());
         resultCursor.addRow(new Object[] {"META_DB", tableCount.getKey() + "/" + tableCount.getValue(), "", "", ""});
 
-        List<List<Map<String, Object>>> resultSets = SyncManagerHelper.sync(new InspectRuleVersionSyncAction());
+        List<List<Map<String, Object>>> resultSets = SyncManagerHelper.sync(new InspectRuleVersionSyncAction(),
+            SyncScope.CURRENT_ONLY);
         for (List<Map<String, Object>> resultSet : resultSets) {
             if (resultSet != null && resultSet.size() > 0) {
                 for (Map<String, Object> row : resultSet) {

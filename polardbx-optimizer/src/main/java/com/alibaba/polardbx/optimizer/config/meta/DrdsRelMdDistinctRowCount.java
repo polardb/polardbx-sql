@@ -23,7 +23,6 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
-import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
@@ -163,11 +162,22 @@ public class DrdsRelMdDistinctRowCount extends RelMdDistinctRowCount {
         ImmutableBitSet.Builder childKey = ImmutableBitSet.builder();
         RelMdUtil.setAggChildKeys(groupKey, rel, childKey);
 
+        ImmutableBitSet childGroup = RelMdUtil.keyThroughChildKeys(groupKey, rel.getGroupSet());
+        if (childGroup == null) {
+            childGroup = rel.getGroupSet();
+        }
+
         /** difference from calcite we use this aggregate groupSet instead of childKey */
         Double distinctRowCount =
-            mq.getDistinctRowCount(rel.copyAsJoin(rel.getTraitSet(), rel.getCondition()), rel.getGroupSet(),
+            mq.getDistinctRowCount(rel.copyAsJoin(rel.getTraitSet(), rel.getCondition()), childGroup,
                 childPreds);
 
+        final int groupCount = rel.getGroupSet().cardinality();
+        for (int bit : groupKey) {
+            if (bit >= groupCount) {
+                return 100D;
+            }
+        }
         if (distinctRowCount == null) {
             return null;
         } else if (notPushable.isEmpty()) {
@@ -310,9 +320,20 @@ public class DrdsRelMdDistinctRowCount extends RelMdDistinctRowCount {
         ImmutableBitSet.Builder childKey = ImmutableBitSet.builder();
         RelMdUtil.setAggChildKeys(groupKey, rel, childKey);
 
+        ImmutableBitSet childGroup = RelMdUtil.keyThroughChildKeys(groupKey, rel.getGroupSet());
+        if (childGroup == null) {
+            childGroup = rel.getGroupSet();
+        }
         /** difference from calcite we use this aggregate groupSet instead of childKey */
         Double distinctRowCount =
-            mq.getDistinctRowCount(rel.getInput(), rel.getGroupSet(), childPreds);
+            mq.getDistinctRowCount(rel.getInput(), childGroup, childPreds);
+
+        final int groupCount = rel.getGroupSet().cardinality();
+        for (int bit : groupKey) {
+            if (bit >= groupCount) {
+                return 100D;
+            }
+        }
 
         if (distinctRowCount == null) {
             return null;

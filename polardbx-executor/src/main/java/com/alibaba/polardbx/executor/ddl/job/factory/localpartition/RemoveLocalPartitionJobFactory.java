@@ -24,7 +24,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RemoveLocalPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -35,10 +37,12 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.ReorganizeLocalPartitionPreparedData;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlPhyDdlWrapper;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -65,14 +69,14 @@ public class RemoveLocalPartitionJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-
+        TableValidator.validateTableWithCCI(schemaName, primaryTableName, executionContext, SqlKind.LOCAL_PARTITION);
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
         final TableMeta primaryTableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
-        if(primaryTableMeta.getLocalPartitionDefinitionInfo() == null){
+        if (primaryTableMeta.getLocalPartitionDefinitionInfo() == null) {
             throw new TddlNestableRuntimeException(String.format(
                 "table %s.%s is not a local partition table", schemaName, primaryTableName));
         }
@@ -87,8 +91,12 @@ public class RemoveLocalPartitionJobFactory extends DdlJobFactory {
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
+        Map<String, Long> versionMap = new HashMap<>();
+        versionMap.put(primaryTableName, primaryTableMeta.getVersion());
+        ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, versionMap);
+        taskList.add(validateTableVersionTask);
         taskList.add(genPhyDdlTask(schemaName, primaryTableName, phySql));
-        if(publishedGsi != null){
+        if (publishedGsi != null) {
             publishedGsi.forEach((gsiName, gsiIndexMetaBean) -> {
                 taskList.add(genPhyDdlTask(schemaName, gsiName, phySql));
             });
@@ -99,8 +107,9 @@ public class RemoveLocalPartitionJobFactory extends DdlJobFactory {
         return executableDdlJob;
     }
 
-    private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql){
-        ddl.sqlNode = SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
+    private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql) {
+        ddl.sqlNode =
+            SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
         DirectPhysicalSqlPlanBuilder builder = new DirectPhysicalSqlPlanBuilder(
             ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
         );

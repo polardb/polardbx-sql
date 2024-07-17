@@ -27,15 +27,6 @@ public class GmsSyncManagerHelper {
         SYNC_MANAGER = syncManager;
     }
 
-    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName) {
-        return sync(action, schemaName, false);
-    }
-
-    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName,
-                                                       boolean throwExceptions) {
-        return SYNC_MANAGER.sync(action, schemaName, throwExceptions);
-    }
-
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope) {
         return sync(action, schemaName, scope, false);
     }
@@ -43,15 +34,6 @@ public class GmsSyncManagerHelper {
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
                                                        boolean throwExceptions) {
         return SYNC_MANAGER.sync(action, schemaName, scope, throwExceptions);
-    }
-
-    public static void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler) {
-        sync(action, schemaName, handler, false);
-    }
-
-    public static void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler,
-                            boolean throwExceptions) {
-        SYNC_MANAGER.sync(action, schemaName, handler, throwExceptions);
     }
 
     public static void sync(IGmsSyncAction action, String schemaName, SyncScope scope, ISyncResultHandler handler) {

@@ -27,7 +27,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 /**
  * @author ximing.yd
- * @date 2022/1/25 6:56 下午
  */
 public class FetchPartitionHeatmapSyncAction implements ISyncAction {
 

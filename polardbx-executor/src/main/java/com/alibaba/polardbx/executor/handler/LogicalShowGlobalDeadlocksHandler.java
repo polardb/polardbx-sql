@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.sync.FetchDeadlockInfoSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.transaction.DeadlockParser;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.collect.ImmutableList;
@@ -70,7 +71,8 @@ public class LogicalShowGlobalDeadlocksHandler extends HandlerCommon {
             }
         } else {
             // Otherwise, get deadlock information from leader
-            results = SyncManagerHelper.sync(new FetchDeadlockInfoSyncAction(schemaName), schemaName);
+            results = SyncManagerHelper.sync(new FetchDeadlockInfoSyncAction(schemaName), schemaName,
+                SyncScope.MASTER_ONLY);
         }
 
         if (CollectionUtils.isNotEmpty(results)) {

@@ -113,7 +113,7 @@ public class AsyncCacheCursor implements Cursor {
         this.context = context;
     }
 
-    void doInit(){
+    void doInit() {
         if (!inited) {
             synchronized (this) {
                 if (!inited) {
@@ -125,16 +125,16 @@ public class AsyncCacheCursor implements Cursor {
 
     }
 
-    void startAsyncWrite(){
+    void startAsyncWrite() {
         final Map mdcContext = MDC.getCopyOfContextMap();
 
         writeFuture = context.getExecutorService().submitListenableFuture(
             context.getSchemaName(), context.getTraceId(), -1,
             () -> {
                 MDC.setContextMap(mdcContext);
-                try{
+                try {
                     cacheAllRows();
-                } catch (Throwable e){
+                } catch (Throwable e) {
                     if (throwable == null) {
                         throwable = e;
                     }
@@ -146,7 +146,7 @@ public class AsyncCacheCursor implements Cursor {
             }, context.getRuntimeStatistics());
     }
 
-    void cacheAllRows(){
+    void cacheAllRows() {
         Row currentRow;
         while ((currentRow = cursor.next()) != null && throwable == null) {
             try {
@@ -189,14 +189,14 @@ public class AsyncCacheCursor implements Cursor {
         cursor = null;
     }
 
-    void writeProducer(long rows){
+    void writeProducer(long rows) {
         synchronized (lock) {
             flushRowsNum += rows;
             lock.notifyAll();
         }
     }
 
-    void writeFinish(){
+    void writeFinish() {
         synchronized (lock) {
             writeFinished = true;
             lock.notifyAll();
@@ -223,7 +223,6 @@ public class AsyncCacheCursor implements Cursor {
         }
         return canRead;
     }
-
 
     private void createBlockBuilders() {
         if (blockBuilders == null) {
@@ -295,7 +294,6 @@ public class AsyncCacheCursor implements Cursor {
                         currentChunk = null;
                         currentPos = 0;
                     }
-
 
                 } else {
                     if (!bufferRows.isEmpty()) {

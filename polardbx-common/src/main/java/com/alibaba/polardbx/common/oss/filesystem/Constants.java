@@ -90,7 +90,9 @@ public final class Constants {
     public static final long MULTIPART_UPLOAD_PART_SIZE_DEFAULT =
         104857600; // 100 MB
 
-    /** The minimum multipart size which OSS supports. */
+    /**
+     * The minimum multipart size which OSS supports.
+     */
     public static final int MULTIPART_MIN_SIZE = 100 * 1024;
 
     public static final int MULTIPART_UPLOAD_PART_NUM_LIMIT = 10000;
@@ -155,4 +157,16 @@ public final class Constants {
     public static final String UPLOAD_ACTIVE_BLOCKS_KEY =
         "fs.oss.upload.active.blocks";
     public static final int UPLOAD_ACTIVE_BLOCKS_DEFAULT = 4;
+
+    // S3 access verification
+    public static final String S3_ACCESS_KEY = "fs.s3a.access.key";
+    public static final String S3_SECRET_KEY = "fs.s3a.secret.key";
+
+    // ABS access verification
+    // fs.azure.account.key.<AccountName>.blob.<EndpointSuffix>
+    public static final String ABS_URI_SUFFIX_PATTERN = "%s.blob.%s";
+    public static final String ABS_ACCOUNT_KEY_PATTERN = "fs.azure.account.key." + ABS_URI_SUFFIX_PATTERN;
+
+    public static final String AZURE_WASBS_SCHEME = "wasbs";
+    public static final String AZURE_WASB_SCHEME = "wasb";
 }

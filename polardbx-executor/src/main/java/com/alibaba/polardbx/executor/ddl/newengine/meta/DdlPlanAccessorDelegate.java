@@ -20,8 +20,6 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.gms.metadb.delegate.MetaDbAccessorWrapper;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;

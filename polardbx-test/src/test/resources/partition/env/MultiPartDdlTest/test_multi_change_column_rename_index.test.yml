@@ -1,0 +1,50 @@
+drop database if exists d_multi_part_ddl;
+
+create database d_multi_part_ddl mode = "auto";
+
+use d_multi_part_ddl;
+
+drop table if exists t1;
+
+create table t1(c1 varchar(10), c2 varchar(20), c3 varchar(30), c4 varchar(40), c5 varchar(50), c6 varchar(60));
+ALTER TABLE `t1`  ADD LOCAL INDEX `i_ab`(c3, c4);
+ALTER TABLE `t1`    ADD LOCAL INDEX `i_cd`(c3, c5);
+ALTER TABLE `t1` ADD LOCAL INDEX `i_fn`(c2, c4);
+ALTER TABLE `t1`   ADD LOCAL INDEX `i_ch`(c1, c6);
+ALTER TABLE `t1`    ADD LOCAL INDEX `i_mn`(c1, c5);
+
+ALTER TABLE `t1`
+MODIFY COLUMN `c3` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+MODIFY COLUMN `c4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`,
+CHANGE COLUMN `c2` `c5` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`,
+CHANGE COLUMN `c6` `c2` varchar(60) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c5`,
+CHANGE COLUMN `c1` `c7` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+CHANGE COLUMN `c5` `c1` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c7`;
+
+/*+TDDL:CMD_EXTRA(LOGICAL_CHECK_COLUMN_ORDER=true)*/ check table t1;
+
+ALTER TABLE `t1`
+DEFAULT CHARACTER SET=utf8,
+DROP COLUMN `c5`,
+DROP COLUMN `c2`,
+MODIFY COLUMN `c4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+MODIFY COLUMN `c3` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`,
+MODIFY COLUMN `c7` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL AFTER `c3`,
+RENAME INDEX `i_ab` to `i_mn`,
+RENAME INDEX `i_cd` to `i_ch`,
+RENAME INDEX `i_ch` to `i_ab`,
+RENAME INDEX `i_mn` to `i_fn`,
+RENAME INDEX `i_fn` to `i_cd`;
+
+/*+TDDL:CMD_EXTRA(LOGICAL_CHECK_COLUMN_ORDER=true)*/ check table t1;
+
+ALTER TABLE `t1`
+DEFAULT CHARACTER SET=utf8,
+RENAME INDEX `i_cd` to `i_pq`;
+
+/*+TDDL:CMD_EXTRA(LOGICAL_CHECK_COLUMN_ORDER=true)*/ check table t1;
+
+
+use polardbx; 
+
+drop database if exists d_multi_part_ddl;

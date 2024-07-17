@@ -67,8 +67,6 @@ public class UnPushableORCReaderTask {
 
     protected final AtomicBoolean closed;
 
-    protected volatile long stamp;
-
     protected ExecutionContext context;
 
     protected long startTime;
@@ -80,7 +78,6 @@ public class UnPushableORCReaderTask {
         this.ossReadOption = ossReadOption;
         this.tableFileName = tableFileName;
         this.closed = new AtomicBoolean(false);
-        this.stamp = FileSystemManager.readLockWithTimeOut(ossReadOption.getEngine());
         this.fileSystem = FileSystemManager.getFileSystemGroup(ossReadOption.getEngine()).getMaster();
         String orcPath = FileSystemUtils.buildUri(this.fileSystem, tableFileName);
         this.ossFileUri = URI.create(orcPath);
@@ -246,8 +243,6 @@ public class UnPushableORCReaderTask {
             }
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
-        } finally {
-            FileSystemManager.unlockRead(ossReadOption.getEngine(), stamp);
         }
     }
 }

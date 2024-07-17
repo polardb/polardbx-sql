@@ -16,23 +16,15 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.ast.SQLName;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropProcedureStatement;
-import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.executor.ddl.job.factory.DropProcedureJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.executor.pl.ProcedureManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropProcedure;
-import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import org.apache.calcite.sql.SqlDropProcedure;
 
 public class LogicalDropProcedureHandler extends LogicalCommonDdlHandler {

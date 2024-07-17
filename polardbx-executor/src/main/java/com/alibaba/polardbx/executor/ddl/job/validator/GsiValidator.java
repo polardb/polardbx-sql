@@ -25,23 +25,16 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
-import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.StringUtils;
 
-import javax.annotation.concurrent.Immutable;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Objects;
 
 import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
 
@@ -97,6 +90,15 @@ public class GsiValidator {
         }
     }
 
+    public static void validateGsiOrCci(String schemaName, String indexName) {
+        if (!TableValidator.checkTableIsGsiOrCci(schemaName, indexName)) {
+            final String errMsg = String.format(
+                "Global Secondary Index or Clustered Columnar Index %s doesn't exists",
+                indexName);
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE, errMsg);
+        }
+    }
+
     /**
      * validate if the indexName is exist
      */
@@ -106,7 +108,7 @@ public class GsiValidator {
                                             ExecutionContext executionContext) {
         // check if the indexName is already exist
         List<TableMeta> tableMetaList =
-            GlobalIndexMeta.getIndex(primaryTableName, schemaName, IndexStatus.ALL, executionContext);
+            GlobalIndexMeta.getIndex(primaryTableName, schemaName, IndexStatus.ALL, executionContext, true);
         for (TableMeta tableMeta : tableMetaList) {
             if (StringUtils.equalsIgnoreCase(tableMeta.getTableName(), indexName)) {
                 return;

@@ -212,7 +212,7 @@ public class ORCReaderWithAggTask extends UnPushableORCReaderTask {
             FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(fileMeta.getEngine());
             Preconditions.checkArgument(fileSystemGroup != null);
             try {
-                if (!fileSystemGroup.exists(fileMeta.getFileName())) {
+                if (!fileSystemGroup.exists(fileMeta.getFileName(), context.getFinalPlan().isUseColumnar())) {
                     throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS,
                         "File " + fileMeta.getFileName() + " doesn't exits");
                 }

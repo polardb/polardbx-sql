@@ -61,8 +61,8 @@ public class TaskInfo {
         getEmptyTaskStats().getTotalPipelineExecs(),
         getEmptyTaskStats().getCumulativeMemory(),
         getEmptyTaskStats().getMemoryReservation(),
-        getEmptyTaskStats().getElapsedTime(),
-        getEmptyTaskStats().getTotalCpuTime(),
+        getEmptyTaskStats().getElapsedTimeMillis(),
+        getEmptyTaskStats().getTotalCpuTimeNanos(),
         0,
         0,
         0,
@@ -76,7 +76,7 @@ public class TaskInfo {
     private final DateTime lastHeartbeat;
     private final OutputBufferInfo outputBuffers;
     private final Set<Integer> noMoreSplits;
-    private final TaskStats stats;
+    private final TaskStats taskStats;
 
     private final boolean needsPlan;
     private final boolean complete;
@@ -85,36 +85,36 @@ public class TaskInfo {
     private final int totalPipelineExecs;
     private final double cumulativeMemory;
     private final long memoryReservation;
-    private final long elapsedTime;
+    private final long elapsedTimeMillis;
     private final long totalCpuTime;
-    private final long processTime;
+    private final long processTimeMillis;
     private final long processWall;
-    private final long pullDataTime;
-    private final long deliveryTime;
+    private final long pullDataTimeMillis;
+    private final long deliveryTimeMillis;
 
     @JsonCreator
     public TaskInfo(@JsonProperty("taskStatus") TaskStatus taskStatus,
                     @JsonProperty("lastHeartbeat") DateTime lastHeartbeat,
                     @JsonProperty("outputBuffers") OutputBufferInfo outputBuffers,
                     @JsonProperty("noMoreSplits") Set<Integer> noMoreSplits,
-                    @JsonProperty("stats") TaskStats stats,
+                    @JsonProperty("taskStats") TaskStats taskStats,
                     @JsonProperty("needsPlan") boolean needsPlan,
                     @JsonProperty("complete") boolean complete,
                     @JsonProperty("completedPipelineExecs") int completedPipelineExecs,
                     @JsonProperty("totalPipelineExecs") int totalPipelineExecs,
                     @JsonProperty("cumulativeMemory") double cumulativeMemory,
                     @JsonProperty("memoryReservation") long memoryReservation,
-                    @JsonProperty("elapsedTime") long elapsedTime,
+                    @JsonProperty("elapsedTimeMillis") long elapsedTimeMillis,
                     @JsonProperty("totalCpuTime") long totalCpuTime,
-                    @JsonProperty("processTime") long processTime,
+                    @JsonProperty("processTimeMillis") long processTimeMillis,
                     @JsonProperty("processWall") long processWall,
-                    @JsonProperty("pullDataTime") long pullDataTime,
-                    @JsonProperty("deliveryTime") long deliveryTime) {
+                    @JsonProperty("pullDataTimeMillis") long pullDataTimeMillis,
+                    @JsonProperty("deliveryTimeMillis") long deliveryTimeMillis) {
         this.taskStatus = requireNonNull(taskStatus, "taskStatus is null");
         this.lastHeartbeat = requireNonNull(lastHeartbeat, "lastHeartbeat is null");
         this.outputBuffers = requireNonNull(outputBuffers, "outputBuffers is null");
         this.noMoreSplits = requireNonNull(noMoreSplits, "noMoreSplits is null");
-        this.stats = stats;
+        this.taskStats = taskStats;
 
         this.needsPlan = needsPlan;
         this.complete = complete;
@@ -125,13 +125,13 @@ public class TaskInfo {
         this.cumulativeMemory = cumulativeMemory;
         this.memoryReservation = memoryReservation;
 
-        this.elapsedTime = elapsedTime;
+        this.elapsedTimeMillis = elapsedTimeMillis;
         this.totalCpuTime = totalCpuTime;
 
-        this.processTime = processTime;
+        this.processTimeMillis = processTimeMillis;
         this.processWall = processWall;
-        this.pullDataTime = pullDataTime;
-        this.deliveryTime = deliveryTime;
+        this.pullDataTimeMillis = pullDataTimeMillis;
+        this.deliveryTimeMillis = deliveryTimeMillis;
     }
 
     @JsonProperty
@@ -155,8 +155,8 @@ public class TaskInfo {
     }
 
     @JsonProperty
-    public TaskStats getStats() {
-        return stats;
+    public TaskStats getTaskStats() {
+        return taskStats;
     }
 
     @JsonProperty
@@ -190,8 +190,8 @@ public class TaskInfo {
     }
 
     @JsonProperty
-    public long getElapsedTime() {
-        return elapsedTime;
+    public long getElapsedTimeMillis() {
+        return elapsedTimeMillis;
     }
 
     @JsonProperty
@@ -200,8 +200,8 @@ public class TaskInfo {
     }
 
     @JsonProperty
-    public long getProcessTime() {
-        return processTime;
+    public long getProcessTimeMillis() {
+        return processTimeMillis;
     }
 
     @JsonProperty
@@ -210,13 +210,13 @@ public class TaskInfo {
     }
 
     @JsonProperty
-    public long getPullDataTime() {
-        return pullDataTime;
+    public long getPullDataTimeMillis() {
+        return pullDataTimeMillis;
     }
 
     @JsonProperty
-    public long getDeliveryTime() {
-        return deliveryTime;
+    public long getDeliveryTimeMillis() {
+        return deliveryTimeMillis;
     }
 
     @Override
@@ -241,8 +241,8 @@ public class TaskInfo {
             taskStats.getTotalPipelineExecs(),
             taskStats.getCumulativeMemory(),
             taskStats.getMemoryReservation(),
-            taskStats.getElapsedTime(),
-            taskStats.getTotalCpuTime(),
+            taskStats.getElapsedTimeMillis(),
+            taskStats.getTotalCpuTimeNanos(),
             0,
             0,
             0,
@@ -255,27 +255,27 @@ public class TaskInfo {
             lastHeartbeat,
             outputBuffers,
             noMoreSplits,
-            stats,
+            taskStats,
             needsPlan,
             complete, completedPipelineExecs, totalPipelineExecs,
             cumulativeMemory,
             memoryReservation,
-            elapsedTime,
+            elapsedTimeMillis,
             totalCpuTime,
-            processTime,
+            processTimeMillis,
             processWall,
-            pullDataTime,
-            deliveryTime);
+            pullDataTimeMillis,
+            deliveryTimeMillis);
     }
 
     public String toTaskString() {
         MoreObjects.ToStringHelper toString = MoreObjects.toStringHelper(this);
         toString.add("task", getTaskStatus().getTaskId());
-        toString.add("elapsedTime", elapsedTime);
-        toString.add("processTime", processTime);
+        toString.add("elapsedTimeMillis", elapsedTimeMillis);
+        toString.add("processTimeMillis", processTimeMillis);
         toString.add("processWall", processWall);
-        toString.add("pullDataTime", pullDataTime);
-        toString.add("deliveryTime", deliveryTime);
+        toString.add("pullDataTime", pullDataTimeMillis);
+        toString.add("deliveryTime", deliveryTimeMillis);
         TaskLocation taskLocation = getTaskStatus().getSelf();
         toString.add("host", taskLocation.getNodeServer().getHost() + ":" + taskLocation.getNodeServer().getHttpPort());
         return toString.toString();

@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.operator;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
-import com.alibaba.polardbx.executor.mpp.operator.PartitionedOutputCollector;
+import com.alibaba.polardbx.executor.mpp.operator.LocalHashBucketFunction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -30,7 +30,7 @@ import java.util.List;
 
 public class BucketMockExec extends MockExec {
 
-    private final PartitionedOutputCollector.HashBucketFunction bucketGenerator;
+    private final LocalHashBucketFunction bucketGenerator;
     private final List<Integer> partitionChannels;
     private int totalBucketNum;
     private List<Chunk> bucketChunks = new ArrayList<>();
@@ -43,7 +43,7 @@ public class BucketMockExec extends MockExec {
 
         this.partitionChannels = partitionChannels;
         this.totalBucketNum = bucketNum;
-        this.bucketGenerator = new PartitionedOutputCollector.HashBucketFunction(totalBucketNum);
+        this.bucketGenerator = new LocalHashBucketFunction(totalBucketNum);
     }
 
     @Override

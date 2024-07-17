@@ -41,6 +41,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.FileValidationMppTas
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.FileValidationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileCommitTsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
@@ -54,12 +55,12 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.ReorganizeLocalPartitionPreparedData;
-import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.repo.mysql.checktable.LocalPartitionDescription;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
@@ -72,6 +73,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -184,9 +186,15 @@ public class ExpireLocalPartitionJobFactory extends DdlJobFactory {
         Map<String, GsiMetaManager.GsiIndexMetaBean> publishedGsi = primaryTableMeta.getGsiPublished();
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
+        Map<String, Long> versionMap = new HashMap<>();
+        versionMap.put(primaryTableName, primaryTableMeta.getVersion());
+        ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, versionMap);
+        executableDdlJob.addTask(validateTableVersionTask);
+
         LocalPartitionValidateTask localPartitionValidateTask =
             new LocalPartitionValidateTask(schemaName, primaryTableName);
         executableDdlJob.addTask(localPartitionValidateTask);
+        executableDdlJob.addTaskRelationship(validateTableVersionTask, localPartitionValidateTask);
 
         DdlTask headTask = localPartitionValidateTask;
 

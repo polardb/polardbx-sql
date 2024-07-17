@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.operator.spill.SingleStreamSpiller;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.Iterator;
 import java.util.List;

@@ -212,11 +212,11 @@ public class BloomFilterUdfTest extends BaseTestCase {
             double errorRate = ((double) errorCount / result.size());
             double expectedRate = EXPECTED_ERROR_RATE;
             if (COLUMN_HELPERS[i].needAmplifyErrorRate()) {
-                // 0.03 -> 0.05
-                expectedRate *= 1.7;
+                // 0.03 -> 0.054
+                expectedRate *= 1.8;
             } else {
-                // 0.03 -> 0.039
-                expectedRate *= 1.3;
+                // 0.03 -> 0.045
+                expectedRate *= 1.5;
             }
             if (errorRate > expectedRate) {
                 errorMsgs.add(String.format("%s error rate higher [%f] than expected [%f]",

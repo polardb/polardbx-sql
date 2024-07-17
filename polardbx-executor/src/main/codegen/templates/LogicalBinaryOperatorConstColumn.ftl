@@ -44,20 +44,20 @@ public class ${className} extends AbstractVectorizedExpression {
         RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
         RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
+        ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
         boolean[] nulls2 = rightInputVectorSlot.nulls();
         boolean rightInputHasNull = rightInputVectorSlot.hasNull();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
+        long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
         boolean[] outputNulls = outputVectorSlot.nulls();
         outputVectorSlot.setHasNull(leftIsNull | rightInputVectorSlot.hasNull());
 
         if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                boolean null2 = !rightInputHasNull ? false : nulls2[j];
-                boolean b2 = (array2[j] != 0);
+        for (int i = 0; i < batchSize; i++) {
+        int j = sel[i];
+        boolean null2 = !rightInputHasNull ? false : nulls2[j];
+        boolean b2 = (array2[j] != 0);
 
-                <#if operator.classHeader = "And">
+        <#if operator.classHeader = "And">
                 outputNulls[j] = (leftIsNull && null2) || (leftIsNull && b2) || (null2 && left);
                 res[j] = ((!leftIsNull && !left) || (!null2 && !b2)) ? LongBlock.FALSE_VALUE : LongBlock.TRUE_VALUE;
                 </#if>

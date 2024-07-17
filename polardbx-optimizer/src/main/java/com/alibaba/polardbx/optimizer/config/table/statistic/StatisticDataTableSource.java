@@ -21,12 +21,14 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.NDVSketchServic
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class StatisticDataTableSource implements StatisticDataSource {
     private SystemTableTableStatistic systemTableTableStatistic;
@@ -131,17 +133,26 @@ public class StatisticDataTableSource implements StatisticDataSource {
     }
 
     @Override
-    public void updateColumnCardinality(String schema, String tableName, String columnName) throws SQLException {
-        ndvSketch.updateAllShardParts(schema, tableName, columnName);
+    public void updateColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
+                                        ThreadPoolExecutor sketchHllExecutor)
+        throws SQLException {
+        ndvSketch.updateAllShardParts(schema, tableName, columnName, ec, sketchHllExecutor);
     }
 
     @Override
-    public void rebuildColumnCardinality(String schema, String tableName, String columnNames) throws SQLException {
-        ndvSketch.reBuildShardParts(schema, tableName, columnNames);
+    public void rebuildColumnCardinality(String schema, String tableName, String columnNames, ExecutionContext ec,
+                                         ThreadPoolExecutor sketchHllExecutor)
+        throws SQLException {
+        ndvSketch.reBuildShardParts(schema, tableName, columnNames, ec, sketchHllExecutor);
     }
 
     @Override
     public long ndvModifyTime(String schema, String tableName, String columnNames) {
         return ndvSketch.modifyTime(schema, tableName, columnNames);
+    }
+
+    @Override
+    public void clearCache() {
+        ndvSketch.cleanCache();
     }
 }

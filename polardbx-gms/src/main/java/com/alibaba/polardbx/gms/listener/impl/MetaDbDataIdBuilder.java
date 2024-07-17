@@ -59,6 +59,16 @@ public class MetaDbDataIdBuilder {
 
     /**
      * {0} : instId, {1}: dbName, {2}: groupName
+     * <pre>
+     *     max data_id_length:
+     *     max pxc_id_len: 18, e.g. pxc-hkrmowavo1r123
+     *     max db_name_len: 64, e.g.abcd012345678901234567890123456789012345678901234567890123456789
+     *     max group_name_len: 70, e.g. ABCD01234567890123456789012345678901234567890123_2827BA7D_P00000_GROUP
+     *     fix len : 24
+     *     all len: 176
+     *     such as
+     *      polardbx.group.config.pxc-hkrmowavo1r123.abcd012345678901234567890123456789012345678901234567890123456789.ABCD01234567890123456789012345678901234567890123_2827BA7D_P00000_GROUP
+     * </pre>
      */
     public static final MessageFormat GROUP_CONFIG_DATA_ID = new MessageFormat("polardbx.group.config.{0}.{1}.{2}");
 
@@ -74,10 +84,14 @@ public class MetaDbDataIdBuilder {
 
     public static final String LOGIN_ERROR_DATA_ID = "polardbx.login.error.limit.config";
 
+    public static final String LBAC_SECURITY_DATA_ID = "polardbx.security.lbac";
+
     public static final String DB_INFO_DATA_ID = "polardbx.db.info";
 
     public static final String LOCALITY_INFO_DATA_ID = "polardbx.locality.info";
 
+    public static final String ENCDB_RULE_DATA_ID = "polardbx.encdb.rule";
+    public static final String ENCDB_KEY_DATA_ID = "polardbx.encdb.key";
     public static final String STORAGE_POOL_INFO_DATA_ID = "polardbx.storage.pool.info";
 
     public static final MessageFormat DB_COMPLEX_TASK_DATA_ID = new MessageFormat("polardbx.db.complextask.{0}");
@@ -117,6 +131,16 @@ public class MetaDbDataIdBuilder {
     private static final MessageFormat TABLE_DATA_ID = new MessageFormat(TABLE_DATA_ID_PREFIX + "{0}.{1}");
 
     /**
+     * {0} : dbName
+     */
+    public static final MessageFormat COLUMNAR_TABLE_LIST_DATA_ID = new MessageFormat("polardbx.meta.columnars.{0}");
+
+    /**
+     * {0} : dbName, {1}: primaryTbName
+     */
+    private static final MessageFormat COLUMNAR_TABLE_DATA_ID = new MessageFormat("polardbx.meta.columnar.{0}.{1}");
+
+    /**
      * each dbname has a data_id
      */
     public static final String DDL_JOB_LIST_DATA_ID_PREFIX = "polardbx.meta.ddl.jobs.";
@@ -141,6 +165,8 @@ public class MetaDbDataIdBuilder {
      */
     public static final String FILE_STORAGE_INFO_DATA_ID = "polardbx.file.storage.info";
 
+    public static final String CDC_SYSTEM_CONFIG_DATA_ID = "polardbx.cdc.config";
+
     public static String formatDataId(String dataId) {
         return dataId.toLowerCase();
     }
@@ -155,6 +181,18 @@ public class MetaDbDataIdBuilder {
 
     public static String getTableDataId(String schemaName, String tableName) {
         return formatDataId(TABLE_DATA_ID.format(new Object[] {schemaName, tableName}));
+    }
+
+    public static String getColumnarTableListDataId(String schemaName) {
+        return COLUMNAR_TABLE_LIST_DATA_ID.format(new Object[] {schemaName});
+    }
+
+    public static String getColumnarTableDataIdPrefix(String schemaName) {
+        return COLUMNAR_TABLE_DATA_ID.format(new Object[] {schemaName, ""});
+    }
+
+    public static String getColumnarDataId(String schemaName, String tableName) {
+        return COLUMNAR_TABLE_DATA_ID.format(new Object[] {schemaName, tableName});
     }
 
     public static String getServerInfoDataId(String instId) {
@@ -217,6 +255,10 @@ public class MetaDbDataIdBuilder {
         return formatDataId(PRIVILEGE_INFO_DATA_ID);
     }
 
+    public static String getLBACSecurityDataId() {
+        return formatDataId(LBAC_SECURITY_DATA_ID);
+    }
+
     public static String getMetadbLockDataId() {
         return formatDataId(METADB_LOCK_DATA_ID);
     }
@@ -243,5 +285,9 @@ public class MetaDbDataIdBuilder {
 
     public static String getFileStorageInfoDataId() {
         return formatDataId(FILE_STORAGE_INFO_DATA_ID);
+    }
+
+    public static String getCdcSystemConfigDataId() {
+        return formatDataId(CDC_SYSTEM_CONFIG_DATA_ID);
     }
 }

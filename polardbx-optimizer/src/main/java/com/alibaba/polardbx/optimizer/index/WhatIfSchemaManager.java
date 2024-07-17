@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -222,6 +223,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
                 IndexStatus.PUBLIC,
                 Long.MAX_VALUE,
                 false,
+                false,
                 IndexVisibility.VISIBLE
             );
         return gsiIndexMetaBean;
@@ -351,7 +353,7 @@ public class WhatIfSchemaManager extends AbstractLifecycle implements SchemaMana
                             .getPartitioning();
 
                     PartitionInfo partitionInfo = PartitionInfoBuilder
-                        .buildPartitionInfoByPartDefAst(schemaName, gsiTableMeta.getTableName(), null, null,
+                        .buildPartitionInfoByPartDefAst(schemaName, gsiTableMeta.getTableName(), null, false, null,
                             partitionBy,
                             null,
                             null,

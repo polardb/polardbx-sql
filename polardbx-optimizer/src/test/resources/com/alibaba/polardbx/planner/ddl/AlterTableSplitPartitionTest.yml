@@ -1,0 +1,24 @@
+SQL:
+  - sql: |
+     alter table t1 split partition pd into (partition p2 values in(2) subpartitions 1,partition pd values in(default) subpartitions 2);
+    plan: |
+      logicalddl(sql="alter table t1 	split partition pd into (partition p2 values in (2) 		subpartitions 1, partition pd values in (default) 		subpartitions 2);")
+  - sql: |
+     alter table t1 add partition (partition p3 values in(2) subpartitions 1);
+    plan: |
+      logicalddl(sql="alter table t1 	add partition (partition p3 values in (2) 		subpartitions 1);")
+DDL:
+  t1:
+    create table `t1` (`a` int, b int, primary key (a))
+    partition by list(a)
+    subpartition by key(b) 
+    (partition p1 values in(1) subpartitions 3,partition pd values in(default) subpartitions 2);
+
+STATISTICS:
+  t1:
+    595915652
+CONFIG:
+  ENABLE_BKA_JOIN:
+    null
+  defaltxxAPPName.isNew:
+    true

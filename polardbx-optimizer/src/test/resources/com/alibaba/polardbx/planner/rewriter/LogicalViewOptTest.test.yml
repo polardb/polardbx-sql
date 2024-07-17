@@ -188,7 +188,7 @@
   plan: |
     hashagg(group="name")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`boy`.`money` > 100) and (`apple`.`price` in(12, 3, 4, 6))) where (`boy`.`height` < some (select `size` from `car` as `car` where ((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`))))")
+        logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`boy`.`money` > 100) and (`apple`.`price` in(12, 3, 4, 6))) where (`boy`.`height` < some (select `size` from `car` as `car` where ((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`)))) group by `boy`.`name`")
 
 - sql: |
     select b.name

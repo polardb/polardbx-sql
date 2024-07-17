@@ -24,8 +24,11 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
+import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,8 +42,8 @@ public class ForeignColsAccessor extends AbstractAccessor {
 
     private static final String INSERT_TABLES =
         "insert into " + FOREIGN_COLS_TABLE
-            + "(`id`, `schema_name`, `table_name`, `index_name`, `for_col_name`, `ref_col_name`, `pos`) "
-            + "values(?, ?, ?, ?, ?, ?, ?)";
+            + "(`schema_name`, `table_name`, `index_name`, `for_col_name`, `ref_col_name`, `pos`) "
+            + "values(?, ?, ?, ?, ?, ?)";
 
     private static final String WHERE_CLAUSE = " where `id` = ?";
 
@@ -70,6 +73,8 @@ public class ForeignColsAccessor extends AbstractAccessor {
 
     private static final String DELETE_FK_BY_INDEX = DELETE_FK_BY_TABLE + AND_INDEX;
 
+    private static final String DELETE_FK_BY_COLS = DELETE_FK_BY_INDEX + " and `for_col_name` in (%s)";
+
     private static final String
         UPDATE_FOR_COL =
         "update " + FOREIGN_COLS_TABLE + " set `for_col_name` = ?" + WHERE_SCHEMA + AND_TABLE
@@ -85,6 +90,20 @@ public class ForeignColsAccessor extends AbstractAccessor {
 
     public int insert(ForeignColsRecord record) {
         return insert(INSERT_TABLES, FOREIGN_COLS_TABLE, record.buildInsertParams());
+    }
+
+    public int[] insert(List<ForeignColsRecord> records) {
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
+        for (ForeignColsRecord record : records) {
+            paramsBatch.add(record.buildInsertParams());
+        }
+        try {
+            DdlMetaLogUtil.logSql(INSERT_TABLES, paramsBatch);
+            return MetaDbUtil.insert(INSERT_TABLES, paramsBatch, connection);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",
+                FOREIGN_COLS_TABLE, e.getMessage());
+        }
     }
 
     public List<ForeignColsRecord> queryForeignKeyCols(String tableSchema, String tableName, String indexName) {
@@ -151,5 +170,10 @@ public class ForeignColsAccessor extends AbstractAccessor {
         Map<Integer, ParameterContext> params = MetaDbUtil
             .buildStringParameters(new String[] {schemaName, tableName, indexName});
         return delete(DELETE_FK_BY_INDEX, FOREIGN_COLS_TABLE, params);
+    }
+
+    public int deleteForeignKeyCols(String schemaName, String tableName, String indexName, List<String> columnNames) {
+        Map<Integer, ParameterContext> params = buildParams(schemaName, tableName, indexName, columnNames);
+        return delete(String.format(DELETE_FK_BY_COLS, concatParams(columnNames)), FOREIGN_COLS_TABLE, params);
     }
 }

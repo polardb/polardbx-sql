@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.utils.GroupKey;
 import com.alibaba.polardbx.executor.utils.NewGroupKey;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
@@ -38,6 +39,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalReplace;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
+import com.alibaba.polardbx.optimizer.core.rel.dml.util.ClassifyResult;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.DuplicateCheckResult;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.RowClassifier;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.SourceRows;
@@ -103,7 +105,9 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
                 "REPLACE on table having VIRTUAL/STORED generated column in unique key");
         }
 
-        final boolean checkForeignKey = executionContext.foreignKeyChecks();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks() && (tableMeta.hasForeignKey() || tableMeta.hasReferencedForeignKey());
 
         int affectRows = 0;
         if (input instanceof LogicalDynamicValues) {
@@ -160,8 +164,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
                     usePartFieldChecker));
 
             if (checkForeignKey) {
-                // Do need to check Pk for replace
-                beforeInsertCheck(replace, classifiedRows, false, true, executionContext);
+                fkConstraintAndCascade(replaceEc, replace, schemaName, tableName, input, classifiedRows);
             }
 
             try {
@@ -454,6 +457,8 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             executionContext.getParamManager().getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_ROW_CHECK) || (
                 replace.isHasJsonColumn() && executionContext.getParamManager()
                     .getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_JSON_ROW_CHECK));
+        final boolean checkJsonByStringCompare =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
         // 2. Check each insert row
         Ord.zip(currentBatchParameters).forEach(o -> {
@@ -522,7 +527,7 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
 
                     // Compare entire row
                     if (skipIdenticalRowCheck || multiUk || !identicalRow(duplicatedRow.after, newCheckRow.after,
-                        rowColumnMetas)) {
+                        rowColumnMetas, checkJsonByStringCompare)) {
                         duplicatedRow.affectedRows++;
                     }
 
@@ -718,12 +723,10 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
         return result;
     }
 
-    protected void beforeInsertCheck(LogicalInsert logicalInsert, List<DuplicateCheckResult> classifiedRows,
-                                     boolean checkPk, boolean checkFk, ExecutionContext executionContext) {
+    List<List<Object>> getInsertValues(LogicalInsert logicalInsert, List<DuplicateCheckResult> classifiedRows,
+                                       ExecutionContext executionContext) {
         LogicalDynamicValues input = RelUtils.getRelInput(logicalInsert);
         final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
-        List<String> insertColumns = input.getRowType().getFieldNames().stream().map(String::toUpperCase).collect(
-            Collectors.toList());
         List<List<Object>> values = new ArrayList<>();
 
         for (DuplicateCheckResult classifiedRow : classifiedRows) {
@@ -732,8 +735,34 @@ public class LogicalReplaceHandler extends LogicalInsertIgnoreHandler {
             }
             values.add(buildRowValue(rexRow, null, classifiedRow.insertParam, executionContext));
         }
+        return values;
+    }
 
-        beforeInsertCheck(logicalInsert, values, insertColumns, checkPk, checkFk, executionContext);
+    void fkConstraintAndCascade(ExecutionContext executionContext, LogicalReplace replace, String schemaName,
+                                String tableName, RelNode input, List<DuplicateCheckResult> classifiedRows) {
+        // Do need to check Fk for replace
+        Map<String, Map<String, Map<String, Pair<Integer, RelNode>>>> fkPlans = replace.getFkPlans();
+        List<String> insertColumns = input.getRowType().getFieldNames().stream().map(String::toUpperCase).collect(
+            Collectors.toList());
+        List<List<Object>> values = getInsertValues(replace, classifiedRows, executionContext);
+
+        // Constraint for insert
+        beforeInsertCheck(replace, values, insertColumns, false, true, executionContext);
+
+        // Cascade for delete
+        values.clear();
+        final ReplaceRelocateWriter primaryRelocateWriter = replace.getPrimaryRelocateWriter();
+        final Function<DistinctWriter, SourceRows> rowBuilder = (wr) -> SourceRows.createFromValues(classifiedRows);
+        final RowClassifier rowClassifier = buildRowClassifier(replace, executionContext, schemaName);
+
+        if (primaryRelocateWriter != null) {
+            final SourceRows duplicatedRows = rowBuilder.apply(primaryRelocateWriter.getDeleteWriter());
+            final ClassifyResult classified =
+                rowClassifier.apply(primaryRelocateWriter, duplicatedRows, new ClassifyResult());
+            values = classified.deleteRows;
+        }
+
+        beforeDeleteFkCascade(replace, schemaName, tableName, executionContext, values, fkPlans, 1);
     }
 
     private static class DuplicateCheckRow {

@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -31,14 +32,15 @@ import org.apache.orc.TypeDescription;
 import java.time.ZoneId;
 import java.util.Optional;
 
-class StringColumnProvider implements ColumnProvider<String> {
+abstract class StringColumnProvider implements ColumnProvider<String> {
     @Override
     public TypeDescription orcType() {
         return TypeDescription.createVarchar();
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex,
+                          SessionProperties sessionProperties) {
         BytesColumnVector bytesColumnVector = (BytesColumnVector) vector;
         for (int i = startIndex; i < endIndex; i++) {
             int idx = i;
@@ -60,7 +62,8 @@ class StringColumnProvider implements ColumnProvider<String> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize,
+                          SessionProperties sessionProperties) {
         BytesColumnVector bytesColumnVector = (BytesColumnVector) vector;
         for (int i = 0; i < selSize; i++) {
             int idx = selection[i];
@@ -98,10 +101,12 @@ class StringColumnProvider implements ColumnProvider<String> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType,
+                       ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
+                    accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }

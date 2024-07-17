@@ -29,18 +29,18 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.mpp.client.FailureInfo;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import com.alibaba.polardbx.executor.mpp.util.ImmutableCollectors;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

@@ -1,0 +1,298 @@
+t_shard_id1:
+  CREATE TABLE `t_shard_id1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  )  ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t_shard_id2:
+  CREATE TABLE `t_shard_id2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t_shard_id3:
+  CREATE TABLE `t_shard_id3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t_shard_id4:
+  CREATE TABLE `t_shard_id4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t1:
+  CREATE TABLE `t1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t2:
+  CREATE TABLE `t2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 8;
+
+t3:
+  CREATE TABLE `t3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 12;
+
+t4:
+  CREATE TABLE `t4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 16;
+
+t5:
+  CREATE TABLE `t5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 20;
+
+t6:
+  CREATE TABLE `t6` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 24;
+
+t7:
+  CREATE TABLE `t7` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 28;
+
+t8:
+  CREATE TABLE `t8` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 32;
+
+
+l1:
+  CREATE TABLE `l1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 5;
+
+l2:
+  CREATE TABLE `l2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 8;
+
+l3:
+  CREATE TABLE `l3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 12;
+
+l4:
+  CREATE TABLE `l4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 16;
+
+l5:
+  CREATE TABLE `l5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 20;
+
+l6:
+  CREATE TABLE `l6` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 24;
+
+l7:
+  CREATE TABLE `l7` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 28;
+
+l8:
+  CREATE TABLE `l8` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 32;
+
+l9:
+  CREATE TABLE `l9` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 36;
+
+fact:
+  CREATE TABLE `fact` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `id1` int(11) DEFAULT NULL,
+  `id2` int(11) DEFAULT NULL,
+  `id3` int(11) DEFAULT NULL,
+  `id4` int(11) DEFAULT NULL,
+  `id5` int(11) DEFAULT NULL,
+  `id6` int(11) DEFAULT NULL,
+  `id7` int(11) DEFAULT NULL,
+  `id8` int(11) DEFAULT NULL,
+  `id9` int(11) DEFAULT NULL,
+  `id10` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE='LOCAL_DISK' AUTO_INCREMENT=1501888 DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 40;
+
+v1:
+  CREATE TABLE `v1` (
+  `id` int(11) NOT NULL,
+  `v1_k` int(11) NOT NULL,
+  `name1` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 5;
+
+v2:
+  CREATE TABLE `v2` (
+  `id` int(11) NOT NULL,
+  `v2_k` int(11) NOT NULL,
+  `name2` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 8;
+
+v3:
+  CREATE TABLE `v3` (
+  `id` int(11) NOT NULL,
+  `v3_k` int(11) NOT NULL,
+  `name3` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 12;
+
+v4:
+  CREATE TABLE `v4` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 16;
+
+S1:
+  CREATE TABLE `s1` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by hash(id) partitions 16;
+
+S2:
+  CREATE TABLE `s2` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by HASH(YEAR(create_time)) partitions 16;
+
+S3:
+  CREATE TABLE `s3` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by hash(id,v4_k) partitions 16;
+
+S4:
+  CREATE TABLE `s4` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(id,v4_k) partitions 16;
+
+S5:
+  CREATE TABLE `s5` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE='LOCAL_DISK' DEFAULT CHARSET=utf8 partition by key(v4_k,id) partitions 16;

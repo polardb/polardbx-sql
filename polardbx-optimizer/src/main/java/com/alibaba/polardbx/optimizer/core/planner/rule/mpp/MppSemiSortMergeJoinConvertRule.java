@@ -18,9 +18,8 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.SemiSortMergeJoin;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import org.apache.calcite.plan.Convention;

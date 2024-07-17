@@ -33,34 +33,40 @@ public interface CostEstimableDdlTask {
     class CostInfo {
         public final long rows;
         public final long dataSize;
+        public final long tableCount;
 
         @JSONCreator
-        private CostInfo(long rows, long dataSize) {
+        private CostInfo(long rows, long dataSize, long tableCount) {
             this.rows = rows;
             this.dataSize = dataSize;
+            this.tableCount = tableCount;
         }
 
         public static CostInfo combine(CostInfo c1, CostInfo c2) {
             long rows = 0L;
             long dataSize = 0L;
+            long tableCount = 0L;
             if (c1 != null) {
                 rows += c1.rows;
                 dataSize += c1.dataSize;
+                tableCount += c1.tableCount;
             }
             if (c2 != null) {
                 rows += c2.rows;
                 dataSize += c2.dataSize;
+                tableCount += c2.tableCount;
             }
-            return new CostInfo(rows, dataSize);
+            return new CostInfo(rows, dataSize, tableCount);
         }
     }
 
-    static CostInfo createCostInfo(Long rows, Long dataSize) {
-        return new CostInfo(rows != null ? rows : 0L, dataSize != null ? dataSize : 0L);
+    static CostInfo createCostInfo(Long rows, Long dataSize, Long tableCount) {
+        return new CostInfo(rows != null ? rows : 0L, dataSize != null ? dataSize : 0L,
+            tableCount != null ? tableCount : 0L);
     }
 
     static CostInfo aggregate(List<CostInfo> costInfoList) {
-        CostInfo result = new CostInfo(0, 0);
+        CostInfo result = new CostInfo(0, 0, 0);
         if (costInfoList == null || costInfoList.size() == 0) {
             return result;
         }

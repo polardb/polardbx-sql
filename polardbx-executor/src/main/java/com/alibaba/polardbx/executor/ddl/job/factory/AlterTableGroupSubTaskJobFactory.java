@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -151,7 +152,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         phyDdlTableOperations.forEach(o -> o.setPartitionInfo(newPartitionInfo));
         if (!tableTopology.isEmpty()) {
             PhysicalPlanData physicalPlanData =
-                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations);
+                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations, executionContext);
             DdlTask phyDdlTask =
                 new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
             taskList.add(phyDdlTask);
@@ -193,7 +194,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
             List<PhyDdlTableOperation> phyDdlTableOperations = builder.build().getPhysicalPlans();
 
             PhysicalPlanData physicalPlanData =
-                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations);
+                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations, executionContext);
             DdlTask phyDdlTask =
                 new DropIndexPhyDdlTask(schemaName, physicalPlanData);
             taskList.add(phyDdlTask);
@@ -209,7 +210,9 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
 
         Map<String, Set<String>> newTopology = newPartitionInfo.getTopology();
         DdlTask cdcDdlMarkTask =
-            new CdcTableGroupDdlMarkTask(tableGroupName, schemaName, tableName, sqlKind, newTopology, dc.getDdlStmt());
+            new CdcTableGroupDdlMarkTask(tableGroupName, schemaName, tableName, sqlKind, newTopology,
+                dc.getDdlStmt(),
+                sqlKind == SqlKind.ALTER_TABLEGROUP ? CdcDdlMarkVisibility.Private : CdcDdlMarkVisibility.Protected);
         if (stayAtPublic) {
             cdcTableGroupDdlMarkTask = cdcDdlMarkTask;
         }
@@ -367,5 +370,13 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         } else {
             return new DropLogicalForeignKeyTask(schemaName, tableName, pushDownForeignKeys);
         }
+    }
+
+    public List<DdlTask> getBackfillTaskEdgeNodes() {
+        return null;
+    }
+
+    public List<List<DdlTask>> getPhysicalyTaskPipeLine() {
+        return null;
     }
 }

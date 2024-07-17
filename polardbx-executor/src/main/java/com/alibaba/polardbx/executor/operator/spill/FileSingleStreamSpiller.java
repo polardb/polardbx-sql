@@ -16,11 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableList;
-import com.google.common.io.Closer;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListeningExecutorService;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -32,6 +27,11 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
 import com.alibaba.polardbx.executor.mpp.util.MppIterators;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.spill.LocalSpillMonitor;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
+import com.google.common.io.Closer;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import io.airlift.slice.InputStreamSliceInput;
 import io.airlift.slice.OutputStreamSliceOutput;
 import io.airlift.slice.SliceOutput;
@@ -49,11 +49,11 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeUtil.writeSerializedChunk;
 import static com.alibaba.polardbx.executor.mpp.util.MppCloseables.combineCloseables;
 import static com.alibaba.polardbx.executor.operator.spill.SingleStreamSpillerFactory.SPILL_FILE_PREFIX;
 import static com.alibaba.polardbx.executor.operator.spill.SingleStreamSpillerFactory.SPILL_FILE_SUFFIX;
+import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.util.Objects.requireNonNull;

@@ -94,6 +94,14 @@ public class TGroupDirectConnection implements IConnection {
         this(groupDataSource, master, null, null);
     }
 
+    public TGroupDirectConnection(TGroupDataSource groupDataSource, Connection connection)
+        throws SQLException {
+        this.groupDataSource = groupDataSource;
+        this.userName = null;
+        this.password = null;
+        setConn(connection);
+    }
+
     public TGroupDirectConnection(TGroupDataSource groupDataSource, MasterSlave master, String userName,
                                   String password)
         throws SQLException {
@@ -610,7 +618,7 @@ public class TGroupDirectConnection implements IConnection {
         }
         try {
             if (conn.isWrapperFor(XConnection.class)) {
-                conn.unwrap(XConnection.class).setLastException(new Exception("discard"));
+                conn.unwrap(XConnection.class).setLastException(new Exception("discard"), true);
             } else {
                 // Discard pooled connection.
                 DruidPooledConnection druidConn = conn.unwrap(DruidPooledConnection.class);
@@ -624,6 +632,17 @@ public class TGroupDirectConnection implements IConnection {
             }
         } catch (Throwable ex) {
             log.error("Failed to discard connection on group " + groupDataSource.getDbGroupKey(), ex);
+        }
+    }
+
+    @Override
+    public void forceRollback() throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("ROLLBACK");
+        } catch (Throwable e) {
+            log.error("Cleanup readonly transaction branch failed on " + groupDataSource.getDbGroupKey(), e);
+            discard(e);
+            throw e;
         }
     }
 }

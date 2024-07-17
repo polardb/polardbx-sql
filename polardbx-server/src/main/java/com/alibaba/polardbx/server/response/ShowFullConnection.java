@@ -20,6 +20,7 @@ import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -120,7 +121,7 @@ public final class ShowFullConnection {
         }
 
         // write rows
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
 
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {
@@ -140,7 +141,7 @@ public final class ShowFullConnection {
 
         OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
         List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ShowConnectionSyncAction(
-            c.getUser(), c.getSchema()), c.getSchema());
+            c.getUser(), c.getSchema()), c.getSchema(), SyncScope.CURRENT_ONLY);
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {
                 continue;

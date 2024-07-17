@@ -47,6 +47,24 @@ public class ForeignKeyData {
 
     public static final String FOREIGN_KEY_CHECKS = "foreign_key_checks";
 
+    public ForeignKeyData() {
+    }
+
+    public ForeignKeyData(String schema, String tableName, String constraint, String indexName, List<String> columns,
+                          String refSchema, String refTableName, List<String> refColumns, ReferenceOptionType onDelete,
+                          ReferenceOptionType onUpdate) {
+        this.schema = schema;
+        this.tableName = tableName;
+        this.constraint = constraint;
+        this.indexName = indexName;
+        this.columns = columns;
+        this.refSchema = refSchema;
+        this.refTableName = refTableName;
+        this.refColumns = refColumns;
+        this.onDelete = onDelete;
+        this.onUpdate = onUpdate;
+    }
+
     public static enum ReferenceOptionType {
         RESTRICT("RESTRICT"), CASCADE("CASCADE"), SET_NULL("SET NULL"), SET_DEFAULT("SET DEFAULT"),
         NO_ACTION("NO ACTION");

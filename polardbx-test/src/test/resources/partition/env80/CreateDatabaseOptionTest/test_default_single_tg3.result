@@ -1,0 +1,24 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists `myds_auto`;
+CREATE DATABASE if NOT EXISTS `myds_auto`  MODE = 'auto';
+CREATE TABLE `myds_auto`.`t1` (
+`id` int NOT NULL AUTO_INCREMENT,
+`k` int NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE;
+show create database `myds_auto`;
+Database,Create Database
+myds_auto,CREATE DATABASE `myds_auto` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+show create table `myds_auto`.`t1`;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`id` int NOT NULL AUTO_INCREMENT,
+	`k` int NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE

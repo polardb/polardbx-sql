@@ -36,7 +36,6 @@ public class SingleExecTest {
         NOT_CONSUMER,
     }
 
-    ;
     final Executor exec;
     final ExecTestDriver driver;
     final ExecTestDriver.ProduceTask produceTask; // to get result
@@ -134,7 +133,7 @@ public class SingleExecTest {
         this.driver = new ExecTestDriver.Builder().addConsumer(consumeTask).addProducer(this.produceTask).build();
     }
 
-    void exec() {
+    public void exec() {
         driver.exec();
     }
 
@@ -142,7 +141,7 @@ public class SingleExecTest {
         return produceTask.result();
     }
 
-    static class Builder {
+    public static class Builder {
         final Executor exec;
         final List<Chunk> inputChunks;
         final Executor inputProducer;
@@ -165,28 +164,28 @@ public class SingleExecTest {
             return revokeChunkNumInProduce > 0;
         }
 
-        Builder(Executor exec) {
+        public Builder(Executor exec) {
             this.consumeSource = ConsumeSource.NOT_CONSUMER;
             this.exec = exec;
             this.inputChunks = null;
             this.inputProducer = null;
         }
 
-        Builder(Executor exec, List<Chunk> inputChunks) {
+        public Builder(Executor exec, List<Chunk> inputChunks) {
             this.consumeSource = ConsumeSource.CHUNK_LIST;
             this.exec = exec;
             this.inputChunks = inputChunks;
             this.inputProducer = null;
         }
 
-        Builder(Executor exec, Executor inputProducer) {
+        public Builder(Executor exec, Executor inputProducer) {
             this.consumeSource = ConsumeSource.PRODUCER;
             this.exec = exec;
             this.inputChunks = null;
             this.inputProducer = inputProducer;
         }
 
-        Builder setParallelism(int consumeParallelism, int produceParallelism) {
+        public Builder setParallelism(int consumeParallelism, int produceParallelism) {
             this.consumeParallelism = consumeParallelism;
             this.produceParallelism = produceParallelism;
             return this;
@@ -210,7 +209,7 @@ public class SingleExecTest {
             this.afterRevoke = afterRevoker;
         }
 
-        SingleExecTest build() {
+        public SingleExecTest build() {
             return new SingleExecTest(this);
         }
     }

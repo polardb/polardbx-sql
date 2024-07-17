@@ -148,7 +148,7 @@ public class LogicalAlterTableGroupModifyPartition extends LogicalAlterTableModi
 
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
-        String tableName = tableGroupConfig.getTables().get(0).getLogTbRec().getTableName();
+        String tableName = tableGroupConfig.getTables().get(0);
 
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName).getPartitionInfo();
@@ -243,7 +243,7 @@ public class LogicalAlterTableGroupModifyPartition extends LogicalAlterTableModi
          * (including allocate the phy_db value for the new partition group )
          */
         preparedData.setDropVal(isDropVal);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(preparedData.isUseSubPart());
 
         /**
          * Collect all the partitionNames from the new partition groups
@@ -273,7 +273,7 @@ public class LogicalAlterTableGroupModifyPartition extends LogicalAlterTableModi
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableGroupModifyPartition alterTableGroupModifyPartition = (AlterTableGroupModifyPartition) relDdl;
         String tableGroupName = alterTableGroupModifyPartition.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

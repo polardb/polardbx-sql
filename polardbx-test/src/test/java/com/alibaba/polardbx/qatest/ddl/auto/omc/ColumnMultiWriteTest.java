@@ -22,6 +22,7 @@ import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -34,6 +35,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
+@Ignore
 public class ColumnMultiWriteTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());

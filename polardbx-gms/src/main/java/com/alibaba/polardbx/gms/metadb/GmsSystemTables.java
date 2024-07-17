@@ -44,6 +44,7 @@ public class GmsSystemTables {
     public static final String SESSION_VARIABLES = "session_variables";
     public static final String ROUTINES = "routines";
     public static final String PARAMETERS = "parameters";
+    public static final String LOCKING_FUNCTIONS = "locking_functions";
 
     /**
      * Logical Database Level Info
@@ -64,13 +65,26 @@ public class GmsSystemTables {
     public static final String PARTITION_GROUP_DELTA = "partition_group_delta";
     public static final String TABLE_PARTITIONS_DELTA = "table_partitions_delta";
     public static final String FILES = "files";
+    public static final String COLUMNAR_CHECKPOINTS = "columnar_checkpoints";
+    public static final String COLUMNAR_FILE_MAPPING = "columnar_file_mapping";
+    public static final String COLUMNAR_APPENDED_FILES = "columnar_appended_files";
     public static final String COLUMN_METAS = "column_metas";
+    public static final String COLUMNAR_FILE_ID_INFO = "columnar_file_id_info";
+    public static final String COLUMNAR_TABLE_MAPPING = "columnar_table_mapping";
+    public static final String COLUMNAR_TABLE_EVOLUTION = "columnar_table_evolution";
+    public static final String COLUMNAR_COLUMN_EVOLUTION = "columnar_column_evolution";
+    public static final String COLUMNAR_CONFIG = "columnar_config";
+    public static final String COLUMNAR_LEASE = "columnar_lease";
+    public static final String COLUMNAR_TASK = "columnar_task";
+    public static final String COLUMNAR_TASK_CONFIG = "columnar_task_config";
     public static final String FILE_STORAGE_INFO = "file_storage_info";
 
     public static final String STORAGE_POOL_INFO = "storage_pool_info";
     public static final String FILE_STORAGE_FILES_META = "file_storage_files_meta";
     public static final String FOREIGN_KEY = "foreign_key";
     public static final String FOREIGN_KEY_COLS = "foreign_key_cols";
+
+    public static final String MULTI_PHASE_DDL_INFO = "multi_phase_ddl_info";
 
     public static final String COLUMN_MAPPING = "column_mapping";
     public static final String COLUMN_EVOLUTION = "column_evolution";
@@ -93,6 +107,7 @@ public class GmsSystemTables {
      * Global Secondary Index
      */
     public static final String BACKFILL_OBJECTS = "backfill_objects";
+    public static final String PHYSICAL_BACKFILL_OBJECTS = "physical_backfill_objects";
     public static final String FILE_STORAGE_BACKFILL_OBJECTS = "file_storage_backfill_objects";
     public static final String CHECKER_REPORTS = "checker_reports";
 
@@ -105,7 +120,9 @@ public class GmsSystemTables {
      * Plan Management
      */
     public static final String BASELINE_INFO = "baseline_info";
+    public static final String SPM_BASELINE = "spm_baseline";
     public static final String PLAN_INFO = "plan_info";
+    public static final String SPM_PLAN = "spm_plan";
 
     /**
      * CBO Statistics
@@ -170,6 +187,15 @@ public class GmsSystemTables {
     public static final String USER_LOGIN_ERROR_LIMIT = "user_login_error_limit";
     public static final String LOCALITY_INFO = "locality_info";
     public static final String VARIABLE_CONFIG = "variable_config";
+
+    /**
+     * LBAC Security
+     */
+    public static final String LBAC_COMPONENTS = "lbac_components";
+    public static final String LBAC_POLICIES = "lbac_policies";
+    public static final String LBAC_LABELS = "lbac_labels";
+    public static final String LBAC_ENTITY = "lbac_entity";
+
     /**
      * Scheduled Jobs
      */
@@ -208,10 +234,23 @@ public class GmsSystemTables {
 
     public final static String BINLOG_SYSTEM_CONFIG_TABLE = "binlog_system_config";
 
+    public final static String RPL_FULL_VALID_DIFF_TABLE = "rpl_full_valid_diff";
+
     public final static String DDL_PLAN = "ddl_plan";
     public final static String LEASE = "lease";
 
     public final static String PARTITIONS_HEATMAP = "partitions_heatmap";
+
+    /**
+     * columnar data consistency lock
+     */
+    public final static String COLUMNAR_DATA_CONSISTENCY_LOCK = "columnar_data_consistency_lock";
+
+    public final static String TRX_LOG_STATUS = "trx_log_status";
+
+    public final static String ENCDB_RULE = "encdb_rule";
+
+    public final static String ENCDB_KEY = "encdb_key";
 
     static {
         register(DUAL);
@@ -230,6 +269,15 @@ public class GmsSystemTables {
         register(VIEWS);
         register(FILES);
         register(COLUMN_METAS);
+        register(COLUMNAR_APPENDED_FILES);
+        register(COLUMNAR_CHECKPOINTS);
+        register(COLUMNAR_FILE_MAPPING);
+        register(COLUMNAR_FILE_ID_INFO);
+        register(COLUMNAR_TABLE_MAPPING);
+        register(COLUMNAR_TABLE_EVOLUTION);
+        register(COLUMNAR_COLUMN_EVOLUTION);
+        register(COLUMNAR_CONFIG);
+        register(COLUMNAR_LEASE);
         register(FILE_STORAGE_INFO);
         register(STORAGE_POOL_INFO);
         register(COLUMNS);
@@ -248,6 +296,7 @@ public class GmsSystemTables {
         register(FILE_STORAGE_BACKFILL_OBJECTS);
         register(CHANGESET_OBJECT);
         register(BASELINE_INFO);
+        register(SPM_BASELINE);
         register(CHECKER_REPORTS);
         register(COLUMN_STATISTICS);
         register(DDL_JOBS);
@@ -259,6 +308,7 @@ public class GmsSystemTables {
         register(TABLE_STATISTICS);
         register(NDV_SKETCH_STATISTICS);
         register(PLAN_INFO);
+        register(SPM_PLAN);
         register(RECYCLE_BIN);
         register(GLOBAL_TX_LOG);
         register(REDO_LOG);
@@ -293,6 +343,7 @@ public class GmsSystemTables {
         register(BINLOG_POLARX_COMMAND_TABLE);
         register(TABLE_PARTITIONS_DELTA);
         register(LOCALITY_INFO);
+        register(MULTI_PHASE_DDL_INFO);
         register(SCHEDULED_JOBS);
         register(FIRED_SCHEDULED_JOBS);
         register(PARTITION_GROUP_DELTA);
@@ -306,8 +357,18 @@ public class GmsSystemTables {
         register(JOIN_GROUP_INFO);
         register(JOIN_GROUP_TABLE_DETAIL);
         register(PARTITIONS_HEATMAP);
+        register(COLUMNAR_DATA_CONSISTENCY_LOCK);
+        register(LBAC_LABELS);
+        register(LBAC_POLICIES);
+        register(LBAC_COMPONENTS);
+        register(LBAC_ENTITY);
         register(FOREIGN_KEY);
         register(FOREIGN_KEY_COLS);
+        register(PHYSICAL_BACKFILL_OBJECTS);
+        register(TRX_LOG_STATUS);
+        register(LOCKING_FUNCTIONS);
+        register(ENCDB_RULE);
+        register(ENCDB_KEY);
     }
 
     private static void register(String systemTableName) {

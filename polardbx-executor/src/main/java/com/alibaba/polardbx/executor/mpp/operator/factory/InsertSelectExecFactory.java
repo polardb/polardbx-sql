@@ -38,10 +38,8 @@ public class InsertSelectExecFactory extends ExecutorFactory {
         Executor inputExec = getInputs().get(0).createExecutor(context, index);
 
         Executor exec = new InsertSelectExec(relNode, inputExec, context);
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(relNode, exec, context);
-        }
-        exec.setId(relNode.getRelatedId());
+        registerRuntimeStat(exec, relNode, context);
         return exec;
     }
+
 }

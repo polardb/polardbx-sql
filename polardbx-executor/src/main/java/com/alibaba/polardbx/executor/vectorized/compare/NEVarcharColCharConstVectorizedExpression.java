@@ -38,7 +38,8 @@ import java.util.Arrays;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
-@ExpressionSignatures(names = {"NE","!=","<>"}, argumentTypes = {"Varchar", "Char"}, argumentKinds = {Variable, Const})
+@ExpressionSignatures(names = {"NE", "!=", "<>"}, argumentTypes = {"Varchar", "Char"},
+    argumentKinds = {Variable, Const})
 public class NEVarcharColCharConstVectorizedExpression extends AbstractVectorizedExpression {
     protected final CollationHandler collationHandler;
 
@@ -72,8 +73,7 @@ public class NEVarcharColCharConstVectorizedExpression extends AbstractVectorize
         boolean isSelectionInUse = chunk.isSelectionInUse();
         int[] sel = chunk.selection();
 
-        final boolean compatible =
-            ctx.getExecutionContext().getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE);
+        final boolean compatible = ctx.getExecutionContext().isEnableOssCompatible();
         Comparable operandSortKey;
         if (operand == null) {
             operandSortKey = null;
@@ -87,7 +87,7 @@ public class NEVarcharColCharConstVectorizedExpression extends AbstractVectorize
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         if (operandIsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -99,7 +99,7 @@ public class NEVarcharColCharConstVectorizedExpression extends AbstractVectorize
         VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
 
         if (leftInputVectorSlot instanceof SliceBlock) {
-            SliceBlock sliceBlock = (SliceBlock) leftInputVectorSlot;
+            SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {

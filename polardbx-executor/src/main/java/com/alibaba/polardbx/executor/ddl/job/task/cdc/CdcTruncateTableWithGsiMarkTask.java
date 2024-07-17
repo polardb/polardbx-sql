@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -74,13 +74,13 @@ public class CdcTruncateTableWithGsiMarkTask extends BaseDdlTask {
             params.put(ICdcManager.TABLE_NEW_PATTERN, tmpTbNamePattern);
             CdcManagerHelper.getInstance()
                 .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), truncateSql,
-                    ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public, params,
+                    ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public, params,
                     true, Maps.newHashMap());
         } else {
             Map<String, Set<String>> tmpTableTopology = TruncateUtil.getTmpTableTopology(schemaName, tmpTableName);
             CdcManagerHelper.getInstance()
                 .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), truncateSql,
-                    ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public,
+                    ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public,
                     buildExtendParameter(executionContext), true, tmpTableTopology);
         }
     }

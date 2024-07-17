@@ -23,25 +23,61 @@ import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
 import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
-import com.alibaba.polardbx.executor.mpp.operator.PartitionedOutputCollector.HashBucketFunction;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntList;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class PartitioningExchanger extends LocalExchanger {
-    private final HashBucketFunction partitionGenerator;
+    private final LocalHashBucketFunction partitionGenerator;
     private final List<Integer> partitionChannels;
     private List<DataType> types;
     private final List<AtomicBoolean> consumings;
     private ChunkConverter keyConverter;
     private ExecutionContext context;
+
+    private List<ChunkBuilder> chunkBuildersPrimary;
+
+    /**
+     * used to stash overflow records when enable batch
+     */
+    private List<ChunkBuilder> chunkBuildersBackUp;
+
+    private final boolean enableBatch;
+
+    private final int chunkLimit;
+
+    /**
+     * There are int arrays with size = chunk_limit for each parallelism.
+     */
+    private final int[][] partitionSelections;
+    private final int[] selSizes;
+    private final boolean optimizePartition;
+
+    private final ObjectPools objectPools;
+    private final boolean shouldRecycle;
+
+    // for random order
+    private final List<Integer> randomOrderList;
+
+    private boolean chunkExchange;
+
+    /**
+     * used by partition wise mode
+     */
+    private Map<Integer, Integer> partCounter = new HashMap<>();
 
     public PartitioningExchanger(OutputBufferMemoryManager bufferMemoryManager, List<ConsumerExecutor> executors,
                                  LocalExchangersStatus status,
@@ -49,11 +85,19 @@ public class PartitioningExchanger extends LocalExchanger {
                                  List<DataType> types,
                                  List<Integer> partitionChannels,
                                  List<DataType> keyTargetTypes,
-                                 ExecutionContext context) {
+                                 ExecutionContext context,
+                                 boolean chunkExchange) {
         super(bufferMemoryManager, executors, status, asyncConsume);
+
+        // for random order.
+        this.randomOrderList = new ArrayList<>();
+        for (int i = 0; i < executors.size(); i++) {
+            randomOrderList.add(i);
+        }
+
         this.types = types;
         this.context = context;
-        this.partitionGenerator = new HashBucketFunction(executors.size());
+        this.partitionGenerator = new LocalHashBucketFunction(executors.size());
         this.partitionChannels = partitionChannels;
         this.consumings = status.getConsumings();
         if (keyTargetTypes.isEmpty()) {
@@ -65,11 +109,158 @@ public class PartitioningExchanger extends LocalExchanger {
             }
             this.keyConverter = Converters.createChunkConverter(columnIndex, types, keyTargetTypes, context);
         }
+
+        this.chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
+
+        // chunk exchange mode no need to batch local exchange result
+        this.enableBatch =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_EXCHANGE_BATCH) && !chunkExchange;
+
+        this.partitionSelections = new int[executors.size()][chunkLimit];
+        this.selSizes = new int[executors.size()];
+        this.optimizePartition =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_EXCHANGE_PARTITION_OPTIMIZATION);
+
+        this.shouldRecycle = context.getParamManager().getBoolean(ConnectionParams.ENABLE_DRIVER_OBJECT_POOL);
+        this.objectPools = ObjectPools.create();
+        this.chunkBuildersPrimary = IntStream.range(0, executors.size()).boxed()
+            .map(i -> new ChunkBuilder(types, chunkLimit, context, objectPools)).collect(Collectors.toList());
+        this.chunkBuildersBackUp = IntStream.range(0, executors.size()).boxed()
+            .map(i -> new ChunkBuilder(types, chunkLimit, context, objectPools)).collect(Collectors.toList());
+        this.chunkExchange = chunkExchange;
     }
 
     @Override
     public void consumeChunk(Chunk chunk) {
-        IntList[] partitionAssignments = new IntList[executors.size()];
+        // build a page for each partition
+        Map<Integer, Chunk> partitionChunks;
+        if (chunkExchange && chunk.getPartIndex() > -1 && chunk.getPartCount() > 0) {
+            partitionChunks = chunkExchange(chunk);
+            // don't recycle because chunk is cached.
+
+        } else if (optimizePartition) {
+            partitionChunks = tupleExchangeWithoutAllocation(chunk);
+
+            // should recycle
+            if (shouldRecycle) {
+                chunk.recycle();
+            }
+
+        } else {
+            partitionChunks = tupleExchange(chunk);
+
+            // should recycle
+            if (shouldRecycle) {
+                chunk.recycle();
+            }
+        }
+
+        consumePartitionChunk(partitionChunks);
+    }
+
+    @Override
+    public void closeConsume(boolean force) {
+        if (objectPools != null) {
+            objectPools.clear();
+        }
+        super.closeConsume(force);
+    }
+
+    private void consumePartitionChunk(Map<Integer, Chunk> partitionChunks) {
+        if (partitionChunks == null) {
+            return;
+        }
+
+        // random order to avoid lock race.
+        Collections.shuffle(randomOrderList);
+
+        if (asyncConsume) {
+            for (int i = 0; i < randomOrderList.size(); i++) {
+                int partition = randomOrderList.get(i);
+                Chunk result;
+                if ((result = partitionChunks.get(partition)) != null) {
+                    executors.get(partition).consumeChunk(result);
+                }
+            }
+        } else {
+            for (int i = 0; i < randomOrderList.size(); i++) {
+                int partition = randomOrderList.get(i);
+                Chunk result;
+                if ((result = partitionChunks.get(partition)) != null) {
+                    AtomicBoolean consuming = consumings.get(partition);
+                    while (true) {
+                        if (consuming.compareAndSet(false, true)) {
+                            try {
+                                executors.get(partition).consumeChunk(result);
+                            } finally {
+                                consuming.set(false);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    protected Map<Integer, Chunk> chunkExchange(Chunk chunk) {
+        Map<Integer, Chunk> partitionChunks = new HashMap<>();
+        int partitionNum = chunk.getPartIndex();
+        int consumeNum = executors.size();
+        int counter = partCounter.getOrDefault(partitionNum, 0);
+        partCounter.put(partitionNum, counter + 1);
+        int executorSeq =
+            ExecUtils.assignPartitionToExecutor(counter, chunk.getPartCount(), partitionNum, consumeNum);
+        partitionChunks.put(executorSeq, chunk);
+        return partitionChunks;
+    }
+
+    protected Map<Integer, Chunk> tupleExchangeWithoutAllocation(Chunk chunk) {
+        for (int partition = 0; partition < executors.size(); partition++) {
+            selSizes[partition] = 0;
+        }
+
+        // assign each row to a partition
+        Chunk keyChunk;
+        if (keyConverter == null) {
+            keyChunk = getPartitionFunctionArguments(chunk);
+        } else {
+            keyChunk = keyConverter.apply(chunk);
+        }
+
+        for (int position = 0; position < keyChunk.getPositionCount(); position++) {
+            int partition = partitionGenerator.getPartition(keyChunk, position);
+            partitionSelections[partition][selSizes[partition]] = position;
+            selSizes[partition] = selSizes[partition] + 1;
+        }
+
+        if (!enableBatch) {
+            Map<Integer, Chunk> partitionChunks = new HashMap<>();
+            for (int partition = 0; partition < executors.size(); partition++) {
+                final int[] positions = partitionSelections[partition];
+                final int selSize = selSizes[partition];
+                if (selSize > 0) {
+                    ChunkBuilder builder = new ChunkBuilder(types, selSize, context, objectPools);
+                    writeToChunkBuilder(builder, positions, selSize, chunk);
+                    Chunk partitionedChunk = builder.build();
+                    partitionChunks.put(partition, partitionedChunk);
+                }
+            }
+            return partitionChunks;
+        } else {
+            boolean chunkIsFull = writeToChunkBuilder(executors.size(), partitionSelections, selSizes, chunk);
+            if (chunkIsFull) {
+                Map<Integer, Chunk> partitionChunks = buildPartitionChunk(true);
+                swapPrimaryAndBackUp();
+                return partitionChunks;
+            } else {
+                return null;
+            }
+        }
+    }
+
+    protected Map<Integer, Chunk> tupleExchange(Chunk chunk) {
+        IntArrayList[] partitionAssignments = new IntArrayList[executors.size()];
         for (int i = 0; i < partitionAssignments.length; i++) {
             partitionAssignments[i] = new IntArrayList();
         }
@@ -86,51 +277,138 @@ public class PartitioningExchanger extends LocalExchanger {
             partitionAssignments[partition].add(position);
         }
 
-        final boolean enableDelay =
-            context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
-
-        // build a page for each partition
-        Map<Integer, Chunk> partitionChunks = new HashMap<>();
-        for (int partition = 0; partition < executors.size(); partition++) {
-            List<Integer> positions = partitionAssignments[partition];
-            if (!positions.isEmpty()) {
-                ChunkBuilder builder = new ChunkBuilder(types, positions.size(), context);
-                Chunk partitionedChunk;
-                if (enableDelay) {
-                    partitionedChunk = builder.fromPartition(positions, chunk);
-                } else {
-                    for (Integer pos : positions) {
-                        builder.declarePosition();
-                        for (int i = 0; i < chunk.getBlockCount(); i++) {
-                            builder.appendTo(chunk.getBlock(i), i, pos);
-                        }
-                    }
-                    partitionedChunk = builder.build();
+        if (!enableBatch) {
+            Map<Integer, Chunk> partitionChunks = new HashMap<>();
+            for (int partition = 0; partition < executors.size(); partition++) {
+                IntArrayList positions = partitionAssignments[partition];
+                if (!positions.isEmpty()) {
+                    ChunkBuilder builder = new ChunkBuilder(types, positions.size(), context, objectPools);
+                    writeToChunkBuilder(builder, positions, chunk);
+                    Chunk partitionedChunk = builder.build();
+                    partitionChunks.put(partition, partitionedChunk);
                 }
-                partitionChunks.put(partition, partitionedChunk);
             }
-        }
-        if (asyncConsume) {
-            for (Map.Entry<Integer, Chunk> entry : partitionChunks.entrySet()) {
-                int partition = entry.getKey();
-                executors.get(partition).consumeChunk(entry.getValue());
-            }
+            return partitionChunks;
         } else {
-            for (Map.Entry<Integer, Chunk> entry : partitionChunks.entrySet()) {
-                int partition = entry.getKey();
-                AtomicBoolean consuming = consumings.get(partition);
-                while (true) {
-                    if (consuming.compareAndSet(false, true)) {
-                        try {
-                            executors.get(partition).consumeChunk(entry.getValue());
-                        } finally {
-                            consuming.set(false);
-                        }
-                        break;
-                    }
+            boolean chunkIsFull = false;
+            for (int partition = 0; partition < executors.size(); partition++) {
+                IntArrayList positions = partitionAssignments[partition];
+                if (!positions.isEmpty()) {
+                    chunkIsFull |= writeToChunkBuilder(partition, positions, chunk);
                 }
             }
+            if (chunkIsFull) {
+                Map<Integer, Chunk> partitionChunks = buildPartitionChunk(true);
+                swapPrimaryAndBackUp();
+                return partitionChunks;
+            } else {
+                return null;
+            }
         }
+    }
+
+    private void writeToChunkBuilder(ChunkBuilder builder, IntArrayList positions, Chunk chunk) {
+        for (int i = 0; i < chunk.getBlockCount(); i++) {
+            builder.appendTo(chunk.getBlock(i), i, positions.elements(), 0, positions.size());
+        }
+        builder.updateDeclarePosition(positions.size());
+    }
+
+    private boolean writeToChunkBuilder(Integer partition, IntArrayList positions, Chunk chunk) {
+        ChunkBuilder builder = chunkBuildersPrimary.get(partition);
+        int resetCount = chunkLimit - builder.getDeclarePosition();
+        int arrayListIndex = 0;
+        int primaryLimit = Math.min(resetCount, positions.size());
+        // write to primary chunk builder
+        for (; arrayListIndex < primaryLimit; arrayListIndex++) {
+            int pos = positions.getInt(arrayListIndex);
+            builder.declarePosition();
+            for (int i = 0; i < chunk.getBlockCount(); i++) {
+                builder.appendTo(chunk.getBlock(i), i, pos);
+            }
+        }
+
+        // if primary chunk builder is full, write reset to back up
+        builder = chunkBuildersBackUp.get(partition);
+        for (; arrayListIndex < positions.size(); arrayListIndex++) {
+            int pos = positions.getInt(arrayListIndex);
+            builder.declarePosition();
+            for (int i = 0; i < chunk.getBlockCount(); i++) {
+                builder.appendTo(chunk.getBlock(i), i, pos);
+            }
+        }
+
+        return resetCount <= positions.size();
+    }
+
+    private void swapPrimaryAndBackUp() {
+        List<ChunkBuilder> tmp = chunkBuildersPrimary;
+        chunkBuildersPrimary = chunkBuildersBackUp;
+        chunkBuildersBackUp = tmp;
+    }
+
+    private void writeToChunkBuilder(ChunkBuilder builder, int[] positions, int selSize, Chunk chunk) {
+        for (int i = 0; i < chunk.getBlockCount(); i++) {
+            builder.appendTo(chunk.getBlock(i), i, positions, 0, selSize);
+        }
+        builder.updateDeclarePosition(selSize);
+    }
+
+    private boolean writeToChunkBuilder(Integer partitions, int[][] partitionAssignments, int[] selSizes, Chunk chunk) {
+        boolean chunkIsFull = false;
+
+        // priority for partition loop
+        for (int partition = 0; partition < partitions; partition++) {
+
+            final int[] positions = partitionAssignments[partition];
+            final int selSize = selSizes[partition];
+
+            if (selSize > 0) {
+                ChunkBuilder builder = chunkBuildersPrimary.get(partition);
+                final int resetCount = chunkLimit - builder.getDeclarePosition();
+                final int primaryLimit = Math.min(resetCount, selSize);
+
+                // update chunk builder position
+                builder.updateDeclarePosition(primaryLimit);
+
+                // write to primary chunk builder
+                for (int blockIndex = 0; blockIndex < chunk.getBlockCount(); blockIndex++) {
+                    builder.appendTo(chunk.getBlock(blockIndex), blockIndex, positions, 0, primaryLimit);
+                }
+
+                // if primary chunk builder is full, write reset to back up
+                if (primaryLimit < selSize) {
+                    builder = chunkBuildersBackUp.get(partition);
+
+                    // update chunk builder position
+                    builder.updateDeclarePosition(selSize - primaryLimit);
+
+                    for (int blockIndex = 0; blockIndex < chunk.getBlockCount(); blockIndex++) {
+                        builder.appendTo(chunk.getBlock(blockIndex), blockIndex, positions, primaryLimit,
+                            selSize - primaryLimit);
+                    }
+
+                }
+
+                chunkIsFull |= (primaryLimit < selSize);
+            }
+
+        }
+
+        return chunkIsFull;
+    }
+
+    private Map<Integer, Chunk> buildPartitionChunk(boolean reset) {
+        Map<Integer, Chunk> partitionChunks = new HashMap<>();
+        for (int idx = 0; idx < chunkBuildersPrimary.size(); ++idx) {
+            if (!chunkBuildersPrimary.get(idx).isEmpty()) {
+                partitionChunks.put(idx, chunkBuildersPrimary.get(idx).build());
+            }
+        }
+        if (reset) {
+            chunkBuildersPrimary.forEach(ChunkBuilder::reset);
+        }
+        return partitionChunks;
     }
 
     private Chunk getPartitionFunctionArguments(Chunk page) {
@@ -139,5 +417,16 @@ public class PartitioningExchanger extends LocalExchanger {
             blocks[i] = page.getBlock(partitionChannels.get(i));
         }
         return new Chunk(page.getPositionCount(), blocks);
+    }
+
+    @Override
+    public void buildConsume() {
+        if (enableBatch) {
+            Map<Integer, Chunk> partitionChunks = buildPartitionChunk(false);
+            consumePartitionChunk(partitionChunks);
+            forceBuildSynchronize();
+        } else {
+            super.buildConsume();
+        }
     }
 }

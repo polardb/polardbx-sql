@@ -1,0 +1,112 @@
+## DISABLE_FAST_SQL_PARSER
+create table ch_t1_ufi_ufi
+(
+id bigint auto_increment,
+sid varchar(32),
+tid varchar(32),
+user_id bigint,
+order_id bigint,
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( Substrforint(`order_id`, 4), Substrforint(`user_id`, 4) )
+partitions 8;
+show create table ch_t1_ufi_ufi;
+Table,Create Table
+ch_t1_ufi_ufi,CREATE TABLE `ch_t1_ufi_ufi` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`sid` varchar(32) DEFAULT NULL,
+	`tid` varchar(32) DEFAULT NULL,
+	`user_id` bigint(20) DEFAULT NULL,
+	`order_id` bigint(20) DEFAULT NULL,
+	`order_time` datetime DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+	KEY `auto_shard_key_user_id` USING BTREE (`user_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(substrforint(`order_id`,4),substrforint(`user_id`,4))
+PARTITIONS 8
+explain select id from ch_t1_ufi_ufi where order_id=123456;
+Logical ExecutionPlan
+PhyTableOperation(tables="ch_t1_ufi_ufi[p5]", sql="SELECT `ch_t1_ufi_ufi`.`id` AS `id` FROM ? AS `ch_t1_ufi_ufi` WHERE (`ch_t1_ufi_ufi`.`order_id` = ?)", params="123456")
+explain select id from ch_t1_ufi_ufi where user_id=123456;
+Logical ExecutionPlan
+PhyTableOperation(tables="ch_t1_ufi_ufi[p5]", sql="SELECT `ch_t1_ufi_ufi`.`id` AS `id` FROM ? AS `ch_t1_ufi_ufi` WHERE (`ch_t1_ufi_ufi`.`user_id` = ?)", params="123456")
+explain select id from ch_t1_ufi_ufi where user_id=123456 or order_id=1234567;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="ch_t1_ufi_ufi[p4,p5]", shardCount=2, sql="SELECT `id` FROM `ch_t1_ufi_ufi` AS `ch_t1_ufi_ufi` WHERE ((`user_id` = ?) OR (`order_id` = ?))")
+explain select id from ch_t1_ufi_ufi where user_id=123456 and order_id=1234567;
+Logical ExecutionPlan
+LogicalView(tables="ch_t1_ufi_ufi[]", shardCount=0, sql="SELECT `id` FROM `ch_t1_ufi_ufi` AS `ch_t1_ufi_ufi` WHERE ((`user_id` = ?) AND (`order_id` = ?))")
+create table ch_t1_ufc_ufc
+(
+id bigint auto_increment,
+sid varchar(32),
+tid varchar(32),
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( Substrforvar(`order_id`, 4), Substrforvar(`user_id`, 4) )
+partitions 8;
+show create table ch_t1_ufc_ufc;
+Table,Create Table
+ch_t1_ufc_ufc,CREATE TABLE `ch_t1_ufc_ufc` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`sid` varchar(32) DEFAULT NULL,
+	`tid` varchar(32) DEFAULT NULL,
+	`user_id` varchar(64) DEFAULT NULL,
+	`order_id` varchar(64) DEFAULT NULL,
+	`order_time` datetime DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+	KEY `auto_shard_key_user_id` USING BTREE (`user_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(substrforvar(`order_id`,4),substrforvar(`user_id`,4))
+PARTITIONS 8
+explain select id from ch_t1_ufc_ufc where order_id='123456';
+Logical ExecutionPlan
+PhyTableOperation(tables="ch_t1_ufc_ufc[p5]", sql="SELECT `ch_t1_ufc_ufc`.`id` AS `id` FROM ? AS `ch_t1_ufc_ufc` WHERE (`ch_t1_ufc_ufc`.`order_id` = ?)", params="123456")
+explain select id from ch_t1_ufc_ufc where user_id='123456';
+Logical ExecutionPlan
+PhyTableOperation(tables="ch_t1_ufc_ufc[p5]", sql="SELECT `ch_t1_ufc_ufc`.`id` AS `id` FROM ? AS `ch_t1_ufc_ufc` WHERE (`ch_t1_ufc_ufc`.`user_id` = ?)", params="123456")
+explain select id from ch_t1_ufc_ufc where user_id='123456' or order_id='1234567';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="ch_t1_ufc_ufc[p4,p5]", shardCount=2, sql="SELECT `id` FROM `ch_t1_ufc_ufc` AS `ch_t1_ufc_ufc` WHERE ((`user_id` = ?) OR (`order_id` = ?))")
+explain select id from ch_t1_ufc_ufc where user_id='123456' and order_id='1234567';
+Logical ExecutionPlan
+LogicalView(tables="ch_t1_ufc_ufc[]", shardCount=0, sql="SELECT `id` FROM `ch_t1_ufc_ufc` AS `ch_t1_ufc_ufc` WHERE ((`user_id` = ?) AND (`order_id` = ?))")
+## error_msg: $# must be the same #$
+create table ch_t1_ufc_ufi
+(
+id bigint auto_increment,
+sid varchar(32),
+tid varchar(32),
+user_id bigint,
+order_id varchar(64),
+order_time datetime,
+primary key(id)
+)
+partition by co_hash( Substrforvar(`order_id`, 4), Substrforint(`user_id`, 4) )
+partitions 8;
+must be the same
+#create table ch_t1_ufc_ufi
+#(
+#id bigint auto_increment,
+#sid varchar(32),
+#tid varchar(32),
+#user_id bigint,
+#order_id varchar(64),
+#order_time datetime,
+#primary key(id)
+#)
+#partition by co_hash( Substrforvar(`order_id`, 4), Substrforint(`user_id`, 4) )
+#partitions 8;
+#show create table ch_t1_ufc_ufi;
+#explain select id from ch_t1_ufc_ufi where order_id='123456';
+#explain select id from ch_t1_ufc_ufi where user_id=123456;
+#explain select id from ch_t1_ufc_ufi where user_id=123456 or order_id='1234567';
+#explain select id from ch_t1_ufc_ufi where user_id=123456 and order_id='1234567';

@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLDeclareItem;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatementImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
@@ -58,5 +59,16 @@ public class MySqlDeclareStatement extends MySqlStatementImpl {
     @Override
     public SqlType getSqlType() {
         return null;
+    }
+
+    @Override
+    public SQLStatement clone() {
+        MySqlDeclareStatement x = new MySqlDeclareStatement();
+        for (SQLDeclareItem item : varList) {
+            SQLDeclareItem sqlDeclareItem = (SQLDeclareItem) item.clone();
+            sqlDeclareItem.setParent(x);
+            x.addVar(sqlDeclareItem);
+        }
+        return x;
     }
 }

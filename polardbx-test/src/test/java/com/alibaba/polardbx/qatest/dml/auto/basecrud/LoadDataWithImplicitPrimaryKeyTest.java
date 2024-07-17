@@ -125,7 +125,7 @@ public class LoadDataWithImplicitPrimaryKeyTest extends BaseLoadDataTest {
 
         String sql = "load data local infile " + "'" + fileName + "'" + "into table " + tableName
             + " FIELDS TERMINATED BY '&' LINES TERMINATED BY '\\n'";
-        JdbcUtil.executeFaied(tddlConnection, sql, "The column's length is 3, while the value's length is 4");
+        JdbcUtil.executeFailed(tddlConnection, sql, "The column's length is 3, while the value's length is 4");
 
         tddlConnection = getPolardbxConnection();
 

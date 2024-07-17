@@ -27,26 +27,26 @@ public class ${className} extends AbstractVectorizedExpression {
         super(null, outputIndex, children);
     }
 
-    @Override
-    public void eval(EvaluationContext ctx) {
-        super.evalChildren(ctx);
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		@Override
+		public void eval(EvaluationContext ctx) {
+		super.evalChildren(ctx);
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        ${type.inputType}[] inputArray = ((${type.inputVectorType}) inputVectorSlot).${type.inputType}Array();
+		RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+        ${type.inputType}[] inputArray = (inputVectorSlot.cast(${type.inputVectorType}.class)).${type.inputType}Array();
 
-        boolean[] inputNulls = inputVectorSlot.nulls();
+		boolean[] inputNulls = inputVectorSlot.nulls();
 
-        int newSize = 0;
-        if (inputVectorSlot.hasNull()) {
-            if (isSelectionInUse) {
-                for (int i = 0; i < batchSize; i++) {
-                    int j = sel[i];
-                    boolean inputNull = inputNulls[j];
-                    <#if operator.classHeader = "IsTrue">
+		int newSize = 0;
+		if (inputVectorSlot.hasNull()) {
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		boolean inputNull = inputNulls[j];
+        <#if operator.classHeader = "IsTrue">
                     if (!inputNull && (inputArray[j] != 0)) {
                     </#if>
                     <#if operator.classHeader = "IsNotTrue">

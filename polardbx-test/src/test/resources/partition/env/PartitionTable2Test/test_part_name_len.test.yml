@@ -1,0 +1,114 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists t1_p16;
+drop table if exists t1_p32;
+drop table if exists t1_p32_sp32;
+
+
+set global MAX_PARTITION_NAME_LENGTH = 16;
+select sleep(2);
+
+
+create table t1_p16(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+(
+partition `pabcde1234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+## error_msg: $# too long #$
+create table t1_p32(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+(
+partition `pa123456789012345678901234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+  ## error_msg: $# too long #$
+create table t1_p32_sp32(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+subpartition by range columns(b)
+(
+subpartition `sp123456789012345678901234567890` values less than (100),
+subpartition `spm` values less than (maxvalue)
+)
+(
+partition `pa123456789012345678901234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+set global MAX_PARTITION_NAME_LENGTH = 32;
+
+select sleep(2);
+
+create table t1_p32(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+(
+partition `pa123456789012345678901234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+create table t1_p32_sp32(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+subpartition by range columns(b)
+(
+subpartition `sp123456789012345678901234567890` values less than (100),
+subpartition `spm` values less than (maxvalue)
+)
+(
+partition `pa123456789012345678901234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+  ## error_msg: $# too long #$
+create table t1_p33(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+(
+partition `pab123456789012345678901234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+  ## error_msg: $# too long #$
+create table t1_p32_sp33(
+a int ,
+b int ,
+c int
+)
+partition by range columns(a)
+subpartition by range columns(b)
+(
+subpartition `spa123456789012345678901234567890` values less than (100),
+subpartition `spm` values less than (maxvalue)
+)
+(
+partition `pa123456789012345678901234567890` values less than (100),
+partition `pm` values less than (maxvalue)
+);
+
+set global MAX_PARTITION_NAME_LENGTH = 16;
+select sleep(2);
+

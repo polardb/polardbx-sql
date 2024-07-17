@@ -17,14 +17,14 @@
 package com.alibaba.polardbx.executor.operator.frame;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * The range unboundedFollowing window frame calculates frames with the following SQL form:
@@ -33,7 +33,7 @@ import java.util.List;
  *
  * <p>e.g.: ... RANGE BETWEEN 1 PRECEDING AND UNBOUNDED FOLLOWING.
  */
-public class RangeUnboundedPrecedingOverFrame extends AbstractOverWindowFrame {
+public class RangeUnboundedPrecedingOverFrame extends UnboundedPrecedingOverFrame {
 
     private final int rightBound;
     private int rightIndex = 0;
@@ -79,16 +79,17 @@ public class RangeUnboundedPrecedingOverFrame extends AbstractOverWindowFrame {
         }
         currentIndex = leftIndex;
         if (isAscOrder > 0) {
-            aggregators.forEach(t -> t.resetToInitValue(0));
+            aggregators = aggregators.stream().map(aggregator -> aggregator.getNew()).collect(Collectors.toList());
         }
     }
 
     @Override
-    public void processData(int index) {
+    public List<Object> processData(int index) {
         Object currentValue = chunksIndex.rowAt(index).getObject(orderByColIndex);
         int[] indexes = new int[2];
         if (lastProcessedValue != null && lastProcessedValue.equals(currentValue)) {
-            return;
+            return aggregators.stream().map(aggregator -> aggregator.eval(chunksIndex.rowAt(index)))
+                .collect(Collectors.toList());
         }
         indexes[0] = leftIndex;
         if (currentValue == null) {
@@ -98,31 +99,31 @@ public class RangeUnboundedPrecedingOverFrame extends AbstractOverWindowFrame {
             indexes[1] = otherSize;
         }
         lastProcessedValue = currentValue;
-        process(indexes[0], indexes[1]);
+        return process(indexes[0], indexes[1]);
     }
 
-    private void process(int leftIndex, int rightIndex) {
+    private List<Object> process(int leftIndex, int rightIndex) {
         // 升序时，不停的添加结果
         if (isAscOrder > 0) {
             while (currentIndex <= rightIndex) {
-                Chunk.ChunkRow row = chunksIndex.rowAt(currentIndex++);
-                aggregators.forEach(t -> t.accumulate(0, row.getChunk(), row.getPosition()));
+                aggregators.forEach(aggregator -> aggregator.aggregate(chunksIndex.rowAt(currentIndex)));
+                currentIndex++;
             }
-            return;
+            return aggregators.stream().map(t -> t.eval(chunksIndex.rowAt(rightIndex))).collect(Collectors.toList());
         }
         if (lastProcessedLeft == leftIndex && lastProcessedRight == rightIndex) {
-            return;
+            return aggregators.stream().map(t -> t.eval(chunksIndex.rowAt(rightIndex))).collect(Collectors.toList());
         }
         // 降序时，根据范围重新进行计算，如果实现了部分函数的retract方法，则可减少该部分函数的计算量
-        aggregators.forEach(t -> {
-            t.resetToInitValue(0);
-            for (int i = leftIndex; i <= rightIndex; i++) {
-                Chunk.ChunkRow row = chunksIndex.rowAt(i);
-                t.accumulate(0, row.getChunk(), row.getPosition());
-            }
-        });
+        aggregators = aggregators.stream().map(aggregator -> aggregator.getNew()).collect(Collectors.toList());
+        for (int i = leftIndex; i <= rightIndex; i++) {
+            final int l = i;
+            aggregators.forEach(aggregator -> aggregator.aggregate(chunksIndex.rowAt(l)));
+        }
         lastProcessedRight = rightIndex;
         lastProcessedLeft = leftIndex;
+        return aggregators.stream().map(t -> t.eval(chunksIndex.rowAt(lastProcessedRight)))
+            .collect(Collectors.toList());
     }
 
     private void updateNullRows(int index) {

@@ -208,7 +208,7 @@ public abstract class ScaleOutBaseTest extends AsyncDDLBaseNewDBTestCase {
 
     protected void checkDataContentForScaleOutWrite(List<String> physicalTables, String whereClause) {
 
-        String targetGroup = GroupInfoUtil.buildScaloutGroupName(sourceGroupKey);
+        String targetGroup = GroupInfoUtil.buildScaleOutGroupName(sourceGroupKey);
         for (String physicalTable : physicalTables) {
             String srcSql =
                 String.format("/*TDDL:node='%s'*/select * from `%s` " + whereClause, sourceGroupKey, physicalTable);

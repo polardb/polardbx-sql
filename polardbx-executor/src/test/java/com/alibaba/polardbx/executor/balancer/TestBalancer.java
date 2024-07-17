@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.balancer;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.balancer.action.ActionLockResource;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.balancer.action.ActionMergePartition;
@@ -65,7 +66,7 @@ public class TestBalancer {
     private Map<String, Pair<Long, Long>> buildDataSizeMap(String dn, int startId, int endId, long dataSize) {
         return IntStream.range(startId, endId)
             .mapToObj(id -> Pair.of("g" + id, dataSize))
-            .collect(Collectors.toMap(e->e.getKey(), e->Pair.of(0L, e.getValue())));
+            .collect(Collectors.toMap(e -> e.getKey(), e -> Pair.of(0L, e.getValue())));
     }
 
     private Map<String, List<GroupStats.GroupsOfStorage>> makeGroups0() {
@@ -502,7 +503,7 @@ public class TestBalancer {
     }
 
     @Test
-    public void testActionLockResourceEquals(){
+    public void testActionLockResourceEquals() {
         ActionLockResource ar1 = null;
         ActionLockResource ar2 = null;
 

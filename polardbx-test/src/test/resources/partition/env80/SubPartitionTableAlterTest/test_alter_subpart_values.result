@@ -129,7 +129,7 @@ rc_lc_ntp,CREATE TABLE `rc_lc_ntp` (
 	PRIMARY KEY (`_drds_implicit_id_`),
 	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
 	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`c`,`d`)
 SUBPARTITION BY LIST COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
@@ -152,7 +152,7 @@ rc_lc_ntp2,CREATE TABLE `rc_lc_ntp2` (
 	PRIMARY KEY (`_drds_implicit_id_`),
 	LOCAL KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
 	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS(`c`,`d`)
 SUBPARTITION BY LIST COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES LESS THAN ('2020-01-01 00:00:00','abc')

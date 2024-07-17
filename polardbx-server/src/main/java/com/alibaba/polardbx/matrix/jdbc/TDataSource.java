@@ -36,7 +36,6 @@ import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.common.utils.version.Version;
-import com.alibaba.polardbx.config.ConfigDataHandler;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.PlanExecutor;
 import com.alibaba.polardbx.executor.common.RecycleBin;
@@ -56,6 +55,7 @@ import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.utils.ParamValidationUtils;
+import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.ByteArrayInputStream;
@@ -79,21 +79,16 @@ import java.util.TreeMap;
 public class TDataSource extends AbstractLifecycle implements ITDataSource {
 
     public final static Logger logger = LoggerFactory.getLogger(TDataSource.class);
-    private String appRuleString = null;
     private boolean sharding = true;
     // 是否不做sharding,如果为false跳过rule初始化
-    private String topologyFile = null;
     private String schemaFile = null;
     private String appName = null;
     private String schemaName = null;
     private String unitName = null;
     private PlanExecutor executor = null;
-    private Map<String, Object> connectionProperties = new HashMap<>(2);
+    private Map<String, Object> connectionProperties = Maps.newConcurrentMap();
     private MatrixConfigHolder configHolder;
-    private boolean useRemoteLocalRule = false;
-
     private List<App> subApps = new ArrayList<>();
-
     private TddlRule tddlRule = null;
     /**
      * 用于并行查询的线程池，全局共享
@@ -109,14 +104,11 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
     private SQLRecorder recorder = null;
     private boolean dynamicRule = true;                                                      // 是否使用动态规则
 
-    private ConfigDataHandler connectionPropertiesCdh = null;
     private MatrixStatistics statistics = new MatrixStatistics();
 
     private IServerConfigManager serverConfigManager = null;
 
     private String url = null;
-
-    public static String globalConnectionProperties = null;
 
     private Map<String, String> asiConf = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
 
@@ -154,7 +146,6 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
             parseUrl(url);
         }
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("schemaFile is: " + this.schemaFile);
-        LoggerInit.TDDL_DYNAMIC_CONFIG.info("topologyFile is: " + this.topologyFile);
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("subApps is: " + this.subApps);
         LoggerInit.TDDL_DYNAMIC_CONFIG.info("writeMode is: " + this.writeMode);
 
@@ -203,11 +194,6 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
         configHolder.setAppName(appName);
         configHolder.setUnitName(unitName);
         configHolder.setSchemaName(schemaName);
-        configHolder.setRemoteLocalRule(useRemoteLocalRule);
-        configHolder.setTopologyFilePath(this.topologyFile);
-        configHolder.setSchemaFilePath(this.schemaFile);
-        configHolder.setAppRuleString(appRuleString);
-        configHolder.setDynamicRule(dynamicRule);
         configHolder.setSharding(this.sharding);
         configHolder.setTddlRule(this.tddlRule);
         configHolder.setStatistics(this.statistics);
@@ -283,8 +269,8 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
                     applyConnectionProperties(props);
                 }
             });
-        }
 
+        }
     }
 
     public synchronized void parseConnectionProperties(String data, String globalData) {
@@ -469,10 +455,6 @@ public class TDataSource extends AbstractLifecycle implements ITDataSource {
 
         if (urlProps.get("isSharding") != null) {
             sharding = "true".equalsIgnoreCase(urlProps.get("isSharding").toString());
-        }
-
-        if (urlProps.get("topologyFile") != null) {
-            topologyFile = urlProps.get("topologyFile").toString();
         }
 
         if (urlProps.get("schemaFile") != null) {

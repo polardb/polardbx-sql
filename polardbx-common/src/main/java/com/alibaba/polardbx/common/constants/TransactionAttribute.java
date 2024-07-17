@@ -18,6 +18,8 @@ package com.alibaba.polardbx.common.constants;
 
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 public class TransactionAttribute {
 
     public static final IsolationLevel DEFAULT_ISOLATION_LEVEL = IsolationLevel.READ_COMMITTED;
@@ -66,5 +68,23 @@ public class TransactionAttribute {
     public static final int DEADLOCK_DETECTION_INTERVAL = 1000;
 
     public static final int DEFAULT_TSO_HEARTBEAT_INTERVAL = 60000;
+
+    public static final AtomicLong LAST_LOG_AUTO_SP_TIME = new AtomicLong(0);
+    public static final AtomicLong LAST_LOG_AUTO_SP_OPT_TIME = new AtomicLong(0);
+    public static final AtomicLong LAST_LOG_AUTO_SP_RELEASE = new AtomicLong(0);
+    public static final AtomicLong LAST_LOG_AUTO_SP_ROLLBACK = new AtomicLong(0);
+    public static final AtomicLong LAST_LOG_TRX_LOG_V2 = new AtomicLong(0);
+    public static final AtomicLong LAST_LOG_XA_TSO = new AtomicLong(0);
+    public static final AtomicLong LAST_LOG_AUTO_COMMIT_TSO = new AtomicLong(0);
+
+    /**
+     * Default Columnar TSO purge Interval in milliseconds: 1 min
+     */
+    public static final int DEFAULT_COLUMNAR_TSO_PURGE_INTERVAL = 60000;
+
+    /**
+     * Default Columnar TSO update Interval in milliseconds: 10 seconds
+     */
+    public static final int DEFAULT_COLUMNAR_TSO_UPDATE_INTERVAL = 3000;
 
 }

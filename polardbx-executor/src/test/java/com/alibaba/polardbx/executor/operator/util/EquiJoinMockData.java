@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.operator.util;
 
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.StringBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -31,6 +32,271 @@ import java.util.List;
  * @author <a href="mailto:shitianshuo.sts@alibaba-inc.com"></a>
  */
 public class EquiJoinMockData {
+
+    private static final List<DataType> INT_INNER_TYPES =
+        ImmutableList.of(DataTypes.IntegerType);
+    private static final List<DataType> LONG_INNER_TYPES =
+        ImmutableList.of(DataTypes.LongType);
+    private static final List<DataType> LONG_INT_INNER_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType);
+    private static final List<DataType> INT_INT_TYPES =
+        ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
+    private static final List<DataType> INT_OUTER_TYPES =
+        ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
+    private static final List<DataType> LONG_OUTER_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.LongType);
+    private static final List<DataType> LONG_INT_OUTER_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType);
+    private static final List<DataType> INT_INT_OUTER_TYPES =
+        ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
+    private static final List<DataType> LONG_INT_INT_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType, DataTypes.IntegerType);
+    private static final List<DataType> LONG_INT_LONG_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType);
+    private static final List<DataType> LONG_LONG_INT_LONG_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType);
+    private static final List<DataType> ANTI_INT_NOT_EQ_INT_INNER_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType, DataTypes.IntegerType);
+    private static final List<DataType> ANTI_INT_NOT_EQ_INT_OUTER_TYPES =
+        ImmutableList.of(DataTypes.IntegerType, DataTypes.LongType, DataTypes.IntegerType);
+    private static final List<DataType> ANTI_LONG_NOT_EQ_INT_INNER_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.LongType, DataTypes.LongType, DataTypes.IntegerType,
+            DataTypes.LongType);
+    private static final List<DataType> ANTI_LONG_NOT_EQ_INT_OUTER_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType);
+    public static EquiJoinMockData INNER_INT_CASE = new EquiJoinMockData(
+        INT_INNER_TYPES,
+        new RowChunksBuilder(INT_INNER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(1, 2, 3, 4)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(3, 5, 6, 7)))
+            .build(),
+        INT_OUTER_TYPES,
+        new RowChunksBuilder(INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(4, 5, 6, 7),
+                IntegerBlock.of(5, 3, 8, 0)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(1));
+
+    public static EquiJoinMockData SEMI_CASE = new EquiJoinMockData(
+        INT_INNER_TYPES,
+        new RowChunksBuilder(INT_INNER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(1, 2, 3, 4)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(3, 4, 5, 6)))
+            .build(),
+        INT_OUTER_TYPES,
+        new RowChunksBuilder(INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(4, 5, 6, 7),
+                IntegerBlock.of(5, 3, 8, null)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(1));
+
+    public static EquiJoinMockData SEMI_CASE_2 = new EquiJoinMockData(
+        INT_INNER_TYPES,
+        new RowChunksBuilder(INT_INNER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(1, 2, 3, 4)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(3, 4, 5, 6, null, null)))
+            .build(),
+        INT_OUTER_TYPES,
+        new RowChunksBuilder(INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(4, 5, 6, 7, null),
+                IntegerBlock.of(5, 3, 8, null, null)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(1));
+
+    public static EquiJoinMockData INT_JOIN_LONG_CASE = new EquiJoinMockData(
+        INT_INT_TYPES,
+        new RowChunksBuilder(INT_INT_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(1, 2, 3, 4),
+                IntegerBlock.of(4, 5, 6, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(3, 4, 5, 6),
+                IntegerBlock.of(4, 5, 6, 7)))
+            .build(),
+        LONG_INT_OUTER_TYPES,
+        new RowChunksBuilder(LONG_INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(3L, 4L, 9L, 7L),
+                IntegerBlock.of(0, 1, 2, 3)))
+            .addChunk(new Chunk(
+                LongBlock.of(5L, 3L, 8L, 10L),
+                IntegerBlock.of(4, 5, 6, 7)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(0));
+
+    public static EquiJoinMockData SEMI_LONG_CASE = new EquiJoinMockData(
+        LONG_INNER_TYPES,
+        new RowChunksBuilder(LONG_INNER_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(1L, 2L, 3L, 4L)))
+            .addChunk(new Chunk(
+                LongBlock.of(3L, 4L, 5L, 6L)))
+            .build(),
+        LONG_OUTER_TYPES,
+        new RowChunksBuilder(LONG_OUTER_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(0L, 1L, 2L, 3L),
+                LongBlock.of(3L, 4L, 9L, 7L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                LongBlock.of(5L, 3L, 8L, 10L)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(1));
+
+    public static EquiJoinMockData SEMI_LONG_NOT_EQ_INT_CASE = new EquiJoinMockData(
+        LONG_LONG_INT_LONG_TYPES,
+        new RowChunksBuilder(LONG_LONG_INT_LONG_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(1L, 2L, 3L, 4L),
+                LongBlock.of(3L, 4L, 5L, 6L),
+                IntegerBlock.of(3, 4, 5, 6),
+                LongBlock.of(-1L, -2L, -3L, -4L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                LongBlock.of(7L, 8L, 9L, 10L),
+                IntegerBlock.of(6, 7, 8, 9),
+                LongBlock.of(-1L, -2L, -3L, -4L)))
+            .build(),
+        LONG_INT_LONG_TYPES,
+        new RowChunksBuilder(LONG_INT_LONG_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(0L, 1L, 3L, 3L),
+                IntegerBlock.of(3, 4, 5, 7),
+                LongBlock.of(11L, 12L, 13L, 14L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                IntegerBlock.of(5, 7, 8, 10),
+                LongBlock.of(15L, 16L, 17L, 18L)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(0));
+
+    public static EquiJoinMockData SEMI_INT_NOT_EQ_INT_CASE = new EquiJoinMockData(
+        LONG_INT_INT_TYPES,
+        new RowChunksBuilder(LONG_INT_INT_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(-1L, -2L, -3L, -4L),
+                IntegerBlock.of(1, 2, 3, 4),
+                IntegerBlock.of(3, 4, 5, 6)))
+            .addChunk(new Chunk(
+                LongBlock.of(-5L, -6L, -7L, -8L),
+                IntegerBlock.of(4, 5, 6, 7),
+                IntegerBlock.of(6, 7, 8, 9)))
+            .build(),
+        INT_INT_OUTER_TYPES,
+        new RowChunksBuilder(INT_INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(0, 1, 3, 9),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(4, 5, 12, 11),
+                IntegerBlock.of(5, 7, 8, 10)))
+            .build(),
+        ImmutableList.of(1),
+        ImmutableList.of(0));
+
+    public static EquiJoinMockData ANTI_INT_NOT_EQ_INT_CASE = new EquiJoinMockData(
+        ANTI_INT_NOT_EQ_INT_INNER_TYPES,
+        new RowChunksBuilder(ANTI_INT_NOT_EQ_INT_INNER_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(-1L, -1L, -1L, -1L),
+                IntegerBlock.of(1, 2, 3, 4),
+                LongBlock.of(-3L, -3L, -3L, -3L),
+                IntegerBlock.of(3, 4, 5, 6)))
+            .addChunk(new Chunk(
+                LongBlock.of(-2L, -2L, -2L, -2L),
+                IntegerBlock.of(4, 5, 6, 7),
+                LongBlock.of(-5L, -5L, -5L, -5L),
+                IntegerBlock.of(6, 7, 8, 9)))
+            .build(),
+        ANTI_INT_NOT_EQ_INT_OUTER_TYPES,
+        new RowChunksBuilder(ANTI_INT_NOT_EQ_INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(0, 1, 3, 9),
+                LongBlock.of(-5L, -4L, -3L, -1L),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(4, 5, 12, 11),
+                LongBlock.of(-9L, -8L, -7L, -6L),
+                IntegerBlock.of(5, 7, 8, 10)))
+            .build(),
+        ImmutableList.of(1),
+        ImmutableList.of(0));
+
+    public static EquiJoinMockData ANTI_LONG_NOT_EQ_INT_CASE = new EquiJoinMockData(
+        ANTI_LONG_NOT_EQ_INT_INNER_TYPES,
+        new RowChunksBuilder(ANTI_LONG_NOT_EQ_INT_INNER_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(1L, 2L, 3L, 4L),
+                LongBlock.of(0L, 0L, 0L, 0L),
+                LongBlock.of(-1L, -1L, -1L, -1L),
+                IntegerBlock.of(3, 4, 5, 6),
+                LongBlock.of(-1L, -1L, -1L, -1L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                LongBlock.of(0L, 0L, 0L, 0L),
+                LongBlock.of(-1L, -1L, -1L, -1L),
+                IntegerBlock.of(6, 7, 8, 9),
+                LongBlock.of(-1L, -1L, -1L, -1L)))
+            .build(),
+        ANTI_LONG_NOT_EQ_INT_OUTER_TYPES,
+        new RowChunksBuilder(ANTI_LONG_NOT_EQ_INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(0L, 1L, 3L, 3L),
+                LongBlock.of(-2L, -3L, -4L, -5L),
+                IntegerBlock.of(3, 4, 5, 7),
+                LongBlock.of(-5L, -6L, -7L, -8L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                LongBlock.of(-1L, -2L, -3L, -4L),
+                IntegerBlock.of(5, 7, 8, 10),
+                LongBlock.of(-6L, -7L, -8L, -9L)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(0));
+
+    public static EquiJoinMockData REVERSE_SEMI_INT_CASE = new EquiJoinMockData(
+        INT_INNER_TYPES,
+        new RowChunksBuilder(INT_INNER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(1, 2, 3, 4)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(3, 4, 5, 6)))
+            .build(),
+        INT_OUTER_TYPES,
+        new RowChunksBuilder(INT_OUTER_TYPES)
+            .addChunk(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .addChunk(new Chunk(
+                IntegerBlock.of(4, 5, 6, 7),
+                IntegerBlock.of(5, 3, 8, 10)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(1));
 
     private static List<DataType> SIMPLE_CASE_INNER_TYPES =
         ImmutableList.of(DataTypes.IntegerType, DataTypes.StringType);
@@ -129,31 +395,6 @@ public class EquiJoinMockData {
         ImmutableList.of(0, 1),
         ImmutableList.of(1, 2));
 
-    private static List<DataType> SEMI_CASE_INNER_TYPES =
-        ImmutableList.of(DataTypes.IntegerType);
-    private static List<DataType> SEMI_CASE_OUTER_TYPES =
-        ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
-
-    public static EquiJoinMockData SEMI_CASE = new EquiJoinMockData(
-        SEMI_CASE_INNER_TYPES,
-        new RowChunksBuilder(SEMI_CASE_INNER_TYPES)
-            .addChunk(new Chunk(
-                IntegerBlock.of(1, 2, 3, 4)))
-            .addChunk(new Chunk(
-                IntegerBlock.of(3, 4, 5, 6)))
-            .build(),
-        SEMI_CASE_OUTER_TYPES,
-        new RowChunksBuilder(SEMI_CASE_OUTER_TYPES)
-            .addChunk(new Chunk(
-                IntegerBlock.of(0, 1, 2, 3),
-                IntegerBlock.of(3, 4, 9, 7)))
-            .addChunk(new Chunk(
-                IntegerBlock.of(4, 5, 6, 7),
-                IntegerBlock.of(5, 3, 8, null)))
-            .build(),
-        ImmutableList.of(0),
-        ImmutableList.of(1));
-
     final List<DataType> innerTypes;
     final List<DataType> outerTypes;
     final List<Chunk> innerChunks;
@@ -217,8 +458,10 @@ public class EquiJoinMockData {
 
             DataType outerType = outerTypes.get(outerIndex);
             DataType innerType = innerTypes.get(innerIndex);
-            assert innerType.equals(outerType);
-            results.add(new EquiJoinKey(outerIndex, innerIndex, innerType, keyIsNullSafe[i]));
+            // guaranteed by test case
+            DataType unifiedType = outerType;
+
+            results.add(new EquiJoinKey(outerIndex, innerIndex, unifiedType, keyIsNullSafe[i]));
 
             keyIsNullSafe[i] = false;
         }

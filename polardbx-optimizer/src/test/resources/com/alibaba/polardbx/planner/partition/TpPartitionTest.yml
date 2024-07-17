@@ -186,7 +186,7 @@
     select * from lineitem ignore index(primary) use index(IDX_LINEITEM_ORDERKEY) where l_orderkey = 1;
 
   plan: |
-    LogicalView(tables="lineitem[p4]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` IGNORE INDEX(PRIMARY) WHERE (`l_orderkey` = 1)")
+    phytableoperation(tables="lineitem[p4]", sql="select `lineitem`.`l_orderkey`, `lineitem`.`l_partkey`, `lineitem`.`l_suppkey`, `lineitem`.`l_linenumber`, `lineitem`.`l_quantity`, `lineitem`.`l_extendedprice`, `lineitem`.`l_discount`, `lineitem`.`l_tax`, `lineitem`.`l_returnflag`, `lineitem`.`l_linestatus`, `lineitem`.`l_shipdate`, `lineitem`.`l_commitdate`, `lineitem`.`l_receiptdate`, `lineitem`.`l_shipinstruct`, `lineitem`.`l_shipmode`, `lineitem`.`l_comment` from ? as `lineitem` ignore index(primary) use index(idx_lineitem_orderkey) where (`lineitem`.`l_orderkey` = 1)")
 
 - sql: |
     select * from lineitem use index(IDX_LINEITEM_ORDERKEY) join orders on o_orderkey =  l_orderkey where o_custkey = 1;

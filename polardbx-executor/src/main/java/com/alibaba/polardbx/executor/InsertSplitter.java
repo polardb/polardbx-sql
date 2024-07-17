@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.executor;
 
-import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlLexer;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.druid.sql.parser.Lexer;
-import com.alibaba.polardbx.druid.sql.parser.Token;
 import com.alibaba.polardbx.common.constants.BatchInsertAttribute;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlLexer;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.sql.parser.Lexer;
+import com.alibaba.polardbx.druid.sql.parser.Token;
 import com.alibaba.polardbx.executor.cursor.MultiResultCursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -167,6 +167,9 @@ public class InsertSplitter {
 
         executionContext.getConnection().setLastInsertId(lastInsertId);
         executionContext.getConnection().setReturnedLastInsertId(returnedLastInsertId);
+
+        //insert split没有走参数化，所以要在这添加MultiLine的判断
+        sql.setMultiLine(lexer.getLine() > 1);
 
         AffectRowCursor arc = new AffectRowCursor(affectRows);
         return new ResultCursor(arc);

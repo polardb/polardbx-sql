@@ -1,0 +1,57 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `t_escape_``chars_1` (
+`i``D` INT PRIMARY KEY,
+`i``D2` INT,
+`i``D3` INT,
+`nA``me` VARCHAR(50)
+)
+single;
+show create table `t_escape_``chars_1`;
+Table,Create Table
+t_escape_`chars_1,CREATE TABLE `t_escape_``chars_1` (
+	`i``D` int(11) NOT NULL,
+	`i``D2` int(11) DEFAULT NULL,
+	`i``D3` int(11) DEFAULT NULL,
+	`nA``me` varchar(50) DEFAULT NULL,
+	PRIMARY KEY (`i``D`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+CREATE TABLE `t_escape_``chars_2` (
+`i``D` INT PRIMARY KEY,
+`i``D2` VARCHAR(32),
+`i``D3` VARCHAR(32),
+`ti``me` DATETIME
+)
+partition by hash(year(`ti``me`) ) partitions 5;
+show create table `t_escape_``chars_2`;
+Table,Create Table
+t_escape_`chars_2,CREATE TABLE `t_escape_``chars_2` (
+	`i``D` int(11) NOT NULL,
+	`i``D2` varchar(32) DEFAULT NULL,
+	`i``D3` varchar(32) DEFAULT NULL,
+	`ti``me` datetime DEFAULT NULL,
+	PRIMARY KEY (`i``D`),
+	KEY `auto_shard_key_ti``me` USING BTREE (`ti``me`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(YEAR(`ti``me`))
+PARTITIONS 5
+CREATE TABLE `t_escape_``chars_3` (
+`i``D` INT PRIMARY KEY,
+`i``D2` VARCHAR(32),
+`i``D3` VARCHAR(32),
+`nAme` VARCHAR(50)
+)
+partition by co_hash(RIGHT(`i``D2`,4),RIGHT(`i``D3`,4) ) partitions 5;
+show create table `t_escape_``chars_3`;
+Table,Create Table
+t_escape_`chars_3,CREATE TABLE `t_escape_``chars_3` (
+	`i``D` int(11) NOT NULL,
+	`i``D2` varchar(32) DEFAULT NULL,
+	`i``D3` varchar(32) DEFAULT NULL,
+	`nAme` varchar(50) DEFAULT NULL,
+	PRIMARY KEY (`i``D`),
+	KEY `auto_shard_key_i``d2` USING BTREE (`i``D2`),
+	KEY `auto_shard_key_i``d3` USING BTREE (`i``D3`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(RIGHT(`i``D2`,4),RIGHT(`i``D3`,4))
+PARTITIONS 5

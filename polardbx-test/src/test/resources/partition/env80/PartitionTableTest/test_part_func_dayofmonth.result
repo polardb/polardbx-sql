@@ -36,19 +36,19 @@ d
 ## explain
 explain select * from d1 where d = '2022-07-18' order by d;
 Logical ExecutionPlan
-LogicalView(tables="d1[p11]", sql="SELECT `d` FROM `d1` AS `d1` WHERE (`d` = ?) ORDER BY `d`")
+PhyTableOperation(tables="d1[p11]", sql="SELECT `d1`.`d` FROM ? AS `d1` WHERE (`d1`.`d` = ?) ORDER BY `d`", params="2022-07-18")
 HitCache:false
 Source:PLAN_CACHE
 TemplateId: 024aaf5b
 explain select * from d1 where d = '2022-06-18' order by d;
 Logical ExecutionPlan
-LogicalView(tables="d1[p11]", sql="SELECT `d` FROM `d1` AS `d1` WHERE (`d` = ?) ORDER BY `d`")
+PhyTableOperation(tables="d1[p11]", sql="SELECT `d1`.`d` FROM ? AS `d1` WHERE (`d1`.`d` = ?) ORDER BY `d`", params="2022-06-18")
 explain select * from d1 where d = '2022-07-19' order by d;
 Logical ExecutionPlan
-LogicalView(tables="d1[p12]", sql="SELECT `d` FROM `d1` AS `d1` WHERE (`d` = ?) ORDER BY `d`")
+PhyTableOperation(tables="d1[p12]", sql="SELECT `d1`.`d` FROM ? AS `d1` WHERE (`d1`.`d` = ?) ORDER BY `d`", params="2022-07-19")
 explain select * from d1 where d = '2021-07-20' order by d;
 Logical ExecutionPlan
-LogicalView(tables="d1[p3]", sql="SELECT `d` FROM `d1` AS `d1` WHERE (`d` = ?) ORDER BY `d`")
+PhyTableOperation(tables="d1[p3]", sql="SELECT `d1`.`d` FROM ? AS `d1` WHERE (`d1`.`d` = ?) ORDER BY `d`", params="2021-07-20")
 ## range select
 select * from d1 where (d < '2022-07-18' and d > '2021-07-20') or d between '2020-07-18' and '2021-07-20' order by d;
 d
@@ -177,19 +177,19 @@ d
 ## explain p0, p1, p2, pd is expected
 explain select * from d3 where d = '2022-07-01';
 Logical ExecutionPlan
-LogicalView(tables="d3[p0]", sql="SELECT `d` FROM `d3` AS `d3` WHERE (`d` = ?)")
+PhyTableOperation(tables="d3[p0]", sql="SELECT `d3`.`d` FROM ? AS `d3` WHERE (`d3`.`d` = ?)", params="2022-07-01")
 HitCache:false
 Source:PLAN_CACHE
 TemplateId: 2fdcbc3e
 explain select * from d3 where d = '2022-07-07';
 Logical ExecutionPlan
-LogicalView(tables="d3[p1]", sql="SELECT `d` FROM `d3` AS `d3` WHERE (`d` = ?)")
+PhyTableOperation(tables="d3[p1]", sql="SELECT `d3`.`d` FROM ? AS `d3` WHERE (`d3`.`d` = ?)", params="2022-07-07")
 explain select * from d3 where d = '2022-07-14';
 Logical ExecutionPlan
-LogicalView(tables="d3[p2]", sql="SELECT `d` FROM `d3` AS `d3` WHERE (`d` = ?)")
+PhyTableOperation(tables="d3[p2]", sql="SELECT `d3`.`d` FROM ? AS `d3` WHERE (`d3`.`d` = ?)", params="2022-07-14")
 explain select * from d3 where d = '2022-07-21';
 Logical ExecutionPlan
-LogicalView(tables="d3[pd]", sql="SELECT `d` FROM `d3` AS `d3` WHERE (`d` = ?)")
+PhyTableOperation(tables="d3[pd]", sql="SELECT `d3`.`d` FROM ? AS `d3` WHERE (`d3`.`d` = ?)", params="2022-07-21")
 ## range select
 select * from d3 where (d < '2022-07-21' and d > '2022-07-07') or d between '2022-07-01' and '2022-07-07' order by d;
 d
@@ -263,19 +263,19 @@ dt
 ## explain p0, p1, p2, pd is expected
 explain select * from d4 where dt = '2022-07-01 00:00:00';
 Logical ExecutionPlan
-LogicalView(tables="d4[p0]", sql="SELECT `dt` FROM `d4` AS `d4` WHERE (`dt` = ?)")
+PhyTableOperation(tables="d4[p0]", sql="SELECT `d4`.`dt` FROM ? AS `d4` WHERE (`d4`.`dt` = ?)", params="2022-07-01 00:00:00")
 HitCache:false
 Source:PLAN_CACHE
 TemplateId: b22b860d
 explain select * from d4 where dt = '2022-07-07 00:00:00';
 Logical ExecutionPlan
-LogicalView(tables="d4[p1]", sql="SELECT `dt` FROM `d4` AS `d4` WHERE (`dt` = ?)")
+PhyTableOperation(tables="d4[p1]", sql="SELECT `d4`.`dt` FROM ? AS `d4` WHERE (`d4`.`dt` = ?)", params="2022-07-07 00:00:00")
 explain select * from d4 where dt = '2022-07-14 00:00:00';
 Logical ExecutionPlan
-LogicalView(tables="d4[p2]", sql="SELECT `dt` FROM `d4` AS `d4` WHERE (`dt` = ?)")
+PhyTableOperation(tables="d4[p2]", sql="SELECT `d4`.`dt` FROM ? AS `d4` WHERE (`d4`.`dt` = ?)", params="2022-07-14 00:00:00")
 explain select * from d4 where dt = '2022-07-21 00:00:00';
 Logical ExecutionPlan
-LogicalView(tables="d4[pd]", sql="SELECT `dt` FROM `d4` AS `d4` WHERE (`dt` = ?)")
+PhyTableOperation(tables="d4[pd]", sql="SELECT `d4`.`dt` FROM ? AS `d4` WHERE (`d4`.`dt` = ?)", params="2022-07-21 00:00:00")
 ## range select
 select * from d4 where (dt < '2022-07-21 00:00:00' and dt > '2022-07-07 00:00:00') or dt between '2022-07-01 00:00:00' and '2022-07-07 00:00:00' order by dt;
 dt
@@ -349,19 +349,19 @@ d
 ## explain point select
 explain select * from d5 where d = '2022-07-07';
 Logical ExecutionPlan
-LogicalView(tables="d5[p0]", sql="SELECT `d` FROM `d5` AS `d5` WHERE (`d` = ?)")
+PhyTableOperation(tables="d5[p0]", sql="SELECT `d5`.`d` FROM ? AS `d5` WHERE (`d5`.`d` = ?)", params="2022-07-07")
 HitCache:false
 Source:PLAN_CACHE
 TemplateId: 0ce2c940
 explain select * from d5 where d = '2022-07-14';
 Logical ExecutionPlan
-LogicalView(tables="d5[p1]", sql="SELECT `d` FROM `d5` AS `d5` WHERE (`d` = ?)")
+PhyTableOperation(tables="d5[p1]", sql="SELECT `d5`.`d` FROM ? AS `d5` WHERE (`d5`.`d` = ?)", params="2022-07-14")
 explain select * from d5 where d = '2022-07-21';
 Logical ExecutionPlan
-LogicalView(tables="d5[p2]", sql="SELECT `d` FROM `d5` AS `d5` WHERE (`d` = ?)")
+PhyTableOperation(tables="d5[p2]", sql="SELECT `d5`.`d` FROM ? AS `d5` WHERE (`d5`.`d` = ?)", params="2022-07-21")
 explain select * from d5 where d = '2022-07-22';
 Logical ExecutionPlan
-LogicalView(tables="d5[pd]", sql="SELECT `d` FROM `d5` AS `d5` WHERE (`d` = ?)")
+PhyTableOperation(tables="d5[pd]", sql="SELECT `d5`.`d` FROM ? AS `d5` WHERE (`d5`.`d` = ?)", params="2022-07-22")
 ## range select
 select * from d5 where (d < '2022-07-21' and d > '2022-07-07') or d between '2022-07-21' and '2022-07-22' order by d;
 d

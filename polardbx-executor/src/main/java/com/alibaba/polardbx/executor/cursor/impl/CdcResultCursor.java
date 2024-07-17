@@ -16,17 +16,17 @@
 
 package com.alibaba.polardbx.executor.cursor.impl;
 
+import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.rpc.cdc.BinaryLog;
+import com.alibaba.polardbx.rpc.cdc.BinlogEvent;
+import com.alibaba.polardbx.rpc.cdc.FullBinaryLog;
+import io.grpc.Channel;
+import io.grpc.ManagedChannel;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.Function;
-
-import com.alibaba.polardbx.rpc.cdc.BinaryLog;
-import com.alibaba.polardbx.rpc.cdc.BinlogEvent;
-
-import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
-import com.alibaba.polardbx.optimizer.core.row.Row;
-import io.grpc.Channel;
-import io.grpc.ManagedChannel;
 
 public class CdcResultCursor extends ArrayResultCursor {
 
@@ -41,6 +41,19 @@ public class CdcResultCursor extends ArrayResultCursor {
                     ((BinlogEvent) obj).getEventType(), ((BinlogEvent) obj).getServerId(),
                     ((BinlogEvent) obj).getEndLogPos(),
                     ((BinlogEvent) obj).getInfo()});
+        } else if (obj instanceof FullBinaryLog) {
+            return new ArrayRow(getMeta(), new Object[] {
+                ((FullBinaryLog) obj).getLogName(),
+                ((FullBinaryLog) obj).getFileSize(),
+                ((FullBinaryLog) obj).getCreatedTime(),
+                ((FullBinaryLog) obj).getLastModifyTime(),
+                ((FullBinaryLog) obj).getFirstEventTime(),
+                ((FullBinaryLog) obj).getLastEventTime(),
+                ((FullBinaryLog) obj).getLastTso(),
+                ((FullBinaryLog) obj).getUploadStatus(),
+                ((FullBinaryLog) obj).getFileLocation(),
+                ((FullBinaryLog) obj).getExt()
+            });
         }
         return null;
     };

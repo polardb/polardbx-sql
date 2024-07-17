@@ -31,6 +31,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
@@ -81,8 +82,9 @@ public final class LogicalTableScan extends TableScan {
 
   public LogicalTableScan(RelOptCluster cluster, RelTraitSet traitSet,
                           RelOptTable table, SqlNodeList hints, SqlNode indexNode, RexNode flashback,
+                          SqlOperator flashbackOperator,
                           SqlNode partitions) {
-    super(cluster, traitSet, table, hints, indexNode, flashback, partitions);
+    super(cluster, traitSet, table, hints, indexNode, flashback, flashbackOperator, partitions);
   }
 
   @Deprecated // to be removed before 2.0
@@ -110,12 +112,12 @@ public final class LogicalTableScan extends TableScan {
    */
   public static LogicalTableScan create(RelOptCluster cluster,
                                         final RelOptTable relOptTable) {
-      return create(cluster, relOptTable, new SqlNodeList(SqlParserPos.ZERO), null, null, null);
+    return create(cluster, relOptTable, new SqlNodeList(SqlParserPos.ZERO), null, null, null, null);
   }
 
   public static LogicalTableScan create(RelOptCluster cluster,
                                         final RelOptTable relOptTable, SqlNodeList hints, SqlNode indexNode,
-                                        RexNode flashback, SqlNode partitions) {
+                                        RexNode flashback, SqlOperator flashbackOperator, SqlNode partitions) {
 
     final Table table = relOptTable.unwrap(Table.class);
     final RelTraitSet traitSet =
@@ -127,7 +129,8 @@ public final class LogicalTableScan extends TableScan {
                   }
                   return ImmutableList.of();
                 }).simplify();
-    return new LogicalTableScan(cluster, traitSet, relOptTable, hints, indexNode, flashback, partitions);
+    return new LogicalTableScan(cluster, traitSet, relOptTable, hints, indexNode, flashback, flashbackOperator,
+        partitions);
   }
 
 

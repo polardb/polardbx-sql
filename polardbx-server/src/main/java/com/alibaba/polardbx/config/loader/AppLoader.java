@@ -44,8 +44,6 @@ import java.util.TreeSet;
  */
 public abstract class AppLoader extends BaseAppLoader {
 
-    private static final Set<String> loadingSchemas = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-
     protected static final Logger logger = LoggerFactory.getLogger(AppLoader.class);
 
     public AppLoader(String cluster, String unitName) {
@@ -90,6 +88,11 @@ public abstract class AppLoader extends BaseAppLoader {
         ds.putConnectionProperties(ConnectionProperties.SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE,
             system.getDropOldDataBaseAfterSwitchDataSource());
 
+        ds.putConnectionProperties(
+            ConnectionProperties.ENABLE_COLUMNAR_OPTIMIZER, ConfigDataMode.isColumnarMode() ? true : false);
+        ds.putConnectionProperties(
+            ConnectionProperties.ENABLE_DIRECT_PLAN, ConfigDataMode.isColumnarMode() ? false : true);
+
         if (system.getWorkloadType() != null) {
             ds.putConnectionProperties(ConnectionProperties.WORKLOAD_TYPE, system.getWorkloadType());
         }
@@ -111,9 +114,9 @@ public abstract class AppLoader extends BaseAppLoader {
         schema = new SchemaConfig(dbName);
         schema.setDataSource(ds);
         ds.setRecorder(
-            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold(), system.getSlowSqlTime()));
+            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold()));
         ds.setPhysicalRecorder(
-            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold(), system.getSlowSqlTime()));
+            new SQLRecorder(system.getSqlRecordCount(), system.getSlowSqlSizeThresold()));
         if (ds.isDefaultDb()) {
             TDataSourceInitUtils.initDataSource(ds);
         }
@@ -131,4 +134,5 @@ public abstract class AppLoader extends BaseAppLoader {
             schema.setDropped(true);
         }
     }
+
 }

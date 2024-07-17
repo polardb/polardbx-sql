@@ -513,7 +513,8 @@ public class AlterTableGroupSnapShotUtils {
                                                                      SingleValuePartitionBoundSpec newBound /*Output params*/) {
 
         long splitAtVal;
-        if (partColCnt <= 1 || splitSpec.getStrategy() == PartitionStrategy.HASH) {
+        if (partColCnt <= 1 || (splitSpec.getStrategy() == PartitionStrategy.HASH
+            || splitSpec.getStrategy() == PartitionStrategy.CO_HASH)) {
             splitAtVal = calculateSplitAtHash(sqlAlter, oldPartitions, newPartitions, splitSpec, firstPartition,
                 sqlAlter.getNewPartitions().size(), curRange);
             SearchDatumInfo newBndValDatum = SearchDatumInfo.createFromHashCode(splitAtVal);
@@ -879,7 +880,8 @@ public class AlterTableGroupSnapShotUtils {
                 && isUseSubPartitionTemplate
                 && partSpec.getTemplateName()
                 .equalsIgnoreCase(splitPartitionSpec.getTemplateName()))) {
-                if (strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.KEY) {
+                if (strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.KEY
+                    || strategy == PartitionStrategy.CO_HASH) {
                     generateNewPartitionsForSplitHashType(curPartitionInfo,
                         partColCnt,
                         actualPartColCnt,

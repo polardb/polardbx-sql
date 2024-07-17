@@ -29,14 +29,13 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.executor.mpp.Session;
 import io.airlift.units.Duration;
 import org.apache.calcite.rel.RelNode;
 import org.joda.time.DateTime;
 
 import java.util.List;
-
 import java.util.concurrent.Future;
 
 import static java.util.Objects.requireNonNull;

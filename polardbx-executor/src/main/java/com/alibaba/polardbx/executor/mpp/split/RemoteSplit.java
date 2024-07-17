@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.split;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;

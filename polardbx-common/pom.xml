@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.18-SNAPSHOT</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <artifactId>polardbx-common</artifactId>
@@ -12,6 +12,7 @@
     <name>${project.artifactId} module for polardbx ${project.version}</name>
 
     <dependencies>
+
         <dependency>
             <groupId>commons-lang</groupId>
             <artifactId>commons-lang</artifactId>
@@ -66,13 +67,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Test libs -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <scope>test</scope>
-        </dependency>
-
         <dependency>
             <groupId>org.openjdk.jol</groupId>
             <artifactId>jol-core</artifactId>
@@ -93,6 +87,11 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk15on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk15on</artifactId>
             <version>${bouncycastle.version}</version>
         </dependency>
 
@@ -122,13 +121,21 @@
                     <artifactId>slf4j-simple</artifactId>
                     <groupId>org.slf4j</groupId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.apache.arrow</groupId>
+                    <artifactId>arrow-vector</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.arrow</groupId>
+                    <artifactId>arrow-memory-netty</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
 
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-client</artifactId>
-            <version>${hadoop-client.version}</version>
+            <version>${hadoop.version}</version>
             <exclusions>
                 <exclusion>
                     <artifactId>commons-logging</artifactId>
@@ -167,13 +174,25 @@
             <artifactId>protobuf-java</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.google.protobuf</groupId>
-            <artifactId>protobuf-java</artifactId>
-        </dependency>
-        <dependency>
             <groupId>com.emc.ecs</groupId>
             <artifactId>nfs-client</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>org.roaringbitmap</groupId>
+            <artifactId>RoaringBitmap</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
     <profiles>
         <profile>

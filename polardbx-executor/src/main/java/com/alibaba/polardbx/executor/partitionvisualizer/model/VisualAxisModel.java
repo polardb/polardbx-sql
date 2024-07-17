@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer.model;
 
-import java.io.Serializable;
-
 import lombok.Data;
+
+import java.io.Serializable;
 
 /**
  * 存储到数据库中的纵向轴数据，可以和VisualAxis互相转换
+ *
  * @author ximing.yd
- * @date 2021/12/20 上午11:14
  */
 @Data
 public class VisualAxisModel implements Serializable {

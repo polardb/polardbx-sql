@@ -20,7 +20,9 @@ package org.apache.orc;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.function.Supplier;
 
+import org.apache.orc.customized.ORCProfile;
 import org.apache.orc.impl.BufferChunkList;
 import org.apache.orc.impl.InStream;
 
@@ -29,6 +31,13 @@ public interface DataReader extends AutoCloseable, Cloneable {
 
   /** Opens the DataReader, making it ready to use. */
   void open() throws IOException;
+
+  /**
+   * Set a lambda to be checked by data-reader, and stop IO processing if
+   * this lambda return TRUE.
+   * @param isCanceled
+   */
+  void setController(Supplier<Boolean> isCanceled);
 
   OrcProto.StripeFooter readStripeFooter(StripeInformation stripe) throws IOException;
 
@@ -45,6 +54,13 @@ public interface DataReader extends AutoCloseable, Cloneable {
    */
   BufferChunkList readFileData(BufferChunkList range,
                                boolean doForceDirect) throws IOException;
+
+  BufferChunkList readFileData(BufferChunkList range,
+                               boolean doForceDirect,
+                               ORCProfile memoryCounter,
+                               ORCProfile ioBytesCounter,
+                               ORCProfile ioTimer
+                               ) throws IOException;
 
   /**
    * Whether the user should release buffers created by readFileData. See readFileData javadoc.

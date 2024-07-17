@@ -32,9 +32,6 @@ import java.util.List;
 
 public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCreateStatement, SQLIndex {
 
-    private SQLIndexDefinition indexDefinition = new SQLIndexDefinition();
-
-    private boolean concurrently; // for pg
     protected SQLName tablespace; // for oracle
     protected boolean deferedRebuild;
     protected SQLTableSource in;
@@ -43,6 +40,8 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
     protected List<SQLAssignItem> properties = new ArrayList<SQLAssignItem>();
     protected List<SQLAssignItem> tableProperties = new ArrayList<SQLAssignItem>();
     protected boolean storing;
+    private SQLIndexDefinition indexDefinition = new SQLIndexDefinition();
+    private boolean concurrently; // for pg
 
     public SQLCreateIndexStatement() {
         indexDefinition.setParent(this);
@@ -290,6 +289,10 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
         indexDefinition.setClustered(clustered);
     }
 
+    public boolean isColumnar() {
+        return indexDefinition.isColumnar();
+    }
+
     public SQLExpr getDbPartitionBy() {
         return indexDefinition.getDbPartitionBy();
     }
@@ -310,16 +313,16 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
         return indexDefinition.getTbPartitionBy();
     }
 
-    public void setPartitioning(SQLPartitionBy x) {
-        indexDefinition.setPartitioning(x);
+    public void setTablePartitionBy(SQLExpr x) {
+        indexDefinition.setTbPartitionBy(x);
     }
 
     public SQLPartitionBy getPartitioning() {
         return indexDefinition.getPartitioning();
     }
 
-    public void setTablePartitionBy(SQLExpr x) {
-        indexDefinition.setTbPartitionBy(x);
+    public void setPartitioning(SQLPartitionBy x) {
+        indexDefinition.setPartitioning(x);
     }
 
     public SQLName getTableGroup() {
@@ -328,6 +331,22 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
 
     public void setTableGroup(SQLName tableGroup) {
         this.indexDefinition.setTableGroup(tableGroup);
+    }
+
+    public SQLName getEngineName() {
+        return this.indexDefinition.getEngineName();
+    }
+
+    public void setEngineName(SQLName engineName) {
+        this.indexDefinition.setEngineName(engineName);
+    }
+
+    public boolean isWithImplicitTablegroup() {
+        return indexDefinition.isWithImplicitTablegroup();
+    }
+
+    public void setWithImplicitTablegroup(boolean withImplicitTablegroup) {
+        this.indexDefinition.setWithImplicitTablegroup(withImplicitTablegroup);
     }
 
     public boolean isStoring() {
@@ -341,6 +360,11 @@ public class SQLCreateIndexStatement extends SQLStatementImpl implements SQLCrea
     @Override
     public List<SQLName> getCovering() {
         return indexDefinition.getCovering();
+    }
+
+    @Override
+    public List<SQLName> getClusteredKeys() {
+        return indexDefinition.getClusteredKeys();
     }
 
     @Override

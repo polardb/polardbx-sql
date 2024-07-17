@@ -16,30 +16,37 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.executor.calc.AbstractAggregator;
-import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.ConcurrentIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.accumulator.Accumulator;
+import com.alibaba.polardbx.executor.accumulator.AccumulatorBuilders;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
+import com.alibaba.polardbx.executor.chunk.Converters;
+import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.IntegerBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.NullBlock;
+import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
+import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
 import com.alibaba.polardbx.executor.operator.util.DistinctSet;
-import com.alibaba.polardbx.executor.operator.util.ElementaryChunksIndex;
 import com.alibaba.polardbx.executor.operator.util.HashAggResultIterator;
 import com.alibaba.polardbx.executor.operator.util.TypedBuffer;
+import com.alibaba.polardbx.executor.operator.util.TypedList;
+import com.alibaba.polardbx.executor.operator.util.TypedListHandle;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.row.JoinRow;
@@ -50,6 +57,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -75,7 +83,7 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     protected ConcurrentRawHashTable hashTable;
     protected int[] positionLinks;
-    protected FastIntBloomFilter bloomFilter;
+    protected ConcurrentIntBloomFilter bloomFilter;
 
     private TypedBuffer groupKeyBuffer;
     private final DataType[] aggValueType;
@@ -87,16 +95,20 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     private final BlockBuilder[] valueBlockBuilders;
 
+    private ChunkConverter[] valueConverters;
+
+    protected Accumulator[] valueAccumulators;
+
     private DistinctSet[] distinctSets;
 
     private HashAggResultIterator resultIterator;
 
-    private Chunk nullChunk = new Chunk(new NullBlock(1));
+    private Chunk nullChunk = new Chunk(new NullBlock(chunkLimit));
 
     private int groupId = 0;
 
-    private ElementaryChunksIndex outerChunks;
-    private ElementaryChunksIndex outKeyChunks;
+    private ChunksIndex outerChunks;
+    private ChunksIndex outKeyChunks;
 
     private MemoryPool memoryPool;
     private MemoryAllocatorCtx memoryAllocator;
@@ -105,13 +117,14 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     private int[] keys;
     private BitSet usedKeys;
+    private Chunk[] inputAggregatorInputs;
 
     private boolean isFinished = false;
     private ListenableFuture<?> blocked = ProducerExecutor.NOT_BLOCKED;
 
     private List<DataType> outputRelDataTypes;
 
-    private long needMemoryAllocated = 0;
+    private GroupJoinProbeOperator probeOperator;
 
     public HashGroupJoinExec(Executor outerInput,
                              Executor innerInput,
@@ -130,6 +143,7 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         Preconditions.checkArgument(!semiJoin, "Don't support semiJoin!");
         this.groups = groups;
         this.aggregators = aggregators;
+        this.inputAggregatorInputs = new Chunk[aggregators.size()];
         this.outputRelDataTypes = outputRelDataTypes;
         createBlockBuilders();
 
@@ -147,14 +161,26 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         this.groupKeyBuffer = TypedBuffer.create(groupTypes, chunkLimit, context);
 
         this.aggValueType = aggTypes;
+        //init aggregate accumulator
+        this.valueAccumulators = new Accumulator[aggregators.size()];
+        this.valueConverters = new ChunkConverter[aggregators.size()];
         this.distinctSets = new DistinctSet[aggregators.size()];
         for (i = 0; i < aggregators.size(); i++) {
-            final AbstractAggregator aggregator = (AbstractAggregator) aggregators.get(i);
-            aggregator.open(expectedOutputRowCount);
-            int[] aggIndexInChunk = aggregator.getOriginTargetIndexes();
+            final Aggregator aggregator = aggregators.get(i);
+            this.valueAccumulators[i] =
+                AccumulatorBuilders
+                    .create(aggregator, aggValueType[i], aggInputType, expectedOutputRowCount, this.context);
+
+            DataType[] originalInputTypes = DataTypeUtils.gather(aggInputType, aggregator.getInputColumnIndexes());
+            DataType[] accumulatorInputTypes = Util.first(valueAccumulators[i].getInputTypes(), originalInputTypes);
+            this.valueConverters[i] =
+                Converters.createChunkConverter(aggregator.getInputColumnIndexes(), aggInputType, accumulatorInputTypes,
+                    joinType == JoinRelType.RIGHT ? 0 : outerInput.getDataTypes().size(), context);
+
             if (aggregator.isDistinct()) {
-                distinctSets[i] =
-                    new DistinctSet(aggInputType, aggIndexInChunk, expectedOutputRowCount, chunkLimit,
+                int[] distinctIndexes = aggregator.getNewForAccumulator().getAggTargetIndexes();
+                this.distinctSets[i] =
+                    new DistinctSet(accumulatorInputTypes, distinctIndexes, expectedOutputRowCount, chunkLimit,
                         context);
             }
         }
@@ -162,6 +188,54 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         for (i = 0; i < aggregators.size(); i++) {
             this.valueBlockBuilders[i] = BlockBuilders.create(aggValueType[i], context);
         }
+
+        this.outerChunks = new ChunksIndex();
+        this.outKeyChunks = new ChunksIndex();
+
+        boolean enableVecJoin = context.getParamManager().getBoolean(ConnectionParams.ENABLE_VEC_JOIN);
+
+        boolean hasNoDistinct = true;
+        for (int index = 0; index < distinctSets.length; index++) {
+            hasNoDistinct &= distinctSets[index] == null;
+        }
+
+        final boolean isSingleIntegerType =
+            joinKeys.size() == 1 && (joinKeys.get(0).getUnifiedType() instanceof IntegerType) && !joinKeys.get(0)
+                .isNullSafeEqual();
+
+        if (enableVecJoin && isSingleIntegerType && hasNoDistinct && condition == null) {
+            this.probeOperator = new IntGroupJoinProbeOperator();
+
+            // for fast group key output
+            this.groupKeyBuffer = TypedBuffer.createTypeSpecific(DataTypes.IntegerType, chunkLimit, context);
+
+            // for fast probe
+            this.outKeyChunks.setTypedHashTable(new TypedListHandle() {
+                private TypedList[] typedLists;
+
+                @Override
+                public long estimatedSize(int fixedSize) {
+                    return TypedList.IntTypedList.estimatedSizeInBytes(fixedSize);
+                }
+
+                @Override
+                public TypedList[] getTypedLists(int fixedSize) {
+                    if (typedLists == null) {
+                        typedLists = new TypedList[] {TypedList.createInt(fixedSize)};
+                    }
+                    return typedLists;
+                }
+
+                @Override
+                public void consume(Chunk chunk, int sourceIndex) {
+                    chunk.getBlock(0).cast(Block.class)
+                        .appendTypedHashTable(typedLists[0], sourceIndex, 0, chunk.getPositionCount());
+                }
+            });
+        } else {
+            this.probeOperator = new DefaultGroupJoinProbeOperator();
+        }
+
     }
 
     @Override
@@ -176,9 +250,6 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     @Override
     public void openConsume() {
-        outerChunks = new ElementaryChunksIndex(chunkLimit);
-        outKeyChunks = new ElementaryChunksIndex(chunkLimit);
-
         memoryPool =
             MemoryPoolUtils.createOperatorTmpTablePool(getExecutorName(), context.getMemoryPool());
         memoryAllocator = memoryPool.getMemoryAllocatorCtx();
@@ -191,8 +262,6 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
                 passNothing = true;
             }
             doBuildHashTable();
-            outerChunks.buildRow();
-            outKeyChunks.buildRow();
         }
     }
 
@@ -206,21 +275,26 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         positionLinks = new int[size];
         Arrays.fill(positionLinks, LIST_END);
 
+        // create type list
+        outKeyChunks.openTypedHashTable();
+
         if (size <= BLOOM_FILTER_ROWS_LIMIT) {
-            bloomFilter = FastIntBloomFilter.create(size);
+            bloomFilter = ConcurrentIntBloomFilter.create(size);
             memoryAllocator.allocateReservedMemory(bloomFilter.sizeInBytes());
         }
         int position = 0;
 
         for (int chunkId = 0; chunkId < outKeyChunks.getChunkCount(); ++chunkId) {
+            outKeyChunks.addChunkToTypedList(chunkId);
+
             final Chunk keyChunk = outKeyChunks.getChunk(chunkId);
-            buildOneChunk(keyChunk, position, hashTable, positionLinks, bloomFilter, aggregators);
+            buildOneChunk(keyChunk, position, hashTable, positionLinks, bloomFilter, aggregators, valueAccumulators);
             position += keyChunk.getPositionCount();
         }
         assert position == size;
 
         // Allocate memory for the hash-table
-        memoryAllocator.allocateReservedMemory(hashTable.estimateSize());
+        memoryAllocator.allocateReservedMemory(hashTable.estimateSizeInBytes());
         memoryAllocator.allocateReservedMemory(SizeOf.sizeOf(positionLinks));
 
         logger.info("complete building hash table");
@@ -258,49 +332,40 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         }
     }
 
-    private int matchInit(int hashCode, Chunk keyChunk, int position) {
-        if (bloomFilter != null && !bloomFilter.mightContain(hashCode)) {
-            return LIST_END;
-        }
-
-        int matchedPosition = hashTable.get(hashCode);
-        while (matchedPosition != LIST_END) {
-            if (outKeyChunks.equals(matchedPosition, keyChunk, position)) {
-                break;
-            }
-            matchedPosition = positionLinks[matchedPosition];
-        }
-        return matchedPosition;
-    }
-
-    private int matchNext(int current, Chunk keyChunk, int position) {
-        int matchedPosition = positionLinks[current];
-        while (matchedPosition != LIST_END) {
-            if (outKeyChunks.equals(matchedPosition, keyChunk, position)) {
-                break;
-            }
-            matchedPosition = positionLinks[matchedPosition];
-        }
-        return matchedPosition;
-    }
-
-    private boolean matchValid(int current) {
-        return current != LIST_END;
-    }
-
     private void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
                                int[] positionLinks,
-                               FastIntBloomFilter bloomFilter, List<Aggregator> aggregators) {
+                               ConcurrentIntBloomFilter bloomFilter, List<Aggregator> aggregators,
+                               Accumulator[] valueAccumulators) {
         // Calculate hash codes of the whole chunk
         int[] hashes = keyChunk.hashCodeVector();
 
-        for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
-            int next = hashTable.put(position, hashes[offset]);
-            positionLinks[position] = next;
-            if (bloomFilter != null) {
-                bloomFilter.put(hashes[offset]);
+        if (checkJoinKeysAllNullSafe(keyChunk, ignoreNullBlocks)) {
+            // If all keys are not null, we can leave out the null-check procedure
+            for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
+                int next = hashTable.put(position, hashes[offset]);
+                positionLinks[position] = next;
+                if (bloomFilter != null) {
+                    bloomFilter.putInt(hashes[offset]);
+                }
+                for (int i = 0; i < aggregators.size(); i++) {
+                    valueAccumulators[i].appendInitValue();
+                }
             }
-            aggregators.forEach(Aggregator::appendInitValue);
+
+        } else {
+            // Otherwise we have to check nullability for each row
+            for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
+                if (checkJoinKeysNulSafe(keyChunk, offset, ignoreNullBlocks)) {
+                    int next = hashTable.put(position, hashes[offset]);
+                    positionLinks[position] = next;
+                    if (bloomFilter != null) {
+                        bloomFilter.putInt(hashes[offset]);
+                    }
+                    for (int i = 0; i < aggregators.size(); i++) {
+                        valueAccumulators[i].appendInitValue();
+                    }
+                }
+            }
         }
     }
 
@@ -311,29 +376,21 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
             return null;
         }
         if (resultIterator == null) {
-            if (needMemoryAllocated != 0) {
-                memoryAllocator.allocateReservedMemory(needMemoryAllocated);
-                needMemoryAllocated = 0;
-            }
             Chunk inputChunk = nextProbeChunk();
             boolean inputIsFinished = false;
             if (inputChunk != null) {
+                for (int i = 0; i < aggregators.size(); i++) {
+                    inputAggregatorInputs[i] = valueConverters[i].apply(inputChunk);
+                }
                 // Process outer rows in this input chunk
-                long beforeEstimateSize = aggregators.stream().mapToLong(Aggregator::estimateSize).sum();
-                calculateJoinAgg(inputChunk);
-                long afterEstimateSize = aggregators.stream().mapToLong(Aggregator::estimateSize).sum();
-                needMemoryAllocated = Math.max(afterEstimateSize - beforeEstimateSize, 0);
+                probeOperator.calcJoinAgg(inputChunk);
             } else {
                 inputIsFinished = getProbeInput().produceIsFinished();
             }
             if (inputIsFinished) {
                 //input is already finished.
                 if (joinType == JoinRelType.LEFT || joinType == JoinRelType.RIGHT) {
-                    final Chunk nullChunk = this.nullChunk;
-                    for (int i = usedKeys.nextClearBit(0), size = outKeyChunks.getPositionCount(); i >= 0 && i < size;
-                         i = usedKeys.nextClearBit(i + 1)) {
-                        buildNullRow(nullChunk, 0, i);
-                    }
+                    probeOperator.handleNull();
                 }
                 resultIterator = buildChunks();
             } else {
@@ -354,43 +411,6 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     private Chunk nextProbeChunk() {
         return getProbeInput().nextChunk();
-    }
-
-    private void calculateJoinAgg(Chunk inputChunk) {
-        final int positionCount = inputChunk.getPositionCount();
-        Chunk inputJoinKeyChunk = getProbeKeyChunkGetter().apply(inputChunk);
-        int[] currInputJoinKeyChunks = inputJoinKeyChunk.hashCodeVector();
-        final int[] ints = currInputJoinKeyChunks;
-        int position = 0;
-        boolean isMatching = false;
-        boolean matched = false;
-        int matchedPosition = LIST_END;
-        for (; position < positionCount; position++) {
-
-            // reset matched flag unless it's still during matching
-            if (!isMatching) {
-                matched = false;
-                matchedPosition = matchInit(ints[position], inputJoinKeyChunk, position);
-            } else {
-                // continue from the last processed match
-                matchedPosition = matchNext(matchedPosition, inputJoinKeyChunk, position);
-                isMatching = false;
-            }
-
-            for (; matchValid(matchedPosition);
-                 matchedPosition = matchNext(matchedPosition, inputJoinKeyChunk, position)) {
-                if (!checkJoinCondition(inputChunk, position, matchedPosition)) {
-                    continue;
-                }
-                buildJoinRow(position, matchedPosition, inputChunk);
-                // checks max1row generated from scalar subquery
-                if (singleJoin && matched && !(ConfigDataMode.isFastMock())) {
-                    throw GeneralUtil.nestedException("Scalar subquery returns more than 1 row");
-                }
-                // set matched flag
-                matched = true;
-            }
-        }
     }
 
     private boolean checkJoinCondition(Chunk outerChunk, int outerPosition, int innerPosition) {
@@ -422,8 +442,8 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
             for (int groupId = 0, i = usedKeys.nextSetBit(0), size = outKeyChunks.getPositionCount();
                  i >= 0 && i < size;
                  i = usedKeys.nextSetBit(i + 1)) {
-                for (int j = 0; j < aggregators.size(); j++) {
-                    aggregators.get(j).writeResultTo(groupId++, valueBlockBuilders[j]);
+                for (int j = 0; j < valueAccumulators.length; j++) {
+                    valueAccumulators[j].writeResultTo(groupId++, valueBlockBuilders[j]);
                 }
                 if (++offset == chunkLimit) {
                     chunks.add(buildValueChunk());
@@ -438,8 +458,8 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         case RIGHT:
             int offsetLeft = 0;
             for (int keyIndex = 0; keyIndex < this.outKeyChunks.getPositionCount(); keyIndex++) {
-                for (int j = 0; j < aggregators.size(); j++) {
-                    aggregators.get(j).writeResultTo(keyIndex, valueBlockBuilders[j]);
+                for (int j = 0; j < valueAccumulators.length; j++) {
+                    valueAccumulators[j].writeResultTo(keyIndex, valueBlockBuilders[j]);
                 }
                 if (++offsetLeft == chunkLimit) {
                     chunks.add(buildValueChunk());
@@ -454,6 +474,9 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
             throw new UnsupportedOperationException("Don't support joinType: " + joinType);
 
         }
+
+        //set null to deallocate memory
+        this.valueAccumulators = null;
 
         return chunks;
     }
@@ -472,46 +495,14 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
         return new Chunk(blocks);
     }
 
-    public void buildJoinRow(int position, int matchedPosition, Chunk inputChunk) {
-        usedKeys.set(matchedPosition);
-        final Chunk.ChunkRow chunkRow = outerChunks.rowAt(matchedPosition);
-        //build group keys
-        final int key = keys[matchedPosition];
-        if (key == LIST_END) {
-            keys[matchedPosition] = appendAndIncrementGroup(chunkRow.getChunk(), chunkRow.getPosition());
-        }
-
-        for (int aggIndex = 0; aggIndex < aggregators.size(); aggIndex++) {
-            boolean[] isDistinct = null;
-            if (distinctSets[aggIndex] != null) {
-                final IntegerBlockBuilder integerBlockBuilder = new IntegerBlockBuilder(1);
-                integerBlockBuilder.writeInt(keys[matchedPosition]);
-                isDistinct = distinctSets[aggIndex]
-                    .checkDistinct(integerBlockBuilder.build(), inputChunk, position);
-            }
-            if (isDistinct == null || isDistinct[0]) {
-                //to accumulate the Aggregate function result，here need 'aggregate convert' and 'aggregate accumulator'
-                doAggregate(inputChunk, aggIndex, position, keys[matchedPosition]);
-            }
-        }
-    }
-
-    public void buildNullRow(Chunk inputChunk, int position, int matchedPosition) {
-        final Chunk.ChunkRow chunkRow = outerChunks.rowAt(matchedPosition);
-        final int key = keys[matchedPosition];
-        if (key == LIST_END) {
-            keys[matchedPosition] = appendAndIncrementGroup(chunkRow.getChunk(), chunkRow.getPosition());
-        }
-        for (int aggIndex = 0; aggIndex < aggregators.size(); aggIndex++) {
-            //对右表计算Agg值，这里需要 aggregate convert 和 aggregate accumulator
-            doAggregate(inputChunk, aggIndex, position, keys[matchedPosition]);
-        }
-
+    private void doAggregate(Chunk[] aggInputChunks, int aggIndex, int position, int groupId) {
+        assert aggInputChunks != null;
+        valueAccumulators[aggIndex].accumulate(groupId, aggInputChunks[aggIndex], position);
     }
 
     private void doAggregate(Chunk aggInputChunk, int aggIndex, int position, int groupId) {
         assert aggInputChunk != null;
-        aggregators.get(aggIndex).accumulate(groupId, aggInputChunk, position);
+        valueAccumulators[aggIndex].accumulate(groupId, aggInputChunk, position);
     }
 
     private int appendAndIncrementGroup(Chunk chunk, int position) {
@@ -543,5 +534,342 @@ public class HashGroupJoinExec extends AbstractJoinExec implements ConsumerExecu
 
     private ChunkConverter getProbeKeyChunkGetter() {
         return innerKeyChunkGetter;
+    }
+
+    interface GroupJoinProbeOperator {
+        void calcJoinAgg(Chunk inputChunk);
+
+        void handleNull();
+    }
+
+    class DefaultGroupJoinProbeOperator implements GroupJoinProbeOperator {
+
+        @Override
+        public void calcJoinAgg(Chunk inputChunk) {
+            final int positionCount = inputChunk.getPositionCount();
+            Chunk inputJoinKeyChunk = getProbeKeyChunkGetter().apply(inputChunk);
+            final int[] hashVector = inputJoinKeyChunk.hashCodeVector();
+
+            int position = 0;
+            boolean isMatching = false;
+            boolean matched = false;
+            int matchedPosition = LIST_END;
+
+            for (; position < positionCount; position++) {
+
+                // reset matched flag unless it's still during matching
+                if (!isMatching) {
+                    matched = false;
+                    matchedPosition = matchInit(hashVector[position], inputJoinKeyChunk, position);
+                } else {
+                    // continue from the last processed match
+                    matchedPosition = matchNext(matchedPosition, inputJoinKeyChunk, position);
+                    isMatching = false;
+                }
+
+                for (; matchValid(matchedPosition);
+                     matchedPosition = matchNext(matchedPosition, inputJoinKeyChunk, position)) {
+                    if (!checkJoinCondition(inputChunk, position, matchedPosition)) {
+                        continue;
+                    }
+                    buildJoinRow(position, matchedPosition);
+                    // checks max1row generated from scalar subquery
+                    if (singleJoin && matched && !(ConfigDataMode.isFastMock())) {
+                        throw GeneralUtil.nestedException("Scalar subquery returns more than 1 row");
+                    }
+                    // set matched flag
+                    matched = true;
+                }
+            }
+        }
+
+        @Override
+        public void handleNull() {
+            for (int i = usedKeys.nextClearBit(0), size = outKeyChunks.getPositionCount(); i >= 0 && i < size;
+                 i = usedKeys.nextClearBit(i + 1)) {
+                buildNullRow(nullChunk, 0, i);
+            }
+        }
+
+        private void buildNullRow(Chunk inputChunk, int position, int matchedPosition) {
+            final Chunk.ChunkRow chunkRow = outerChunks.rowAt(matchedPosition);
+            final int key = keys[matchedPosition];
+            if (key == LIST_END) {
+                keys[matchedPosition] = appendAndIncrementGroup(chunkRow.getChunk(), chunkRow.getPosition());
+            }
+            for (int aggIndex = 0; aggIndex < aggregators.size(); aggIndex++) {
+                doAggregate(inputChunk, aggIndex, position, keys[matchedPosition]);
+            }
+
+        }
+
+        private int matchInit(int hashCode, Chunk keyChunk, int position) {
+            if (bloomFilter != null && !bloomFilter.mightContainInt(hashCode)) {
+                return LIST_END;
+            }
+
+            int matchedPosition = hashTable.get(hashCode);
+            while (matchedPosition != LIST_END) {
+                if (outKeyChunks.equals(matchedPosition, keyChunk, position)) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        private int matchNext(int current, Chunk keyChunk, int position) {
+            int matchedPosition = positionLinks[current];
+            while (matchedPosition != LIST_END) {
+                if (outKeyChunks.equals(matchedPosition, keyChunk, position)) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        private boolean matchValid(int current) {
+            return current != LIST_END;
+        }
+
+        private void buildJoinRow(int position, int matchedPosition) {
+            usedKeys.set(matchedPosition);
+            Chunk[] aggregatorInputs = inputAggregatorInputs;
+            final Chunk.ChunkRow chunkRow = outerChunks.rowAt(matchedPosition);
+            //build group keys
+            final int key = keys[matchedPosition];
+            if (key == LIST_END) {
+                keys[matchedPosition] = appendAndIncrementGroup(chunkRow.getChunk(), chunkRow.getPosition());
+            }
+
+            for (int aggIndex = 0; aggIndex < aggregators.size(); aggIndex++) {
+                boolean[] isDistinct = null;
+                if (distinctSets[aggIndex] != null) {
+                    final IntegerBlockBuilder integerBlockBuilder = new IntegerBlockBuilder(1);
+                    integerBlockBuilder.writeInt(keys[matchedPosition]);
+                    isDistinct = distinctSets[aggIndex]
+                        .checkDistinct(integerBlockBuilder.build(), aggregatorInputs[aggIndex], position);
+                }
+                if (isDistinct == null || isDistinct[0]) {
+                    //to accumulate the Aggregate function result，here need 'aggregate convert' and 'aggregate accumulator'
+                    doAggregate(aggregatorInputs, aggIndex, position, keys[matchedPosition]);
+                }
+            }
+        }
+    }
+
+    // Join condition = null
+    // distinct set = null
+    // singleJoin = false
+    class IntGroupJoinProbeOperator implements GroupJoinProbeOperator {
+        private int[] sourceArray = new int[chunkLimit];
+
+        // for join
+        protected int matchedRows = 0;
+        protected int[] matchedPositions = new int[chunkLimit];
+        protected int[] probePositions = new int[chunkLimit];
+
+        // for null value
+        protected BitSet nullBitmap = new BitSet(chunkLimit);
+        protected boolean hasNull = false;
+
+        // for hash code.
+        protected final int[] probeKeyHashCode = new int[chunkLimit];
+
+        // for agg
+        protected int[] groupIds = new int[chunkLimit];
+
+        // for GroupKeyBuffer append
+        protected int groupKeyBufferArrayIndex = 0;
+        protected int[] groupKeyBufferArray = new int[chunkLimit];
+
+        @Override
+        public void calcJoinAgg(Chunk inputChunk) {
+            // clear state for null values
+            hasNull = false;
+            nullBitmap.clear();
+
+            final int positionCount = inputChunk.getPositionCount();
+            Chunk inputJoinKeyChunk = getProbeKeyChunkGetter().apply(inputChunk);
+
+            Preconditions.checkArgument(inputJoinKeyChunk.getBlockCount() == 1
+                && inputJoinKeyChunk.getBlock(0).cast(Block.class) instanceof IntegerBlock);
+
+            boolean useHashVector = inputJoinKeyChunk.getBlock(0).cast(IntegerBlock.class).getSelection() != null;
+            if (useHashVector) {
+                inputJoinKeyChunk.hashCodeVector(probeKeyHashCode, null, null, positionCount);
+            }
+
+            // copy array from integer block
+            IntegerBlock integerBlock = inputJoinKeyChunk.getBlock(0).cast(IntegerBlock.class);
+            integerBlock.copyToIntArray(0, positionCount, sourceArray, 0, null);
+            if (integerBlock.mayHaveNull()) {
+                // collect nulls if block may have null value.
+                integerBlock.collectNulls(0, positionCount, nullBitmap, 0);
+                hasNull = !nullBitmap.isEmpty();
+            }
+
+            // clear matched rows for each input chunk.
+            matchedRows = 0;
+
+            boolean isMatching = false;
+            int matchedPosition = LIST_END;
+            for (int position = 0; position < positionCount; position++) {
+
+                // reset matched flag unless it's still during matching
+                if (!isMatching) {
+                    matchedPosition = useHashVector
+                        ? matchInit(probeKeyHashCode[position], position)
+                        : matchInit(position);
+                } else {
+                    // continue from the last processed match
+                    matchedPosition = matchNext(matchedPosition, position);
+                    isMatching = false;
+                }
+
+                for (; matchedPosition != LIST_END;
+                     matchedPosition = matchNext(matchedPosition, position)) {
+
+                    // record matched rows of [probed, matched]
+                    matchedPositions[matchedRows] = matchedPosition;
+                    probePositions[matchedRows] = position;
+                    matchedRows++;
+                }
+            }
+
+            buildJoinRow();
+        }
+
+        @Override
+        public void handleNull() {
+            // clear group key buffer
+            groupKeyBufferArrayIndex = 0;
+
+            int position = 0;
+            for (int unmatchedPosition = usedKeys.nextClearBit(0), size = outKeyChunks.getPositionCount();
+                 unmatchedPosition >= 0 && unmatchedPosition < size;
+                 unmatchedPosition = usedKeys.nextClearBit(unmatchedPosition + 1)) {
+
+                // find and allocate group id
+                if (keys[unmatchedPosition] == LIST_END) {
+                    // allocate group id.
+
+                    // we should get value in matched position of out key chunks.
+                    // It is equal to value in probe position of probe side chunk.
+                    int unmatchedValue = outKeyChunks.getInt(0, unmatchedPosition);
+                    groupKeyBufferArray[groupKeyBufferArrayIndex++] = unmatchedValue;
+
+                    keys[unmatchedPosition] = groupId++;
+                }
+
+                groupIds[position] = keys[unmatchedPosition];
+                position++;
+
+                if (position >= chunkLimit) {
+                    flushNullChunk(position);
+                    position = 0;
+                }
+            }
+
+            if (position > 0) {
+                flushNullChunk(position);
+            }
+        }
+
+        private void flushNullChunk(int positionCount) {
+            // flush group key buffer.
+            groupKeyBuffer.appendRow(groupKeyBufferArray, -1, groupKeyBufferArrayIndex);
+            groupKeyBufferArrayIndex = 0;
+
+            // accumulate with given group ids.
+            for (int aggIndex = 0; aggIndex < aggregators.size(); aggIndex++) {
+                valueAccumulators[aggIndex].accumulate(groupIds, nullChunk, positionCount);
+            }
+        }
+
+        private int matchInit(int position) {
+            // not null safe
+            if (hasNull && nullBitmap.get(position)) {
+                return LIST_END;
+            }
+
+            int value = sourceArray[position];
+            int matchedPosition = hashTable.get(value);
+            while (matchedPosition != LIST_END) {
+                if (outKeyChunks.getInt(0, matchedPosition) == value) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        private int matchInit(int hashCode, int position) {
+            // not null safe
+            if (hasNull && nullBitmap.get(position)) {
+                return LIST_END;
+            }
+
+            int matchedPosition = hashTable.get(hashCode);
+            while (matchedPosition != LIST_END) {
+                if (outKeyChunks.getInt(0, matchedPosition) == sourceArray[position]) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        private int matchNext(int current, int position) {
+            // not null safe
+            if (hasNull && nullBitmap.get(position)) {
+                return LIST_END;
+            }
+
+            int matchedPosition = positionLinks[current];
+            while (matchedPosition != LIST_END) {
+                if (outKeyChunks.getInt(0, matchedPosition) == sourceArray[position]) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        private void buildJoinRow() {
+            for (int i = 0; i < matchedRows; i++) {
+                final int position = probePositions[i];
+                final int matchedPosition = matchedPositions[i];
+
+                // for outer join output
+                usedKeys.set(matchedPosition);
+
+                // find and allocate group id
+                if (keys[matchedPosition] == LIST_END) {
+                    // allocate group id.
+
+                    // we should get value in matched position of out key chunks.
+                    // It is equal to value in probe position of probe side chunk.
+                    int matchedValue = sourceArray[position];
+                    groupKeyBufferArray[groupKeyBufferArrayIndex++] = matchedValue;
+
+                    keys[matchedPosition] = groupId++;
+                }
+
+                groupIds[position] = keys[matchedPosition];
+            }
+
+            // flush group key buffer.
+            groupKeyBuffer.appendRow(groupKeyBufferArray, -1, groupKeyBufferArrayIndex);
+            groupKeyBufferArrayIndex = 0;
+
+            // A special agg for group join
+            // the probe positions array may have repeated elements like {0, 0, 1, 1, 1, 2, 5, 5, 7 ...}
+            for (int aggIndex = 0; aggIndex < aggregators.size(); aggIndex++) {
+                valueAccumulators[aggIndex].accumulate(groupIds, inputAggregatorInputs[aggIndex], probePositions,
+                    matchedRows);
+            }
+        }
     }
 }

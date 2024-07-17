@@ -28,29 +28,29 @@ public class ${className} extends AbstractVectorizedExpression {
 
         @Override
         public void eval(EvaluationContext ctx) {
-        super.evalChildren(ctx);
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		super.evalChildren(ctx);
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
+        ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         <#if operator.classHeader != "SEQ">
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                res[j] = (array1[j] ${operator.op} array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-            }
-        } else {
-            for (int i = 0; i < batchSize; i++) {
-                res[i] = (array1[i] ${operator.op} array2[i]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+			if (isSelectionInUse) {
+			for (int i = 0; i < batchSize; i++) {
+			int j = sel[i];
+			res[j] = (array1[j] ${operator.op} array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+			}
+			} else {
+			for (int i = 0; i < batchSize; i++) {
+			res[i] = (array1[i] ${operator.op} array2[i]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
             }
         }
 

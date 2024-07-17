@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.base.Predicate;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.google.common.base.Predicate;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.hep.HepPlanner;

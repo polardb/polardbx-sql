@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.collect.AbstractIterator;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor.ProcessState;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor.Transformation;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor.TransformationState;
+import com.google.common.collect.AbstractIterator;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import javax.annotation.Nullable;
 import java.util.Comparator;

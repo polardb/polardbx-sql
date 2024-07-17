@@ -70,6 +70,7 @@ public class SqlAlterTableRepartition extends SqlAlterTable {
                 sqlAlterTablePartitionKey.getAlters(), null, false, null, null);
         sqlAlterPartitionTableRepartition.setBroadcast(sqlAlterTablePartitionKey.isBroadcast());
         sqlAlterPartitionTableRepartition.setSingle(sqlAlterTablePartitionKey.isSingle());
+        sqlAlterPartitionTableRepartition.setTargetImplicitTableGroupName(sqlAlterTablePartitionKey.getTargetImplicitTableGroupName());
         return sqlAlterPartitionTableRepartition;
     }
 

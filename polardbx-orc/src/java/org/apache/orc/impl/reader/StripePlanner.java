@@ -60,7 +60,11 @@ public class StripePlanner {
   private final OrcFile.WriterVersion version;
   private final OrcProto.ColumnEncoding[] encodings;
   private final ReaderEncryption encryption;
-  private final DataReader dataReader;
+
+  // we must clear the data reader if we cache the stripe planner
+  // to enable input stream closing.
+  private DataReader dataReader;
+
   private final boolean ignoreNonUtf8BloomFilter;
   private final long maxBufferSize;
 
@@ -108,15 +112,23 @@ public class StripePlanner {
         old.ignoreNonUtf8BloomFilter, old.maxBufferSize);
   }
 
+  public void clearDataReader() {
+    this.dataReader = null;
+  }
+
   /**
    * Parse a new stripe. Resets the current stripe state.
    * @param stripe the new stripe
    * @param columnInclude an array with true for each column to read
+   * @param footer StripeFooter, if null, read from disk
    * @return this for method chaining
    */
   public StripePlanner parseStripe(StripeInformation stripe,
-                                   boolean[] columnInclude) throws IOException {
-    OrcProto.StripeFooter footer = dataReader.readStripeFooter(stripe);
+                                   boolean[] columnInclude,
+                                   OrcProto.StripeFooter footer) throws IOException {
+    if (footer == null) {
+      footer = dataReader.readStripeFooter(stripe);
+    }
     currentStripeId = stripe.getStripeId();
     originalStripeId = stripe.getEncryptionStripeId();
     writerTimezone = footer.getWriterTimezone();
@@ -150,6 +162,95 @@ public class StripePlanner {
         ? planDataReading() : planPartialDataReading(index, rowGroupInclude);
     dataReader.readFileData(chunks, forceDirect);
     return chunks;
+  }
+
+  public BufferChunkList readRowGroupData(OrcIndex index, int rowGroupIndex, boolean forceDirect) throws IOException {
+    BufferChunkList chunks = planRowGroupDataReading(index, rowGroupIndex);
+    dataReader.readFileData(chunks, forceDirect);
+    return chunks;
+  }
+
+  /**
+   * Read the stripe data from the file.
+   *
+   * @param index null for no row filters or the index for filtering
+   * @param rowGroupInclude null for all of the rows or an array with boolean
+   * for each row group in the current stripe.
+   * @param forceDirect should direct buffers be created?
+   * @param selectedColumns given columns to process stream.
+   * @return the buffers that were read
+   */
+  public BufferChunkList readData(DataReader dataReader,
+                                  OrcIndex index,
+                                  boolean[] rowGroupInclude,
+                                  boolean forceDirect,
+                                  boolean[] selectedColumns) throws IOException {
+
+    // TODO StreamManager get any rg && col info as chunks
+    BufferChunkList chunks = new BufferChunkList();
+    if (hasSomeRowGroups(rowGroupInclude)) {
+      InStream.StreamOptions compression = dataReader.getCompressionOptions();
+      boolean isCompressed = compression.getCodec() != null;
+      int bufferSize = compression.getBufferSize();
+      OrcProto.RowIndex[] rowIndex = index.getRowGroupIndex();
+
+      for (StreamInformation stream : dataStreams) {
+        // check the column id in selected columns bitmap
+        if (stream.column < selectedColumns.length && selectedColumns[stream.column]) {
+          processStream(stream, chunks, rowIndex, 0,
+              rowGroupInclude, isCompressed, bufferSize);
+        }
+      }
+    }
+
+    dataReader.readFileData(chunks, forceDirect);
+    return chunks;
+  }
+
+  private void processStream(StreamInformation stream,
+                             BufferChunkList result,
+                             OrcProto.RowIndex[] rowIndex,
+                             int startGroup,
+                             boolean[] includedRowGroups,
+                             boolean isCompressed,
+                             int bufferSize) {
+    if (RecordReaderUtils.isDictionary(stream.kind, encodings[stream.column])) {
+      addChunk(result, stream, stream.offset, stream.length);
+    } else {
+      int column = stream.column;
+      OrcProto.RowIndex ri = rowIndex[column];
+      TypeDescription.Category kind = schema.findSubtype(column).getCategory();
+      long alreadyRead = 0;
+      for (int group = startGroup; group < includedRowGroups.length; ++group) {
+        if (includedRowGroups[group]) {
+          // find the last group that is selected
+          int endGroup = group;
+          while (endGroup < includedRowGroups.length - 1 &&
+              includedRowGroups[endGroup + 1]) {
+            endGroup += 1;
+          }
+          int posn = RecordReaderUtils.getIndexPosition(
+              encodings[stream.column].getKind(), kind, stream.kind,
+              isCompressed, hasNull[column]);
+          long start = Math.max(alreadyRead,
+              stream.offset + (group == 0 ? 0 : ri.getEntry(group).getPositions(posn)));
+          long end = stream.offset;
+          if (endGroup == includedRowGroups.length - 1) {
+            end += stream.length;
+          } else {
+            long nextGroupOffset = ri.getEntry(endGroup + 1).getPositions(posn);
+            end += RecordReaderUtils.estimateRgEndOffset(isCompressed,
+                bufferSize, false, nextGroupOffset,
+                stream.length);
+          }
+          if (alreadyRead < end) {
+            addChunk(result, stream, start, end - start);
+            alreadyRead = end;
+          }
+          group = endGroup;
+        }
+      }
+    }
   }
 
   public String getWriterTimezone() {
@@ -186,6 +287,12 @@ public class StripePlanner {
     indexStreams.clear();
     dataStreams.clear();
     streams.clear();
+  }
+
+  public void clearDataStreams() {
+    for (StreamInformation stream : dataStreams) {
+      stream.releaseBuffers(dataReader);
+    }
   }
 
   /**
@@ -322,7 +429,8 @@ public class StripePlanner {
     if (output == null) {
       output = new OrcIndex(new OrcProto.RowIndex[typeCount],
           new OrcProto.Stream.Kind[typeCount],
-          new OrcProto.BloomFilterIndex[typeCount]);
+          new OrcProto.BloomFilterIndex[typeCount],
+          new OrcProto.BitmapIndex[typeCount]);
     }
     System.arraycopy(bloomFilterKinds, 0, output.getBloomFilterKinds(), 0,
         bloomFilterKinds.length);
@@ -330,6 +438,8 @@ public class StripePlanner {
     dataReader.readFileData(ranges, false);
     OrcProto.RowIndex[] indexes = output.getRowGroupIndex();
     OrcProto.BloomFilterIndex[] blooms = output.getBloomFilterIndex();
+    OrcProto.BitmapIndex[] bitmaps = output.getBitmapIndex();
+
     for(StreamInformation stream: indexStreams) {
       int column = stream.column;
       if (stream.firstChunk != null) {
@@ -345,6 +455,9 @@ public class StripePlanner {
           if (sargColumns != null && sargColumns[column]) {
             blooms[column] = OrcProto.BloomFilterIndex.parseFrom(data);
           }
+          break;
+        case BITMAP_INDEX:
+          bitmaps[column] = OrcProto.BitmapIndex.parseFrom(data);
           break;
         default:
           break;
@@ -380,6 +493,7 @@ public class StripePlanner {
     for(StreamInformation stream: indexStreams) {
       switch (stream.kind) {
       case ROW_INDEX:
+      case BITMAP_INDEX:
         addChunk(result, stream, stream.offset, stream.length);
         break;
       case BLOOM_FILTER:
@@ -494,32 +608,59 @@ public class StripePlanner {
     return result;
   }
 
-  private static class StreamInformation {
-    final OrcProto.Stream.Kind kind;
-    final int column;
-    final long offset;
-    final long length;
-    BufferChunk firstChunk;
-
-    StreamInformation(OrcProto.Stream.Kind kind,
-                      int column, long offset, long length) {
-      this.kind = kind;
-      this.column = column;
-      this.offset = offset;
-      this.length = length;
-    }
-
-    void releaseBuffers(DataReader reader) {
-      long end = offset + length;
-      BufferChunk ptr = firstChunk;
-      while (ptr != null && ptr.getOffset() < end) {
-        ByteBuffer buffer = ptr.getData();
-        if (buffer != null) {
-          reader.releaseBuffer(buffer);
-          ptr.setChunk(null);
+  /**
+   * 获取第rowGroupIndex个读取数据信息，从0开始
+   */
+  private BufferChunkList planRowGroupDataReading(OrcIndex index,
+                                                  int rowGroupIndex) {
+    BufferChunkList result = new BufferChunkList();
+    InStream.StreamOptions compression = dataReader.getCompressionOptions();
+    boolean isCompressed = compression.getCodec() != null;
+    int bufferSize = compression.getBufferSize();
+    OrcProto.RowIndex[] rowIndex = index.getRowGroupIndex();
+    for (StreamInformation stream : dataStreams) {
+      if (RecordReaderUtils.isDictionary(stream.kind, encodings[stream.column])) {
+        mayAddChunk(result, stream, stream.offset, stream.length);
+      } else {
+        int column = stream.column;
+        OrcProto.RowIndex ri = rowIndex[column];
+        TypeDescription.Category kind = schema.findSubtype(column).getCategory();
+        int posn = RecordReaderUtils.getIndexPosition(
+            encodings[stream.column].getKind(), kind, stream.kind,
+            isCompressed, hasNull[column]);
+        //起始位置
+        long start = stream.offset + (rowGroupIndex == 0 ? 0 : ri.getEntry(rowGroupIndex).getPositions(posn));
+        long end = stream.offset;
+        if (rowGroupIndex == ri.getEntryCount() - 1) {
+          end += stream.length;
+        } else {
+          long nextGroupOffset = ri.getEntry(rowGroupIndex + 1).getPositions(posn);
+          end += RecordReaderUtils.estimateRgEndOffset(isCompressed,
+              bufferSize, false, nextGroupOffset, stream.length);
         }
-        ptr = (BufferChunk) ptr.next;
+        mayAddChunk(result, stream, start, end - start);
       }
+    }
+    return result;
+  }
+
+  /**
+   * rowGroup顺序读取时，针对数据块，有些可能重复，则无需再读磁盘，所以这里优化一些
+   */
+  private void mayAddChunk(BufferChunkList list, StreamInformation stream,
+                           long offset, long length) {
+    if (stream.firstChunk == null) {
+      addChunk(list, stream, offset, length);
+      return;
+    }
+    //获取已读取chunk的位置
+    long chunkOffset = stream.firstChunk.getOffset();
+    long chunkEnd = stream.firstChunk.getEnd();
+    if (offset >= chunkOffset && (offset + length) <= chunkEnd) {
+      return;
+    } else {
+      stream.releaseBuffers(dataReader);
+      addChunk(list, stream, offset, length);
     }
   }
 }

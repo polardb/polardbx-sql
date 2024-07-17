@@ -147,4 +147,123 @@ public class Latin1BinCollationHandler extends AbstractCollationHandler {
     public int instr(Slice source, Slice target) {
         return instrForSingleByte(source, target, b -> Byte.toUnsignedInt(b));
     }
+
+    @Override
+    public boolean wildCompare(Slice slice, Slice wildCard) {
+        return doWildCompare(slice, 0, wildCard, 0) == 0;
+    }
+
+    @Override
+    public boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
+        if (wildCard == null || wildCard.length == 0) {
+            // like '%%' always match
+            return true;
+        }
+        int length = slice.length();
+        int i = 0;
+        int j = 0;
+
+        while (i < length) {
+            if (wildCard[j] == slice.getByteUnchecked(i)) {
+                i++;
+                j++;
+            }
+            if (j == wildCard.length) {
+                return true;
+            } else if (i < length && wildCard[j] != slice.getByteUnchecked(i)) {
+                if (j != 0) {
+                    j = lps[j - 1];
+                } else {
+                    i++;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @return -1代表不匹配，0代表匹配，1代表继续
+     */
+    private int doWildCompare(Slice str, int strIdx, Slice wildstr, int wildstrIdx) {
+        int result = -1;
+        final int strEnd = str.length();
+        final int wildstrEnd = wildstr.length();
+        byte wildByte;
+        while (wildstrIdx != wildstrEnd) {
+            wildByte = wildstr.getByteUnchecked(wildstrIdx);
+            while (wildByte != WILD_MANY && wildByte != WILD_ONE) {
+                if (wildByte == ESCAPE &&
+                    (wildstrIdx + 1) != wildstrEnd) {
+                    wildstrIdx++;
+                }
+
+                if (strIdx == strEnd || wildstr.getByte(wildstrIdx++) != str.getByte(strIdx++)) {
+                    return 1;
+                }
+                if (wildstrIdx == wildstrEnd) {
+                    // 匹配完成
+                    return (strIdx != strEnd) ? 1 : 0;
+                }
+                result = 1;
+                wildByte = wildstr.getByteUnchecked(wildstrIdx);
+            }
+
+            if (wildstr.getByte(wildstrIdx) == WILD_ONE) {
+                do {
+                    if (strIdx == strEnd) {
+                        return result;
+                    }
+                    strIdx++;
+                } while (++wildstrIdx < wildstrEnd && wildstr.getByte(wildstrIdx) == WILD_ONE);
+
+                if (wildstrIdx == wildstrEnd) {
+                    break;
+                }
+            }
+
+            if (wildstr.getByte(wildstrIdx) == WILD_MANY) {
+                byte cmp;
+                wildstrIdx++;
+                for (; wildstrIdx != wildstrEnd; wildstrIdx++) {
+                    if (wildstr.getByte(wildstrIdx) == WILD_MANY) {
+                        continue;
+                    }
+                    if (wildstr.getByte(wildstrIdx) == WILD_ONE) {
+                        if (strIdx == strEnd) {
+                            return -1;
+                        }
+                        strIdx++;
+                        continue;
+                    }
+                    break;
+                }
+                if (wildstrIdx == wildstrEnd) {
+                    return 0;
+                }
+                if (strIdx == strEnd) {
+                    return -1;
+                }
+                if ((cmp = wildstr.getByte(wildstrIdx)) == ESCAPE && wildstrIdx + 1 != wildstrEnd) {
+                    cmp = wildstr.getByte(++wildstrIdx);
+                }
+                wildstrIdx++;
+                do {
+                    while (strIdx != strEnd && str.getByte(strIdx) != cmp) {
+                        strIdx++;
+                    }
+                    if (strIdx++ == strEnd) {
+                        return -1;
+                    }
+                    int tmp = doWildCompare(str, strIdx, wildstr, wildstrIdx);
+                    if (tmp <= 0) {
+                        return tmp;
+                    }
+                } while (strIdx != strEnd && wildstr.getByte(wildstrIdx) != WILD_MANY);
+
+                return -1;
+            }
+        }
+
+        return (strIdx != strEnd) ? 1 : 0;
+    }
 }

@@ -22,7 +22,6 @@ import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.RemovePartitioningJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.factory.gsi.RepartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ddl.RepartitionValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
@@ -30,36 +29,30 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRemovePartitioning;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRepartition;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
-import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
-import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Formatter;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -102,12 +95,15 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
 
         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData = new HashMap<>();
 
+        Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap =
+            new TreeMap<>(String::compareToIgnoreCase);
         for (CreateGlobalIndexPreparedData createGsiPreparedData : globalIndexPreparedDataList) {
             DdlPhyPlanBuilder builder = CreateGlobalIndexBuilder.create(
                 logicalAlterTableRemovePartitioning.relDdl,
                 createGsiPreparedData,
+                indexTablePreparedDataMap,
                 executionContext).build();
-
+            indexTablePreparedDataMap.put(createGsiPreparedData.getIndexTableName(), createGsiPreparedData);
             globalIndexPrepareData.put(createGsiPreparedData, builder.genPhysicalPlanData());
         }
 
@@ -132,6 +128,8 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
         SqlAlterTableRemovePartitioning ast =
             (SqlAlterTableRemovePartitioning) logicalDdlPlan.getNativeSqlNode();
 
+        boolean withImplicitTg = StringUtils.isNotEmpty(ast.getTargetImplicitTableGroupName());
+
         // for primary table
         String primaryTableName = ast.getOriginTableName().getLastName();
         String targetTableName =
@@ -149,7 +147,9 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
             true,
             false,
             primaryTableInfo.getKey(),
-            primaryTableInfo.getValue()
+            primaryTableInfo.getValue(),
+            withImplicitTg ? new SqlIdentifier(ast.getTargetImplicitTableGroupName(), SqlParserPos.ZERO) : null,
+            withImplicitTg
         );
 
         gsiList.add(repartitionGsi);
@@ -191,7 +191,9 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
                 false,
                 indexMeta.isUniqueIndex(),
                 primaryTableInfo.getKey(),
-                primaryTableInfo.getValue()
+                primaryTableInfo.getValue(),
+                null,
+                false
             );
 
             // prepare for drop gsi columns

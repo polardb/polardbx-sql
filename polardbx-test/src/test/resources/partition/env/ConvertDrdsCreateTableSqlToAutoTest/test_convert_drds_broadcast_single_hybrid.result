@@ -2,8 +2,6 @@
 ## clear database
 drop database if exists `testConvertDrdsDb`;
 drop database if exists `testConvertDbAuto`;
-drop database if exists `testConvertDbAuto2`;
-drop database if exists `testConvertDbAuto3`;
 create database if not exists `testConvertDrdsDb` mode=drds;
 use testConvertDrdsDb;
 ## full index table
@@ -59,52 +57,11 @@ insert into tb2 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
 insert into tb3 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
 insert into tb4 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
 ## real run
-create database testConvertDbAuto like testConvertDrdsDb mode=auto;
+create database testConvertDbAuto as testConvertDrdsDb mode=auto;
 RESULT
 ALL SUCCESS
-create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
-RESULT
-ALL SUCCESS
-use testConvertDbAuto;
-select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-## real run
-create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
-RESULT
-ALL SUCCESS
-use testConvertDbAuto2;
-select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
-select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
-col1
-2
-3
 ## dry run
-create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;
+create database testConvertDbAuto2 like testConvertDrdsDb mode=auto dry_run=true;
 TABLE,CREATE_TABLE_DRDS,CREATE_TABLE_AUTO
 tb1,CREATE TABLE `tb1` (
 	`col1` int(11) DEFAULT NULL,
@@ -140,12 +97,13 @@ tb1,CREATE TABLE `tb1` (
 	`col11` int(11) DEFAULT NULL,
 	UNIQUE KEY `tb1_k1` (`col1`),
 	KEY `tb1_k2` (`col2`),
-	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) PARTITION BY KEY (`col4`) PARTITIONS 256,
-	CLUSTERED INDEX `tb1_k5`(`col5`) PARTITION BY KEY (`col5`) PARTITIONS 256,
-	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) PARTITION BY KEY (`col6`) PARTITIONS 256,
-	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) PARTITION BY KEY (`col9`) PARTITIONS 256
+	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) PARTITION BY KEY (`col4`) PARTITIONS 16,
+	CLUSTERED INDEX `tb1_k5`(`col5`) PARTITION BY KEY (`col5`) PARTITIONS 16,
+	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) PARTITION BY KEY (`col6`) PARTITIONS 16,
+	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) PARTITION BY KEY (`col9`) PARTITIONS 16
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
-PARTITION BY KEY (`col10`) PARTITIONS 256
+PARTITION BY KEY (`col10`) PARTITIONS 16
+SUBPARTITION BY KEY (`col11`) SUBPARTITIONS 16
 tb2,CREATE TABLE `tb2` (
 	`col1` int(11) NOT NULL,
 	`col2` varchar(20) DEFAULT NULL,
@@ -173,3 +131,6 @@ tb4,CREATE TABLE `tb4` (
 	`col2` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`col1`)
 ) BROADCAST ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;

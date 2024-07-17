@@ -17,6 +17,10 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
@@ -36,18 +40,21 @@ public class Charset extends AbstractScalarFunction {
         if (FunctionUtils.isNull(arg)) {
             return null;
         }
-        return Optional.ofNullable(operandTypes)
+        CharsetName charsetName = Optional.ofNullable(operandTypes)
             .map(types -> types.get(0))
             .map(DataType::getCharsetName)
-            .map(Enum::name)
-            .map(String::toLowerCase)
             .orElseGet(
                 () -> Optional.ofNullable(ec.getEncoding())
-                    .map(CharsetName::of)
-                    .map(Enum::name)
-                    .map(String::toLowerCase)
-                    .orElse("utf8mb4")
+                    .map(CharsetName::of).orElse(CharsetName.defaultCharset())
             );
+
+        boolean isMySQL80 = InstanceVersion.isMYSQL80();
+
+        if (isMySQL80 && charsetName == CharsetName.UTF8) {
+            return "utf8mb3";
+        } else {
+            return charsetName.name().toLowerCase();
+        }
     }
 
     @Override

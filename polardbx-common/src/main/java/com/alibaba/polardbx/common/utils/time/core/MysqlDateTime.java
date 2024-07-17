@@ -62,6 +62,10 @@ public class MysqlDateTime implements Serializable {
         this.timezone = null;
     }
 
+    public static MysqlDateTime zeroDateTime() {
+        return new MysqlDateTime();
+    }
+
     @Override
     public MysqlDateTime clone() {
         MysqlDateTime t = new MysqlDateTime();
@@ -547,5 +551,18 @@ public class MysqlDateTime implements Serializable {
 
     public void setTimezone(TimeZone timezone) {
         this.timezone = timezone;
+    }
+
+    // clear all states.
+    public void reset() {
+        this.year = 0;
+        this.month = 0;
+        this.day = 0;
+        this.hour = 0;
+        this.minute = 0;
+        this.second = 0;
+        this.secondPart = 0;
+        this.isNeg = false;
+        this.timezone = null;
     }
 }

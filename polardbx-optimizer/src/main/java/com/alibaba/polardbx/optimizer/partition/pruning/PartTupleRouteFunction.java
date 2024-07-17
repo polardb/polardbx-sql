@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -164,6 +165,10 @@ public class PartTupleRouteFunction extends PartRouteFunction {
             SearchDatumHasher hasher = getHasherByPartInfo(this.matchLevel, this.partInfo);
             hashValSearchDatumInfo = HashPartRouter.buildHashSearchDatumInfo(finalVal, hasher, ec);
             calcResult.add(hashValSearchDatumInfo);
+        } else if (strategy == PartitionStrategy.CO_HASH) {
+            SearchDatumHasher hasher = getHasherByPartInfo(this.matchLevel, this.partInfo);
+            hashValSearchDatumInfo = CoHashPartRouter.buildHashSearchDatumInfo(finalVal, hasher, ec);
+            calcResult.add(hashValSearchDatumInfo);
         } else {
             // return directly
             calcResult.add(finalVal);
@@ -198,7 +203,8 @@ public class PartTupleRouteFunction extends PartRouteFunction {
 
             if (partIntFunc != null) {
                 newPartField = PartitionPrunerUtils
-                    .evalPartFuncVal(partField, partIntFunc, context, null, PartFieldAccessType.DML_PRUNING);
+                    .evalPartFuncVal(partField, partIntFunc, getStrategy(), context, null,
+                        PartFieldAccessType.DML_PRUNING);
             } else {
                 newPartField = partField;
             }

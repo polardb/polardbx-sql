@@ -19,11 +19,6 @@ singleBalanceCaseBeans:
       manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: []
-      manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb" ]
-      expectedManipulateColumns: [ 2 ]
     dataDistributionCheckActions:
     - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
       expectedConditionResult: [ "0" ]

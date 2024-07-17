@@ -66,9 +66,8 @@ public class TableGroupStat {
         return new ArrayList<>(this.pgMap.values());
     }
 
-    public List<TablePartRecordInfoContext> getAllTables() {
+    public List<String> getAllTables() {
         return this.tableGroupConfig.getAllTables();
     }
-
 
 }

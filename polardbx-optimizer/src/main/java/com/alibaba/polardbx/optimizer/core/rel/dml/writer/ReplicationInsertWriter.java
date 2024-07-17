@@ -114,13 +114,13 @@ public class ReplicationInsertWriter extends InsertWriter implements Replication
                         List<RelNode> phyTableModifys = phyTableInsertbuilder.build(shardResults);
                         assert phyTableModifys.size() == 1;
                         moveTableRel = phyTableModifys.get(0);
-                        ((PhyTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaloutGroupName(dbIndex));
+                        ((PhyTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaleOutGroupName(dbIndex));
 
                         moveTableRelNodes.add(moveTableRel);
                     } else {
                         moveTableRel =
                             baseTableOperation.copy(baseTableOperation.getTraitSet(), baseTableOperation.getInputs());
-                        ((BaseTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaloutGroupName(dbIndex));
+                        ((BaseTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaleOutGroupName(dbIndex));
                         moveTableRelNodes.add(moveTableRel);
                     }
                 }

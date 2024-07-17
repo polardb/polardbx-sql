@@ -72,10 +72,6 @@ public final class ExportParameterVisitorUtils {
                 value = ((MySqlCharExpr) param).getBinary();
             } else {
                 value = ((SQLCharExpr) param).getText();
-                String vStr = (String) value;
-//            if (vStr.length() > 1) {
-//                value = StringUtils.removeNameQuotes(vStr);
-//            }
             }
             replace = true;
         } else if (param instanceof SQLNCharExpr) {
@@ -105,22 +101,32 @@ public final class ExportParameterVisitorUtils {
         } else if (param instanceof SQLListExpr) {
             SQLListExpr list = ((SQLListExpr) param);
 
-            List<Object> listValues = new ArrayList<Object>();
-            for (int i = 0; i < list.getItems().size(); i++) {
-                SQLExpr listItem = list.getItems().get(i);
-
+            List<Object> listValues = new ArrayList<>();
+            for (SQLExpr listItem : list.getItems()) {
                 if (listItem instanceof SQLCharExpr) {
-                    Object listValue = ((SQLCharExpr) listItem).getText();
-                    listValues.add(listValue);
+                    if (listItem instanceof MySqlCharExpr && ((MySqlCharExpr) listItem).getBinary() != null) {
+                        listValues.add(((MySqlCharExpr) listItem).getBinary());
+                    } else {
+                        listValues.add(((SQLCharExpr) listItem).getText());
+                    }
+                } else if (listItem instanceof SQLNCharExpr) {
+                    listValues.add(((SQLNCharExpr) listItem).getText());
                 } else if (listItem instanceof SQLBooleanExpr) {
-                    Object listValue = ((SQLBooleanExpr) listItem).getBooleanValue();
-                    listValues.add(listValue);
+                    listValues.add(((SQLBooleanExpr) listItem).getBooleanValue());
                 } else if (listItem instanceof SQLNumericLiteralExpr) {
-                    Object listValue = ((SQLNumericLiteralExpr) listItem).getNumber();
-                    listValues.add(listValue);
+                    listValues.add(((SQLNumericLiteralExpr) listItem).getNumber());
                 } else if (listItem instanceof SQLHexExpr) {
-                    Object listValue = ((SQLHexExpr) listItem).toBytes();
-                    listValues.add(listValue);
+                    listValues.add(((SQLHexExpr) listItem).toBytes());
+                } else if (listItem instanceof SQLBinaryExpr) {
+                    listValues.add(((SQLBinaryExpr) listItem).getValue());
+                } else if (listItem instanceof SQLTimestampExpr) {
+                    listValues.add(((SQLTimestampExpr) listItem).getValue());
+                } else if (listItem instanceof SQLDateExpr) {
+                    listValues.add(((SQLDateExpr) listItem).getValue());
+                } else if (listItem instanceof SQLTimeExpr) {
+                    listValues.add(((SQLTimeExpr) listItem).getValue());
+                } else if (listItem instanceof SQLNullExpr) {
+                    listValues.add(null);
                 }
             }
 

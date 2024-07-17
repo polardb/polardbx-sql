@@ -23,6 +23,7 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure.DropProcedureDropMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure.DropProcedureSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropProcedureMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.pl.PLUtils;
@@ -70,8 +71,10 @@ public class DropProcedureJobFactory extends AbstractProcedureJobFactory {
         }
 
         DdlTask dropMetaTask = new DropProcedureDropMetaTask(executionSchema, null, procedureSchema, simpleName);
+        CdcDropProcedureMarkTask cdcDropProcedureMarkTask =
+            new CdcDropProcedureMarkTask(procedureSchema, simpleName);
         DdlTask syncTask = new DropProcedureSyncTask(executionSchema, procedureSchema, simpleName);
-        return Lists.newArrayList(dropMetaTask, syncTask);
+        return Lists.newArrayList(dropMetaTask, cdcDropProcedureMarkTask, syncTask);
     }
 
     public static ExecutableDdlJob dropProcedure(LogicalDropProcedure logicalDropProcedure,

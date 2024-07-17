@@ -12,3 +12,12 @@ test_tb:
   b bigint,
   c int
   ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;
+
+test_tc:
+  CREATE TABLE test_tc(
+  a int,
+  b bigint,
+  c int,
+  unique key(b,a),
+  unique key(c)
+  ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;

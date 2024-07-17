@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;

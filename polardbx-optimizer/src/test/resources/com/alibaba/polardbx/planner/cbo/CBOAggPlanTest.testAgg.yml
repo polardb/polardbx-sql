@@ -1,5 +1,12 @@
--
-  sql: |
+- sql: |
+    select count(distinct id,name)
+    from t4;
+
+  plan: |
+    hashagg(count(distinct id, name)="count(id, name)")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t4_[00-15]", shardcount=16, sql="select `id`, `name` from `t4` as `t4`")
+- sql: |
     /*+TDDL:cmd_extra(ENABLE_HASH_AGG=false)*/
     select id
     from t_shard_id1 group by name;
@@ -10,8 +17,7 @@
         MergeSort(sort="name ASC")
           LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `name`, (`id`) AS `id` FROM `t_shard_id1` AS `t_shard_id1` GROUP BY `name` ORDER BY `name`")
 
--
-  sql: |
+- sql: |
     /*+TDDL:cmd_extra(ENABLE_SORT_AGG=false)*/
     select id
     from t_shard_id1 group by name;

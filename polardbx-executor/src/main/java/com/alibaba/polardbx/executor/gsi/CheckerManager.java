@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.optimizer.config.table.GsiUtils;
@@ -34,7 +35,6 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableMap;
 
 import javax.sql.DataSource;
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -153,6 +153,14 @@ public class CheckerManager {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
                 e,
                 "add GSI checker reports failed!");
+        }
+    }
+
+    public static void insertReports(Connection conn, List<CheckerReport> reports) {
+        try {
+            batchInsert(SQL_INSERT_CHECKER_REPORT, reports, conn);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, e, "add reports to gms failed!");
         }
     }
 
@@ -360,8 +368,8 @@ public class CheckerManager {
         }
     }
 
-    private void update(String sql, List<Map<Integer, ParameterContext>> params,
-                        Connection connection) throws SQLException {
+    private static void update(String sql, List<Map<Integer, ParameterContext>> params, Connection connection)
+        throws SQLException {
         final int batchSize = 512;
         for (int i = 0; i < params.size(); i += batchSize) {
             try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -376,7 +384,7 @@ public class CheckerManager {
         }
     }
 
-    private void batchInsert(String sql, List<? extends Orm> params, Connection connection) throws SQLException {
+    private static void batchInsert(String sql, List<? extends Orm> params, Connection connection) throws SQLException {
         update(sql,
             params.stream().map(Orm::params).collect(ArrayList::new, ArrayList::add, ArrayList::addAll),
             connection);

@@ -1,0 +1,118 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `t1_sp_tp_k_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(
+PARTITION p1,
+PARTITION p2,
+PARTITION p3
+);
+show create table t1_sp_tp_k_k;
+Table,Create Table
+t1_sp_tp_k_k,CREATE TABLE `t1_sp_tp_k_k` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`sid` bigint(20) DEFAULT NULL,
+	`tid` bigint(20) DEFAULT NULL,
+	`user_id` varchar(32) DEFAULT NULL,
+	`order_id` varchar(32) DEFAULT NULL,
+	`order_time` datetime DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_order_id_user_id` USING BTREE (`order_id`, `user_id`),
+	KEY `auto_shard_key_sid_tid` USING BTREE (`sid`, `tid`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+PARTITIONS 3
+SUBPARTITION BY KEY(`sid`,`tid`)
+SUBPARTITIONS 3
+CREATE TABLE `t1_sp_ntp_k_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(
+PARTITION p1 SUBPARTITIONS 3,
+PARTITION p2 SUBPARTITIONS 4,
+PARTITION p3 SUBPARTITIONS 5
+);
+show create table t1_sp_ntp_k_k;
+Table,Create Table
+t1_sp_ntp_k_k,CREATE TABLE `t1_sp_ntp_k_k` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`sid` bigint(20) DEFAULT NULL,
+	`tid` bigint(20) DEFAULT NULL,
+	`user_id` varchar(32) DEFAULT NULL,
+	`order_id` varchar(32) DEFAULT NULL,
+	`order_time` datetime DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_order_id_user_id` USING BTREE (`order_id`, `user_id`),
+	KEY `auto_shard_key_sid_tid` USING BTREE (`sid`, `tid`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(PARTITION p1
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB,
+  SUBPARTITION p1sp3 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB,
+  SUBPARTITION p2sp4 ENGINE = InnoDB),
+ PARTITION p3
+ (SUBPARTITION p3sp1 ENGINE = InnoDB,
+  SUBPARTITION p3sp2 ENGINE = InnoDB,
+  SUBPARTITION p3sp3 ENGINE = InnoDB,
+  SUBPARTITION p3sp4 ENGINE = InnoDB,
+  SUBPARTITION p3sp5 ENGINE = InnoDB))
+CREATE TABLE `t2_sp_ntp_k_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(
+PARTITION p1,
+PARTITION p2,
+PARTITION p3 SUBPARTITIONS 5
+);
+show create table t2_sp_ntp_k_k;
+Table,Create Table
+t2_sp_ntp_k_k,CREATE TABLE `t2_sp_ntp_k_k` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`sid` bigint(20) DEFAULT NULL,
+	`tid` bigint(20) DEFAULT NULL,
+	`user_id` varchar(32) DEFAULT NULL,
+	`order_id` varchar(32) DEFAULT NULL,
+	`order_time` datetime DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_order_id_user_id` USING BTREE (`order_id`, `user_id`),
+	KEY `auto_shard_key_sid_tid` USING BTREE (`sid`, `tid`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(PARTITION p1
+ (SUBPARTITION p1sp1 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp1 ENGINE = InnoDB),
+ PARTITION p3
+ (SUBPARTITION p3sp1 ENGINE = InnoDB,
+  SUBPARTITION p3sp2 ENGINE = InnoDB,
+  SUBPARTITION p3sp3 ENGINE = InnoDB,
+  SUBPARTITION p3sp4 ENGINE = InnoDB,
+  SUBPARTITION p3sp5 ENGINE = InnoDB))

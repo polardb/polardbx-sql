@@ -31,6 +31,8 @@ import java.util.List;
  */
 public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
 
+    // for polardb-x partition manage
+    protected SQLPartitionBy partitioning;
     /**
      * [CONSTRAINT [symbol]] [GLOBAL|LOCAL|CLUSTERED] [FULLTEXT|SPATIAL|UNIQUE|PRIMARY] [INDEX|KEY]
      * [index_name] [index_type] (key_part,...) [COVERING (col_name,...)] [index_option] ...
@@ -41,6 +43,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     private boolean global;
     private boolean local;
     private boolean clustered;
+    private boolean columnar;
     private String type;
     private boolean hashMapType; //for ads
     private boolean hashType; //for ads
@@ -50,16 +53,14 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     private SQLTableSource table;
     private List<SQLSelectOrderByItem> columns = new ArrayList<SQLSelectOrderByItem>();
     private SQLIndexOptions options;
-
     // DRDS
     private SQLExpr dbPartitionBy;
     private SQLExpr tbPartitionBy;
     private SQLExpr tbPartitions;
-    private List<SQLName> covering = new ArrayList<SQLName>();
-
-    // for polardb-x partition manage
-    protected SQLPartitionBy partitioning;
+    private List<SQLName> covering = new ArrayList<>();
+    private List<SQLName> clusteredKeys = new ArrayList<>();
     private SQLName tableGroup;
+    private boolean withImplicitTablegroup;
     private boolean visible = true;
 
     // For fulltext index when create table.
@@ -67,9 +68,18 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     private SQLName indexAnalyzerName;
     private SQLName queryAnalyzerName;
     private SQLName withDicName;
-
+    // for columnar index
+    private SQLName engineName;
     // Compatible layer.
     private List<SQLAssignItem> compatibleOptions = new ArrayList<SQLAssignItem>();
+
+    public SQLName getEngineName() {
+        return engineName;
+    }
+
+    public void setEngineName(SQLName engineName) {
+        this.engineName = engineName;
+    }
 
     public boolean hasConstraint() {
         return hasConstraint;
@@ -124,6 +134,14 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
 
     public void setClustered(boolean clustered) {
         this.clustered = clustered;
+    }
+
+    public boolean isColumnar() {
+        return columnar;
+    }
+
+    public void setColumnar(boolean columnar) {
+        this.columnar = columnar;
     }
 
     public String getType() {
@@ -271,6 +289,15 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
         this.covering = covering;
     }
 
+    @Override
+    public List<SQLName> getClusteredKeys() {
+        return clusteredKeys;
+    }
+
+    public void setClusteredKeys(List<SQLName> clusteredKeys) {
+        this.clusteredKeys = clusteredKeys;
+    }
+
     public SQLName getAnalyzerName() {
         return analyzerName;
     }
@@ -376,6 +403,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
         definition.index = index;
         definition.key = key;
         definition.visible = visible;
+        definition.columnar = columnar;
         if (name != null) {
             definition.name = name.clone();
             definition.name.setParent(parent);
@@ -407,6 +435,12 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
         if (partitioning != null) {
             definition.partitioning = partitioning.clone();
             definition.partitioning.setParent(parent);
+        }
+        if (tableGroup != null) {
+            definition.tableGroup = tableGroup.clone();
+            if (withImplicitTablegroup) {
+                definition.setWithImplicitTablegroup(withImplicitTablegroup);
+            }
         }
         for (SQLName name : covering) {
             SQLName name1 = name.clone();
@@ -537,6 +571,14 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
 
     public void setTableGroup(SQLName tableGroup) {
         this.tableGroup = tableGroup;
+    }
+
+    public boolean isWithImplicitTablegroup() {
+        return withImplicitTablegroup;
+    }
+
+    public void setWithImplicitTablegroup(boolean withImplicitTablegroup) {
+        this.withImplicitTablegroup = withImplicitTablegroup;
     }
 
     public boolean isUnique() {

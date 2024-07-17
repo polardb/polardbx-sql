@@ -17,15 +17,16 @@
 package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.common.TddlNode;
+import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.RepoInst;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -33,9 +34,11 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.ConcurrentIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
@@ -53,21 +56,33 @@ import com.alibaba.polardbx.executor.mpp.execution.StageInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskInfo;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
+import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
+import com.alibaba.polardbx.executor.sync.CollectVariableSyncAction;
+import com.alibaba.polardbx.executor.spi.ITransactionManager;
+import com.alibaba.polardbx.executor.sync.CollectVariableSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
+import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
-import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
+import com.alibaba.polardbx.gms.topology.InstConfigRecord;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
@@ -79,6 +94,7 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.expression.ISelectable;
 import com.alibaba.polardbx.optimizer.core.expression.bean.NullValue;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
@@ -96,6 +112,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.UnionOptHelper;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
@@ -105,16 +122,20 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.GroupConnId;
+import com.alibaba.polardbx.optimizer.utils.IColumnarTransaction;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
+import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import com.alibaba.polardbx.sequence.impl.BaseSequence;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ListenableFuture;
 import it.unimi.dsi.fastutil.HashCommon;
@@ -127,11 +148,10 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
-import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.weakref.jmx.internal.guava.primitives.Bytes;
@@ -139,11 +159,11 @@ import org.weakref.jmx.internal.guava.primitives.Bytes;
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -157,17 +177,23 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
+import static com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
@@ -177,6 +203,10 @@ public class ExecUtils {
     private static final Logger logger = LoggerFactory.getLogger(ExecUtils.class);
 
     private static final int MAX_PARALLELISM = 16;
+    public static byte[] hintPrefix = "/*DRDS /".getBytes(StandardCharsets.UTF_8);
+    public static byte[] hintDivision = "/".getBytes(StandardCharsets.UTF_8);
+    public static byte[] hintEnd = "/ */".getBytes(StandardCharsets.UTF_8);
+    public static byte[] hintNULL = "null".getBytes(StandardCharsets.UTF_8);
 
     /**
      * get a mapping from instance id (host:port) to a list of group data sources
@@ -370,6 +400,20 @@ public class ExecUtils {
         return dbParallelism;
     }
 
+    public static boolean needPutIfAbsent(ExecutionContext context, String key) {
+        boolean ret = true;
+        if (context.getHintCmds().containsKey(key)) {
+            ret = false;
+        } else {
+            Properties cnProperties =
+                MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
+            if (cnProperties.containsKey(key)) {
+                ret = false;
+            }
+        }
+        return ret;
+    }
+
     public static int getMppPrefetchNumForLogicalView(int num) {
         //TODO 需要结合PolarDB的个数和核数来决定默认Prefetch数量
         return Math.min(num, NUM_CORES * 4);
@@ -391,6 +435,73 @@ public class ExecUtils {
             parallelism = 1;
         }
         return parallelism;
+    }
+
+    public static int assignPartitionToExecutor(int counter, int allPartition, int partition, int executorSize) {
+        if (allPartition < executorSize) {
+            int fullGroup = executorSize / allPartition;
+            int leftExecutor = executorSize % allPartition;
+            int selectSize = fullGroup + ((partition < leftExecutor) ? 1 : 0);
+            int selectSeq = counter % selectSize;
+            return allPartition * selectSeq + partition;
+        } else {
+            return partition % executorSize;
+        }
+    }
+
+    /**
+     * Calculate how many degrees of parallelism each hash table has.
+     * The hash table number = MIN(allPartition, executorSize)
+     *
+     * @param allPartition total number of partitions.
+     * @param executorSize total degrees of parallelism.
+     * @return degrees of parallelism each hash table has.
+     */
+    public static List<Integer> assignPartitionToExecutor(int allPartition, int executorSize) {
+        List<Integer> assignResult = new ArrayList<>();
+        if (allPartition < executorSize) {
+            int fullGroup = executorSize / allPartition;
+            List<Integer> fullPartList = IntStream.range(0, allPartition)
+                .boxed()
+                .collect(Collectors.toList());
+            IntStream.range(0, fullGroup).forEach(t -> assignResult.addAll(fullPartList));
+            int leftExecutor = executorSize % allPartition;
+            List<Integer> leftPartList = IntStream.range(0, leftExecutor)
+                .boxed()
+                .collect(Collectors.toList());
+            assignResult.addAll(leftPartList);
+        } else {
+            for (int part = 0; part < allPartition; part++) {
+                assignResult.add(part % executorSize);
+            }
+        }
+        return assignResult;
+    }
+
+    /**
+     * Calculate how many partitions each hash table has.
+     * The hash table number = MIN(allPartition, executorSize)
+     *
+     * @param allPartition total number of partitions.
+     * @param executorSize total degrees of parallelism.
+     * @return number of partitions each hash table has.
+     */
+    public static int[] partitionsOfEachBucket(int allPartition, int executorSize) {
+        final int hashTableNum = Math.min(allPartition, executorSize);
+        int[] results = new int[hashTableNum];
+
+        if (allPartition <= executorSize) {
+            for (int i = 0; i < hashTableNum; i++) {
+                results[i] = 1;
+            }
+        } else {
+            // hashTableNum = executorSize = parallelism
+            for (int partIndex = 0; partIndex < allPartition; partIndex++) {
+                final int hashTableIndex = partIndex % hashTableNum;
+                results[hashTableIndex]++;
+            }
+        }
+        return results;
     }
 
     public static List<Map<String, Object>> resultSetToList(ResultCursor rs) {
@@ -419,14 +530,6 @@ public class ExecUtils {
         }
 
         return results;
-    }
-
-    public static boolean allElementsNull(List args) {
-        boolean allArgsNull = true;
-        for (Object arg : args) {
-            allArgsNull = allArgsNull && ExecUtils.isNull(arg);
-        }
-        return allArgsNull;
     }
 
     public static List<Map<String, Object>> resultSetToList(ResultSet rs) {
@@ -498,20 +601,6 @@ public class ExecUtils {
         } else {
             return n < 0 ? 1 : -1;
         }
-    }
-
-    public static boolean isNull(Object o) {
-        if (o instanceof com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row.RowValue) {
-            return ExecUtils.allElementsNull(
-                ((com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row.RowValue) o).getValues());
-        }
-        if (o == null) {
-            return true;
-        }
-        if (o instanceof NullValue) {
-            return true;
-        }
-        return false;
     }
 
     public static void closeStatement(java.sql.Statement stmt) {
@@ -641,6 +730,27 @@ public class ExecUtils {
         }
 
         return QueryConcurrencyPolicy.SEQUENTIAL;
+    }
+
+    public static List<Map<Integer, ParameterContext>> getReturningResultByCursors(List<Cursor> cursors,
+                                                                                   boolean isBroadcast) {
+        List<Map<Integer, ParameterContext>> result = new ArrayList<>();
+        try {
+            for (Cursor cursor : cursors) {
+                if (isBroadcast) {
+                    result = buildBatchParam(cursor, false);
+                } else {
+                    result.addAll(buildBatchParam(cursor, false));
+                }
+            }
+        } finally {
+            for (Cursor inputCursor : cursors) {
+                if (inputCursor != null) {
+                    inputCursor.close(new ArrayList<>());
+                }
+            }
+        }
+        return result;
     }
 
     public static int getAffectRowsByCursors(List<Cursor> cursors, boolean isBroadcast) {
@@ -886,11 +996,6 @@ public class ExecUtils {
         return append.toString();
     }
 
-    public static byte[] hintPrefix = "/*DRDS /".getBytes(StandardCharsets.UTF_8);
-    public static byte[] hintDivision = "/".getBytes(StandardCharsets.UTF_8);
-    public static byte[] hintEnd = "/ */".getBytes(StandardCharsets.UTF_8);
-    public static byte[] hintNULL = "null".getBytes(StandardCharsets.UTF_8);
-
     public static byte[] buildDRDSTraceCommentBytes(ExecutionContext context) {
         String clientIp = context.getClientIp();
         String traceId = context.getTraceId();
@@ -939,8 +1044,69 @@ public class ExecUtils {
     }
 
     public static void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
+                                     int[] positionLinks, int[] hashCodeResults, int[] intermediates,
+                                     int[] blockHashCodes,
+                                     ConcurrentIntBloomFilter bloomFilter, int[] ignoreNullBlocks,
+                                     int ignoreNullBlocksSize) {
+        // Calculate hash codes of the whole chunk
+        keyChunk.hashCodeVector(hashCodeResults, intermediates, blockHashCodes, keyChunk.getPositionCount());
+
+        if (checkJoinKeysAllNullSafe(keyChunk, ignoreNullBlocks, ignoreNullBlocksSize)) {
+            // If all keys are not null, we can leave out the null-check procedure
+            for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
+                int next = hashTable.put(position, hashCodeResults[offset]);
+                positionLinks[position] = next;
+                if (bloomFilter != null) {
+                    bloomFilter.putInt(hashCodeResults[offset]);
+                }
+            }
+        } else {
+            // Otherwise we have to check nullability for each row
+            for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
+                if (checkJoinKeysNulSafe(keyChunk, offset, ignoreNullBlocks, ignoreNullBlocksSize)) {
+                    int next = hashTable.put(position, hashCodeResults[offset]);
+                    positionLinks[position] = next;
+                    if (bloomFilter != null) {
+                        bloomFilter.putInt(hashCodeResults[offset]);
+                    }
+                }
+            }
+        }
+    }
+
+    public static void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
+                                     int[] positionLinks, int[] hashCodeResults, int[] intermediates,
+                                     int[] blockHashCodes,
+                                     ConcurrentIntBloomFilter bloomFilter, List<Integer> ignoreNullBlocks) {
+        // Calculate hash codes of the whole chunk
+        keyChunk.hashCodeVector(hashCodeResults, intermediates, blockHashCodes, keyChunk.getPositionCount());
+
+        if (checkJoinKeysAllNullSafe(keyChunk, ignoreNullBlocks)) {
+            // If all keys are not null, we can leave out the null-check procedure
+            for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
+                int next = hashTable.put(position, hashCodeResults[offset]);
+                positionLinks[position] = next;
+                if (bloomFilter != null) {
+                    bloomFilter.putInt(hashCodeResults[offset]);
+                }
+            }
+        } else {
+            // Otherwise we have to check nullability for each row
+            for (int offset = 0; offset < keyChunk.getPositionCount(); offset++, position++) {
+                if (checkJoinKeysNulSafe(keyChunk, offset, ignoreNullBlocks)) {
+                    int next = hashTable.put(position, hashCodeResults[offset]);
+                    positionLinks[position] = next;
+                    if (bloomFilter != null) {
+                        bloomFilter.putInt(hashCodeResults[offset]);
+                    }
+                }
+            }
+        }
+    }
+
+    public static void buildOneChunk(Chunk keyChunk, int position, ConcurrentRawHashTable hashTable,
                                      int[] positionLinks,
-                                     FastIntBloomFilter bloomFilter, List<Integer> ignoreNullBlocks) {
+                                     ConcurrentIntBloomFilter bloomFilter, List<Integer> ignoreNullBlocks) {
         // Calculate hash codes of the whole chunk
         int[] hashes = keyChunk.hashCodeVector();
 
@@ -950,7 +1116,7 @@ public class ExecUtils {
                 int next = hashTable.put(position, hashes[offset]);
                 positionLinks[position] = next;
                 if (bloomFilter != null) {
-                    bloomFilter.put(hashes[offset]);
+                    bloomFilter.putInt(hashes[offset]);
                 }
             }
         } else {
@@ -960,11 +1126,29 @@ public class ExecUtils {
                     int next = hashTable.put(position, hashes[offset]);
                     positionLinks[position] = next;
                     if (bloomFilter != null) {
-                        bloomFilter.put(hashes[offset]);
+                        bloomFilter.putInt(hashes[offset]);
                     }
                 }
             }
         }
+    }
+
+    public static boolean checkJoinKeysAllNullSafe(Chunk keyChunk, int[] ignoreNullBlocks, int size) {
+        for (int i = 0; i < size; i++) {
+            if (keyChunk.getBlock(ignoreNullBlocks[i]).mayHaveNull()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean checkJoinKeysNulSafe(Chunk keyChunk, int offset, int[] ignoreNullBlocks, int size) {
+        for (int i = 0; i < size; i++) {
+            if (keyChunk.getBlock(ignoreNullBlocks[i]).isNull(offset)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static boolean checkJoinKeysAllNullSafe(Chunk keyChunk, List<Integer> ignoreNullBlocks) {
@@ -1332,14 +1516,37 @@ public class ExecUtils {
 
     public static int partition(int hashCode, int partitionCount, boolean isPowerOfTwo) {
         if (isPowerOfTwo) {
-//            hashCode = HashCommon.mix(hashCode) >>> (Integer.numberOfLeadingZeros(partitionCount) + 1);
             hashCode = HashCommon.murmurHash3(hashCode);
             return hashCode & (partitionCount - 1);
         } else {
             hashCode = HashCommon.murmurHash3(hashCode) & Integer.MAX_VALUE; //ensure positive
             return hashCode % partitionCount;
         }
-//        return Math.abs(HashCommon.murmurHash3(hashCode)) % partitionCount;
+    }
+
+    public static int partitionUnderPairWise(long hashCode, int partitionCount, int fullPartCount,
+                                             boolean isFullPartPowerOfTwo) {
+        if (isFullPartPowerOfTwo) {
+            return (int) ((hashCode & (fullPartCount - 1)) % partitionCount);
+        } else {
+            return (int) (((hashCode & Long.MAX_VALUE) % fullPartCount) % partitionCount);
+        }
+    }
+
+    public static int calcStoragePartNum(long hashCode, int fullPartCount, boolean isFullPartPowerOfTwo) {
+        if (isFullPartPowerOfTwo) {
+            return (int) (hashCode & (fullPartCount - 1));
+        } else {
+            return (int) ((hashCode & Long.MAX_VALUE) % fullPartCount);
+        }
+    }
+
+    public static int directPartition(long hashCode, int partitionCount, boolean isPowerOfTwo) {
+        if (isPowerOfTwo) {
+            return (int) (hashCode & (partitionCount - 1));
+        } else {
+            return (int) ((hashCode & Long.MAX_VALUE) % partitionCount);
+        }
     }
 
     /**
@@ -1547,8 +1754,14 @@ public class ExecUtils {
             Map<Integer, ParameterContext> params = context.getParams().getCurrentParameter();
             if (((Sort) node).fetch != null) {
                 outputCount = CBOUtil.getRexParam(sort.fetch, params);
+                long offset = 0;
                 if (sort.offset != null) {
-                    outputCount += CBOUtil.getRexParam(sort.offset, params);
+                    offset = CBOUtil.getRexParam(sort.offset, params);
+                }
+                if (outputCount == Long.MAX_VALUE || offset == Long.MAX_VALUE) {
+                    outputCount = Long.MAX_VALUE;
+                } else {
+                    outputCount = outputCount + offset;
                 }
             }
         }
@@ -1641,7 +1854,7 @@ public class ExecUtils {
                 t -> {
                     if (t.getTaskStatus().getState().isException()) {
                         if (fail.get() != null) {
-                            if (fail.get().getStats().getEndTime().getMillis() > t.getStats().getEndTime()
+                            if (fail.get().getTaskStats().getEndTime().getMillis() > t.getTaskStats().getEndTime()
                                 .getMillis()) {
                                 fail.set(t);
                             }
@@ -1678,12 +1891,22 @@ public class ExecUtils {
         return nodes != null && nodes.size() > 0;
     }
 
+    public static int getActiveNodeCount() {
+        if (ServiceProvider.getInstance().getServer() == null) {
+            return 1;
+        }
+        InternalNodeManager nodeManager = ServiceProvider.getInstance().getServer().getNodeManager();
+        return Math.max(nodeManager.getAllNodes().getActiveNodes().size(), 1);
+    }
+
     public static boolean convertBuildSide(Join join) {
         boolean convertBuildSide = false;
         if (join instanceof HashJoin) {
             convertBuildSide = ((HashJoin) join).isOuterBuild();
         } else if (join instanceof HashGroupJoin) {
             convertBuildSide = true;
+        } else if (join instanceof SemiHashJoin) {
+            convertBuildSide = ((SemiHashJoin) join).isOuterBuild();
         }
         return convertBuildSide;
     }
@@ -1723,7 +1946,7 @@ public class ExecUtils {
     public static void syncNodeStatus(String schema) {
         try {
             IGmsSyncAction action = new RefreshNodeSyncAction(schema);
-            SyncManagerHelper.sync(action, schema);
+            SyncManagerHelper.sync(action, schema, SyncScope.ALL);
         } catch (Exception e) {
             logger.warn("node sync error", e);
         }
@@ -1964,47 +2187,236 @@ public class ExecUtils {
     }
 
     /**
-     * used for information schema phy table name match
+     * version: select @@polardbx_engine_version as version
+     * releaseDate: select @@polardbx_release_date as release_date
+     *
+     * @return {Version}-{ReleaseDate}
      */
-    public static void handleTableNameParams(Object obj, Map<Integer, ParameterContext> params,
-                                             Set<String> indexTableNames) {
-        if (obj instanceof RexDynamicParam) {
-            String tableName = String.valueOf(params.get(((RexDynamicParam) obj).getIndex() + 1).getValue());
-            indexTableNames.add(tableName.toLowerCase());
-        } else if (obj instanceof RexLiteral) {
-            String tableName = ((RexLiteral) obj).getValueAs(String.class);
-            indexTableNames.add(tableName.toLowerCase());
-        } else if (obj instanceof RawString) {
-            for (Object o : ((RawString) obj).getObjList()) {
-                assert !(o instanceof List);
-                indexTableNames.add(o.toString().toLowerCase());
+    public static String getDnPolardbVersion() throws Exception {
+        String sql = MetaDbUtil.POLARDB_VERSION_SQL;
+        Set<String> allDnId = ExecUtils.getAllDnStorageId();
+        if (allDnId.isEmpty()) {
+            throw new SQLException("Failed to get DN datasource");
+        }
+        String dnId = allDnId.iterator().next();
+        try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(sql)) {
+            String dnPolardbxVersion = null;
+            String dnReleaseDate = null;
+            if (rs.next()) {
+                dnPolardbxVersion = rs.getString(1);
+                dnReleaseDate = rs.getString(2);
             }
+            return String.format("%s-%s", dnPolardbxVersion, dnReleaseDate);
         }
     }
 
-    public static String getDnPolardbVersion() {
-        String dnPolardbVersion = null;
-        if (ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME) != null) {
-            TopologyHandler topologyHandler =
-                ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME).getTopologyHandler();
-            if (topologyHandler.getMatrix().getGroups().isEmpty()) {
-                return dnPolardbVersion;
-            }
-            Group group = topologyHandler.getMatrix().getGroups().get(0);
-            String groupName = group.getName();
-            IGroupExecutor groupExecutor = topologyHandler.get(groupName);
-            DataSource dataSource = groupExecutor.getDataSource();
-            try (Connection conn = dataSource.getConnection();
-                Statement stmt = conn.createStatement();
-                ResultSet rs = stmt.executeQuery("SELECT @@polardb_version")) {
-                if (rs.next()) {
-                    dnPolardbVersion = rs.getString(1);
+    /**
+     * Scan each DN, and find all prepared trx, and record the max trx id and min trx id of these trx.
+     *
+     * @param dnIds [in] Data nodes to scan.
+     * @param executor [in] Executor to get connection of DN.
+     * @param exceptions [out] Exceptions during scan.
+     * @param minId [out] Min id of all prepared trx.
+     * @param maxId [out] Max id of all prepared trx.
+     */
+    public static void scanRecoveredTrans(Set<String> dnIds, ITopologyExecutor executor,
+                                          ConcurrentLinkedQueue<Exception> exceptions,
+                                          AtomicLong minId, AtomicLong maxId) {
+        List<Future> futures = new ArrayList<>();
+        // Parallelism is the number of DN.
+        for (String dnId : dnIds) {
+            futures.add(executor.getExecutorService().submit(null, null, AsyncTask.build(() -> {
+                try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
+                    Statement stmt = conn.createStatement()) {
+                    if (conn.isWrapperFor(XConnection.class)) {
+                        // Note: XA RECOVER will hold the LOCK_transaction_cache lock, so never block it.
+                        conn.unwrap(XConnection.class).setDefaultTokenKb(Integer.MAX_VALUE);
+                    }
+                    ResultSet rs = stmt.executeQuery("XA RECOVER");
+                    while (rs.next()) {
+                        long formatId = rs.getLong(1);
+                        int gtridLength = rs.getInt(2);
+                        byte[] data = rs.getBytes(4);
+
+                        if (formatId == 1) {
+                            byte[] gtridData = Arrays.copyOfRange(data, 0, gtridLength);
+                            if (checkGtridPrefix(gtridData)) {
+                                int atSymbolIndex = ArrayUtils.indexOf(gtridData, (byte) '@');
+                                long trxId = Long.parseLong(new String(gtridData, 5, atSymbolIndex - 5), 16);
+
+                                // CAS to update min id.
+                                long tmp = minId.get();
+                                while (trxId < tmp && !minId.compareAndSet(tmp, trxId)) {
+                                    tmp = minId.get();
+                                }
+
+                                // CAS to update max id.
+                                tmp = maxId.get();
+                                while (trxId > tmp && !maxId.compareAndSet(tmp, trxId)) {
+                                    tmp = maxId.get();
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    exceptions.offer(e);
                 }
-                return dnPolardbVersion;
-            } catch (SQLException e) {
-                logger.error(e.getMessage(), e);
+            })));
+        }
+        AsyncUtils.waitAll(futures);
+    }
+
+    /**
+     * Check whether begins with prefix 'drds-'
+     */
+    public static boolean checkGtridPrefix(byte[] data) {
+        return data.length > 5
+            && data[0] == 'd' && data[1] == 'r' && data[2] == 'd' && data[3] == 's' && data[4] == '-';
+    }
+
+    public static List<FilesRecord> getFilesMetaByNames(List<String> files) {
+        try (final Connection connection = MetaDbUtil.getConnection()) {
+            final FilesAccessor filesAccessor = new FilesAccessor();
+            filesAccessor.setConnection(connection);
+            connection.setAutoCommit(false);
+            try {
+                return filesAccessor.queryFilesByNames(files);
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (Throwable t) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, t);
+        }
+    }
+
+    /**
+     * Wait some CN global variable in DynamicConfig changed in all CN nodes after setting global.
+     *
+     * @param k class member variable in DynamicConfig, in string format.
+     * @param v expected value after setting global.
+     * @param timeout wait timeout, in second.
+     * @return null if success, or error message if failed.
+     */
+    public static String waitVarChange(String k, String v, long timeout) {
+        logger.warn("Start waiting var changed: " + k + " -> " + v);
+        int retry = 0, waitMilli = 1000;
+        int maxRetry = (int) (timeout * 1000 / waitMilli);
+        boolean success = true;
+        while (retry < maxRetry) {
+            success = true;
+            retry++;
+            try {
+                CollectVariableSyncAction action = new CollectVariableSyncAction(k);
+                List<List<Map<String, Object>>> values = SyncManagerHelper.sync(action, SyncScope.ALL);
+                for (List<Map<String, Object>> value : values) {
+                    String result = value.get(0).get("Value").toString();
+                    if (!v.equalsIgnoreCase(result)) {
+                        System.out.println(result);
+                        success = false;
+                        break;
+                    }
+                }
+                if (success) {
+                    break;
+                } else {
+                    Thread.sleep(waitMilli);
+                }
+            } catch (Throwable t) {
+                return "Error occurs when waiting CN global variable changed: " + t.getMessage();
             }
         }
-        return dnPolardbVersion;
+        logger.warn("Finish waiting var changed: " + k + " -> " + v + ", success: " + success);
+        if (!success) {
+            return "Timeout waiting CN global variable changed.";
+        }
+        return null;
+    }
+
+    /**
+     * @return a columnar transaction using given tso.
+     */
+    public static ITransaction createColumnarTransaction(String schema, ExecutionContext ec, long tso) {
+        ITransactionManager manager = ExecutorContext.getContext(schema).getTransactionManager();
+        ITransaction trx =
+            manager.createTransaction(ITransactionPolicy.TransactionClass.COLUMNAR_READ_ONLY_TRANSACTION, ec);
+        if (trx instanceof IColumnarTransaction) {
+            ((IColumnarTransaction) trx).setTsoTimestamp(tso);
+        }
+        return trx;
+    }
+
+    public static Runnable forceAllTrx2PC() throws SQLException, InterruptedException {
+        // Force all trx being strict 2PC trx,
+        // the following configs are expected to be true.
+        String instId = InstIdUtil.getInstId();
+        Set<String> paramKeys = ImmutableSet.of(
+            ConnectionProperties.ENABLE_XA_TSO,
+            ConnectionProperties.ENABLE_AUTO_COMMIT_TSO,
+            ConnectionProperties.FORBID_AUTO_COMMIT_TRX
+        );
+        InstConfigAccessor accessor = new InstConfigAccessor();
+        accessor.setConnection(MetaDbUtil.getConnection());
+        // Original config.
+        List<InstConfigRecord> records = accessor.queryByParamKeys(instId, paramKeys);
+        // Need to be changed config.
+        Set<String> needChangedConfigs = new HashSet<>(paramKeys);
+        for (InstConfigRecord record : records) {
+            if (needChangedConfigs.contains(record.paramKey.toUpperCase())
+                && "true".equalsIgnoreCase(record.paramVal)) {
+                needChangedConfigs.remove(record.paramKey.toUpperCase());
+            }
+        }
+        // Changed config.
+        List<InstConfigRecord> changedRecords = null;
+        if (!needChangedConfigs.isEmpty()) {
+            // Change these configs.
+            Properties properties = new Properties();
+            for (String changedRecord : needChangedConfigs) {
+                properties.put(changedRecord, "true");
+            }
+            MetaDbUtil.setGlobal(properties);
+            // Changed config.
+            changedRecords = accessor.queryByParamKeys(instId, needChangedConfigs);
+            waitVarChange("forbidAutoCommitTrx", "true", 5);
+            // A better way to drain trx ?
+            Thread.sleep(1000);
+        }
+
+        final AtomicBoolean recover = new AtomicBoolean(false);
+
+        // Recover these changed configs.
+        final List<InstConfigRecord> changedRecords0 = new ArrayList<>();
+        if (null == changedRecords || changedRecords.isEmpty()) {
+            // No need to recover.
+            recover.set(true);
+        } else {
+            changedRecords0.addAll(changedRecords);
+        }
+        return () -> {
+            if (!recover.compareAndSet(false, true)) {
+                return;
+            }
+            // Restore var.
+            List<InstConfigRecord> current = accessor.queryByParamKeys(instId, needChangedConfigs);
+            Properties properties = new Properties();
+            for (InstConfigRecord changedRecord : changedRecords0) {
+                for (InstConfigRecord currentRecord : current) {
+                    if (currentRecord.paramKey.equalsIgnoreCase(changedRecord.paramKey)) {
+                        if (currentRecord.gmtModified.compareTo(changedRecord.gmtModified) <= 0) {
+                            // Not changed since we modify it, recover it back.
+                            properties.put(changedRecord.paramKey, "false");
+                        }
+                        break;
+                    }
+                }
+            }
+            try {
+                MetaDbUtil.setGlobal(properties);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        };
     }
 }

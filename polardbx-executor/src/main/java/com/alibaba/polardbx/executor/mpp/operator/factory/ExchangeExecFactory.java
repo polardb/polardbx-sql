@@ -71,7 +71,7 @@ public class ExchangeExecFactory extends ExecutorFactory {
 
             List<OrderByOption> orderBys = ExecUtils.convertFrom(sortList);
             ret = new SortMergeExchangeExec(context, sourceNode.getRelatedId(), supplier,
-                pagesSerdeFactory.createPagesSerde(types), orderBys, types
+                pagesSerdeFactory.createPagesSerde(types, context), orderBys, types
             );
         } else {
             if (exchangeClient == null) {
@@ -80,15 +80,13 @@ public class ExchangeExecFactory extends ExecutorFactory {
                 exchangeClient = supplier.get(new RecordMemSystemListener(memoryPool.getMemoryAllocatorCtx()), context);
             }
             ret = new ExchangeExec(context, sourceNode.getRelatedId(), exchangeClient, memoryPool,
-                pagesSerdeFactory.createPagesSerde(types),
+                pagesSerdeFactory.createPagesSerde(types, context),
                 types
             );
         }
 
-        ret.setId(sourceNode.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(sourceNode, ret, context);
-        }
+        registerRuntimeStat(ret, sourceNode, context);
         return ret;
     }
+
 }

@@ -16,9 +16,8 @@
 
 package com.alibaba.polardbx.executor.mdl;
 
-import com.google.common.base.Preconditions;
-
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+import com.google.common.base.Preconditions;
 
 import java.util.Iterator;
 import java.util.List;

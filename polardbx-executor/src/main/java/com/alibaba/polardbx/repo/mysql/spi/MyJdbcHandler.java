@@ -42,6 +42,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.support.LogFormat;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -71,10 +72,10 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.ResultSetRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatisticsExt;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
+import com.alibaba.polardbx.optimizer.statis.XplanStat;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
@@ -121,6 +122,7 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 
 import static com.alibaba.polardbx.common.TddlConstants.ANONAMOUS_DBKEY;
+import static com.alibaba.polardbx.common.TddlConstants.LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN;
 import static com.alibaba.polardbx.common.utils.ExceptionUtils.isMySQLIntegrityConstraintViolationException;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.listToMap;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.mapToList;
@@ -140,8 +142,6 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     private static final String UNKNOWN_COLUMN = "42S22";
     private static final Logger logger = LoggerFactory.getLogger(MyJdbcHandler.class);
     private static final int MAX_LOG_PARAM_COUNT = 500;
-
-    private static final int LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN = 7 * 24 * 60 * 60 * 1000;
 
     private IConnection connection = null;
     private ResultSet resultSet = null;
@@ -258,12 +258,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         long time = System.currentTimeMillis() - startTime;
         if (SQLRecorderLogger.physicalSlowLogger.isInfoEnabled()) {
             try {
-                long thresold = this.executionContext.getPhysicalRecorder().getSlowSqlTime();
-
-                // Use slow sql time of db level first
-                if (executionContext.getExtraCmds().containsKey(ConnectionProperties.SLOW_SQL_TIME)) {
-                    thresold = executionContext.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
-                }
+                long thresold = executionContext.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
                 if (thresold > 0L && time > thresold) {
 
                     boolean isBackfillTask = (executionContext.getDdlJobId() != null
@@ -432,7 +427,9 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                         ;
                     }
                 }
-                OptimizerAlertUtil.xplanAlert(executionContext, xResult);
+                if (XResult.RequestType.PLAN_QUERY.equals(xResult.getRequestType())) {
+                    XplanStat.addExaminedRowCount(executionContext.getXplanStat(), xResult.getExaminedRowCount());
+                }
                 xResult.close();
                 xResult = null;
             }
@@ -791,7 +788,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     }
 
     private boolean executeQueryX(XPlanTemplate XTemplate,
-                                  List<String> tableNames,
+                                  List<String> phyTableNames,
                                   List<List<String>> allPhyTableNames,
                                   Map<Integer, ParameterContext> params,
                                   BaseQueryOperation phyTblOp,
@@ -810,18 +807,28 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         if (executionContext.getGroupHint() != null && !executionContext.getGroupHint().isEmpty()) {
             return false; // Not support.
         }
+        if (XplanStat.isForbidXplan(executionContext.getXplanStat(), executionContext)) {
+            return false;
+        }
         if (executionContext.getExplain() != null
             && executionContext.getExplain().explainMode == ExplainResult.ExplainMode.EXECUTE) {
+            // Generate final plan.
+            final PolarxExecPlan.ExecPlan.Builder execPlan =
+                XTemplate.getXPlan(dbName, phyTableNames, params, executionContext);
+            if (null != execPlan) {
+                executionContext.setXplanIndex(XTemplate.getIndexName());
+            }
             return false; // Not support.
         }
 
         // Generate final plan.
         boolean isPhyOp = phyTblOp instanceof PhyTableOperation;
         final PolarxExecPlan.ExecPlan.Builder execPlan =
-            XTemplate.getXPlan(dbName, tableNames, params, executionContext);
+            XTemplate.getXPlan(dbName, phyTableNames, params, executionContext);
         if (null == execPlan) {
             return false; // Forbidden by some reason.
         }
+        executionContext.setXplanIndex(XTemplate.getIndexName());
         final JsonFormat format = new JsonFormat();
 
         if (logger.isDebugEnabled()) {
@@ -1678,7 +1685,11 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                         xConnection.setTraceId(executionContext.getTraceId());
                         connection.flushUnsent(); // Caution: This is important when use deferred sql.
                         xConnection.getSession().setChunkResult(false);
-                        xResult = xPreparedStatement.executeUpdateReturningX(executionContext.getReturning());
+                        boolean isBackfill = executionContext.getBackfillReturning() != null;
+                        String returning =
+                            isBackfill ? executionContext.getBackfillReturning() : executionContext.getReturning();
+                        xResult =
+                            xPreparedStatement.executeUpdateReturningX(returning, isBackfill);
                         xResult.getMetaData(); // Compatible with original time record.
                         affectRow = -2;
                     } else {
@@ -2118,7 +2129,18 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 sb.append(", SQL: ").append(sqlAndParam.sql);
 
                 if (!GeneralUtil.isEmpty(sqlAndParam.param.values())) {
-                    sb.append(", PARAM: ").append(String.valueOf(sqlAndParam.param.values()));
+                    boolean isBackfillTask = (executionContext.getDdlJobId() != null
+                        && executionContext.getDdlJobId() > 0);
+
+                    sb.append(", PARAM: ");
+                    if (isBackfillTask) {
+                        //ignore the backfill physical slow sql's parameters
+                        sb.append("{1=");
+                        sb.append(sqlAndParam.param.get(1));
+                        sb.append(",...,}");
+                    } else {
+                        sb.append(String.valueOf(sqlAndParam.param.values()));
+                    }
                 }
                 sb.append(", ERROR: ").append(e.getMessage());
 
@@ -2216,7 +2238,10 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     }
 
     protected String getCurrentDbkey(ITransaction.RW rw) {
-        TGroupDataSource dataSource = repo.getDataSource(groupName);
+        if (ConfigDataMode.isColumnarMode()) {
+            return ANONAMOUS_DBKEY;
+        }
+        DataSource dataSource = repo.getDataSource(groupName);
         String currentDbKey = ANONAMOUS_DBKEY;
         if (dataSource != null) {
             if (connection != null) {
@@ -2229,7 +2254,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 MasterSlave masterSlave =
                     ExecUtils.getMasterSlave(inTrans, rw.equals(ITransaction.RW.WRITE), executionContext);
                 currentDbKey =
-                    dataSource.getConfigManager().getDataSource(
+                    ((TGroupDataSource) dataSource).getConfigManager().getDataSource(
                         masterSlave).getDsConfHandle().getDbKey();
             }
             if (StringUtils.isEmpty(currentDbKey)) {

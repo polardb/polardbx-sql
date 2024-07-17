@@ -68,7 +68,7 @@ public class AlterTableSetGroupAddSubTaskMetaTask extends AlterTableGroupAddSubT
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(targetTableGroupName);
         if (tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getAllTables())) {
-            String firstTable = tableGroupConfig.getAllTables().get(0).getTableName();
+            String firstTable = tableGroupConfig.getAllTables().get(0);
             JoinGroupTableDetailRecord joinGroupTableDetailRecord =
                 joinGroupTableDetailAccessor.getJoinGroupDetailBySchemaTableName(schemaName, firstTable);
             if (joinGroupTableDetailRecord != null) {

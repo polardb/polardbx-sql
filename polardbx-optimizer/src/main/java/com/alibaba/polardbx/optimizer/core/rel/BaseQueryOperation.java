@@ -30,6 +30,7 @@ import com.google.protobuf.ByteString;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.sql.SqlKind;
@@ -55,6 +56,8 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
     protected int affectedRows = -1;
 
     protected XPlanTemplate XTemplate = null;
+
+    protected RelNode originPlan = null;
     protected ByteString sqlDigest = null;
 
     protected boolean supportGalaxyPrepare = true; // support by default
@@ -88,6 +91,7 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
         this.cursorMeta = baseQueryOperation.cursorMeta;
         this.useDbIndex = baseQueryOperation.useDbIndex;
         this.XTemplate = baseQueryOperation.XTemplate;
+        this.originPlan = baseQueryOperation.originPlan;
         this.sqlDigest = baseQueryOperation.sqlDigest;
         this.supportGalaxyPrepare = baseQueryOperation.supportGalaxyPrepare;
         this.galaxyPrepareDigest = baseQueryOperation.galaxyPrepareDigest;
@@ -183,6 +187,14 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
 
     public void setXTemplate(XPlanTemplate XTemplate) {
         this.XTemplate = XTemplate;
+    }
+
+    public RelNode getOriginPlan() {
+        return originPlan;
+    }
+
+    public void setOriginPlan(RelNode originPlan) {
+        this.originPlan = originPlan;
     }
 
     public ByteString getSqlDigest() {

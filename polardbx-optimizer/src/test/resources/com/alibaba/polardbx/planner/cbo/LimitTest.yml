@@ -1,0 +1,79 @@
+SQL:
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, 18446744073709551615;
+    plan: |
+      mergesort(sort="bar asc", offset=?0, fetch=?1)
+        logicalview(tables="[0000-0003].alchemy_foo", shardcount=4, sql="select `id`, `bar`, `range` from `alchemy_foo` as `alchemy_foo` order by `bar` limit (? + ?)")
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 18446744073709551615, 10;
+    plan: |
+      mergesort(sort="bar asc", offset=?0, fetch=?1)
+        logicalview(tables="[0000-0003].alchemy_foo", shardcount=4, sql="select `id`, `bar`, `range` from `alchemy_foo` as `alchemy_foo` order by `bar` limit (? + ?)")
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT -1, 18446744073709551615;
+    plan: |
+      ERR-CODE: [TDDL-4501][ERR_OPTIMIZER] optimize error by get rex -1
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 18446744073709551615, -1;
+    plan: |
+      ERR-CODE: [TDDL-4501][ERR_OPTIMIZER] optimize error by get rex -1
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT -1, 10;
+    plan: |
+      ERR-CODE: [TDDL-4501][ERR_OPTIMIZER] optimize error by get rex -1
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, -1;
+    plan: |
+      ERR-CODE: [TDDL-4501][ERR_OPTIMIZER] optimize error by get rex -1
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, -11;
+    plan: |
+      ERR-CODE: [TDDL-4501][ERR_OPTIMIZER] optimize error by get rex -11
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, -18446744073709551615;
+    plan: |
+      ERR-CODE: [TDDL-4501][ERR_OPTIMIZER] optimize error by get rex -18446744073709551615
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, 0;
+    plan: |
+      mergesort(sort="bar asc", offset=?0, fetch=?1)
+        logicalview(tables="[0000-0003].alchemy_foo", shardcount=4, sql="select `id`, `bar`, `range` from `alchemy_foo` as `alchemy_foo` order by `bar` limit (? + ?)")
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, 1.2;
+    plan: |
+      error occurred while applying rule drdssortconvertrule:smp_instance
+  - sql: |
+        SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, 1+2;
+    plan: |
+      not a literal: +(?1, ?2)
+  - sql: |
+      SELECT foo.id AS foo_id, foo.bar AS foo_bar, foo.`range` AS foo_range FROM alchemy_foo as foo ORDER BY foo.bar LIMIT 10, 1.0;
+    plan: |
+      error occurred while applying rule drdssortconvertrule:smp_instance
+  - sql: |
+      SELECT anon_1.id AS anon_1_id, anon_1.name AS anon_1_name FROM (SELECT users.id AS id, users.name AS name FROM alchemy_users as users ORDER BY users.id LIMIT 2, 18446744073709551615) AS anon_1 INNER JOIN alchemy_orders as orders ON anon_1.id = orders.user_id
+    plan: |
+      project(anon_1_id="id", anon_1_name="name")
+        hashjoin(condition="id = user_id", type="inner")
+          mergesort(sort="id asc", offset=?0, fetch=?1)
+            logicalview(tables="[0000-0003].alchemy_users", shardcount=4, sql="select `id`, `name` from `alchemy_users` as `alchemy_users` order by `id` limit (? + ?)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].alchemy_orders", shardcount=4, sql="select `user_id` from `alchemy_orders` as `alchemy_orders`")
+DDL:
+  alchemy_foo:
+    CREATE TABLE `alchemy_foo` (  `id` int(11) NOT NULL AUTO_INCREMENT,  `bar` int(11) DEFAULT NULL,  `range` int(11) DEFAULT NULL,  PRIMARY KEY (`id`)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC dbpartition by hash(`id`);
+  alchemy_users:
+    CREATE TABLE `alchemy_users` (  `id` int(11) NOT NULL AUTO_INCREMENT,  `name` varchar(30) NOT NULL,  PRIMARY KEY (`id`)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`);
+  alchemy_orders:
+    CREATE TABLE `alchemy_orders` (  `id` int(11) NOT NULL AUTO_INCREMENT,  `user_id` int(11) DEFAULT NULL,  `address_id` int(11) DEFAULT NULL,  `description` varchar(30) DEFAULT NULL,  `isopen` int(11) DEFAULT NULL,  PRIMARY KEY (`id`)) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`id`);
+STATISTICS:
+  alchemy_foo:
+    100000
+  alchemy_users:
+    100000
+  alchemy_orders:
+    100000
+CONFIG:
+  defaltxxAPPName.isNew:
+    false
+

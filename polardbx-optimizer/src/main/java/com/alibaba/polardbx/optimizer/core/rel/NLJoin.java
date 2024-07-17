@@ -16,23 +16,21 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
+import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToNLJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
-import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
 import org.apache.calcite.plan.DeriveMode;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.PhysicalNode;
-import org.apache.calcite.rel.RelCollation;
-import org.apache.calcite.rel.RelDistribution;
-import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
@@ -47,7 +45,6 @@ import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Pair;
-import org.apache.calcite.util.mapping.Mappings;
 
 import java.util.List;
 import java.util.Set;
@@ -179,10 +176,13 @@ public class NLJoin extends Join implements PhysicalNode {
             buildInput = left;
         }
 
-        final double streamRowCount = mq.getRowCount(streamInput)
-            + 5; // add constant to prefer hash join rather then nl join when streamRowCount == 1
-        final double buildRowCount = mq.getRowCount(buildInput)
-            + 5; // add constant to prefer hash join rather then nl join when buildRowCount == 1
+        double streamRowCount = mq.getRowCount(streamInput);
+        double buildRowCount = mq.getRowCount(buildInput);
+        if (LogicalJoinToNLJoinRule.canUseHash(this, getCondition())) {
+            // add constant to prefer hash join rather then nl join
+            streamRowCount += 5;
+            buildRowCount += 5;
+        }
 
         if (Double.isInfinite(streamRowCount) || Double.isInfinite(buildRowCount)) {
             return planner.getCostFactory().makeHugeCost();

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.Set;
@@ -45,8 +46,6 @@ public class RenameTablesValidateTask extends BaseValidateTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
-        executionContext.setPhyTableRenamed(false);
-
         Set<String> allTableNames = TableValidator.getAllTableNames(schemaName);
         Set<String> allTableNamesTmp = new TreeSet<>(String::compareToIgnoreCase);
         allTableNamesTmp.addAll(allTableNames);
@@ -58,6 +57,7 @@ public class RenameTablesValidateTask extends BaseValidateTask {
             TableValidator.validateTableName(tableName);
             TableValidator.validateTableName(newTableName);
             TableValidator.validateTableNameLength(newTableName);
+            TableValidator.validateTableWithCCI(schemaName, tableName, executionContext, SqlKind.RENAME_TABLE);
 
             TableValidator.validateRenamesTableNotContainsFk(schemaName, tableName, executionContext);
 

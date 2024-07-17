@@ -18,13 +18,21 @@ package com.alibaba.polardbx.optimizer.planmanager;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.util.JsonBuilder;
 
 import java.util.Map;
@@ -249,8 +257,23 @@ public class PlanInfo {
 
     synchronized RelOptCost getCumulativeCost(RelOptCluster cluster, RelOptSchema relOptSchema, Parameters parameters) {
         RelNode plan = getPlan(cluster, relOptSchema);
-        PlannerContext.getPlannerContext(plan).setParams(parameters);
-        return cluster.getMetadataQuery().getCumulativeCost(plan);
+        if (DynamicConfig.getInstance().isEnableMQCacheByThread()) {
+            try {
+                RelMetadataQuery.THREAD_PARAMETERS.set(parameters);
+                return cluster.getMetadataQuery().getCumulativeCost(plan);
+            } catch (Throwable t) {
+                ModuleLogInfo.getInstance()
+                    .logRecord(Module.SPM, LogPattern.UNEXPECTED, new String[] {"spm get plan cost", t.getMessage()},
+                        LogLevel.CRITICAL);
+                throw new TddlRuntimeException(ErrorCode.ERR_PLAN_COST, t.getMessage());
+            } finally {
+                RelMetadataQuery.THREAD_PARAMETERS.remove();
+                cluster.getMetadataQuery().clearThreadCache();
+            }
+        } else {
+            PlannerContext.getPlannerContext(plan).setParams(parameters);
+            return cluster.getMetadataQuery().getCumulativeCost(plan);
+        }
     }
 
     public int incrementAndGetErrorCount() {

@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.QuarantineConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.privilege.quarantine.QuarantineConfigAccessor;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
@@ -47,9 +50,9 @@ public class PolarQuarantineManager {
 
         @Override
         public void onHandleConfig(String dataId, long newOpVersion) {
-            logger.info(String.format("start reload privelge config, newOpVersion: %d", newOpVersion));
+            logger.info(String.format("start reload quarantine config, newOpVersion: %d", newOpVersion));
             PolarQuarantineManager.getInstance().reload();
-            logger.info("finish reload privelge config");
+            logger.info("finish reload quarantine config");
         }
     }
 
@@ -59,20 +62,6 @@ public class PolarQuarantineManager {
                 if (instance == null) {
                     instance = new PolarQuarantineManager();
                     instance.init();
-                }
-            }
-        }
-        return instance;
-    }
-
-    /**
-     * For test usage
-     */
-    public static PolarQuarantineManager getTestInstance() {
-        if (instance == null) {
-            synchronized (PolarQuarantineManager.class) {
-                if (instance == null) {
-                    instance = new PolarQuarantineManager();
                 }
             }
         }
@@ -127,8 +116,9 @@ public class PolarQuarantineManager {
                 tmp.resetHosts(InstIdUtil.getInstId(), config);
 
                 // add trusted ips
-                String truestedIps = CobarServer.getInstance().getConfig().getSystem().getTrustedIps();
-                tmp.resetTrustedIps(truestedIps);
+                String trustedIps = "";
+                tmp.resetTrustedIps(trustedIps);
+
                 quarantine = tmp;
                 logger.info("End reload quarantine data");
             } finally {
@@ -140,7 +130,9 @@ public class PolarQuarantineManager {
                 }
             }
         } catch (Throwable e) {
-            logger.error("Failed to reload quantine config", e);
+            logger.error("Failed to reload quarantine config: " + e.getMessage());
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                "query", GmsSystemTables.QUARANTINE_CONFIG, e.getMessage());
         }
     }
 

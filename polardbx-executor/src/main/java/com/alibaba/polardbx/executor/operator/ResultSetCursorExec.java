@@ -16,15 +16,22 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.common.datatype.UInt64;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.rpc.compatible.XResultSet;
-import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.datatype.UInt64Utils;
+import com.alibaba.polardbx.common.utils.BigDecimalUtil;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
+import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -32,6 +39,8 @@ import com.alibaba.polardbx.executor.chunk.IXRowChunk;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.BigBitType;
+import com.alibaba.polardbx.optimizer.core.datatype.BitType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -39,8 +48,15 @@ import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.datatype.ULongType;
 import com.alibaba.polardbx.optimizer.core.row.ResultSetRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.repo.mysql.common.ResultSetWrapper;
+import com.alibaba.polardbx.rpc.compatible.XResultSet;
+import com.alibaba.polardbx.rpc.result.XResult;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
+import org.apache.orc.impl.TypeUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -51,10 +67,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.sql.Types;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.Xprotocol.XRowSet.DEFAULT_TIME_ZONE;
 
 /**
  * Convert Cursor to Executor
@@ -149,6 +169,259 @@ public class ResultSetCursorExec extends AbstractExecutor {
         } else {
             for (int i = 0; i < row.getColNum(); i++) {
                 blockBuilders[i].writeObject(dataTypes[i].convertFrom(row.getObject(i)));
+            }
+        }
+    }
+
+    public static void buildRawOrcTypeRow(ResultSet rs,
+                                          DataType[] dataTypes,
+                                          BlockBuilder[] blockBuilders) throws SQLException {
+        for (int i = 0; i < dataTypes.length; i++) {
+            // Convert data into orc raw type: Long, Double, or byte[]
+            switch (dataTypes[i].fieldType()) {
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2: {
+                byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                if (null == bytes) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    MysqlDateTime t = StringTimeParser.parseString(bytes, Types.TIMESTAMP);
+                    blockBuilders[i].writeLong(TimeStorage.writeTimestamp(t));
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2: {
+                byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                if (null == bytes) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    MysqlDateTime t = StringTimeParser.parseString(bytes, Types.TIMESTAMP);
+                    TimeParseStatus timeParseStatus = new TimeParseStatus();
+                    MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(t, timeParseStatus,
+                        DEFAULT_TIME_ZONE);
+                    if (timeVal == null) {
+                        // for error time value, set to zero.
+                        timeVal = new MySQLTimeVal();
+                    }
+                    blockBuilders[i].writeLong(XResultUtil.timeValToLong(timeVal));
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE: {
+                byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                if (null == bytes) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    MysqlDateTime t = StringTimeParser.parseString(bytes, Types.DATE);
+                    blockBuilders[i].writeLong(TimeStorage.writeTimestamp(t));
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_TIME: {
+                byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                if (null == bytes) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    MysqlDateTime t = StringTimeParser.parseString(bytes, Types.TIME);
+                    blockBuilders[i].writeLong(TimeStorage.writeTimestamp(t));
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_YEAR: {
+                long val = rs.getLong(i + 1);
+                if (0 == val && rs.wasNull()) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    blockBuilders[i].writeLong(val);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_INT24: {
+                int val = rs.getInt(i + 1);
+                if (0 == val && rs.wasNull()) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    blockBuilders[i].writeLong(val);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_LONG: {
+                if (dataTypes[i].isUnsigned()) {
+                    long val = rs.getLong(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                } else {
+                    int val = rs.getInt(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_SHORT: {
+                if (dataTypes[i].isUnsigned()) {
+                    int val = rs.getInt(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                } else {
+                    short val = rs.getShort(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_TINY: {
+                if (dataTypes[i].isUnsigned()) {
+                    short val = rs.getShort(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                } else {
+                    byte val = rs.getByte(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_NEWDECIMAL: {
+                byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                if (null == bytes) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    if (TypeUtils.isDecimal64Precision(dataTypes[i].getPrecision())) {
+                        // Convert to Long for Decimal64
+                        long val = BigDecimalUtil.decodeAsUnscaledLong(bytes, dataTypes[i].getScale());
+                        blockBuilders[i].writeLong(val);
+                    } else {
+                        // Convert to byte[]
+                        DecimalStructure d = new DecimalStructure();
+                        DecimalConverter.parseString(bytes, 0, bytes.length, d, false);
+
+                        final int precision = dataTypes[i].getPrecision();
+                        final int scale = dataTypes[i].getScale();
+
+                        // NOTE: It will be handled as string in latin1 character set for .orc
+                        byte[] result = new byte[DecimalConverter.binarySize(precision, scale)];
+                        DecimalConverter.decimalToBin(d, result, precision, scale);
+                        blockBuilders[i].writeByteArray(result);
+                    }
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_LONGLONG: {
+                if (dataTypes[i].isUnsigned()) {
+                    byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                    if (null == bytes) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        long[] parseResult = StringNumericParser.parseString(bytes);
+                        // check error occurs
+                        if (parseResult[StringNumericParser.ERROR_INDEX] != 0) {
+                            throw GeneralUtil.nestedException(MessageFormat.format(
+                                "failed to parse unsigned long value %s.", new String(bytes)));
+                        }
+                        long parsedNumber = parseResult[StringNumericParser.NUMERIC_INDEX];
+                        blockBuilders[i].writeLong(parsedNumber ^ UInt64Utils.FLIP_MASK);
+                    }
+                } else {
+                    long val = rs.getLong(i + 1);
+                    if (0 == val && rs.wasNull()) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        blockBuilders[i].writeLong(val);
+                    }
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_BIT: {
+                if (dataTypes[i] == DataTypes.BitType) {
+                    Object obj = rs.getObject(i + 1);
+                    if (null == obj) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        /* when BitType is null, rs.getInt will throw the Exception */
+                        int val = rs.getInt(i + 1);
+                        blockBuilders[i].writeLong(val);
+                    }
+                } else {
+                    byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                    if (null == bytes) {
+                        blockBuilders[i].appendNull();
+                    } else {
+                        long val = bytesToLong(bytes);
+                        blockBuilders[i].writeLong(val);
+                    }
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_DOUBLE: {
+                double val = rs.getDouble(i + 1);
+                if (0 == val && rs.wasNull()) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    blockBuilders[i].writeDouble(val);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_FLOAT: {
+                float val = rs.getFloat(i + 1);
+                if (0 == val && rs.wasNull()) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    blockBuilders[i].writeDouble(val);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_BLOB:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_JSON: {
+                byte[] bytes = ResultSetWrapper.getBytes(rs, i + 1);
+                if (null == bytes) {
+                    blockBuilders[i].appendNull();
+                } else {
+                    blockBuilders[i].writeByteArray(bytes);
+                }
+            }
+            break;
+
+            default:
+                throw new UnsupportedOperationException(dataTypes[i].fieldType().toString());
             }
         }
     }

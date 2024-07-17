@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.archive.columns;
 import com.alibaba.polardbx.common.CrcAccumulator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.TimestampBlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -40,7 +42,6 @@ import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.orc.ColumnStatistics;
@@ -61,8 +62,6 @@ import static com.alibaba.polardbx.rpc.result.XResultUtil.ZERO_TIMESTAMP_LONG_VA
  */
 public class TimestampColumnProvider implements ColumnProvider<Long> {
 
-    public static MysqlDateTime ZERO_DATE_TIME = new MysqlDateTime();
-
     @Override
     public TypeDescription orcType() {
         return TypeDescription.createLong();
@@ -81,7 +80,7 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                 blockBuilder.appendNull();
             } else {
                 if (longColumnVector.vector[idx] == ZERO_TIMESTAMP_LONG_VAL) {
-                    ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(ZERO_DATE_TIME);
+                    ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(MysqlDateTime.zeroDateTime());
                 } else {
                     MySQLTimeVal mySQLTimeVal = XResultUtil.longToTimeValue(longColumnVector.vector[idx]);
                     MysqlDateTime mysqlDateTime =
@@ -105,7 +104,7 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                 blockBuilder.appendNull();
             } else {
                 if (longColumnVector.vector[idx] == ZERO_TIMESTAMP_LONG_VAL) {
-                    ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(ZERO_DATE_TIME);
+                    ((TimestampBlockBuilder) blockBuilder).writeMysqlDatetime(MysqlDateTime.zeroDateTime());
                 } else {
                     MySQLTimeVal mySQLTimeVal = XResultUtil.longToTimeValue(longColumnVector.vector[idx]);
                     MysqlDateTime mysqlDateTime =
@@ -167,6 +166,47 @@ public class TimestampColumnProvider implements ColumnProvider<Long> {
                 accumulator.ifPresent(a -> a.appendHash(Long.hashCode(TimeStorage.writeTimestamp(mysqlDateTime))));
             }
         }
+    }
+
+    @Override
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+            return;
+        }
+
+        byte[] bytes = row.getBytes(columnId);
+        final int scale = dataType.getScale();
+
+        // parse millis second
+        long second = 0;
+        for (int i = 0; i < 4; i++) {
+            byte b = bytes[i];
+            second = (second << 8) | (b >= 0 ? (int) b : (b + 256));
+        }
+
+        // deal with '0000-00-00 00:00:00'
+        if (second == 0) {
+            blockBuilder.writeTimestamp(ZeroTimestamp.instance);
+            return;
+        }
+
+        // parse fsp
+        int micro = 0;
+        int length = (scale + 1) / 2;
+        if (length > 0) {
+            int fraction = 0;
+            for (int i = 4; i < (4 + length); i++) {
+                byte b = bytes[i];
+                fraction = (fraction << 8) | (b >= 0 ? (int) b : (b + 256));
+            }
+            micro = fraction * (int) Math.pow(100, 3 - length);
+        }
+
+        Timestamp ts = new Timestamp(second * 1000);
+        ts.setNanos(micro * 1000);
+
+        blockBuilder.writeTimestamp(ts);
     }
 
     @Override

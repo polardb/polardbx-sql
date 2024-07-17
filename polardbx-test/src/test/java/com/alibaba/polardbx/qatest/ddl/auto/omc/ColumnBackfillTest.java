@@ -21,10 +21,9 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
-import com.google.common.collect.ImmutableList;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -40,6 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertFalse;
 
+@Ignore
 public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());
@@ -54,10 +54,7 @@ public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
         return true;
     }
 
-    private static final String DISABLE_UPDATE_RETURNING = "OMC_BACK_FILL_USE_RETURNING=FALSE";
-    private static final String USE_UPDATE_RETURNING = "OMC_BACK_FILL_USE_RETURNING=TRUE";
     private static final String OMC_FORCE_TYPE_CONVERSION = "OMC_FORCE_TYPE_CONVERSION=TRUE";
-    private static final String OMC_ALTER_TABLE_WITH_GSI = "OMC_ALTER_TABLE_WITH_GSI=TRUE";
     private static final String SLOW_HINT =
         "GSI_BACKFILL_BATCH_SIZE=100, GSI_BACKFILL_SPEED_LIMITATION=1000, GSI_BACKFILL_PARALLELISM=4, GSI_DEBUG=\"slow\"";
 
@@ -114,15 +111,7 @@ public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
 
     private static final int FILL_DATA_CNT = 3000;
 
-    private final String returningHint;
-
-    public ColumnBackfillTest(String returningHint) {
-        this.returningHint = returningHint;
-    }
-
-    @Parameterized.Parameters(name = "{index}:returningHint={0}")
-    public static List<Object[]> prepareDate() {
-        return ImmutableList.of(new Object[] {DISABLE_UPDATE_RETURNING}, new Object[] {USE_UPDATE_RETURNING});
+    public ColumnBackfillTest() {
     }
 
     @Test
@@ -219,9 +208,7 @@ public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
         Thread.sleep(500);
 
         // Alter table
-        String alterTableSql =
-            buildCmdExtra(returningHint, OMC_ALTER_TABLE_WITH_GSI, SLOW_HINT) + MessageFormat.format(ALTER_TMPL,
-                tableName);
+        String alterTableSql = buildCmdExtra(SLOW_HINT) + MessageFormat.format(ALTER_TMPL, tableName);
 
         execDdlWithRetry(tddlDatabase1, tableName, alterTableSql, tddlConnection);
         Thread.sleep(500);

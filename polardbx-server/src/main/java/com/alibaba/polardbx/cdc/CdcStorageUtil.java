@@ -53,6 +53,7 @@ import static com.alibaba.polardbx.cdc.CdcDbLock.releaseCdcDbLockByCommit;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.FAIL;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.INITIAL;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.READY;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.SUCCESS;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_TYPE.REMOVE_STORAGE;
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.CDC_DB_NAME;
@@ -87,9 +88,10 @@ public class CdcStorageUtil {
             BinlogCommandAccessor commandAccessor = new BinlogCommandAccessor();
             commandAccessor.setConnection(connection);
 
-            //1.command已经存在，状态为COMMAND_STATUS_INITIAL，继续checkCommand
-            //2.command已经存在，状态为COMMAND_STATUS_SUCCESS，继续checkStorageHistory
-            //3.command已经存在，状态为COMMAND_STATUS_FAIL，抛异常
+            // 1.command不存在，则新创建一个command，状态设置为INITIAL
+            // 2.command已经存在，状态为INITIAL，需要等待command status变为READY
+            // 3.command已经存在，状态为READY 或者 SUCCESS，需要等下游CDC处理完成，将binlog storage history 中的status改成0
+            // 4.command已经存在，状态为FAIL，抛异常
             Optional<BinlogCommandRecord> commandRecordOptional = getCommandIfPresent(commandAccessor, identifier);
             if (commandRecordOptional.isPresent()) {
                 log.warn("command record for {} has already exist, will recover.", storageInstIds);
@@ -99,8 +101,8 @@ public class CdcStorageUtil {
                 BinlogCommandRecord commandRecord = sendCommand(storageInstIds, commandAccessor, identifier);
                 checkAndProcess(commandAccessor, commandRecord, storageInstIds);
             }
-        } catch (SQLException ex) {
-            throw new TddlNestableRuntimeException("something goes wrong when do storage ");
+        } catch (Exception e) {
+            throw new TddlNestableRuntimeException("something goes wrong when do storage remove", e);
         }
     }
 
@@ -140,10 +142,21 @@ public class CdcStorageUtil {
     }
 
     private static void checkAndProcess(BinlogCommandAccessor commandAccessor, BinlogCommandRecord commandRecord,
-                                        Set<String> storageInstIds) {
-        checkCommandStatus(commandAccessor, commandRecord);
+                                        Set<String> storageInstIds) throws Exception {
+        int cmdStatus = waitInitialCommand(commandAccessor, commandRecord);
+        if (cmdStatus == FAIL.getValue()) {
+            processFailedCommand(commandRecord);
+        } else if (cmdStatus == SUCCESS.getValue()) {
+            log.warn("command has successfully finished, will not do remove, cmd:{}", commandRecord);
+            return;
+        } else if (cmdStatus == READY.getValue()) {
+            log.warn("command status is ready now");
+        } else {
+            throw new TddlNestableRuntimeException("unknown command status : " + commandRecord.cmdStatus);
+        }
+
         checkStorageStatus(commandAccessor.getConnection(), commandRecord.cmdId);
-        removeStorage(Lists.newArrayList(storageInstIds));
+        removeStorage(Lists.newArrayList(storageInstIds), commandAccessor, commandRecord.id);
     }
 
     private static boolean isCdcNodeExists(Connection connection) {
@@ -174,27 +187,31 @@ public class CdcStorageUtil {
         }
     }
 
-    private static void checkCommandStatus(BinlogCommandAccessor commandAccessor, BinlogCommandRecord commandRecord) {
+    private static int waitInitialCommand(BinlogCommandAccessor commandAccessor, BinlogCommandRecord commandRecord)
+        throws InterruptedException {
         long startTime = System.currentTimeMillis();
+        int cmdStatus;
         while (true) {
             if (System.currentTimeMillis() - startTime > 60 * 1000) {
                 throw new TddlNestableRuntimeException(
-                    "Wait for the command to complete time out, command info :" + commandRecord);
+                    "Wait for command status time out, command info :" + commandRecord);
             }
 
-            BinlogCommandRecord latestRecord =
-                commandAccessor.getBinlogCommandRecordByTypeAndCmdId(commandRecord.cmdType, commandRecord.cmdId).get(0);
-            if (latestRecord.cmdStatus == INITIAL.getValue()) {
+            if (Thread.interrupted()) {
+                throw new InterruptedException("thread is interrupted while checking command status!");
+            }
+
+            BinlogCommandRecord record =
+                commandAccessor.getBinlogCommandRecordById(commandRecord.id).get(0);
+            cmdStatus = record.cmdStatus;
+            if (cmdStatus == INITIAL.getValue()) {
                 sleep();
-            } else if (latestRecord.cmdStatus == FAIL.getValue()) {
-                processFailedCommand(latestRecord);
-            } else if (latestRecord.cmdStatus == SUCCESS.getValue()) {
-                log.warn("command record is ready, detail info is " + commandRecord);
-                break;
             } else {
-                throw new TddlNestableRuntimeException("unknown command status : " + commandRecord.cmdStatus);
+                break;
             }
         }
+
+        return cmdStatus;
     }
 
     private static void checkStorageStatus(Connection connection, String instructionId) {
@@ -353,6 +370,8 @@ public class CdcStorageUtil {
                         if (status == 0) {
                             log.warn("storage history record is ready for instruction id :" + instructionId);
                             return;
+                        } else if (status == -1) {
+                            log.warn("storage history record is prepared for instruction id :" + instructionId);
                         } else {
                             throw new TddlNestableRuntimeException("invalid storage history status :" + status);
                         }
@@ -366,7 +385,8 @@ public class CdcStorageUtil {
         }
     }
 
-    private static void removeStorage(List<String> storageInstIdListDeleted) {
+    private static void removeStorage(List<String> storageInstIdListDeleted, BinlogCommandAccessor commandAccessor,
+                                      Long primaryKey) {
         try (Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
             // acquire Cdc Lock by for update, to avoiding concurrent update cdc meta info
             metaDbLockConn.setAutoCommit(false);
@@ -378,6 +398,9 @@ public class CdcStorageUtil {
             }
 
             doRemove(storageInstIdListDeleted);
+
+            // fix #55184772 通知cdcManager可以处理下一个缩容任务了
+            notifyCommandSuccess(commandAccessor, primaryKey);
 
             releaseCdcDbLockByCommit(metaDbLockConn);
         } catch (Throwable ex) {
@@ -476,5 +499,10 @@ public class CdcStorageUtil {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
         }
+    }
+
+    private static void notifyCommandSuccess(BinlogCommandAccessor commandAccessor, Long primaryKey) {
+        commandAccessor.updateBinlogCommandStatusAndReply(SUCCESS.getValue(), "", primaryKey);
+        log.warn("update command status to success, id:{}", primaryKey);
     }
 }

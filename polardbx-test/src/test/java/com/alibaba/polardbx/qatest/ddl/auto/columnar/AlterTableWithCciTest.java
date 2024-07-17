@@ -1,0 +1,424 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the License);
+ * you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.alibaba.polardbx.qatest.ddl.auto.columnar;
+
+import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarColumnEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
+import com.alibaba.polardbx.gms.metadb.table.IndexesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
+import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.ddl.auto.ddl.AlterTableTest;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.ImmutableList;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
+    final static Log log = LogFactory.getLog(AlterTableTest.class);
+
+    private static final String PRIMARY_TABLE_PREFIX = "alter_table_with_cci_prim";
+    private static final String INDEX_PREFIX = "alter_table_with_cci_cci";
+    private static final String PRIMARY_TABLE_NAME1 = PRIMARY_TABLE_PREFIX + "_1";
+    private static final String INDEX_NAME1 = INDEX_PREFIX + "_1";
+    private static final String PRIMARY_TABLE_NAME2 = PRIMARY_TABLE_PREFIX + "_2";
+    private static final String INDEX_NAME2 = INDEX_PREFIX + "_2";
+    private static final String PRIMARY_TABLE_NAME3 = PRIMARY_TABLE_PREFIX + "_3";
+    private static final String INDEX_NAME3 = INDEX_PREFIX + "_2";
+
+    private static final String creatTableTmpl = "CREATE TABLE `%s` ( \n"
+        + "    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP, \n"
+        + "    `order_id` varchar(20) DEFAULT NULL, \n"
+        + "    `buyer_id` varchar(20) DEFAULT NULL, \n"
+        + "    `seller_id` varchar(20) DEFAULT NULL, \n"
+        + "    `order_snapshot` longtext, \n"
+        + "    PRIMARY KEY (`id`), \n"
+        + "    CLUSTERED COLUMNAR INDEX `%s`(`buyer_id`) PARTITION BY KEY(`id`)\n"
+        + ") ENGINE = InnoDB CHARSET = utf8 PARTITION BY KEY(`order_id`);\n";
+
+    @Override
+    public boolean usingNewPartDb() {
+        return true;
+    }
+
+    @Before
+    public void before() {
+        dropTableIfExists(PRIMARY_TABLE_NAME1);
+        dropTableIfExists(PRIMARY_TABLE_NAME2);
+        dropTableIfExists(PRIMARY_TABLE_NAME3);
+    }
+
+    @After
+    public void after() {
+        dropTableIfExists(PRIMARY_TABLE_NAME1);
+        dropTableIfExists(PRIMARY_TABLE_NAME2);
+        dropTableIfExists(PRIMARY_TABLE_NAME3);
+    }
+
+    @Test
+    public void testAddColumn() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        String sql = "alter table %s add c2 int";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c2"));
+
+        sql = "alter table %s add c3 int first";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c3"));
+
+        sql = "alter table %s add c4 int after c3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c4"));
+    }
+
+    @Test
+    public void testDropColumn() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        String sql = "alter table %s drop seller_id";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkDropIndexesRecords(schemaName, tableName, ImmutableList.of("seller_id"));
+    }
+
+    @Test
+    public void testModifyColumn() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        String sql = "alter table %s modify column seller_id longtext";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+
+        sql = "alter table %s modify column seller_id varchar(64) after id";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+
+        sql = "alter table %s modify column seller_id varchar(64) first";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+    }
+
+    @Test
+    public void testChangeColumn() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        String sql = "alter table %s change column seller_id seller_id_1 varchar(64)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkChangeIndexesRecords(schemaName, tableName, ImmutableList.of(new Pair<>("seller_id_1", "seller_id")));
+    }
+
+    private void compareColumnPositions(String schemaName, String tableName)
+        throws SQLException {
+        Map<Integer, String> sysTableColumnPositions = fetchColumnPositionsFromSysTable(schemaName, tableName);
+        Map<Integer, String>
+            evolutionTableColumnPositions = fetchColumnPositionsFromEvolutionTable(schemaName, tableName);
+        compareColumnPositions(sysTableColumnPositions, evolutionTableColumnPositions);
+    }
+
+    private Map<Integer, String> fetchColumnPositionsFromSysTable(String schemaName, String tableName)
+        throws SQLException {
+        Map<Integer, String> columnPositions = new HashMap<>();
+        String sql = "select ordinal_position, column_name from columns "
+            + "where table_schema='%s' and table_name='%s' order by ordinal_position";
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(String.format(sql, schemaName, tableName))) {
+            while (rs.next()) {
+                columnPositions.put(rs.getInt(1), rs.getString(2));
+            }
+        }
+        return columnPositions;
+    }
+
+    private Map<Integer, String> fetchColumnPositionsFromEvolutionTable(String schemaName, String tableName)
+        throws SQLException {
+        Map<Integer, String> columnPositions = new HashMap<>();
+        String sql1 = "select columns from columnar_table_evolution "
+            + "where table_schema='%s' and table_name='%s' order by `version_id` desc limit 1";
+        String sql2 = "select column_name from columnar_column_evolution where id=%s";
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(String.format(sql1, schemaName, tableName))) {
+            Assert.assertTrue(rs.next());
+            List<Long> columnIds = ColumnarTableEvolutionRecord.deserializeListFromJson(rs.getString(1));
+            for (int i = 0; i < columnIds.size(); i++) {
+                ResultSet rs1 = stmt.executeQuery(String.format(sql2, columnIds.get(i)));
+                Assert.assertTrue(rs1.next());
+                columnPositions.put(i + 1, rs1.getString(1));
+            }
+
+        }
+        return columnPositions;
+    }
+
+    private void compareColumnPositions(Map<Integer, String> sysTableColumnPositions,
+                                        Map<Integer, String> evolutionTableColumnPositions) {
+        printColumnPositions(sysTableColumnPositions, "Columns System Table");
+        printColumnPositions(evolutionTableColumnPositions, "Columnar Table Evolution");
+
+        if (sysTableColumnPositions == null || sysTableColumnPositions.isEmpty() ||
+            evolutionTableColumnPositions == null || evolutionTableColumnPositions.isEmpty()) {
+            Assert.fail("Invalid column names and positions");
+        }
+
+        if (sysTableColumnPositions.size() != evolutionTableColumnPositions.size()) {
+            Assert.fail("Different column sizes");
+        }
+
+        for (Integer columnPos : sysTableColumnPositions.keySet()) {
+            if (!TStringUtil.equalsIgnoreCase(sysTableColumnPositions.get(columnPos),
+                evolutionTableColumnPositions.get(columnPos))) {
+                Assert.fail("Different column names '" + sysTableColumnPositions.get(columnPos) + "' and '"
+                    + evolutionTableColumnPositions.get(columnPos) + "' at " + columnPos);
+            }
+        }
+    }
+
+    private void printColumnPositions(Map<Integer, String> columnPositions, String tableInfo) {
+        if (MapUtils.isNotEmpty(columnPositions)) {
+            StringBuilder buf = new StringBuilder();
+            buf.append("\n").append("Column Positions from ").append(tableInfo).append(":\n");
+            for (Map.Entry<Integer, String> entry : columnPositions.entrySet()) {
+                buf.append(entry.getKey()).append(":").append(entry.getValue()).append(", ");
+            }
+            log.info(buf);
+        } else {
+            log.info("No Column Positions from " + tableInfo);
+        }
+    }
+
+    private void compareColumnRecords(String schemaName, String tableName)
+        throws SQLException {
+        List<ColumnsRecord> sysTableColumnRecords = fetchColumnRecordsFromSysTable(schemaName, tableName);
+        List<ColumnsRecord> evolutionTableColumnRecords = fetchColumnRecordsFromEvolutionTable(schemaName, tableName);
+        compareColumnRecords(sysTableColumnRecords, evolutionTableColumnRecords);
+    }
+
+    private List<ColumnsRecord> fetchColumnRecordsFromSysTable(String schemaName, String tableName)
+        throws SQLException {
+        List<ColumnsRecord> columnsRecords;
+        try (Connection metaDbConn = getMetaConnection();) {
+            ColumnsAccessor columnsAccessor = new ColumnsAccessor();
+            columnsAccessor.setConnection(metaDbConn);
+            columnsRecords = columnsAccessor.query(schemaName, tableName);
+        }
+        return columnsRecords;
+    }
+
+    private List<ColumnsRecord> fetchColumnRecordsFromEvolutionTable(String schemaName, String tableName)
+        throws SQLException {
+        List<ColumnsRecord> columnsRecords = new ArrayList<>();
+        String sql1 = "select columns from columnar_table_evolution "
+            + "where table_schema='%s' and table_name='%s' order by `version_id` desc limit 1";
+        String sql2 = "select columns_record from columnar_column_evolution where id=%s";
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(String.format(sql1, schemaName, tableName))) {
+            Assert.assertTrue(rs.next());
+            List<Long> columnIds = ColumnarTableEvolutionRecord.deserializeListFromJson(rs.getString(1));
+            for (Long columnId : columnIds) {
+                ResultSet rs1 = stmt.executeQuery(String.format(sql2, columnId));
+                Assert.assertTrue(rs1.next());
+                columnsRecords.add(ColumnarColumnEvolutionRecord.deserializeFromJson(rs1.getString(1)));
+            }
+
+        }
+        return columnsRecords;
+    }
+
+    private void compareColumnRecords(List<ColumnsRecord> sysTableColumnRecords,
+                                      List<ColumnsRecord> evolutionTableColumnRecords) {
+
+        if (sysTableColumnRecords == null || sysTableColumnRecords.isEmpty() ||
+            evolutionTableColumnRecords == null || evolutionTableColumnRecords.isEmpty()) {
+            Assert.fail("Invalid column records");
+        }
+
+        if (sysTableColumnRecords.size() != evolutionTableColumnRecords.size()) {
+            Assert.fail("Different column sizes");
+        }
+
+        for (int i = 0; i < sysTableColumnRecords.size(); i++) {
+            ColumnsRecord sysRecord = sysTableColumnRecords.get(i);
+            ColumnsRecord evolutionRecord = evolutionTableColumnRecords.get(i);
+            if (!sysRecord.equals(evolutionRecord)) {
+                Assert.fail("Different column records in '" + sysTableColumnRecords.get(i).columnName);
+            }
+        }
+    }
+
+    private void checkAddIndexesRecords(String schemaName, String tableName, List<String> addColumns)
+        throws SQLException {
+        List<IndexesRecord> indexesRecords;
+        try (Connection metaDbConn = getMetaConnection()) {
+            ColumnarTableMappingAccessor columnarTableMappingAccessor = new ColumnarTableMappingAccessor();
+            IndexesAccessor indexesAccessor = new IndexesAccessor();
+            columnarTableMappingAccessor.setConnection(metaDbConn);
+            indexesAccessor.setConnection(metaDbConn);
+
+            List<String> indexes =
+                columnarTableMappingAccessor.querySchemaTable(schemaName, tableName).stream().map(c -> c.indexName)
+                    .collect(
+                        Collectors.toList());
+            for (String index : indexes) {
+                indexesRecords = indexesAccessor.query(schemaName, tableName, index);
+                if (GeneralUtil.isEmpty(indexesRecords)) {
+                    continue;
+                }
+                Assert.assertTrue(indexesRecords.stream().anyMatch(record -> addColumns.contains(record.columnName)));
+            }
+        }
+    }
+
+    private void checkDropIndexesRecords(String schemaName, String tableName, List<String> dropColumns)
+        throws SQLException {
+        List<IndexesRecord> indexesRecords;
+        try (Connection metaDbConn = getMetaConnection()) {
+            ColumnarTableMappingAccessor columnarTableMappingAccessor = new ColumnarTableMappingAccessor();
+            IndexesAccessor indexesAccessor = new IndexesAccessor();
+            columnarTableMappingAccessor.setConnection(metaDbConn);
+            indexesAccessor.setConnection(metaDbConn);
+
+            List<String> indexes =
+                columnarTableMappingAccessor.querySchemaTable(schemaName, tableName).stream().map(c -> c.indexName)
+                    .collect(
+                        Collectors.toList());
+            for (String index : indexes) {
+                indexesRecords = indexesAccessor.query(schemaName, tableName, index);
+                if (GeneralUtil.isEmpty(indexesRecords)) {
+                    continue;
+                }
+                Assert.assertTrue(indexesRecords.stream().noneMatch(record -> dropColumns.contains(record.columnName)));
+            }
+        }
+    }
+
+    private void checkChangeIndexesRecords(String schemaName, String tableName, List<Pair<String, String>> columNames)
+        throws SQLException {
+        List<IndexesRecord> indexesRecords;
+        try (Connection metaDbConn = getMetaConnection()) {
+            ColumnarTableMappingAccessor columnarTableMappingAccessor = new ColumnarTableMappingAccessor();
+            IndexesAccessor indexesAccessor = new IndexesAccessor();
+            columnarTableMappingAccessor.setConnection(metaDbConn);
+            indexesAccessor.setConnection(metaDbConn);
+
+            List<String> newColumnsNames = columNames.stream().map(Pair::getKey).collect(Collectors.toList());
+            List<String> oldColumnsNames = columNames.stream().map(Pair::getValue).collect(Collectors.toList());
+
+            List<String> indexes =
+                columnarTableMappingAccessor.querySchemaTable(schemaName, tableName).stream().map(c -> c.indexName)
+                    .collect(
+                        Collectors.toList());
+            for (String index : indexes) {
+                indexesRecords = indexesAccessor.query(schemaName, tableName, index);
+                if (GeneralUtil.isEmpty(indexesRecords)) {
+                    continue;
+                }
+                Assert.assertTrue(
+                    indexesRecords.stream().anyMatch(record -> newColumnsNames.contains(record.columnName)));
+                Assert.assertTrue(
+                    indexesRecords.stream().noneMatch(record -> oldColumnsNames.contains(record.columnName)));
+            }
+        }
+    }
+}
+

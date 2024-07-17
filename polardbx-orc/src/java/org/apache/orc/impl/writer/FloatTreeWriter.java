@@ -65,6 +65,9 @@ public class FloatTreeWriter extends TreeWriterBase {
         for (int i = 0; i < length; ++i) {
           utils.writeFloat(stream, value);
         }
+      } else {
+        //有null值更新
+        indexStatistics.updateNull();
       }
     } else {
       for (int i = 0; i < length; ++i) {
@@ -78,6 +81,9 @@ public class FloatTreeWriter extends TreeWriterBase {
             }
             bloomFilterUtf8.addDouble(value);
           }
+        } else if (i == 0 || i == length - 1) {
+          //只用更新第一行和最后一行为null的情况
+          indexStatistics.updateNull();
         }
       }
     }

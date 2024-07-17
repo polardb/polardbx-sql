@@ -16,10 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.optimizeralert;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.utils.Pair;
+
 public class OptimizerAlertLoggerTpImpl extends OptimizerAlertLoggerBaseImpl {
 
     public OptimizerAlertLoggerTpImpl() {
         super();
         this.optimizerAlertType = OptimizerAlertType.TP_SLOW;
+    }
+
+    @Override
+    public Pair<OptimizerAlertType, Long> collectByScheduleJob() {
+        Pair<OptimizerAlertType, Long> collect = super.collectByScheduleJob();
+
+        if (collect != null && collect.getValue() < DynamicConfig.getInstance().getTpSlowAlertThreshold()) {
+            return null;
+        }
+        return collect;
     }
 }

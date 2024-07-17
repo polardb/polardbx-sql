@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
 
 import java.io.Closeable;

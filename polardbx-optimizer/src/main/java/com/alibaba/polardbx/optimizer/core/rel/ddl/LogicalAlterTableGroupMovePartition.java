@@ -32,7 +32,7 @@ public class LogicalAlterTableGroupMovePartition extends LogicalAlterTableMovePa
         super(ddl, true);
     }
 
-    public void preparedData(ExecutionContext ec) {
+    public void preparedData(ExecutionContext ec, boolean usePhysicalBackfill) {
         AlterTableGroupMovePartition alterTableGroupMovePartition = (AlterTableGroupMovePartition) relDdl;
         SqlAlterTableGroup sqlAlterTableGroup = (SqlAlterTableGroup) alterTableGroupMovePartition.getAst();
 
@@ -42,7 +42,7 @@ public class LogicalAlterTableGroupMovePartition extends LogicalAlterTableMovePa
         String tableGroupName = alterTableGroupMovePartition.getTableGroupName();
         preparedData = new AlterTableGroupMovePartitionPreparedData();
 
-        doPrepare(sqlAlterTableGroupMovePartition, tableGroupName);
+        doPrepare(sqlAlterTableGroupMovePartition, tableGroupName, usePhysicalBackfill);
     }
 
     public static LogicalAlterTableGroupMovePartition create(DDL ddl) {
@@ -51,7 +51,10 @@ public class LogicalAlterTableGroupMovePartition extends LogicalAlterTableMovePa
 
     @Override
     public boolean isSupportedByFileStorage() {
-        return true;
+        // Columnar table group do not support move partition
+        AlterTableGroupMovePartition alterTableGroupMovePartition = (AlterTableGroupMovePartition) relDdl;
+        String tableGroupName = alterTableGroupMovePartition.getTableGroupName();
+        return !TableGroupNameUtil.isColumnarTg(tableGroupName);
     }
 
     @Override
@@ -63,7 +66,7 @@ public class LogicalAlterTableGroupMovePartition extends LogicalAlterTableMovePa
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableGroupMovePartition alterTableGroupMovePartition = (AlterTableGroupMovePartition) relDdl;
         String tableGroupName = alterTableGroupMovePartition.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

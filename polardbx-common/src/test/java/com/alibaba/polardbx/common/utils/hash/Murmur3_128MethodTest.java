@@ -163,7 +163,7 @@ public class Murmur3_128MethodTest {
 
     private void equalWithGuavaHash(long data) {
         long originResult = zeroSeedMurmur3hashFunc.hashLong(data).asLong();
-        long curResult = MurmurHashUtils.murmurHashWithZeroSeed(data);
+        long curResult = MurmurHashUtils.murmurHash128WithZeroSeed(data);
         Assert.assertEquals(originResult, curResult);
     }
 }

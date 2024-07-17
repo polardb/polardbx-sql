@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.executor.columnar.pruning.ColumnarPruneManager;
+import com.alibaba.polardbx.executor.operator.scan.BlockCacheManager;
+import com.alibaba.polardbx.executor.operator.scan.impl.DefaultScanPreProcessor;
 import com.alibaba.polardbx.gms.engine.FileStoreStatistics;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -28,6 +31,7 @@ import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class ShowCacheStats {
@@ -57,10 +61,16 @@ public class ShowCacheStats {
         fields[i] = PacketUtil.getField("HIT", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
 
+        fields[i] = PacketUtil.getField("HOTHIT", Fields.FIELD_TYPE_VAR_STRING);
+        fields[i++].packetId = ++packetId;
+
         fields[i] = PacketUtil.getField("MISS", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("QUOTA_EXCEED", Fields.FIELD_TYPE_VAR_STRING);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("UNAVAILABLE_NUM", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("CACHE_DICTIONARY", Fields.FIELD_TYPE_VAR_STRING);
@@ -70,6 +80,9 @@ public class ShowCacheStats {
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("MAX_CACHE_ENTRIES", Fields.FIELD_TYPE_VAR_STRING);
+        fields[i++].packetId = ++packetId;
+
+        fields[i] = PacketUtil.getField("MAX_CACHE_SIZE", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
     }
 
@@ -95,7 +108,16 @@ public class ShowCacheStats {
         }
 
         // write rows
-        List<byte[][]> resultList = FileStoreStatistics.generateCacheStatsPacket();
+        List<byte[][]> resultList = new ArrayList<>();
+        List<byte[][]> fileCacheStats = FileStoreStatistics.generateCacheStatsPacket();
+        byte[][] blockCacheStats = BlockCacheManager.getInstance().generateCacheStatsPacket();
+        byte[][] stripeFootCache = DefaultScanPreProcessor.getCacheStat();
+        byte[][] pruneCache = ColumnarPruneManager.getCacheStat();
+        resultList.addAll(fileCacheStats);
+        resultList.add(blockCacheStats);
+        resultList.add(pruneCache);
+        resultList.add(stripeFootCache);
+
         if (resultList != null) {
             for (byte[][] results : resultList) {
                 RowDataPacket row = new RowDataPacket(FileStoreStatistics.CACHE_STATS_FIELD_COUNT);

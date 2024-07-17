@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;

@@ -79,6 +79,11 @@ public class LogicalSemiJoin extends SemiJoin {
     private String subqueryPosition;
     private static final String ERROR_SUBQUERY_MULTI_COLUMNS = " subquery with multi columns transform error";
 
+    /**
+     * use for join reorder
+     */
+    private final JoinReorderContext joinReorderContext = new JoinReorderContext();
+
     //~ Constructors -----------------------------------------------------------
 
     /**
@@ -594,6 +599,7 @@ public class LogicalSemiJoin extends SemiJoin {
         semiJoin.pushDownRelNode = this.pushDownRelNode;
         semiJoin.subqueryPosition = this.subqueryPosition;
         semiJoin.fromSetOp = this.fromSetOp;
+        semiJoin.getJoinReorderContext().copyFrom(this.getJoinReorderContext());
         return semiJoin;
     }
 
@@ -604,6 +610,10 @@ public class LogicalSemiJoin extends SemiJoin {
 
     public boolean isFromSetOp() {
         return fromSetOp;
+    }
+
+    public JoinReorderContext getJoinReorderContext() {
+        return joinReorderContext;
     }
 }
 

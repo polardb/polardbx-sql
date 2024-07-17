@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.optimizer.PlannerContext;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -206,12 +206,6 @@ public class CBOJoinWindowTransposeRule extends RelOptRule {
                 Lists.newArrayList(),
                 rexBuilder.getTypeFactory().createStructType(fieldList),
                 ImmutableList.of(newGroup));
-            Object isForceReorder = PlannerContext.getPlannerContext(join)
-                .getExtraCmds()
-                .get(ConnectionProperties.WINDOW_FUNC_REORDER_JOIN);
-            if (isForceReorder != null && "true".equalsIgnoreCase(isForceReorder.toString())) {
-                newWindow.setFixedCost(newWindow.getCluster().getPlanner().getCostFactory().makeTinyCost());
-            }
             return LogicalFilter.create(newWindow,
                 RexUtil.shift(filter.getCondition(), other.getRowType().getFieldCount()));
         } else {

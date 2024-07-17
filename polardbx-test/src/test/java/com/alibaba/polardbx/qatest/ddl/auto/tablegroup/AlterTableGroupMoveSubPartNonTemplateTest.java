@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.qatest.ddl.auto.tablegroup;
 
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.Before;
@@ -27,6 +28,17 @@ public class AlterTableGroupMoveSubPartNonTemplateTest extends AlterTableGroupSu
                 pi.setTableStatus(c);
                 status.add(new PartitionRuleInfo[] {pi});
             });
+            if (c == ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC) {
+                getPartitionRuleInfos().stream().forEach(o -> {
+                    PartitionRuleInfo pi =
+                        new PartitionRuleInfo(o.strategy, o.initDataType, o.partitionRule, o.alterTableGroupCommand,
+                            o.needGenDml, o.dmlType, o.rowCount, o.targetPart, o.minVal1, o.maxVal1, o.minVal2,
+                            o.maxVal2);
+                    pi.setTableStatus(c);
+                    pi.setUsePhysicalTableBackfill(true);
+                    status.add(new PartitionRuleInfo[] {pi});
+                });
+            }
         });
         return status;
     }
@@ -46,10 +58,11 @@ public class AlterTableGroupMoveSubPartNonTemplateTest extends AlterTableGroupSu
         List<PartitionRuleInfo> partitionRuleInfos = new ArrayList<>();
 
         int initDataType = 5;
-        boolean ignoreInit = true;
+        boolean ignoreInit = false;
 
         for (int i = 1; i < partitions.length; i++) {
-            for (int j = 1; j < subPartitions.length; j++) {
+            for (int j = 0; j < subPartitions.length; j++) {
+                initDataType++;
                 partitionRuleInfos.add(new PartitionRuleInfo(
                     partStrategies[i], initDataType, ignoreInit,
                     tPartitionRules.get(partitions[i] + subPartitions[j]),
@@ -72,7 +85,7 @@ public class AlterTableGroupMoveSubPartNonTemplateTest extends AlterTableGroupSu
     @Override
     public void setUpTables() {
         if (firstIn) {
-            setUp(true, partitionRuleInfo, false, true, true);
+            setUp(true, partitionRuleInfo, false, true, true, true);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

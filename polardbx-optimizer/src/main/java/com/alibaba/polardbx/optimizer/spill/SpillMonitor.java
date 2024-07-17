@@ -29,12 +29,11 @@
  */
 package com.alibaba.polardbx.optimizer.spill;
 
-import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.properties.FileConfig;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
 
 import static java.nio.file.Files.getFileStore;
 
@@ -47,16 +46,12 @@ public interface SpillMonitor extends Closeable {
     }
 
     default long getTotalSpillSpace() {
-        long totalSpaceBytes = 0;
-        List<Path> paths = MppConfig.getInstance().getSpillPaths();
         try {
-            for (Path path : paths) {
-                totalSpaceBytes += getFileStore(path).getTotalSpace();
-            }
+            Path path = FileConfig.getInstance().getSpillerTempPath();
+            return getFileStore(path).getTotalSpace();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return totalSpaceBytes;
     }
 
     @Override

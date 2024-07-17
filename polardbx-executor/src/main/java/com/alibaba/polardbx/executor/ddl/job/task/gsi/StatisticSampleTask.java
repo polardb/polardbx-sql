@@ -19,14 +19,14 @@ package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
-
-import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sampleTable;
 
 @TaskName(name = "StatisticSampleTask")
 @Getter
@@ -42,10 +42,14 @@ public class StatisticSampleTask extends BaseDdlTask {
 
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
-        sampleTable(schemaName, logicalTableName);
+        StatisticUtils.sampleOneTable(schemaName, logicalTableName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+        ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, LogPattern.PROCESS_END,
+            new String[] {"ddl sample task", schemaName + "," + logicalTableName}, LogLevel.NORMAL);
 
         LOGGER.info(String.format("sample table task. schema:%s, table:%s", schemaName, logicalTableName));
+
+        FailPoint.injectExceptionFromHint("FP_STATISTIC_SAMPLE_ERROR", executionContext);
     }
 }

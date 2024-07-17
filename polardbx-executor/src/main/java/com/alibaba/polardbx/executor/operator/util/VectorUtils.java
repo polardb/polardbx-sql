@@ -32,6 +32,12 @@ public abstract class VectorUtils {
         return results;
     }
 
+    public static void addInt(int[] results, int[] a, int[] b, int len) {
+        for (int i = 0; i < len; i++) {
+            results[i] = a[i] + b[i];
+        }
+    }
+
     public static int[] multiplyInt(int[] a, int b) {
         final int len = a.length;
         int[] results = new int[len];
@@ -39,6 +45,12 @@ public abstract class VectorUtils {
             results[i] = a[i] * b;
         }
         return results;
+    }
+
+    public static void multiplyInt(int[] results, int[] a, int b, int len) {
+        for (int i = 0; i < len; i++) {
+            results[i] = a[i] * b;
+        }
     }
 
 }

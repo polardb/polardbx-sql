@@ -18,10 +18,8 @@ package com.alibaba.polardbx.executor.mpp.operator.factory;
 
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.RecursiveCTEAnchorExec;
-import com.alibaba.polardbx.executor.operator.RecursiveCTEExec;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import org.apache.calcite.rel.core.RecursiveCTE;
 import org.apache.calcite.rel.core.RecursiveCTEAnchor;
 
 import java.util.List;

@@ -21,20 +21,18 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.group.jdbc.DataSourceWrapper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
-import com.google.common.collect.ImmutableList;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 /**
  * @author wuzhe
@@ -78,7 +76,7 @@ public class TransactionUtils {
             }
 
             final List<List<Map<String, Object>>> results =
-                SyncManagerHelper.sync(fetchAllTransSyncAction, schemaName);
+                SyncManagerHelper.sync(fetchAllTransSyncAction, schemaName, SyncScope.CURRENT_ONLY);
 
             for (final List<Map<String, Object>> result : results) {
                 if (result == null) {

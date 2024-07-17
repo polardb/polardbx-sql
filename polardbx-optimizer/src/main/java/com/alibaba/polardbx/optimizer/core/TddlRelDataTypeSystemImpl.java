@@ -48,6 +48,8 @@ public class TddlRelDataTypeSystemImpl extends RelDataTypeSystemImpl {
     public RelDataType deriveSumType(RelDataTypeFactory typeFactory, RelDataType argumentType) {
         RelDataType sumType;
         switch (argumentType.getSqlTypeName()) {
+        case DECIMAL:
+            return argumentType;
         case VARCHAR:
         case CHAR:
         case BINARY:

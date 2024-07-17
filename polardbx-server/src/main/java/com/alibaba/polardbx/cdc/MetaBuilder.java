@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
+import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
@@ -342,6 +343,7 @@ public class MetaBuilder {
             TablesAccessor tablesAccessor = new TablesAccessor();
             tablesAccessor.setConnection(metaDbConn);
             Map<String, TablesRecord> tablesMap = tablesAccessor.query(schema).stream()
+                .filter(t -> t.status != TableStatus.ABSENT.getValue())
                 .peek(t -> t.tableName = t.tableName.toLowerCase())//转小写
                 .collect(Collectors.toMap(i -> i.tableName, j -> j));
 
@@ -355,6 +357,9 @@ public class MetaBuilder {
 
                 final Map<String, Pair<TablesRecord, TablesExtInfo>> result = new HashMap<>();
                 tablesMap.keySet().forEach(k -> {
+                    if (!partitionRecords.containsKey(k)) {
+                        throw new RuntimeException(String.format("partition info is not found for %s:%s", schema, k));
+                    }
                     result.put(k, new Pair<>(tablesMap.get(k),
                         new TablesExtInfo(TableMode.PARTITION, partitionRecords.get(k).get(0).tblType)));
                 });

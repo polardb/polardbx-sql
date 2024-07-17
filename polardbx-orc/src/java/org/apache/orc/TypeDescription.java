@@ -36,12 +36,12 @@ import java.util.regex.Pattern;
  */
 public class TypeDescription
     implements Comparable<TypeDescription>, Serializable, Cloneable {
-  private static final int MAX_PRECISION = 38;
-  private static final int MAX_SCALE = 38;
-  private static final int DEFAULT_PRECISION = 38;
+  private static final int MAX_PRECISION = 65;
+  private static final int MAX_SCALE = 65;
+  private static final int DEFAULT_PRECISION = 30;
   private static final int DEFAULT_SCALE = 10;
   public static final int MAX_DECIMAL64_PRECISION = 18;
-  public static final long MAX_DECIMAL64 = 999_999_999_999_999_999L;
+  public static final long MAX_DECIMAL64 = 999999999999999999L;
   public static final long MIN_DECIMAL64 = -MAX_DECIMAL64;
   private static final int DEFAULT_LENGTH = 256;
   static final Pattern UNQUOTED_NAMES = Pattern.compile("^[a-zA-Z0-9_]+$");
@@ -467,23 +467,27 @@ public class TypeDescription
     return maxId;
   }
 
-  /**
-   * Specify the version of the VectorizedRowBatch that the user desires.
-   */
-  public enum RowBatchVersion {
-    ORIGINAL,
-    USE_DECIMAL64;
-  }
+    /**
+     * Specify the version of the VectorizedRowBatch that the user desires.
+     */
+    public enum RowBatchVersion {
+        ORIGINAL,
+        USE_DECIMAL64;
+    }
 
-  public VectorizedRowBatch createRowBatch(RowBatchVersion version, int size) {
-    VectorizedRowBatch result;
-    if (category == Category.STRUCT) {
-      result = new VectorizedRowBatch(children.size(), size);
-      for(int i=0; i < result.cols.length; ++i) {
-        result.cols[i] = TypeUtils.createColumn(children.get(i), version, size);
-      }
-    } else {
-      result = new VectorizedRowBatch(1, size);
+    public RowBatchVersion getRowBatchVersion() {
+      return RowBatchVersion.USE_DECIMAL64;
+    }
+
+    public VectorizedRowBatch createRowBatch(RowBatchVersion version, int size) {
+        VectorizedRowBatch result;
+        if (category == Category.STRUCT) {
+            result = new VectorizedRowBatch(children.size(), size);
+            for (int i = 0; i < result.cols.length; ++i) {
+                result.cols[i] = TypeUtils.createColumn(children.get(i), version, size);
+            }
+        } else {
+            result = new VectorizedRowBatch(1, size);
       result.cols[0] = TypeUtils.createColumn(this, version, size);
     }
     result.reset();
@@ -491,22 +495,13 @@ public class TypeDescription
   }
 
   /**
-   * Create a VectorizedRowBatch that uses Decimal64ColumnVector for
-   * short (p &le; 18) decimals.
-   * @return a new VectorizedRowBatch
-   */
-  public VectorizedRowBatch createRowBatchV2() {
-    return createRowBatch(RowBatchVersion.USE_DECIMAL64,
-        VectorizedRowBatch.DEFAULT_SIZE);
-  }
-
-  /**
    * Create a VectorizedRowBatch with the original ColumnVector types
+   *
    * @param maxSize the maximum size of the batch
    * @return a new VectorizedRowBatch
    */
   public VectorizedRowBatch createRowBatch(int maxSize) {
-    return createRowBatch(RowBatchVersion.ORIGINAL, maxSize);
+      return createRowBatch(getRowBatchVersion(), maxSize);
   }
 
   /**
@@ -514,8 +509,7 @@ public class TypeDescription
    * @return a new VectorizedRowBatch
    */
   public VectorizedRowBatch createRowBatch() {
-    return createRowBatch(RowBatchVersion.ORIGINAL,
-        VectorizedRowBatch.DEFAULT_SIZE);
+      return createRowBatch(VectorizedRowBatch.DEFAULT_SIZE);
   }
 
   /**
@@ -576,6 +570,14 @@ public class TypeDescription
    */
   public String getAttributeValue(String attributeName) {
     return attributes.get(attributeName);
+  }
+
+  /**
+   * Get the parent of the current type
+   * @return null if root else parent
+   */
+  public TypeDescription getParent() {
+    return parent;
   }
 
   /**
@@ -864,5 +866,72 @@ public class TypeDescription
       throw new IllegalArgumentException("Remaining text in parsing encryption masks "
           + source);
     }
+  }
+
+  /**
+   * Find the index of a given child object using == comparison.
+   * @param child The child type
+   * @return the index 0 to N-1 of the children.
+   */
+  private int getChildIndex(TypeDescription child) {
+    for(int i=children.size() - 1; i >= 0; --i) {
+      if (children.get(i) == child) {
+        return i;
+      }
+    }
+    throw new IllegalArgumentException("Child not found");
+  }
+
+  /**
+   * For a complex type, get the partial name for this child. For structures,
+   * it returns the corresponding field name. For lists and maps, it uses the
+   * special names "_elem", "_key", and "_value". Unions use the integer index.
+   * @param child The desired child, which must be the same object (==)
+   * @return The name of the field for the given child.
+   */
+  private String getPartialName(TypeDescription child) {
+    switch (category) {
+    case LIST:
+      return "_elem";
+    case MAP:
+      return getChildIndex(child) == 0 ? "_key" : "_value";
+    case STRUCT:
+      return fieldNames.get(getChildIndex(child));
+    case UNION:
+      return Integer.toString(getChildIndex(child));
+    default:
+      throw new IllegalArgumentException(
+          "Can't get the field name of a primitive type");
+    }
+  }
+
+  /**
+   * Get the full field name for the given type. For
+   * "struct&lt;a:struct&lt;list&lt;struct&lt;b:int,c:int&gt;&gt;&gt;&gt;" when
+   * called on c, would return "a._elem.c".
+   * @return A string that is the inverse of findSubtype
+   */
+  public String getFullFieldName() {
+    List<String> parts = new ArrayList<>(getId());
+    TypeDescription current = this;
+    TypeDescription parent = current.getParent();
+    // Handle the root as a special case so that it isn't an empty string.
+    if (parent == null) {
+      return Integer.toString(current.getId());
+    }
+    while (parent != null) {
+      parts.add(parent.getPartialName(current));
+      current = parent;
+      parent = current.getParent();
+    }
+    // Put the string together backwards
+    StringBuilder buffer = new StringBuilder();
+    for (int part=parts.size() - 1; part >= 0; --part) {
+      buffer.append(parts.get(part));
+      if (part != 0) {
+        buffer.append('.');
+      }
+    }
+    return buffer.toString();
   }
 }

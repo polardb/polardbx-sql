@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
@@ -24,22 +25,27 @@ import org.apache.calcite.rel.logical.LogicalExpand;
 
 public class DrdsExpandConvertRule extends ConverterRule {
 
-    public static final DrdsExpandConvertRule INSTANCE = new DrdsExpandConvertRule();
+    public static final DrdsExpandConvertRule SMP_INSTANCE = new DrdsExpandConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsExpandConvertRule() {
-        super(LogicalExpand.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsExpandConvertRule");
+    public static final DrdsExpandConvertRule COL_INSTANCE = new DrdsExpandConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsExpandConvertRule(Convention outConvention) {
+        super(LogicalExpand.class, Convention.NONE, outConvention, "DrdsExpandConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
     public RelNode convert(RelNode rel) {
         final LogicalExpand expand = (LogicalExpand) rel;
-        return expand.copy(expand.getTraitSet().simplify().replace(DrdsConvention.INSTANCE), convert(expand.getInput(),
+        return expand.copy(expand.getTraitSet().simplify().replace(outConvention), convert(expand.getInput(),
             expand.getInput().getTraitSet().simplify()
-                .replace(DrdsConvention.INSTANCE)), expand.getProjects(), expand.getRowType());
+                .replace(outConvention)), expand.getProjects(), expand.getRowType());
     }
 }

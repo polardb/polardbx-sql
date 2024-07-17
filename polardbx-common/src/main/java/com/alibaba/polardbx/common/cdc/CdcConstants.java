@@ -23,4 +23,6 @@ package com.alibaba.polardbx.common.cdc;
 public interface CdcConstants {
     int FAILURE_CODE = 500;
     int SUCCESS_CODE = 200;
+
+    String CONFIG_KEY_PREFIX = "cdc_";
 }

@@ -78,6 +78,10 @@ public class SqlAddIndex extends SqlAlterSpecification {
         return indexDef.isClustered();
     }
 
+    public boolean isColumnarIndex() {
+        return indexDef.isColumnar();
+    }
+
     @Override
     public boolean supportFileStorage() {
         return true;

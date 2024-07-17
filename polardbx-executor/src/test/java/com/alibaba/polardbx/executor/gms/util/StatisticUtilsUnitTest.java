@@ -1,15 +1,19 @@
 package com.alibaba.polardbx.executor.gms.util;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.google.common.collect.Lists;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.List;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_HLL;
@@ -20,6 +24,28 @@ import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.SELECT_TABLE
  * @author fangwu
  */
 public class StatisticUtilsUnitTest {
+
+    @Test
+    public void testConstructScanSamplingSql() {
+        // 准备测试数据
+        String logicalTableName = "testTable";
+        float sampleRate = 0.5f;
+        List<ColumnMeta> columnMetaList = new ArrayList<>();
+        columnMetaList.add(new ColumnMeta("testTable", "col1", "c1", null));
+        columnMetaList.add(new ColumnMeta("testTable", "col2", "c2", null));
+
+        // 调用待测试的函数
+        String sql = StatisticUtils.constructScanSamplingSql(logicalTableName, columnMetaList, sampleRate);
+
+        // 构建期望的结果
+        String expectedSqlStart =
+            "/*+TDDL:cmd_extra(enable_post_planner=false,enable_index_selection=false,merge_union=false,enable_direct_plan=false,sample_percentage=50.0) */ "
+                + "select `col1`,`col2` from `testTable`";
+
+        // 断言结果是否正确
+        Assert.assertTrue(sql.startsWith(expectedSqlStart));
+
+    }
 
     @Test
     public void testBuildCollectRowCountSql() {
@@ -93,30 +119,37 @@ public class StatisticUtilsUnitTest {
         Calendar calendar = Calendar.getInstance();
 
         calendar.set(Calendar.HOUR_OF_DAY, 1);
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 2);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 3);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 4);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 4);
         calendar.set(Calendar.MINUTE, 40);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 5);
         calendar.set(Calendar.MINUTE, 1);
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         // mock error config for MAINTENANCE_TIME_START / MAINTENANCE_TIME_END
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("MAINTENANCE_TIME_START", "xx");
         Assert.assertTrue(InstConfUtil.getOriginVal(MAINTENANCE_TIME_START).equals("xx"));
 
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().remove("MAINTENANCE_TIME_START");
         Assert.assertTrue(InstConfUtil.getOriginVal(MAINTENANCE_TIME_START).equals("02:00"));
@@ -124,12 +157,15 @@ public class StatisticUtilsUnitTest {
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("MAINTENANCE_TIME_START", "23:00");
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("MAINTENANCE_TIME_END", "03:00");
         calendar.set(Calendar.HOUR_OF_DAY, 1);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 0);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 4);
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar));
+        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+            ConnectionParams.MAINTENANCE_TIME_END));
     }
 }

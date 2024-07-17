@@ -55,25 +55,6 @@ PRIMARY KEY (`clist`, `id`, `stuid`)
 PARTITION BY KEY(`clist`,`id`,`stuid`)
 PARTITIONS 3;
 insert into elective(id,stuid,clist) values (1,1,100),(3,3,300);
-explain select int_test,id from test   where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id) ORDER BY int_test,id,timestamp_test;
-Logical ExecutionPlan
-Project(int_test="int_test", id="id")
-  MergeSort(sort="int_test ASC,id ASC,timestamp_test ASC")
-    LogicalView(tables="test[p1,p2,p3]", shardCount=3, sql="SELECT `INT_TEST` AS `int_test`, `iD` AS `id`, `timestamp_test` FROM `test` AS `test` WHERE ((`INT_TEST` = ?) AND (`iD` IN(?))) ORDER BY `INT_TEST`, `iD`, `timestamp_test`")
-HitCache:false
-Source:PLAN_CACHE
->> individual scalar subquery
-Project(id="id")
-  BKAJoin(condition="id = id", type="left")
-    BKAJoin(condition="id = sid", type="left")
-      MergeSort(sort="id ASC")
-        LogicalView(tables="student[p1,p2,p3]", shardCount=3, sql="SELECT `id` FROM `student` AS `student` ORDER BY `id`")
-      Gather(concurrent=true)
-        LogicalView(tables="grade[p1,p2,p3]", shardCount=3, sql="SELECT `sid` FROM `grade` AS `grade` WHERE (`sid` IN (...))")
-    Gather(concurrent=true)
-      LogicalView(tables="elective[p1,p2,p3]", shardCount=3, sql="SELECT `id` FROM `elective` AS `elective` WHERE (`id` IN (...))")
 ## exec sql no error
-select int_test,id from test where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id) ORDER BY int_test,id,timestamp_test;
+select int_test,id from test where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id limit 2,5) ORDER BY int_test,id,timestamp_test;
 int_test,id
-972,1
-972,3

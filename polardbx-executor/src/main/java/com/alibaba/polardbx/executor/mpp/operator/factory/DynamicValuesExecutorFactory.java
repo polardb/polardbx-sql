@@ -48,10 +48,8 @@ public class DynamicValuesExecutorFactory extends ExecutorFactory {
                 e -> RexUtils.buildRexNode(e, context, dynamicExpressions)
             ).collect(Collectors.toList())).collect(Collectors.toList());
         Executor exec = new DynamicValueExec(expressions, outputColumns, context);
-        exec.setId(dynamicValues.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(dynamicValues, exec, context);
-        }
+        registerRuntimeStat(exec, dynamicValues, context);
         return exec;
     }
+
 }

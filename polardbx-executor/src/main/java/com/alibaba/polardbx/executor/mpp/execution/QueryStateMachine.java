@@ -29,9 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.base.Ticker;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -42,6 +39,9 @@ import com.alibaba.polardbx.executor.mpp.client.FailureInfo;
 import com.alibaba.polardbx.executor.mpp.operator.BlockedReason;
 import com.alibaba.polardbx.executor.mpp.operator.OperatorStats;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
+import com.google.common.base.Ticker;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.Duration;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.joda.time.DateTime;
@@ -69,6 +69,7 @@ import static com.alibaba.polardbx.executor.mpp.execution.StageInfo.getAllStages
 import static io.airlift.units.DataSize.succinctBytes;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 @ThreadSafe
 public class QueryStateMachine implements StateMachineBase<QueryState> {
@@ -243,10 +244,10 @@ public class QueryStateMachine implements StateMachineBase<QueryState> {
             totalMemoryReservation += stageStats.getTotalMemoryReservation().toBytes();
             peakMemoryReservation = getPeakMemoryInBytes();
 
-            totalScheduledTime += stageStats.getTotalScheduledTime();
-            totalCpuTime += stageStats.getTotalCpuTime();
-            totalUserTime += stageStats.getTotalUserTime();
-            totalBlockedTime += stageStats.getTotalBlockedTime();
+            totalScheduledTime += stageStats.getTotalScheduledTimeNanos();
+            totalCpuTime += stageStats.getTotalCpuTimeNanos();
+            totalUserTime += stageStats.getTotalUserTimeNanos();
+            totalBlockedTime += stageStats.getTotalBlockedTimeNanos();
             if (!stageInfo.getState().isDone()) {
                 fullyBlocked &= stageStats.isFullyBlocked();
                 blockedReasons.addAll(stageStats.getBlockedReasons());
@@ -291,10 +292,10 @@ public class QueryStateMachine implements StateMachineBase<QueryState> {
             cumulativeMemory,
             totalMemoryReservation > 0 ? succinctBytes(totalMemoryReservation) : succinctBytes(0),
             peakMemoryReservation > 0 ? succinctBytes(peakMemoryReservation) : succinctBytes(0),
-            new Duration(totalScheduledTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-            new Duration(totalCpuTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-            new Duration(totalUserTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-            new Duration(totalBlockedTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
+            new Duration(totalScheduledTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
+            new Duration(totalCpuTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
+            new Duration(totalUserTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
+            new Duration(totalBlockedTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
             fullyBlocked,
             blockedReasons,
             processedInputDataSize > 0 ? succinctBytes(processedInputDataSize) : succinctBytes(0),

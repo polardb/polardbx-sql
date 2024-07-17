@@ -1,6 +1,31 @@
 # simple select window
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select count(1) from (
+    select 
+      sum(c2) over (partition by c1) ow1 
+    from t_gsi) as x;
+  plan: |
+    hashagg(count(1)="sum(count(1))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(count(1)="count()")
+          hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1)])")
+            exchange(distribution=hash[0], collation=[])
+              indexscan(tables="[0000-0003].g_t_gsi", shardcount=4, sql="select `c1`, `c2` from `g_t_gsi` as `g_t_gsi`")
+- sql: |
+    select count(*) from (
+    select 
+      ROW_NUMBER() OVER () ow1 
+    from t_gsi) as x;
+  plan: |
+    hashagg(count(*)="sum(count(*))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(count(*)="count()")
+          sortwindow(c1="c1", f1w0$o0="window#0row_number()", reference windows="window#0=window(partition {} order by [] rows between unbounded preceding and current row aggs [row_number()])")
+            exchange(distribution=single, collation=[])
+              indexscan(tables="[0000-0003].g_t_gsi", shardcount=4, sql="select `c1` from `g_t_gsi` as `g_t_gsi`")
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
     select *,
       sum(c2) over (partition by c1) ow1,
       avg(c2) over (partition by c1) ow2 
@@ -182,7 +207,7 @@
 
   plan: |
 
-    semihashjoin(condition="c1 = $0", type="anti")
+    semihashjoin(condition="c1 = $0", type="anti", build="inner")
       logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1`")
       exchange(distribution=broadcast, collation=[])
         project($0="f2w0$o0")
@@ -364,7 +389,7 @@
   plan: |
 
     logicalmodify(type="delete", tables="optest.t2")
-      semihashjoin(condition="c1 = c1 and c2 = $1", type="semi")
+      semihashjoin(condition="c1 = c1 and c2 = $1", type="semi", build="inner")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2` for update")
         project(c1="c1", $1="f2w0$o0")
@@ -383,7 +408,7 @@
 
     logicalmodify(type="update", set="t2.c2=1")
       project(c1="c1", c2="c2", gen$0="1")
-        semihashjoin(condition="c1 = c1 and c2 = $1", type="semi")
+        semihashjoin(condition="c1 = c1 and c2 = $1", type="semi", build="inner")
           gather(concurrent=true)
             logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2` for update")
           project(c1="c1", $1="f2w0$o0")

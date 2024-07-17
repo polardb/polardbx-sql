@@ -2,8 +2,6 @@
 ## clear database
 drop database if exists `testConvertDrdsDb`;
 drop database if exists `testConvertDbAuto`;
-drop database if exists `testConvertDbAuto2`;
-drop database if exists `testConvertDbAuto3`;
 create database if not exists `testConvertDrdsDb` mode=drds;
 use testConvertDrdsDb;
 ## implicit pk(will create drds group sequence)
@@ -56,3 +54,6 @@ testConvertDbAuto,AUTO_SEQ_tb2,300001,N/A ,N/A  ,N/A   ,1,300001,922337203685477
 show sequence where name like '%tb4';
 SCHEMA_NAME,NAME,VALUE,UNIT_COUNT,UNIT_INDEX,INNER_STEP,INCREMENT_BY,START_WITH,MAX_VALUE,CYCLE,TYPE,PHY_SEQ_NAME
 testConvertDbAuto,AUTO_SEQ_tb4,201,N/A ,N/A  ,N/A   ,1,201,9223372036854775807,N,NEW,pxc_seq_727f4672d59b50724512442e4be7045f
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;

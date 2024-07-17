@@ -16,17 +16,17 @@
 
 package com.alibaba.polardbx.server.handler;
 
+import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseClear;
-import com.alibaba.polardbx.server.response.ClearOSSCache;
+import com.alibaba.polardbx.server.response.ClearFileSystemCache;
 import com.alibaba.polardbx.server.response.ClearPartitionsHeatmapCache;
-import com.alibaba.polardbx.server.response.ClearOSSCache;
 import com.alibaba.polardbx.server.response.ClearPlanCache;
 import com.alibaba.polardbx.server.response.ClearProcedureCache;
 import com.alibaba.polardbx.server.response.ClearSQLSlow;
 import com.alibaba.polardbx.server.response.ClearStoredFunctionCache;
 import com.alibaba.polardbx.server.util.LogUtils;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 /**
  * @author xianmao.hexm
@@ -43,7 +43,17 @@ public final class ClearHandler {
             case ServerParseClear.PLANCACHE:
                 return ClearPlanCache.response(c, hasMore);
             case ServerParseClear.OSSCACHE:
-                return ClearOSSCache.response(c, hasMore);
+                return ClearFileSystemCache.response(c, Engine.OSS, false, hasMore);
+            case ServerParseClear.ALLCACHE:
+                return ClearFileSystemCache.response(c, null, true, hasMore);
+            case ServerParseClear.NFS_CACHE:
+                return ClearFileSystemCache.response(c, Engine.NFS, false, hasMore);
+            case ServerParseClear.EXTERNAL_DISK_CACHE:
+                return ClearFileSystemCache.response(c, Engine.EXTERNAL_DISK, false, hasMore);
+            case ServerParseClear.S3_CACHE:
+                return ClearFileSystemCache.response(c, Engine.S3, false, hasMore);
+            case ServerParseClear.ABS_CACHE:
+                return ClearFileSystemCache.response(c, Engine.ABS, false, hasMore);
             case ServerParseClear.HEATMAP_CACHE:
                 return ClearPartitionsHeatmapCache.response(c, hasMore);
             case ServerParseClear.PROCEDURE_CACHE:

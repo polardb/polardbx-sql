@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.util;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -23,6 +24,7 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.changeset.ChangeSetManager;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -31,14 +33,20 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyFinishTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetCatchUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetStartTask;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterComplexTaskUpdateJobStatusTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -94,16 +102,20 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_CHECK_TWICE;
-import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_COUNT;
-import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_WAIT;
 
 public class ChangeSetUtils {
     public final static String SQL_START_CHANGESET = "call polarx.changeset_start(%s, %s);";
     public final static String SQL_FETCH_CHANGESET_TIMES = "call polarx.changeset_times(%s);";
     public final static String SQL_FETCH_CAHNGESET = "call polarx.changeset_fetch(%s, %d);";
-    public final static String SQL_STOP_CHANGESET = "call polarx.changeset_stop(%s);";
     public final static String SQL_FINISH_CHANGESET = "call polarx.changeset_finish(%s);";
     public final static String SQL_CALL_CHANGESET_STATS = "call polarx.changeset_stats('');";
+
+    public static final int RETRY_COUNT = 10;
+    public static final long[] RETRY_WAIT = new long[RETRY_COUNT];
+
+    static {
+        IntStream.range(0, RETRY_COUNT).forEach(i -> RETRY_WAIT[i] = 500L * i);
+    }
 
     public static boolean isChangeSetProcedure(ExecutionContext ec) {
         return ec.getParamManager().getBoolean(ConnectionParams.CN_ENABLE_CHANGESET)
@@ -155,6 +167,8 @@ public class ChangeSetUtils {
 
     public static PhyTableOperation buildSelectWithInPk(String schemaName, String tableName,
                                                         String grpKey, String phyTbName,
+                                                        List<String> tableColumns,
+                                                        List<String> notUsingBinaryStringColumns,
                                                         List<Row> data, ExecutionContext ec, boolean lock) {
         if (data.isEmpty()) {
             return null;
@@ -164,12 +178,9 @@ public class ChangeSetUtils {
 
         Pair<List<String>, List<Integer>> primaryKeys = GlobalIndexMeta.getPrimaryKeysNotOrdered(baseTableMeta);
 
-        List<String> tableColumns = baseTableMeta.getWriteColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
-
-        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+        final boolean useBinary = ec.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY);
+        final PhysicalPlanBuilder builder =
+            new PhysicalPlanBuilder(schemaName, useBinary, notUsingBinaryStringColumns, ec);
         final Pair<SqlSelect, PhyTableOperation> selectWithInPk = builder
             .buildSelectWithInForChecker(baseTableMeta, tableColumns, primaryKeys.getKey(), "PRIMARY");
 
@@ -258,8 +269,10 @@ public class ChangeSetUtils {
         return inValues;
     }
 
-    static public PhyTableOperation buildReplace(String schemaName, String tableName,
+    static public PhyTableOperation buildReplace(String schemaName,
+                                                 String tableName, String indexName,
                                                  String grpKey, String phyTbName,
+                                                 List<String> tableColumns,
                                                  Parameters parameters,
                                                  ExecutionContext ec) {
         int dataSize = parameters.getBatchParameters().size();
@@ -267,12 +280,7 @@ public class ChangeSetUtils {
             return null;
         }
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        final TableMeta baseTableMeta = sm.getTable(tableName);
-
-        final List<String> tableColumns = baseTableMeta.getWriteColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
+        final TableMeta baseTableMeta = indexName == null ? sm.getTable(tableName) : sm.getTable(indexName);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
         final Pair<SqlInsert, PhyTableOperation> replace =
@@ -308,8 +316,11 @@ public class ChangeSetUtils {
         return PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
     }
 
-    public static Parameters executePhySelectPlan(PhyTableOperation selectPlan, ExecutionContext ec) {
+    public static Parameters executePhySelectPlan(PhyTableOperation selectPlan,
+                                                  List<String> notConvertColumns,
+                                                  ExecutionContext ec) {
         Cursor cursor = null;
+        boolean useBinary = ec.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY);
         Parameters parameters = new Parameters();
         final List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>();
         try {
@@ -320,7 +331,12 @@ public class ChangeSetUtils {
                 final Map<Integer, ParameterContext> item = new HashMap<>(columns.size());
 
                 for (int i = 0; i < columns.size(); i++) {
-                    item.put(i + 1, Transformer.buildColumnParam(row, i));
+                    ColumnMeta columnMeta = columns.get(i);
+                    String colName = columnMeta.getName();
+                    boolean canConvert =
+                        useBinary && (notConvertColumns == null || !notConvertColumns.contains(colName));
+
+                    item.put(i + 1, Transformer.buildColumnParam(row, i, canConvert));
                 }
                 batchParams.add(item);
             }
@@ -378,7 +394,8 @@ public class ChangeSetUtils {
         return schemaName + "." + tableName + "#version:" + version;
     }
 
-    public static Map<String, ChangeSetCatchUpTask> genChangeSetCatchUpTasks(String schemaName, String tableName,
+    public static Map<String, ChangeSetCatchUpTask> genChangeSetCatchUpTasks(String schemaName,
+                                                                             String tableName, String indexName,
                                                                              Map<String, Set<String>> sourcePhyTableNames,
                                                                              Map<String, String> targetTableLocations,
                                                                              ComplexTaskMetaManager.ComplexTaskType taskType,
@@ -387,8 +404,9 @@ public class ChangeSetUtils {
         catchUpTasks.put(
             ChangeSetManager.ChangeSetCatchUpStatus.ABSENT.toString(),
             new ChangeSetCatchUpTask(
-                schemaName, tableName,
-                null,
+                schemaName,
+                tableName,
+                indexName,
                 sourcePhyTableNames,
                 targetTableLocations,
                 ChangeSetManager.ChangeSetCatchUpStatus.ABSENT,
@@ -400,8 +418,9 @@ public class ChangeSetUtils {
         catchUpTasks.put(
             ChangeSetManager.ChangeSetCatchUpStatus.DELETE_ONLY.toString(),
             new ChangeSetCatchUpTask(
-                schemaName, tableName,
-                null,
+                schemaName,
+                tableName,
+                indexName,
                 sourcePhyTableNames,
                 targetTableLocations,
                 ChangeSetManager.ChangeSetCatchUpStatus.DELETE_ONLY,
@@ -413,8 +432,9 @@ public class ChangeSetUtils {
         catchUpTasks.put(
             ChangeSetManager.ChangeSetCatchUpStatus.WRITE_ONLY.toString(),
             new ChangeSetCatchUpTask(
-                schemaName, tableName,
-                null,
+                schemaName,
+                tableName,
+                indexName,
                 sourcePhyTableNames,
                 targetTableLocations,
                 ChangeSetManager.ChangeSetCatchUpStatus.WRITE_ONLY,
@@ -426,8 +446,9 @@ public class ChangeSetUtils {
         catchUpTasks.put(
             ChangeSetManager.ChangeSetCatchUpStatus.ABSENT_FINAL.toString(),
             new ChangeSetCatchUpTask(
-                schemaName, tableName,
-                null,
+                schemaName,
+                tableName,
+                indexName,
                 sourcePhyTableNames,
                 targetTableLocations,
                 ChangeSetManager.ChangeSetCatchUpStatus.ABSENT_FINAL,
@@ -439,8 +460,9 @@ public class ChangeSetUtils {
         catchUpTasks.put(
             ChangeSetManager.ChangeSetCatchUpStatus.DELETE_ONLY_FINAL.toString(),
             new ChangeSetCatchUpTask(
-                schemaName, tableName,
-                null,
+                schemaName,
+                tableName,
+                indexName,
                 sourcePhyTableNames,
                 targetTableLocations,
                 ChangeSetManager.ChangeSetCatchUpStatus.DELETE_ONLY_FINAL,
@@ -452,8 +474,9 @@ public class ChangeSetUtils {
         catchUpTasks.put(
             ChangeSetManager.ChangeSetCatchUpStatus.WRITE_ONLY_FINAL.toString(),
             new ChangeSetCatchUpTask(
-                schemaName, tableName,
-                null,
+                schemaName,
+                tableName,
+                indexName,
                 sourcePhyTableNames,
                 targetTableLocations,
                 ChangeSetManager.ChangeSetCatchUpStatus.WRITE_ONLY_FINAL,
@@ -473,6 +496,7 @@ public class ChangeSetUtils {
                                                                     DdlTask changeSetCheckTask,
                                                                     DdlTask changeSetCheckTwiceTask,
                                                                     ChangeSetApplyFinishTask changeSetApplyFinishTask,
+                                                                    List<DdlTask> outDdlTasks,
                                                                     ExecutionContext executionContext) {
         List<DdlTask> ddlTasks = new ArrayList<>();
         final boolean stayAtCreating =
@@ -584,7 +608,13 @@ public class ChangeSetUtils {
         ddlTasks.add(changeSetStartTask);
         ddlTasks.add(absentTask);
         ddlTasks.add(tableSyncTasks.get(0));
-        ddlTasks.add(backFillTask);
+        if (backFillTask != null) {
+            ddlTasks.add(backFillTask);
+        } else {
+            outDdlTasks.add(tableSyncTasks.get(0));
+            outDdlTasks.add(catchUpTasks.get(ChangeSetManager.ChangeSetCatchUpStatus.ABSENT.toString()));
+        }
+
         ddlTasks.add(catchUpTasks.get(ChangeSetManager.ChangeSetCatchUpStatus.ABSENT.toString()));
 
         ddlTasks.add(deleteOnlyTask);
@@ -635,6 +665,55 @@ public class ChangeSetUtils {
         ddlTasks.add(tableSyncTasks.get(6));
 
         return ddlTasks;
+    }
+
+    public static void doChangeSetSchemaChange(String schemaName, String logicalTableName, List<String> relatedTables,
+                                               DdlTask currentTask, ComplexTaskMetaManager.ComplexTaskStatus oldStatus,
+                                               ComplexTaskMetaManager.ComplexTaskStatus newStatus) {
+        final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
+
+        new DdlEngineAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                ComplexTaskMetaManager
+                    .updateSubTasksStatusByJobIdAndObjName(currentTask.getJobId(),
+                        schemaName,
+                        logicalTableName,
+                        oldStatus,
+                        newStatus,
+                        getConnection());
+                try {
+                    for (String tbName : relatedTables) {
+                        TableInfoManager.updateTableVersionWithoutDataId(schemaName, tbName, getConnection());
+                    }
+                } catch (Exception e) {
+                    throw GeneralUtil.nestedException(e);
+                }
+                currentTask.setState(DdlTaskState.DIRTY);
+                DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
+                return engineTaskAccessor.updateTask(taskRecord);
+            }
+        }.execute();
+
+        LOGGER.info(
+            String.format(
+                "Update table status[ schema:%s, table:%s, before state:%s, after state:%s]",
+                schemaName,
+                logicalTableName,
+                ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG.name(),
+                ComplexTaskMetaManager.ComplexTaskStatus.DOING_CHECKER.name()));
+
+        try {
+            SyncManagerHelper.sync(
+                new TablesMetaChangePreemptiveSyncAction(schemaName, relatedTables, 1500L, 1500L,
+                    TimeUnit.SECONDS),
+                SyncScope.ALL);
+        } catch (Throwable t) {
+            LOGGER.error(String.format(
+                "error occurs while sync table meta, schemaName:%s, tableName:%s", schemaName,
+                logicalTableName));
+            throw GeneralUtil.nestedException(t);
+        }
     }
 
     public static List<List<Row>> genBatchRowList(List<Row> rows, int batchSize) {
@@ -762,8 +841,7 @@ public class ChangeSetUtils {
             targetGroup = targetTableLocations.get(targetTable);
         } else if (taskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_PARTITION
             || taskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE) {
-            targetGroup = null;
-            targetTable = null;
+            // need route
         } else if (taskType == ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION) {
             // move partitions or move database
             targetTable = sourceTable;
@@ -771,6 +849,9 @@ public class ChangeSetUtils {
         } else if (taskType == ComplexTaskMetaManager.ComplexTaskType.MOVE_DATABASE) {
             targetTable = sourceTable;
             targetGroup = targetTableLocations.get(sourceGroup);
+        } else if (taskType == ComplexTaskMetaManager.ComplexTaskType.ONLINE_MODIFY_COLUMN) {
+            targetGroup = sourceGroup;
+            targetTable = targetTableLocations.get(sourceTable);
         }
 
         return new Pair<>(targetGroup, targetTable);

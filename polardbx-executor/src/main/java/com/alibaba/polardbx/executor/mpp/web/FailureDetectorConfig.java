@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.web;
 
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
 import io.airlift.units.Duration;
@@ -23,7 +24,6 @@ import io.airlift.units.MinDuration;
 
 import javax.validation.constraints.DecimalMax;
 import javax.validation.constraints.DecimalMin;
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.concurrent.TimeUnit;
 
 public class FailureDetectorConfig {

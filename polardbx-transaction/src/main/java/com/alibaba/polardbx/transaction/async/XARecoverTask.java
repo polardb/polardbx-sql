@@ -16,11 +16,14 @@
 
 package com.alibaba.polardbx.transaction.async;
 
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -38,13 +41,12 @@ import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionState;
-import com.alibaba.polardbx.common.type.TransactionType;
-import com.alibaba.polardbx.transaction.TsoTransaction;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 import com.alibaba.polardbx.transaction.log.ConnectionContext;
 import com.alibaba.polardbx.transaction.log.GlobalTxLog;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.rawsql.RawSqlUtils;
+import com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -67,10 +69,11 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SET_DISTRIBUTED_TRX_ID;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getInstId2GroupList;
-import static com.alibaba.polardbx.transaction.TsoTransaction.SET_DISTRIBUTED_TRX_ID;
-import static com.alibaba.polardbx.transaction.TsoTransaction.SET_REMOVE_DISTRIBUTED_TRX;
+import static com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction.SET_REMOVE_DISTRIBUTED_TRX;
 
 /**
  * Task to scan prepared XA task with <pre>XA RECOVER</pre> command.
@@ -328,9 +331,8 @@ public class XARecoverTask implements Runnable {
                 && System.nanoTime() - firstSeen > RETRY_PERIOD) {
                 // In 1 hour this schema is still not inited, rollback this trx.
                 TransactionLogger.warn(transInfo.transId, "rollback unknown XA transaction");
-                Optional.ofNullable(OptimizerContext.getTransStat(schema))
-                    .ifPresent(s -> s.countRecoverRollback.incrementAndGet());
-                return tryRollback(stmt, trans);
+                return tryRollback(trans, stmt, transInfo, "unknown", () -> {
+                });
             }
             // Otherwise wait for a while since this group maybe not initialized yet
             return false;
@@ -338,7 +340,6 @@ public class XARecoverTask implements Runnable {
 
         final String schema = schemaAndGroup.getKey();
         final String primaryGroup = schemaAndGroup.getValue();
-
         GlobalTxLogManager primaryGroupTxLogMgr = TransactionManager.getInstance(schema).getGlobalTxLogManager();
         GlobalTxLog txLog = primaryGroupTxLogMgr.get(primaryGroup, transInfo, schema);
         if (txLog != null) {
@@ -349,56 +350,68 @@ public class XARecoverTask implements Runnable {
                 /*
                 Case 1.1: Trx is marked as aborted. Roll it back.
                  */
-                Optional.ofNullable(OptimizerContext.getTransStat(schema))
-                    .ifPresent(s -> s.countRecoverRollback.incrementAndGet());
-                String info = "[Recover] roll back XA transaction " + transInfo.toXidString();
-                logger.warn(info);
-                TransactionLogger.warn(txLog.getTxid(), info);
-                return tryRollback(stmt, trans);
-            } else if (txLog.getState() == TransactionState.SUCCEED) {
+                return tryRollback(trans, stmt, transInfo, schema, () -> {
+                });
+            } else {
                 /*
                 Case 1.2: Trx is marked as committed. Roll it forward.
                  */
-                Optional.ofNullable(OptimizerContext.getTransStat(schema))
-                    .ifPresent(s -> s.countRecoverCommit.incrementAndGet());
-                if (txLog.getType() == TransactionType.TSO) {
-                    assert txLog.getCommitTimestamp() != null : "TSO transaction need commit timestamp";
-                    String info = "roll forward TSO transaction " + transInfo.toXidString();
-                    logger.warn(info);
-                    TransactionLogger.warn(txLog.getTxid(), info);
-                    return tryCommitTSO(stmt, trans, txLog.getCommitTimestamp(), transInfo.transId, supportAsyncCommit);
-                } else if (txLog.getType() == TransactionType.XA) {
-                    TransactionLogger.warn(txLog.getTxid(), "roll forward XA transaction");
-                    return tryCommitXA(stmt, trans);
-                } else {
-                    throw new AssertionError();
-                }
-            } else if (txLog.getState() == TransactionState.ATTACHED) {
-                // Not a dangling trx.
-                return true;
-            } else {
-                throw new AssertionError("Bad state: " + txLog.getState());
+                return tryCommit(trans, stmt, transInfo, schema, txLog);
             }
         } else {
             /*
             Case 2: Trx log is not found in primary group.
-            Note, that it may be an async commit transaction.
+            Note, that it may be an async commit transaction, or a v2 trx log.
              */
-
-            // Check whether it is an async commit transaction.
-            Map<String, List<TGroupDataSource>> allDn = getInstId2GroupList(schema);
             List<TGroupDataSource> noLogDataSources = new ArrayList<>();
             int expected = 0, found = 0;
             boolean abort = false;
             long commitTimeStamp = 0;
-            for (List<TGroupDataSource> groupDataSources : allDn.values()) {
-                assert CollectionUtils.isNotEmpty(groupDataSources);
+
+            // Process primary group first to check whether it is a v2 trx log.
+            IDataSource primaryDatasource = primaryGroupTxLogMgr.getDatasource(primaryGroup);
+            GlobalTxLog v2TxLog = GlobalTxLogManager.getV2(primaryDatasource, transInfo.transId, supportAsyncCommit);
+            assert primaryDatasource instanceof TGroupDataSource;
+            String primaryId = ((TGroupDataSource) primaryDatasource).getMasterSourceAddress();
+            if (null == v2TxLog) {
+                // No V2 log found in primary DN, appending an ABORTED log into V2 log table is enough to
+                // prevent normal-commit or async-commit from reaching commit-point.
+                return appendLogPrimaryAndRollback(trans, stmt, transInfo, primaryDatasource, schema);
+            } else {
+                logger.info("[Recover] Found trx log v2: " + v2TxLog);
+                TransactionLogger.warn(transInfo.transId, "[Recover] Found trx log v2: " + v2TxLog);
+
+                if (TransactionState.ABORTED == v2TxLog.getState()) {
+                    return tryRollback(trans, stmt, transInfo, schema, () -> {
+                    });
+                } else if (TransactionState.SUCCEED == v2TxLog.getState()) {
+                    // Normal commit log.
+                    return tryCommit(trans, stmt, transInfo, schema, v2TxLog);
+                } else {
+                    // Async commit log.
+                    assert TransactionState.PREPARE == v2TxLog.getState();
+                    expected = v2TxLog.getParticipants();
+                    commitTimeStamp = Long.max(commitTimeStamp, v2TxLog.getCommitTimestamp());
+
+                    found++;
+                }
+            }
+
+            // Process other groups to check whether it is an async commit transaction.
+            Map<String, List<TGroupDataSource>> allDn = getInstId2GroupList(schema);
+            for (Map.Entry<String, List<TGroupDataSource>> entry : allDn.entrySet()) {
+                if (primaryId.equalsIgnoreCase(entry.getKey())) {
+                    // Primary group is already processed before.
+                    continue;
+                }
+
+                assert CollectionUtils.isNotEmpty(entry.getValue());
                 // Since all data sources are in the same DN, any data source is ok.
-                final TGroupDataSource groupDataSource = groupDataSources.get(0);
+                final TGroupDataSource groupDataSource = entry.getValue().get(0);
 
                 // Get async commit trx log from this DN.
                 GlobalTxLog asyncCommitTxLog =
-                    GlobalTxLogManager.getAsyncCommitLog(groupDataSource, transInfo.transId, schema);
+                    GlobalTxLogManager.getV2(groupDataSource, transInfo.transId, supportAsyncCommit);
 
                 if (null == asyncCommitTxLog) {
                     noLogDataSources.add(groupDataSource);
@@ -406,10 +419,12 @@ public class XARecoverTask implements Runnable {
                     logger.info("[Async Commit][Recover] Found async commit log: " + asyncCommitTxLog);
                     TransactionLogger.warn(transInfo.transId, "[Recover] Found async commit log: " + asyncCommitTxLog);
 
-                    if (asyncCommitTxLog.getState() == TransactionState.ABORTED) {
+                    if (TransactionState.ABORTED == asyncCommitTxLog.getState()) {
                         abort = true;
                         continue;
                     }
+
+                    assert TransactionState.PREPARE == asyncCommitTxLog.getState();
 
                     if (0 == expected) {
                         expected = asyncCommitTxLog.getParticipants();
@@ -423,21 +438,20 @@ public class XARecoverTask implements Runnable {
             if (!supportAsyncCommit || abort || expected != found || 0 == found) {
                 /*
                 Case 2.1: It must be one of the following cases, and should be rolled back.
-                a. It is an async commit transaction, and it is marked as aborted;
+                a. It is marked as aborted;
                 b. It is an async commit transaction, and not all of its branches are prepared;
                 c. It did not write any async commit log, neither normal commit log;
-                d. Async commit is not supported, and normal commit log are not written.
                  */
                 Optional.ofNullable(OptimizerContext.getTransStat(schema))
                     .ifPresent(s -> s.countRecoverRollback.incrementAndGet());
                 return appendLogAndRollback(trans, stmt, transInfo, primaryGroupTxLogMgr, primaryGroup,
-                    noLogDataSources);
+                    noLogDataSources, schema);
             } else {
                 /*
                 Case 2.2: It is an async commit transaction, and we found all expected trx logs,
                 and each trx log indicates this trx should be committed.
                  */
-                if (commitTimeStamp <= 0 || !TsoTransaction.isMinCommitSeq(commitTimeStamp)) {
+                if (commitTimeStamp <= 0 || !AsyncCommitTransaction.isMinCommitSeq(commitTimeStamp)) {
                     String error = "[Async Commit][Recover] found bad commit_seq: " + commitTimeStamp + " for "
                         + transInfo.transId;
                     TransactionLogger.error(transInfo.transId, error);
@@ -445,15 +459,70 @@ public class XARecoverTask implements Runnable {
                 }
                 Optional.ofNullable(OptimizerContext.getTransStat(schema))
                     .ifPresent(s -> s.countRecoverCommit.incrementAndGet());
-                return tryCommitTSO(stmt, trans, TsoTransaction.convertFromMinCommitSeq(commitTimeStamp),
+                return tryCommitTSO(stmt, trans, AsyncCommitTransaction.convertFromMinCommitSeq(commitTimeStamp),
                     transInfo.transId, supportAsyncCommit);
             }
         }
     }
 
+    private boolean tryCommit(PreparedXATrans trans, Statement stmt, XAUtils.XATransInfo transInfo, String schema,
+                              GlobalTxLog txLog) throws SQLException {
+        Optional.ofNullable(OptimizerContext.getTransStat(schema))
+            .ifPresent(s -> s.countRecoverCommit.incrementAndGet());
+        if (txLog.getType() == TransactionType.TSO) {
+            assert txLog.getCommitTimestamp() != null : "TSO transaction need commit timestamp";
+            String info = "roll forward TSO transaction " + transInfo.toXidString();
+            logger.warn(info);
+            TransactionLogger.warn(txLog.getTxid(), info);
+            return tryCommitTSO(stmt, trans, txLog.getCommitTimestamp(), transInfo.transId, supportAsyncCommit);
+        } else if (txLog.getType() == TransactionType.XA) {
+            TransactionLogger.warn(txLog.getTxid(), "roll forward XA transaction");
+            return tryCommitXA(stmt, trans);
+        } else {
+            String err = "[RECOVER] found unexpected trx type " + txLog.getType();
+            EventLogger.log(EventType.TRX_RECOVER, schema + err);
+            logger.error(err);
+            throw new AssertionError();
+        }
+    }
+
+    private boolean tryRollback(PreparedXATrans trans, Statement stmt, XAUtils.XATransInfo transInfo, String schema,
+                                Runnable errorCallback) {
+        String info = "roll back XA transaction " + transInfo.toXidString();
+        long id = transInfo.transId;
+        logger.warn(info);
+        TransactionLogger.warn(id, info);
+        if (supportAsyncCommit) {
+            setAsyncCommitCleanVar(stmt, id);
+        }
+
+        try {
+            stmt.execute("XA ROLLBACK " + trans.toXid());
+            Optional.ofNullable(OptimizerContext.getTransStat(schema))
+                .ifPresent(s -> s.countRecoverRollback.incrementAndGet());
+            return true;
+        } catch (SQLException ex) {
+            logger.info("XA ROLLBACK error: " + ex.getMessage());
+            TransactionLogger.warn(id, "XA ROLLBACK error: {0} {1}", ex.getMessage(), trans.toXid());
+            EventLogger.log(EventType.TRX_RECOVER, "XA ROLLBACK error for " + schema + ": " + ex.getMessage());
+
+            errorCallback.run();
+
+            if (ex.getErrorCode() == ErrorCode.ER_XAER_RMFAIL.getCode()) {
+                return true; // Maybe not prepared yet. Ignore such exceptions
+            } else if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {
+                return true; // Transaction lost or recovered by others
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Append log to log table (V1 and V2) and rollback XA trx.
+     */
     private boolean appendLogAndRollback(PreparedXATrans trans, Statement stmt, XAUtils.XATransInfo transInfo,
                                          GlobalTxLogManager primaryGroupTxLogMgr, String primaryGroup,
-                                         List<TGroupDataSource> noLogDataSources)
+                                         List<TGroupDataSource> noLogDataSources, String schema)
         throws SQLException {
         List<Pair<IConnection, String>> logConns = new ArrayList<>(noLogDataSources.size() + 1);
         try {
@@ -472,82 +541,128 @@ public class XARecoverTask implements Runnable {
                     final String xid = getRecoverXid(trxId, "async-commit-" + i++);
                     logConns.add(new Pair<>(conn, xid));
                 }
+            }
 
-                for (Pair<IConnection, String> logConn : logConns) {
-                    try {
-                        logConn.getKey().executeLater("xa begin " + logConn.getValue());
-                        GlobalTxLogManager.appendAsyncCommitLog(trxId, 0, logConn.getKey());
-                    } catch (Throwable t) {
-                        logger.error("Append aborted log to async commit log table failed", t);
-                        rollbackLogConns(logConns);
-                        return true;
-                    }
+            for (Pair<IConnection, String> logConn : logConns) {
+                try {
+                    logConn.getKey().executeLater("xa begin " + logConn.getValue());
+                    GlobalTxLogManager.appendV2WithLockWaitTimeout(trxId, 0, logConn.getKey());
+                } catch (Throwable t) {
+                    logger.error("Append aborted log to primary v2 commit log table failed", t);
+                    rollbackLogConns(logConns);
+                    return true;
                 }
             }
 
-            IDataSource dataSource = primaryGroupTxLogMgr.getTransactionExecutor()
-                .getGroupExecutor(primaryGroup)
-                .getDataSource();
+            {
+                // Deal with legacy log table.
+                IDataSource dataSource = primaryGroupTxLogMgr.getTransactionExecutor()
+                    .getGroupExecutor(primaryGroup)
+                    .getDataSource();
 
-            final IConnection conn = dataSource.getConnection();
-            final String xid = getRecoverXid(trxId, "normal-commit-" + i++);
-            logConns.add(new Pair<>(conn, xid));
+                final IConnection conn = new DeferredConnection(dataSource.getConnection(),
+                    InstConfUtil.getBool(ConnectionParams.USING_RDS_RESULT_SKIP));
+                final String xid = getRecoverXid(trxId, "normal-commit-" + i++);
+                logConns.add(new Pair<>(conn, xid));
 
-            try {
-                conn.executeLater("xa begin " + xid);
-                GlobalTxLogManager txLog = TransactionManager.getInstance(schema).getGlobalTxLogManager();
-                txLog.append(transInfo.transId, TransactionType.XA, TransactionState.ABORTED, new ConnectionContext(),
-                    conn);
-            } catch (Throwable t) {
-                logger.error("Append aborted log to normal commit log table failed", t);
-                rollbackLogConns(logConns);
-                return false;
-            }
-
-            try {
-                prepareLogConns(logConns);
-            } catch (Throwable t) {
-                logger.error("Append aborted log to normal commit log table failed", t);
-                rollbackLogConns(logConns);
-                return false;
-            }
-
-            // Safe to perform xa rollback now.
-            try {
-                if (supportAsyncCommit) {
-                    try {
-                        stmt.execute(String.format(SET_DISTRIBUTED_TRX_ID, transInfo.transId));
-                        stmt.execute(SET_REMOVE_DISTRIBUTED_TRX);
-                    } catch (SQLException e) {
-                        logger.warn("Set async commit info failed.", e);
-                    }
-                }
-
-                stmt.execute("XA ROLLBACK " + trans.toXid());
-                logger.info("[Async Commit][Recover] roll back TSO transaction " + transInfo.transId);
-                TransactionLogger.warn(transInfo.transId, "[Async Commit][Recover] roll back TSO transaction");
-            } catch (SQLException ex) {
-                logger.info("XA ROLLBACK error: " + ex.getMessage());
-                TransactionLogger
-                    .warn(transInfo.transId, "XA ROLLBACK error: {0} {1}", ex.getMessage(), trans.toXid());
-
-                if (ex.getErrorCode() == ErrorCode.ER_XAER_RMFAIL.getCode()) {
-                    rollbackLogConns(logConns);
-                    return true; // Maybe not prepared yet. Ignore such exceptions
-                } else if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {
-                    rollbackLogConns(logConns);
-                    return true; // Transaction still running or recovered by others
-                } else {
+                try {
+                    conn.executeLater("xa begin " + xid);
+                    GlobalTxLogManager.appendWithLockWaitTimeout(transInfo.transId, TransactionType.XA,
+                        TransactionState.ABORTED, new ConnectionContext(), conn);
+                } catch (Throwable t) {
+                    logger.error("Append aborted log to normal commit log table failed", t);
                     rollbackLogConns(logConns);
                     return false;
                 }
             }
 
-            commitLogConns(logConns);
+            try {
+                prepareLogConns(logConns);
+            } catch (Throwable t) {
+                logger.error("Prepare log conn failed", t);
+                EventLogger.log(EventType.TRX_RECOVER,
+                    "Prepare log conn failed for " + schema + ": " + t.getMessage());
+                rollbackLogConns(logConns);
+                return false;
+            }
+
+            // Safe to perform xa rollback now.
+            AtomicBoolean error = new AtomicBoolean(false);
+            boolean returnVal = tryRollback(trans, stmt, transInfo, schema, () -> {
+                error.set(true);
+                rollbackLogConns(logConns);
+            });
+
+            if (!error.get()) {
+                logger.info("[Async Commit][Recover] roll back TSO transaction " + transInfo.transId);
+                TransactionLogger.warn(transInfo.transId, "[Async Commit][Recover] roll back TSO transaction");
+                commitLogConns(logConns);
+            }
+            return returnVal;
         } finally {
             closeLogConns(logConns);
         }
-        return true;
+    }
+
+    /**
+     * Append log to primary log table (V1 and V2) and rollback XA trx.
+     */
+    private boolean appendLogPrimaryAndRollback(PreparedXATrans trans, Statement stmt, XAUtils.XATransInfo transInfo,
+                                                IDataSource primaryDataSource, String schema) throws SQLException {
+        try (DeferredConnection conn = new DeferredConnection(primaryDataSource.getConnection(),
+            InstConfUtil.getBool(ConnectionParams.USING_RDS_RESULT_SKIP))) {
+            /*
+            Step 1, append an aborted trx log to primary DN's new trx log table.
+            Step 2, append an aborted trx log to primary DN's normal trx log table using the same connection.
+            Step 3, execute XA ROLLBACK to rollback the branch.
+            Note, that any step fails, all succeeded steps should be rolled back.
+            Hence, we use an extra XA trx to achieve such atomicity. POLARDB-X-RECOVER-TASK@{trx-id}, {bqual}, 2
+            */
+            final long trxId = transInfo.transId;
+            String xid = getRecoverXid(trxId, "new-trx-log");
+
+            // Safe to perform xa rollback now.
+            AtomicBoolean error = new AtomicBoolean(false);
+            boolean returnVal;
+            try {
+                conn.executeLater("xa begin " + xid);
+                try {
+                    GlobalTxLogManager.appendV2WithLockWaitTimeout(trxId, 0, conn);
+                    GlobalTxLogManager.appendWithLockWaitTimeout(trxId, TransactionType.XA,
+                        TransactionState.ABORTED, new ConnectionContext(), conn);
+                } catch (com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationException e) {
+                    // Duplicate entry.
+                    logger.warn("[Recover] duplicate entry found for " + trxId);
+                    rollbackLogConn(conn, xid);
+                    return false;
+                }
+                conn.executeLater("xa end " + xid);
+                try (Statement stmt0 = conn.createStatement()) {
+                    stmt0.execute("xa prepare " + xid);
+                }
+
+                returnVal = tryRollback(trans, stmt, transInfo, schema, () -> {
+                    error.set(true);
+                    rollbackLogConn(conn, xid);
+                });
+
+                if (!error.get()) {
+                    conn.createStatement().execute("xa commit " + xid);
+                }
+
+                String info = "[Async Commit][Recover] roll back TSO transaction " + transInfo.transId
+                    + (error.get() ? " fail" : " succeed");
+                logger.info(info);
+                TransactionLogger.warn(transInfo.transId, info);
+
+                return returnVal;
+            } catch (Throwable t) {
+                rollbackLogConn(conn, xid);
+                EventLogger.log(EventType.TRX_RECOVER,
+                    "appendLogPrimaryAndRollback failed for " + schema + ": " + t.getMessage());
+                throw t;
+            }
+        }
     }
 
     private void closeLogConns(List<Pair<IConnection, String>> logConns) {
@@ -558,35 +673,38 @@ public class XARecoverTask implements Runnable {
                 }
             } catch (Throwable t) {
                 logger.warn("[RECOVER] Close log connections failed.", t);
+                EventLogger.log(EventType.TRX_RECOVER,
+                    "Close log connections failed for" + schema + ": " + t.getMessage());
             }
         }
     }
 
     private void rollbackLogConns(List<Pair<IConnection, String>> logConns) {
         for (Pair<IConnection, String> logConn : logConns) {
-            try (Statement stmt = logConn.getKey().createStatement()) {
-                stmt.execute("xa end " + logConn.getValue());
-            } catch (Throwable t) {
-                logger.warn("[Recover] xa end failed", t);
-            }
-
-            try (Statement stmt = logConn.getKey().createStatement()) {
-                stmt.execute("xa rollback " + logConn.getValue());
-            } catch (Throwable t) {
-                logger.warn("[Recover] xa rollback failed", t);
-                logConn.getKey().discard(t);
-            }
+            rollbackLogConn(logConn.getKey(), logConn.getValue());
         }
     }
 
-    private void prepareLogConns(List<Pair<IConnection, String>> logConns) {
+    private void rollbackLogConn(IConnection conn, String xid) {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("xa end " + xid);
+        } catch (Throwable t) {
+            logger.warn("[Recover] xa end failed, xid: " + xid, t);
+        }
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("xa rollback " + xid);
+        } catch (Throwable t) {
+            logger.warn("[Recover] xa rollback failed, xid: " + xid, t);
+            conn.discard(t);
+        }
+    }
+
+    private void prepareLogConns(List<Pair<IConnection, String>> logConns) throws SQLException {
         for (Pair<IConnection, String> logConn : logConns) {
+            logConn.getKey().executeLater("xa end " + logConn.getValue());
             try (Statement stmt = logConn.getKey().createStatement()) {
-                stmt.execute("xa end " + logConn.getValue());
                 stmt.execute("xa prepare " + logConn.getValue());
-            } catch (Throwable t) {
-                logger.warn("[Recover] xa prepare failed", t);
-                logConn.getKey().discard(t);
             }
         }
     }
@@ -596,8 +714,11 @@ public class XARecoverTask implements Runnable {
             try (Statement stmt = logConn.getKey().createStatement()) {
                 stmt.execute("xa commit " + logConn.getValue());
             } catch (Throwable t) {
-                logger.warn("[Recover] xa commit failed", t);
                 logConn.getKey().discard(t);
+                logger.warn("[Recover] commit log conn failed ", t);
+                TransactionLogger.warn(0, "[Recover] commit log conn failed " + t.getMessage());
+                EventLogger.log(EventType.TRX_RECOVER,
+                    "[Recover] commit log conn failed for " + schema + ": " + t.getMessage());
             }
         }
     }
@@ -613,6 +734,8 @@ public class XARecoverTask implements Runnable {
                 return true; // Transaction lost or recovered by others
             }
             TransactionLogger.error("XA ROLLBACK error", ex);
+            EventLogger.log(EventType.TRX_RECOVER,
+                "XA ROLLBACK error for " + trans.toXid() + ": " + ex.getMessage());
             return false;
         }
     }
@@ -624,15 +747,11 @@ public class XARecoverTask implements Runnable {
     private static boolean tryCommitTSO(Statement stmt, PreparedXATrans trans, long commitTimestamp, long id,
                                         boolean supportAsyncCommit)
         throws SQLException {
-        final XConnection xConnection;
         if (supportAsyncCommit) {
-            try {
-                stmt.execute(String.format(SET_DISTRIBUTED_TRX_ID, id));
-                stmt.execute(SET_REMOVE_DISTRIBUTED_TRX);
-            } catch (SQLException e) {
-                logger.warn("Set async commit info failed.", e);
-            }
+            setAsyncCommitCleanVar(stmt, id);
         }
+
+        final XConnection xConnection;
         if (stmt.isWrapperFor(XStatement.class) &&
             (xConnection = stmt.getConnection().unwrap(XConnection.class)).supportMessageTimestamp()) {
             if (stmt.getConnection().isWrapperFor(DeferredConnection.class)) {
@@ -644,6 +763,26 @@ public class XARecoverTask implements Runnable {
         return tryCommit0(stmt, "SET innodb_commit_seq = " + commitTimestamp + "; XA COMMIT " + trans.toXid());
     }
 
+    private static void setAsyncCommitCleanVar(Statement stmt, long id) {
+        XConnection xConnection;
+        try {
+            if (stmt.isWrapperFor(XStatement.class) &&
+                (xConnection = stmt.getConnection().unwrap(XConnection.class)).supportMessageTimestamp()) {
+                if (stmt.getConnection().isWrapperFor(DeferredConnection.class)) {
+                    stmt.getConnection().unwrap(DeferredConnection.class).flushUnsent();
+                }
+                // X-Connection pipeline.
+                xConnection.execUpdate(String.format(SET_DISTRIBUTED_TRX_ID, id), null, true);
+                xConnection.execUpdate(SET_REMOVE_DISTRIBUTED_TRX);
+            } else {
+                stmt.execute(String.format(SET_DISTRIBUTED_TRX_ID, id) + ";" + SET_REMOVE_DISTRIBUTED_TRX);
+            }
+        } catch (SQLException e) {
+            // Failing to set async commit variables should not prevent committing the trx.
+            logger.warn("Set async commit info failed.", e);
+        }
+    }
+
     private static boolean tryCommit0(Statement stmt, String sql) {
         try {
             stmt.execute(sql);
@@ -651,6 +790,7 @@ public class XARecoverTask implements Runnable {
         } catch (SQLException ex) {
             logger.error("XA COMMIT error", ex);
             TransactionLogger.error("XA COMMIT error", ex);
+            EventLogger.log(EventType.TRX_RECOVER, "Error executing " + sql + ": " + ex.getMessage());
             if (ex.getErrorCode() == ErrorCode.ER_XAER_RMFAIL.getCode()) {
                 return true; // Maybe not prepared yet. Ignore such exceptions
             } else if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -25,6 +23,8 @@ import com.alibaba.polardbx.executor.utils.SubqueryApply;
 import com.alibaba.polardbx.executor.utils.SubqueryUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
@@ -141,8 +141,8 @@ public class CorrelateExec extends AbstractExecutor {
                 blockBuilders[getDataTypes().size() - 1].writeObject(null);
             } else {
                 blockBuilders[getDataTypes().size() - 1].writeObject(
-                        getDataTypes().get(getDataTypes().size() - 1)
-                                .convertFrom(curSubqueryApply.getResultValue()));
+                    getDataTypes().get(getDataTypes().size() - 1)
+                        .convertFrom(curSubqueryApply.getResultValue()));
             }
 
             curSubqueryApply = null;
@@ -208,10 +208,10 @@ public class CorrelateExec extends AbstractExecutor {
         Chunk.ChunkRow chunkRow = currentChunk.rowAt(rowIndex);
         // handle apply subquerys
         return SubqueryUtils
-                .createSubqueryApply(
-                        correlateId + "_" + Thread.currentThread().getName() + "_" + SubqueryUtils.nextSubqueryId
-                                .getAndIncrement(), chunkRow,
-                        plan, leftConditions, opKind, context,
-                        correlateId, correlateDataRowType, semiJoinType, true);
+            .createSubqueryApply(
+                correlateId + "_" + Thread.currentThread().getName() + "_" + SubqueryUtils.nextSubqueryId
+                    .getAndIncrement(), chunkRow,
+                plan, leftConditions, opKind, context,
+                correlateId, correlateDataRowType, semiJoinType, true);
     }
 }

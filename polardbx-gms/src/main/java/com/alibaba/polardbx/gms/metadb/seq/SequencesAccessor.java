@@ -428,24 +428,18 @@ public class SequencesAccessor extends AbstractAccessor {
         }
     }
 
-    public static int change(String schemaName, Type fromType, Type toType) {
+    public static int change(String schemaName, Type fromType, Type toType, Connection metaDbConn) {
         int numChanged = 0;
 
         SequencesAccessor sequencesAccessor = new SequencesAccessor();
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            sequencesAccessor.setConnection(metaDbConn);
+        sequencesAccessor.setConnection(metaDbConn);
 
-            if (toType == Type.GROUP) {
-                numChanged = sequencesAccessor.changeToSeq(schemaName, fromType);
-            } else if (fromType == Type.GROUP) {
-                numChanged = sequencesAccessor.changeToSeqOpt(schemaName, toType);
-            } else {
-                numChanged = sequencesAccessor.changeAmongSeqOpt(schemaName, fromType, toType);
-            }
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-        } finally {
-            sequencesAccessor.setConnection(null);
+        if (toType == Type.GROUP) {
+            numChanged = sequencesAccessor.changeToSeq(schemaName, fromType);
+        } else if (fromType == Type.GROUP) {
+            numChanged = sequencesAccessor.changeToSeqOpt(schemaName, toType);
+        } else {
+            numChanged = sequencesAccessor.changeAmongSeqOpt(schemaName, fromType, toType);
         }
 
         return numChanged;
@@ -453,19 +447,9 @@ public class SequencesAccessor extends AbstractAccessor {
 
     private int changeToSeq(String schemaName, Type fromType) {
         int numChanged = 0;
-        try {
-            MetaDbUtil.beginTransaction(connection);
-
-            List<SequenceRecord> records = convertToSeq(schemaName, fromType);
-            if (GeneralUtil.isNotEmpty(records)) {
-                numChanged = moveToSeq(schemaName, records, fromType);
-            }
-
-            MetaDbUtil.commit(connection);
-        } catch (SQLException e) {
-            MetaDbUtil.rollback(connection, e, LOGGER, schemaName, "move sequences to sequence");
-        } finally {
-            MetaDbUtil.endTransaction(connection, LOGGER);
+        List<SequenceRecord> records = convertToSeq(schemaName, fromType);
+        if (GeneralUtil.isNotEmpty(records)) {
+            numChanged = moveToSeq(schemaName, records, fromType);
         }
         return numChanged;
     }
@@ -536,19 +520,9 @@ public class SequencesAccessor extends AbstractAccessor {
 
     private int changeToSeqOpt(String schemaName, Type toType) {
         int numChanged = 0;
-        try {
-            MetaDbUtil.beginTransaction(connection);
-
-            List<SequenceOptRecord> records = convertToSeqOpt(schemaName, toType);
-            if (GeneralUtil.isNotEmpty(records)) {
-                numChanged = moveToSeqOpt(schemaName, records);
-            }
-
-            MetaDbUtil.commit(connection);
-        } catch (SQLException e) {
-            MetaDbUtil.rollback(connection, e, LOGGER, schemaName, "move sequences to sequence_opt");
-        } finally {
-            MetaDbUtil.endTransaction(connection, LOGGER);
+        List<SequenceOptRecord> records = convertToSeqOpt(schemaName, toType);
+        if (GeneralUtil.isNotEmpty(records)) {
+            numChanged = moveToSeqOpt(schemaName, records);
         }
         return numChanged;
     }
@@ -597,20 +571,12 @@ public class SequencesAccessor extends AbstractAccessor {
 
     private int changeAmongSeqOpt(String schemaName, Type fromType, Type toType) {
         int numChanged = 0;
-        try {
-            MetaDbUtil.beginTransaction(connection);
 
-            List<SequenceOptRecord> records = convertAmongSeqOpt(schemaName, fromType, toType);
-            if (GeneralUtil.isNotEmpty(records)) {
-                numChanged = moveAmongSeqOpt(schemaName, records, fromType);
-            }
-
-            MetaDbUtil.commit(connection);
-        } catch (SQLException e) {
-            MetaDbUtil.rollback(connection, e, LOGGER, schemaName, "move sequences among sequence_opt");
-        } finally {
-            MetaDbUtil.endTransaction(connection, LOGGER);
+        List<SequenceOptRecord> records = convertAmongSeqOpt(schemaName, fromType, toType);
+        if (GeneralUtil.isNotEmpty(records)) {
+            numChanged = moveAmongSeqOpt(schemaName, records, fromType);
         }
+
         return numChanged;
     }
 

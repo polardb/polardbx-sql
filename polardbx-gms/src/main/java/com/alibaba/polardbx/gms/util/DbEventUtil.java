@@ -41,4 +41,9 @@ public class DbEventUtil {
             MetaDbLogUtil.META_DB_LOG.error(ex);
         }
     }
+
+    public static void logStandardToEnterpriseEditionEvent(String logicalDb, String phyDb) {
+        EventLogger.log(EventType.STANDARD_TO_ENTERPRISE,
+            String.format("standard database [%s] converted to enterprise edition database [%s]", logicalDb, phyDb));
+    }
 }

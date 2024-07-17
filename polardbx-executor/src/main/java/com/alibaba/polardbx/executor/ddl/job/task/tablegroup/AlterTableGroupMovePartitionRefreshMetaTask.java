@@ -73,7 +73,7 @@ public class AlterTableGroupMovePartitionRefreshMetaTask extends AlterTableGroup
 
         long tableGroupId = tableGroupConfig.getTableGroupRecord().id;
 
-        boolean isFileStore = TableGroupNameUtil.isOssTg(tableGroupName);
+        boolean isFileStore = TableGroupNameUtil.isFileStorageTg(tableGroupName);
 
         // map logicalTb.physicalTb to new physical db group
         Map<String, String> phyTableToNewGroup = new TreeMap<>(String::compareToIgnoreCase);
@@ -120,8 +120,7 @@ public class AlterTableGroupMovePartitionRefreshMetaTask extends AlterTableGroup
             ColumnMetaAccessor columnMetaAccessor = new ColumnMetaAccessor();
             columnMetaAccessor.setConnection(metaDbConnection);
 
-            for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getTables()) {
-                String logTb = tablePartRecordInfoContext.getTableName();
+            for (String logTb : tableGroupConfig.getTables()) {
                 List<FilesRecord> files =
                     filesAccessor.queryByLogicalSchemaTable(schemaName, logTb);
 
@@ -159,10 +158,9 @@ public class AlterTableGroupMovePartitionRefreshMetaTask extends AlterTableGroup
         // 2、cleanup partition_group_delta
         partitionGroupAccessor.deletePartitionGroupsByTableGroupId(tableGroupId, true);
 
-        for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
+        for (String tableName : tableGroupConfig.getAllTables()) {
             // 3、cleanup table_partition_delta
             // only delete the related records
-            String tableName = infoContext.getTableName();
             tablePartitionAccessor
                 .deleteTablePartitionConfigsForDeltaTable(schemaName, tableName);
         }

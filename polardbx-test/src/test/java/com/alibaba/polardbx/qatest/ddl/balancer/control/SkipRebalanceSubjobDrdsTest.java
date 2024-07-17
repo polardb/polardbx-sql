@@ -24,6 +24,7 @@ public class SkipRebalanceSubjobDrdsTest extends DDLBaseNewDBTestCase {
     private static final String ENABLE_OPERATE_SUBJOB_HINT = "ENABLE_OPERATE_SUBJOB=true";
     private static final String ASYNC_PAUSE_HINT = "ASYNC_PAUSE=false";
     private static final String CHECK_RESPONSE_IN_MEM_HINT = "CHECK_RESPONSE_IN_MEM=false";
+    private static final String DROP_DB_HINT = "ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE=true";
 
     private static final int TABLE_COUNT = 4;
     static private final String DATABASE_NAME = "SkipRebalanceSubjobDrdsTest";
@@ -260,7 +261,7 @@ public class SkipRebalanceSubjobDrdsTest extends DDLBaseNewDBTestCase {
 
     void doClearDatabase() {
         JdbcUtil.executeUpdate(getTddlConnection1(), "use information_schema");
-        String tddlSql = "drop database if exists " + DATABASE_NAME;
+        String tddlSql = buildCmdExtra(DROP_DB_HINT) + "drop database if exists " + DATABASE_NAME;
         JdbcUtil.executeUpdate(getTddlConnection1(), tddlSql);
     }
 }

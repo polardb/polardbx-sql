@@ -159,7 +159,7 @@ public class RenameTableTest extends DDLBaseNewDBTestCase {
 
     private void dropTables(String[] tables, String schemaPrefix) {
         if (tables != null) {
-            dropTableIfExists(schemaPrefix + targetTableName);
+            dropTableIfExists(targetTableName);
             try (Connection connection = ConnectionManager.getInstance().newPolarDBXConnection()) {
                 for (String tableName : tables) {
                     String sql = "drop table if exists " + schemaPrefix + tableName;

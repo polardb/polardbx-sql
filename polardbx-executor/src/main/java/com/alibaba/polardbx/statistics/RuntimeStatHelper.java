@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
+import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import org.apache.calcite.rel.RelNode;
 
 /**
@@ -48,7 +49,9 @@ public class RuntimeStatHelper {
         try {
             boolean isApplySubQuery = executionContext.isApplyingSubquery();
             boolean isInExplain = executionContext.getExplain() != null;
-
+            if (isInExplain) {
+                isInExplain = (!executionContext.getExplain().explainMode.isAnalyze());
+            }
             if (ExecUtils.isOperatorMetricEnabled(executionContext) && !isApplySubQuery && !isInExplain) {
                 // register the run time stat of cursor into logicalPlan
                 RuntimeStatistics runtimeStatistics = (RuntimeStatistics) executionContext.getRuntimeStatistics();

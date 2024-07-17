@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.basecrud;
 
-import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -33,7 +33,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -55,9 +54,9 @@ public class SelectIntoFileTest extends ReadBaseTestCase {
     @Before
     public void setUp() throws Exception {
         stmt = tddlConnection.createStatement();
-        System.out.println(MppConfig.getInstance().getSpillPaths().get(0).toAbsolutePath());
+        System.out.println(FileConfig.getInstance().getSpillerTempPath().toAbsolutePath());
 //        rootName = Paths.get("../../../spill/temp/").toAbsolutePath() + "/";
-        rootName = MppConfig.getInstance().getSpillPaths().get(0).toAbsolutePath() + "/";
+        rootName = FileConfig.getInstance().getSpillerTempPath().toAbsolutePath() + "/";
     }
 
     @After

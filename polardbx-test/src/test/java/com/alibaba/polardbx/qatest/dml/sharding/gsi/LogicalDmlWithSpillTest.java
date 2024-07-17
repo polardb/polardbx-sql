@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
@@ -33,7 +33,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnM
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
-
+@BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
 public class LogicalDmlWithSpillTest extends ReadBaseTestCase {
 
     private String checkSql =

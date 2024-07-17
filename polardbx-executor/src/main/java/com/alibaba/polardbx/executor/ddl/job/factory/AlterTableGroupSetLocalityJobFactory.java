@@ -20,7 +20,10 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.balancer.policy.PolicyUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
-import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.*;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupSetLocalityChangeMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.BackgroupRebalanceTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -75,8 +78,7 @@ public class AlterTableGroupSetLocalityJobFactory extends DdlJobFactory {
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+        for (String tableName : tableGroupConfig.getAllTables()) {
             String primaryTableName;
             TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
             if (tableMeta.isGsi()) {
@@ -105,7 +107,7 @@ public class AlterTableGroupSetLocalityJobFactory extends DdlJobFactory {
         DdlTask validateTask =
             new AlterTableGroupValidateTask(preparedData.getSchemaName(), preparedData.getTableGroupName(),
                 tablesVersion,
-                true, null);
+                true, null, false);
 
         DdlTask rebalanceTask =
             new BackgroupRebalanceTask(preparedData.getSchemaName(), preparedData.getRebalanceSql());
@@ -156,8 +158,7 @@ public class AlterTableGroupSetLocalityJobFactory extends DdlJobFactory {
             TableGroupConfig tableGroupConfig =
                 OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                     .getTableGroupConfigByName(preparedData.getTableGroupName());
-            for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-                String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+            for (String tableName : tableGroupConfig.getAllTables()) {
                 resources.add(concatWithDot(preparedData.getSchemaName(), tableName));
             }
         }

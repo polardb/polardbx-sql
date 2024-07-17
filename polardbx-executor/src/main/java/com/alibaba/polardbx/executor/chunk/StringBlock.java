@@ -17,10 +17,16 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.base.Preconditions;
+import io.airlift.slice.XxHash64;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import org.openjdk.jol.info.ClassLayout;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -35,7 +41,11 @@ public class StringBlock extends AbstractCommonBlock {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(StringBlock.class).instanceSize();
 
     private final int[] offsets;
-    private final char[] data;
+    private char[] data;
+
+    public StringBlock(DataType dataType, int positionCount) {
+        this(dataType, 0, positionCount, new boolean[positionCount], new int[positionCount], null);
+    }
 
     StringBlock(DataType dataType, int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets,
                 char[] data) {
@@ -43,6 +53,48 @@ public class StringBlock extends AbstractCommonBlock {
         this.offsets = offsets;
         this.data = data;
         updateSizeInfo();
+    }
+
+    /**
+     * Designed for test purpose
+     */
+    public static StringBlock of(String... values) {
+        int totalLength = Arrays.stream(values).filter(Objects::nonNull).mapToInt(String::length).sum();
+        StringBlockBuilder builder = new StringBlockBuilder(values.length, totalLength);
+        for (String value : values) {
+            if (value != null) {
+                builder.writeString(value);
+            } else {
+                builder.appendNull();
+            }
+        }
+        return builder.build().cast(StringBlock.class);
+    }
+
+    public static StringBlock from(StringBlock other, int selSize, int[] selection) {
+        int[] newOffsets = new int[selSize];
+
+        if (other.data == null) {
+            return new StringBlock(other.dataType, 0, selSize,
+                BlockUtils.copyNullArray(other.isNull, selection, selSize),
+                newOffsets, null);
+        }
+        if (selection == null) {
+            return new StringBlock(other.dataType, 0, selSize,
+                BlockUtils.copyNullArray(other.isNull, selection, selSize),
+                newOffsets, Arrays.copyOf(other.data, other.data.length));
+        } else {
+            StringBlockBuilder stringBlockBuilder = new StringBlockBuilder(other.dataType, selSize,
+                other.data.length / (other.positionCount + 1) * selSize);
+            for (int i = 0; i < selSize; i++) {
+                if (other.isNull(selection[i])) {
+                    stringBlockBuilder.appendNull();
+                } else {
+                    stringBlockBuilder.writeString(other.getString(selection[i]));
+                }
+            }
+            return (StringBlock) stringBlockBuilder.build();
+        }
     }
 
     @Override
@@ -74,6 +126,16 @@ public class StringBlock extends AbstractCommonBlock {
             sink.putString(EMPTY_STRING);
         } else {
             sink.putString(getString(position));
+        }
+    }
+
+    @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            byte[] rawBytes = getString(pos).getBytes(StandardCharsets.UTF_8);
+            return XxHash64.hash(rawBytes, 0, rawBytes.length);
         }
     }
 
@@ -112,7 +174,7 @@ public class StringBlock extends AbstractCommonBlock {
     @Override
     public boolean equals(int position, Block other, int otherPosition) {
         if (other instanceof StringBlock) {
-            return equals(position, (StringBlock) other, otherPosition);
+            return equals(position, other.cast(StringBlock.class), otherPosition);
         } else if (other instanceof StringBlockBuilder) {
             return equals(position, (StringBlockBuilder) other, otherPosition);
         } else {
@@ -150,22 +212,6 @@ public class StringBlock extends AbstractCommonBlock {
         return ExecUtils.arrayEquals(data, pos1, len1, other.data.elements(), pos2, len2, true);
     }
 
-    /**
-     * Designed for test purpose
-     */
-    public static StringBlock of(String... values) {
-        int totalLength = Arrays.stream(values).filter(Objects::nonNull).mapToInt(String::length).sum();
-        StringBlockBuilder builder = new StringBlockBuilder(values.length, totalLength);
-        for (String value : values) {
-            if (value != null) {
-                builder.writeString(value);
-            } else {
-                builder.appendNull();
-            }
-        }
-        return (StringBlock) builder.build();
-    }
-
     private int beginOffset(int position) {
         return position + arrayOffset > 0 ? offsets[position + arrayOffset - 1] : 0;
     }
@@ -180,6 +226,11 @@ public class StringBlock extends AbstractCommonBlock {
 
     public char[] getData() {
         return data;
+    }
+
+    public void setData(char[] data) {
+        Preconditions.checkArgument(this.data == null);
+        this.data = data;
     }
 
     @Override

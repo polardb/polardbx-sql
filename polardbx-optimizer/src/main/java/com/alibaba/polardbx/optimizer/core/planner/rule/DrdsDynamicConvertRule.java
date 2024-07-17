@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.rel.RelNode;
@@ -24,15 +25,20 @@ import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.core.DynamicValues;
 
 public class DrdsDynamicConvertRule extends ConverterRule {
-    public static final DrdsDynamicConvertRule INSTANCE = new DrdsDynamicConvertRule();
+    public static final DrdsDynamicConvertRule SMP_INSTANCE = new DrdsDynamicConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsDynamicConvertRule() {
-        super(DynamicValues.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsDynamicConvertRule");
+    public static final DrdsDynamicConvertRule COL_INSTANCE = new DrdsDynamicConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsDynamicConvertRule(Convention outConvention) {
+        super(DynamicValues.class, Convention.NONE, outConvention, "DrdsDynamicConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override

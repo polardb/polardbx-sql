@@ -56,7 +56,6 @@ import com.alibaba.polardbx.executor.mpp.operator.factory.LoopJoinExecutorFactor
 import com.alibaba.polardbx.executor.mpp.operator.factory.MaterializedJoinExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.NonBlockGeneralExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.OutputExecutorFactory;
-import com.alibaba.polardbx.executor.mpp.operator.factory.OverWindowFramesExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.ParallelHashJoinExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.PipelineFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.ProjectExecFactory;
@@ -64,14 +63,20 @@ import com.alibaba.polardbx.executor.mpp.operator.factory.RuntimeFilterBuilderEx
 import com.alibaba.polardbx.executor.mpp.operator.factory.SortAggExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.SortExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.SortMergeJoinFactory;
+import com.alibaba.polardbx.executor.mpp.operator.factory.SortWindowFramesExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.SubPipelineFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.TopNExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.UnionExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.ValueExecutorFactory;
+import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItem;
+import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItemImpl;
+import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItemKey;
+import com.alibaba.polardbx.executor.mpp.planner.FragmentRFManager;
 import com.alibaba.polardbx.executor.mpp.planner.LocalExchange;
 import com.alibaba.polardbx.executor.mpp.planner.PipelineFragment;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.planner.RemoteSourceNode;
+import com.alibaba.polardbx.executor.mpp.planner.SimpleFragmentRFManager;
 import com.alibaba.polardbx.executor.mpp.planner.WrapPipelineFragment;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
 import com.alibaba.polardbx.executor.mpp.split.SplitManager;
@@ -101,6 +106,7 @@ import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.core.rel.NLJoin;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalProject;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
@@ -111,6 +117,7 @@ import com.alibaba.polardbx.optimizer.core.rel.SortAgg;
 import com.alibaba.polardbx.optimizer.core.rel.SortMergeJoin;
 import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.core.rel.TopN;
+import com.alibaba.polardbx.optimizer.core.rel.mpp.ColumnarExchange;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
@@ -161,6 +168,7 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Pair;
 
 import java.net.URI;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -172,7 +180,14 @@ import java.util.stream.Collectors;
 
 public class LocalExecutionPlanner {
 
+    public static final Set<Class<? extends RelNode>> SUPPORT_ONE_SIDE_CACHE_NODES = ImmutableSet.of(
+        HashJoin.class, SemiHashJoin.class, NLJoin.class, SemiNLJoin.class, HashGroupJoin.class);
+    public static final Set<Class<? extends RelNode>> SUPPORT_ALL_CACHE_NODES = ImmutableSet.of(
+        HashAgg.class, MemSort.class, TopN.class, LogicalSort.class, HashWindow.class);
     private static final Logger log = LoggerFactory.getLogger(LocalExecutionPlanner.class);
+
+    // logger for new runtime filter.
+    private static final Logger LOGGER_FRAGMENT_MANAGER = LoggerFactory.getLogger(FragmentRFManager.class);
 
     private static final Set<Class<? extends RelNode>> SUPPORT_NODES = ImmutableSet.of(
         LogicalView.class, HashJoin.class, SemiHashJoin.class, SortMergeJoin.class, SemiSortMergeJoin.class,
@@ -184,67 +199,50 @@ public class LocalExecutionPlanner {
         LogicalOutFile.class, PhysicalProject.class, PhysicalFilter.class, LogicalInsert.class, RecursiveCTE.class,
         RecursiveCTEAnchor.class
     );
-
-    public static final Set<Class<? extends RelNode>> SUPPORT_ONE_SIDE_CACHE_NODES = ImmutableSet.of(
-        HashJoin.class, SemiHashJoin.class, NLJoin.class, SemiNLJoin.class, HashGroupJoin.class);
-
-    public static final Set<Class<? extends RelNode>> SUPPORT_ALL_CACHE_NODES = ImmutableSet.of(
-        HashAgg.class, MemSort.class, TopN.class, LogicalSort.class, HashWindow.class);
-
-    public static final boolean isAssignableFrom(Class<?> ret) {
-        return isAssignableFrom(ret, SUPPORT_NODES);
-    }
-
-    public static final boolean isAssignableFrom(Class<?> ret, Set<Class<? extends RelNode>> relNodes) {
-        for (Class<? extends RelNode> classNode : relNodes) {
-            if (classNode.isAssignableFrom(ret)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private final ExchangeClientSupplier exchangeClientSupplier;
     private final PagesSerdeFactory pagesSerdeFactory;
-    private ExecutionContext context;
-    private int taskNumber;
-    private int pipelineIdGen;
-    private List<PipelineFactory> pipelineFactorys;
     private final boolean supportLocalBuffer;
     private final long localBufferSize;
     private final Executor notificationExecutor;
     private final SpillerFactory spillerFactory;
-
     private final boolean isCluster;
-
-    private int defaultParallelism;
-
-    //FIXME MPP模式该参数已经失效
-    private int bkaJoinParallelism;
-
-    //在Final Sort后pipeline并发度都需要保持为1
-    private boolean holdCollation;
-
-    private HttpClient httpClient;
-    private URI runtimeFilterUpdateUri;
     private final Map<Integer, BloomFilterExpression> bloomFilterExpressionMap = new HashMap<>();
     // Used to skip runtime filter in AP_LOCAL executor mode.
     private final boolean enableRuntimeFilter;
-
+    private final int localPartitionCount;
+    private final int totalPartitionCount;
+    private ExecutionContext context;
+    private int taskNumber;
+    private int pipelineIdGen;
+    private List<PipelineFactory> pipelineFactorys;
+    private int defaultParallelism;
+    //FIXME MPP模式该参数已经失效
+    private int bkaJoinParallelism;
+    //在Final Sort后pipeline并发度都需要保持为1
+    private boolean holdCollation;
+    private HttpClient httpClient;
+    private URI runtimeFilterUpdateUri;
     //only be used for logicalView
     private int totalPrefetch;
-
     private boolean forbidMultipleReadConn;
-
     private boolean expandView;
+    private boolean localBloomFilter = false;
+
+    // logical table name and its split count
+    private Map<String, Integer> splitCountMap;
+
+    private SplitManager splitManager;
 
     public LocalExecutionPlanner(ExecutionContext context, ExchangeClientSupplier exchangeClientSupplier,
                                  int defaultParallelism, int bkaJoinParallelism, int taskNumber, int prefetch,
                                  Executor notificationExecutor, SpillerFactory spillerFactory,
                                  HttpClient httpClient,
                                  URI runtimeFilterUpdateUri,
-                                 boolean enableRuntimeFilter) {
+                                 boolean enableRuntimeFilter,
+                                 int localPartitionCount, int totalPartitionCount,
+                                 Map<String, Integer> splitCountMap, SplitManager splitManager) {
         this.exchangeClientSupplier = exchangeClientSupplier;
+        this.totalPartitionCount = totalPartitionCount;
         this.pagesSerdeFactory = new PagesSerdeFactory(false);
         this.context = context;
         this.defaultParallelism = defaultParallelism;
@@ -262,6 +260,26 @@ public class LocalExecutionPlanner {
         this.httpClient = httpClient;
         this.runtimeFilterUpdateUri = runtimeFilterUpdateUri;
         this.enableRuntimeFilter = enableRuntimeFilter;
+        this.localPartitionCount = localPartitionCount;
+        this.splitCountMap = splitCountMap;
+        this.splitManager = splitManager;
+    }
+
+    public void setForbidMultipleReadConn(boolean forbidMultipleReadConn) {
+        this.forbidMultipleReadConn = forbidMultipleReadConn;
+    }
+
+    public static final boolean isAssignableFrom(Class<?> ret) {
+        return isAssignableFrom(ret, SUPPORT_NODES);
+    }
+
+    public static final boolean isAssignableFrom(Class<?> ret, Set<Class<? extends RelNode>> relNodes) {
+        for (Class<? extends RelNode> classNode : relNodes) {
+            if (classNode.isAssignableFrom(ret)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public OutputBufferMemoryManager createLocalMemoryManager() {
@@ -285,10 +303,7 @@ public class LocalExecutionPlanner {
             DefaultSchema.setSchemaName(session.getSchema());
             RelNode relNode = fragment.getSerRootNode(
                 context.getSchemaName(), PlannerContext.fromExecutionContext(context));
-            //PipelineFactory 创建executor的构造函数中，可能会去引用RelMetadataProvider，所以这里需要保证一定是
-            //DrdsRelMetadataProvider
-            RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(
-                relNode.getCluster().getMetadataProvider()));
+            localBloomFilter = fragment.isLocalBloomFilter();
             PipelineFragment pipelineFragment = new PipelineFragment(defaultParallelism, relNode);
             ExecutorFactory factory = visit(null, relNode, pipelineFragment);
             if (pipelineFragment.getParallelism() > 1
@@ -329,10 +344,6 @@ public class LocalExecutionPlanner {
                                       OutputBufferMemoryManager manager, String queryId) {
         try {
             DefaultSchema.setSchemaName(context.getSchemaName());
-            //PipelineFactory 创建executor的构造函数中，可能会去引用RelMetadataProvider，所以这里需要保证一定是
-            //DrdsRelMetadataProvider
-            RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(
-                relNode.getCluster().getMetadataProvider()));
             PipelineFragment pipelineFragment = new PipelineFragment(defaultParallelism, relNode);
             ExecutorFactory factory = visit(null, relNode, pipelineFragment);
 
@@ -440,7 +451,7 @@ public class LocalExecutionPlanner {
             return visitView(parent, (LogicalView) current, pipelineFragment);
         } else if (current instanceof HashJoin) {
             return visitHashJoin((Join) current, pipelineFragment, ((HashJoin) current).getOtherCondition(),
-                ((HashJoin) current).getEqualCondition(), false, null
+                ((HashJoin) current).getEqualCondition(), false, null, ((HashJoin) current).isKeepPartition()
             );
         } else if (current instanceof SemiHashJoin) {
             return visitSemiJoin((SemiHashJoin) current, pipelineFragment);
@@ -519,9 +530,13 @@ public class LocalExecutionPlanner {
                     og.hasInputOperator = false;
                 }
             }
-            return visit(parent, ((Gather) current).getInput(), pipelineFragment);
+            ExecutorFactory ret = visit(parent, ((Gather) current).getInput(), pipelineFragment);
+            ret.setExchange((Gather) current);
+            return ret;
         } else if (current instanceof MppExchange) {
             return visitMppExchange(parent, (MppExchange) current, pipelineFragment);
+        } else if (current instanceof ColumnarExchange) {
+            return visitColumnarExchange(parent, (ColumnarExchange) current, pipelineFragment);
         } else if (current instanceof MergeSort) {
             return visitMergeSort(parent, (MergeSort) current, pipelineFragment);
         } else if (current instanceof LogicalUnion) {
@@ -531,7 +546,7 @@ public class LocalExecutionPlanner {
         } else if (current instanceof LogicalExpand) {
             return visitExpand((LogicalExpand) current, pipelineFragment);
         } else if (current instanceof SortWindow) {
-            return visitOverWindow((SortWindow) current, pipelineFragment);
+            return visitSortWindow((SortWindow) current, pipelineFragment);
         } else if (current instanceof HashWindow) {
             return visitHashWindow((HashWindow) current, pipelineFragment);
         } else if (current instanceof LogicalCorrelate) {
@@ -587,33 +602,44 @@ public class LocalExecutionPlanner {
         }
     }
 
-    private ExecutorFactory visitOverWindow(SortWindow overWindow, PipelineFragment pipelineFragment) {
-        ExecutorFactory overWindowFactory = createOverWindowFactory(overWindow, pipelineFragment);
-        // Note: 原理上这里的overWindow只会包含一个group，但是担心有其他地方未遵守该规定，因此采取了较保守的做法
-        // 只要包含不分组的group，即over中的partition by字段为空，则该windowExec的并行度就应当是1
-        if (overWindow.groups.stream().anyMatch(g -> g.keys.size() == 0)) {
-            pipelineFragment.setParallelism(1);
+    private ExecutorFactory visitSortWindow(SortWindow sortWindow, PipelineFragment pipelineFragment) {
+        PipelineFragment childFragment = new PipelineFragment(defaultParallelism, sortWindow.getInput());
+        childFragment.setContainLimit(pipelineFragment.isContainLimit());
+        ExecutorFactory childExecutorFactory = visit(sortWindow, sortWindow.getInput(), childFragment);
+        boolean noGroup = sortWindow.groups.stream().anyMatch(g -> g.keys.size() == 0);
+        if (childFragment.getParallelism() > 1 && noGroup) {
+            pipelineFragment.holdSingleTonParallelism();
+            List<DataType> columns = CalciteUtils.getTypes(sortWindow.getInput().getRowType());
+            LocalBufferNode localBufferNode = LocalBufferNode.create(childFragment.getRoot());
+            OutputBufferMemoryManager localBufferManager = createLocalMemoryManager();
+            LocalBufferExecutorFactory localBufferExecutorFactory = new LocalBufferExecutorFactory(
+                localBufferManager, columns, pipelineFragment.getParallelism());
+            LocalExchange localBufferExchange = new LocalExchange(
+                CalciteUtils.getTypes(
+                    sortWindow.getInput().getRowType()), ImmutableList.of(), LocalExchange.LocalExchangeMode.SINGLE,
+                true);
+
+            LocalExchangeConsumerFactory consumerFactory = new LocalExchangeConsumerFactory(
+                localBufferExecutorFactory, localBufferManager, localBufferExchange);
+
+            PipelineFactory bufferPipelineFactory =
+                new PipelineFactory(childExecutorFactory, consumerFactory,
+                    childFragment.setPipelineId(pipelineIdGen++));
+
+            pipelineFactorys.add(bufferPipelineFactory);
+
+            pipelineFragment.getDependency().addAll(childFragment.getDependency());
+            pipelineFragment.addBufferNodeChild(localBufferNode.getInput().getRelatedId(), childFragment);
+
+            return new SortWindowFramesExecFactory(sortWindow, localBufferExecutorFactory,
+                pipelineFragment.getParallelism());
+        } else {
+            pipelineFragment.inherit(childFragment);
+            return new SortWindowFramesExecFactory(sortWindow, childExecutorFactory, pipelineFragment.getParallelism());
         }
-        return overWindowFactory;
     }
 
     private ExecutorFactory visitHashWindow(HashWindow overWindow, PipelineFragment pipelineFragment) {
-        ExecutorFactory overWindowFactory = createHashWindowFactory(overWindow, pipelineFragment);
-        // Note: 原理上这里的overWindow只会包含一个group，但是担心有其他地方未遵守该规定，因此采取了较保守的做法
-        // 只要包含不分组的group，即over中的partition by字段为空，则该windowExec的并行度就应当是1
-        if (overWindow.groups.stream().anyMatch(g -> g.keys.size() == 0)) {
-            pipelineFragment.setParallelism(1);
-        }
-        return overWindowFactory;
-    }
-
-    private ExecutorFactory createOverWindowFactory(SortWindow overWindow, PipelineFragment pipelineFragment) {
-        RelNode input = overWindow.getInput();
-        ExecutorFactory childExecutorFactory = visit(overWindow, input, pipelineFragment);
-        return new OverWindowFramesExecFactory(overWindow, childExecutorFactory);
-    }
-
-    private ExecutorFactory createHashWindowFactory(HashWindow overWindow, PipelineFragment pipelineFragment) {
         List<DataType> columnTypes = CalciteUtils.getTypes(overWindow.getInput().getRowType());
         PipelineFragment childFragment = new PipelineFragment(defaultParallelism, overWindow.getInput());
         ExecutorFactory childExecutorFactory = visit(overWindow, overWindow.getInput(), childFragment);
@@ -656,7 +682,7 @@ public class LocalExecutionPlanner {
         logicalView.setRelatedId(other.getRelatedId());
         pipelineFragment.addLogicalView(logicalView);
         pipelineFragment.holdSingleTonParallelism();
-        SplitInfo splitInfo = new SplitManager().getSingleSplit(logicalView, context);
+        SplitInfo splitInfo = splitManager.getSingleSplit(logicalView, context);
         pipelineFragment.putSource(logicalView.getRelatedId(), splitInfo);
         return createViewFactory(
             parent, logicalView, pipelineFragment, spillerFactory, 1, false);
@@ -749,7 +775,7 @@ public class LocalExecutionPlanner {
     private ExecutorFactory visitSemiJoin(SemiHashJoin current, PipelineFragment fragment) {
         boolean maxOneRow = current.getJoinType() == JoinRelType.LEFT || current.getJoinType() == JoinRelType.INNER;
         return visitHashJoin(current, fragment, current.getOtherCondition(), current.getEqualCondition(),
-            maxOneRow, current.getOperands()
+            maxOneRow, current.getOperands(), current.isKeepPartition()
         );
     }
 
@@ -915,7 +941,89 @@ public class LocalExecutionPlanner {
 
     private ExecutorFactory visitHashJoin(Join current, PipelineFragment fragment,
                                           RexNode otherCond, RexNode equalCond, boolean maxOneRow,
-                                          List<RexNode> oprands) {
+                                          List<RexNode> oprands, boolean keepPartition) {
+        Join join = current;
+        RelNode buildNode = join.getInner();
+        RelNode probeNode = join.getOuter();
+
+        // Parse the item keys from the RelNode of the join.
+        List<FragmentRFItemKey> rfItemKeys = FragmentRFItemKey.buildItemKeys(join);
+
+        if (LOGGER_FRAGMENT_MANAGER.isDebugEnabled()) {
+            boolean isOuterBuild = (current instanceof HashJoin && ((HashJoin) current).isOuterBuild())
+                || (current instanceof SemiHashJoin && ((SemiHashJoin) current).isOuterBuild());
+            for (FragmentRFItemKey itemKey : rfItemKeys) {
+                LOGGER_FRAGMENT_MANAGER.debug("itemKey = " + itemKey + " isReversed = " + isOuterBuild);
+            }
+        }
+
+        boolean useRF = context.getParamManager().getBoolean(ConnectionParams.ENABLE_NEW_RF);
+        final boolean useXXHashRFinBuild =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_XXHASH_RF_IN_BUILD);
+        final boolean useXXHashRFinFilter =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_XXHASH_RF_IN_FILTER);
+        final float defaultFloatFpp = context.getParamManager().getFloat(ConnectionParams.RUNTIME_FILTER_FPP);
+        final long rowUpperBound = context.getParamManager().getLong(ConnectionParams.GLOBAL_RF_ROWS_UPPER_BOUND);
+        final long rowLowerBound = context.getParamManager().getLong(ConnectionParams.GLOBAL_RF_ROWS_LOWER_BOUND);
+        final int rfSampleCount = context.getParamManager().getInt(ConnectionParams.NEW_RF_SAMPLE_COUNT);
+        final float floatFilterRatio =
+            context.getParamManager().getFloat(ConnectionParams.NEW_RF_FILTER_RATIO_THRESHOLD);
+
+        final double defaultDoubleFpp = Double.parseDouble(Float.toString(defaultFloatFpp));
+        final double doubleFilterRatio = Double.parseDouble(Float.toString(floatFilterRatio));
+
+        // pre-check the local partition count and total partition count
+        if (Integer.signum(totalPartitionCount) != Integer.signum(localPartitionCount)) {
+            useRF = false;
+            LOGGER_FRAGMENT_MANAGER.error(MessageFormat.format(
+                "The values of totalPartitionCount {0} and localPartitionCount {1} are incorrect.",
+                totalPartitionCount, localPartitionCount
+            ));
+        }
+
+        // Initialize the runtime filter manager in this fragment.
+        if (fragment.getFragmentRFManager() == null && useRF) {
+            FragmentRFManager fragmentRFManager = new SimpleFragmentRFManager(
+                totalPartitionCount, localPartitionCount,
+                defaultDoubleFpp, rowUpperBound, rowLowerBound,
+                doubleFilterRatio, rfSampleCount
+            );
+
+            fragment.setFragmentRFManager(fragmentRFManager);
+        }
+
+        // Build runtime filter item.
+        if (fragment.getFragmentRFManager() != null && useRF) {
+            for (int itemIndex = 0; itemIndex < rfItemKeys.size(); itemIndex++) {
+                FragmentRFItemKey itemKey = rfItemKeys.get(itemIndex);
+
+                String buildColumnName = itemKey.getBuildColumnName();
+                String probeColumnName = itemKey.getProbeColumnName();
+
+                FragmentRFManager manager = fragment.getFragmentRFManager();
+
+                boolean localPairWise = localPartitionCount > 0 && context.getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
+                    && current.getTraitSet().getPartitionWise().isLocalPartition();
+
+                // Use local mode for local partition wise because the hash table does not shared among all partitions.
+                // When using local mode the totalPartitionCount must be greater than 0.
+                FragmentRFManager.RFType rfType = localPairWise && totalPartitionCount > 0
+                    ? FragmentRFManager.RFType.LOCAL : FragmentRFManager.RFType.BROADCAST;
+
+                // localPartitionCount * taskNumber;
+
+                // To build a fragment RF item
+                FragmentRFItem rfItem = new FragmentRFItemImpl(
+                    manager, buildColumnName, probeColumnName,
+                    useXXHashRFinBuild, useXXHashRFinFilter, rfType
+                );
+
+                // add rf item into manager
+                manager.addItem(itemKey, rfItem);
+            }
+        }
+
         boolean hybrid = false;
 
         if (spillerFactory != null && context.getParamManager().getInt(
@@ -923,8 +1031,7 @@ public class LocalExecutionPlanner {
             hybrid = true;
         }
         boolean driverBuilder = false;
-        RelNode probeNode = current.getOuter();
-        RelNode buildNode = current.getInner();
+
         if (current instanceof HashJoin) {
             driverBuilder = ((HashJoin) current).isOuterBuild();
             if (driverBuilder) {
@@ -936,7 +1043,34 @@ public class LocalExecutionPlanner {
                 probeNode = current.getInner();
                 buildNode = current.getOuter();
             }
+            boolean localPairWise =
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
+                    && current.getTraitSet().getPartitionWise().isLocalPartition();
+            if (localPairWise) {
+                //make sure that it is not hybrid
+                if (hybrid) {
+                    hybrid = false;
+                    log.warn("Hybrid-Hash-Join don't support local pairwise mode!");
+                }
+            }
+        } else if (current instanceof SemiHashJoin) {
+            driverBuilder = ((SemiHashJoin) current).isOuterBuild();
+            JoinRelType type = current.getJoinType();
+            // TODO support null safe under reverse anti join
+            if (type == JoinRelType.ANTI) {
+                driverBuilder &= !ParallelHashJoinExecutorFactory.containAntiJoinOperands(oprands, current);
+            }
+            if (driverBuilder) {
+                //make sure that it is not hybrid
+                if (hybrid) {
+                    hybrid = false;
+                    log.warn("Hybrid-Hash-Join don't support driverBuilder mode!");
+                }
+                probeNode = current.getInner();
+                buildNode = current.getOuter();
+            }
         }
+
         //the build child side
         List<DataType> builderColumns = CalciteUtils.getTypes(buildNode.getRowType());
         ExecutorFactory emptybuildFactory = new EmptyExecutorFactory(builderColumns);
@@ -1001,40 +1135,141 @@ public class LocalExecutionPlanner {
             }
             return joinExecutorFactory;
         } else {
-            OutputBufferMemoryManager localBufferManager = createLocalMemoryManager();
-            ExecutorFactory probeExecutorFactory = visit(current, probeNode, fragment);
-            //generate current executorFactory
-            int numPartitions = buildFramgent.getParallelism() > fragment.getParallelism() ?
-                fragment.getParallelism() : buildFramgent.getParallelism();
-            ParallelHashJoinExecutorFactory joinExecutorFactory =
-                new ParallelHashJoinExecutorFactory(current, otherCond, equalCond, maxOneRow, oprands,
-                    emptybuildFactory,
-                    probeExecutorFactory, fragment.getParallelism(), numPartitions, driverBuilder);
+            boolean localPairWise = localPartitionCount > 0 && context.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
+                && current.getTraitSet().getPartitionWise().isLocalPartition();
+            boolean separateProbe =
+                context.getParamManager().getBoolean(ConnectionParams.LOCAL_PAIRWISE_PROBE_SEPARATE);
+            if (localPairWise && separateProbe) {
+                PipelineFragment probeChildFragment = new PipelineFragment(
+                    defaultParallelism, probeNode);
 
-            //generate child's pipelineFactory
-            LocalExchange localExchange =
-                new LocalExchange(CalciteUtils.getTypes(buildNode.getRowType()), ImmutableList.of(),
-                    LocalExchange.LocalExchangeMode.RANDOM, true);
-            LocalExchangeConsumerFactory consumerFactory =
-                new LocalExchangeConsumerFactory(joinExecutorFactory, localBufferManager, localExchange);
+                if (fragment.getFragmentRFManager() != null) {
+                    // Set fragment manager for children pipeline when using partition exchanger.
+                    probeChildFragment.setFragmentRFManager(fragment.getFragmentRFManager());
+                }
 
-            PipelineFactory buildPipelineFactory =
-                new PipelineFactory(childFactory, consumerFactory, buildFramgent.setPipelineId(pipelineIdGen++));
-            buildFramgent.setBuildDepOnAllConsumers(true);
-            pipelineFactorys.add(buildPipelineFactory);
-            fragment.addDependency(buildPipelineFactory.getPipelineId());
-            if (forbidMultipleReadConn) {
-                fragment.getProperties().addDependencyForChildren(buildPipelineFactory.getPipelineId());
+                ExecutorFactory probeChildExecutorFactory = visit(current, probeNode, probeChildFragment);
+
+                OutputBufferMemoryManager localProbeBufferManager = createLocalMemoryManager();
+                List<DataType> outerColumns = CalciteUtils.getTypes(probeNode.getRowType());
+                List<EquiJoinKey> joinKeys = EquiJoinUtils
+                    .buildEquiJoinKeys(current, current.getOuter(), current.getInner(), (RexCall) equalCond,
+                        current.getJoinType());
+                List<DataType> keyTypes =
+                    joinKeys.stream().map(EquiJoinKey::getUnifiedType).collect(Collectors.toList());
+                List<Integer> keyIndexes =
+                    joinKeys.stream().map(EquiJoinKey::getOuterIndex).collect(Collectors.toList());
+                LocalExchange localProbeExchange =
+                    new LocalExchange(CalciteUtils.getTypes(probeNode.getRowType()), keyIndexes,
+                        keyTypes, LocalExchange.LocalExchangeMode.CHUNK_PARTITION, true);
+
+                LocalBufferExecutorFactory localBufferExecutorFactory = new LocalBufferExecutorFactory(
+                    localProbeBufferManager, outerColumns, probeChildFragment.getParallelism());
+
+                //generate local-buffer consume pipelineFactory
+                LocalExchangeConsumerFactory consumerFactory = new LocalExchangeConsumerFactory(
+                    localBufferExecutorFactory, localProbeBufferManager, localProbeExchange);
+                PipelineFactory consumerPipeFactory = new PipelineFactory(probeChildExecutorFactory, consumerFactory,
+                    probeChildFragment.setPipelineId(pipelineIdGen++));
+                pipelineFactorys.add(consumerPipeFactory);
+                fragment.addChild(probeChildFragment);
+
+                //generate current executorFactory
+                int numPartitions = Math.min(buildFramgent.getParallelism(), fragment.getParallelism());
+                ParallelHashJoinExecutorFactory joinExecutorFactory =
+                    new ParallelHashJoinExecutorFactory(fragment, current, otherCond,
+                        equalCond, maxOneRow, oprands,
+                        emptybuildFactory,
+                        localBufferExecutorFactory, fragment.getParallelism(), numPartitions, driverBuilder,
+                        localPartitionCount, keepPartition);
+
+                //generate child's pipelineFactory
+                LocalExchange localExchange = null;
+                // create partition exchange under partition wise join
+                keyTypes = joinKeys.stream().map(EquiJoinKey::getUnifiedType).collect(Collectors.toList());
+                List<Integer> keyInnerIndexes =
+                    joinKeys.stream().map(EquiJoinKey::getInnerIndex).collect(Collectors.toList());
+
+                //generate build pipelineFactory
+                localExchange =
+                    new LocalExchange(CalciteUtils.getTypes(buildNode.getRowType()), keyInnerIndexes,
+                        keyTypes, LocalExchange.LocalExchangeMode.CHUNK_PARTITION, true);
+
+                OutputBufferMemoryManager localBufferManager = createLocalMemoryManager();
+                LocalExchangeConsumerFactory buildConsumerFactory =
+                    new LocalExchangeConsumerFactory(joinExecutorFactory, localBufferManager, localExchange);
+
+                PipelineFactory buildPipelineFactory =
+                    new PipelineFactory(childFactory, buildConsumerFactory,
+                        buildFramgent.setPipelineId(pipelineIdGen++));
+                buildFramgent.setBuildDepOnAllConsumers(true);
+                pipelineFactorys.add(buildPipelineFactory);
+                fragment.addDependency(buildPipelineFactory.getPipelineId());
+                if (forbidMultipleReadConn) {
+                    log.error("forbid multiple read connection is true, check this");
+                    fragment.getProperties().addDependencyForChildren(buildPipelineFactory.getPipelineId());
+                    probeChildFragment.getProperties().addDependencyForChildren(buildPipelineFactory.getPipelineId());
+                }
+                fragment.addChild(buildFramgent);
+
+                return joinExecutorFactory;
+            } else {
+                OutputBufferMemoryManager localBufferManager = createLocalMemoryManager();
+                ExecutorFactory probeExecutorFactory = visit(current, probeNode, fragment);
+                //generate current executorFactory
+                int numPartitions = buildFramgent.getParallelism() > fragment.getParallelism() ?
+                    fragment.getParallelism() : buildFramgent.getParallelism();
+                ParallelHashJoinExecutorFactory joinExecutorFactory =
+                    new ParallelHashJoinExecutorFactory(fragment, current, otherCond,
+                        equalCond, maxOneRow, oprands,
+                        emptybuildFactory,
+                        probeExecutorFactory, fragment.getParallelism(), numPartitions, driverBuilder,
+                        localPairWise ? localPartitionCount : -1, keepPartition);
+
+                //generate child's pipelineFactory
+                LocalExchange localExchange = null;
+                if (localPairWise) {
+                    // create partition exchange under partition wise join
+                    List<EquiJoinKey> joinKeys = EquiJoinUtils
+                        .buildEquiJoinKeys(current, current.getOuter(), current.getInner(), (RexCall) equalCond,
+                            current.getJoinType());
+                    List<DataType> keyTypes =
+                        joinKeys.stream().map(t -> t.getUnifiedType()).collect(Collectors.toList());
+                    List<Integer> keyInnerIndexes =
+                        joinKeys.stream().map(t -> t.getInnerIndex()).collect(Collectors.toList());
+
+                    //generate build pipelineFactory
+                    localExchange =
+                        new LocalExchange(CalciteUtils.getTypes(current.getInner().getRowType()), keyInnerIndexes,
+                            keyTypes, LocalExchange.LocalExchangeMode.CHUNK_PARTITION, true);
+                } else {
+                    // create random exchange under normal hash join
+                    localExchange = new LocalExchange(CalciteUtils.getTypes(buildNode.getRowType()), ImmutableList.of(),
+                        LocalExchange.LocalExchangeMode.RANDOM, true);
+                }
+
+                LocalExchangeConsumerFactory consumerFactory =
+                    new LocalExchangeConsumerFactory(joinExecutorFactory, localBufferManager, localExchange);
+
+                PipelineFactory buildPipelineFactory =
+                    new PipelineFactory(childFactory, consumerFactory, buildFramgent.setPipelineId(pipelineIdGen++));
+                buildFramgent.setBuildDepOnAllConsumers(true);
+                pipelineFactorys.add(buildPipelineFactory);
+                fragment.addDependency(buildPipelineFactory.getPipelineId());
+                if (forbidMultipleReadConn) {
+                    fragment.getProperties().addDependencyForChildren(buildPipelineFactory.getPipelineId());
+                }
+                fragment.addChild(buildFramgent);
+
+                if (fragment.isContainLimit() && probeExecutorFactory instanceof LogicalViewExecutorFactory &&
+                    context.getParamManager().getBoolean(ConnectionParams.ENABLE_DRIVING_STREAM_SCAN)) {
+                    ((LogicalViewExecutorFactory) probeExecutorFactory).enableDrivingResumeSource();
+                    joinExecutorFactory.enableStreamJoin(true);
+                }
+
+                return joinExecutorFactory;
             }
-            fragment.addChild(buildFramgent);
-
-            if (fragment.isContainLimit() && probeExecutorFactory instanceof LogicalViewExecutorFactory &&
-                context.getParamManager().getBoolean(ConnectionParams.ENABLE_DRIVING_STREAM_SCAN)) {
-                ((LogicalViewExecutorFactory) probeExecutorFactory).enableDrivingResumeSource();
-                joinExecutorFactory.enableStreamJoin(true);
-            }
-
-            return joinExecutorFactory;
         }
     }
 
@@ -1219,12 +1454,14 @@ public class LocalExecutionPlanner {
         }
     }
 
-    private ExecutorFactory visitMppExchange(
-        RelNode parent, MppExchange exchange, PipelineFragment pipelineFragment) {
+    private ExecutorFactory visitColumnarExchange(
+        RelNode parent, ColumnarExchange exchange, PipelineFragment pipelineFragment) {
         if (exchange.isMergeSortExchange()) {
             MergeSort mergeSort = MergeSort.create(exchange.getInput(), exchange.getCollation(), null, null);
             mergeSort.setRelatedId(exchange.getRelatedId());
-            return visitMergeSort(parent, mergeSort, pipelineFragment);
+            ExecutorFactory ret = visitMergeSort(parent, mergeSort, pipelineFragment);
+            ret.setExchange(exchange);
+            return ret;
         } else {
             //对Gather && MppExchange特殊处理，Gather现在并没有统计CPU耗时，
             // 计算Gather && MppExchange的cpu耗时时，不再减去input算子的耗时，否则结果会负数
@@ -1237,7 +1474,35 @@ public class LocalExecutionPlanner {
                 }
             }
 
-            return visit(parent, exchange.getInput(), pipelineFragment);
+            ExecutorFactory ret = visit(parent, exchange.getInput(), pipelineFragment);
+            ret.setExchange(exchange);
+            return ret;
+        }
+    }
+
+    private ExecutorFactory visitMppExchange(
+        RelNode parent, MppExchange exchange, PipelineFragment pipelineFragment) {
+        if (exchange.isMergeSortExchange()) {
+            MergeSort mergeSort = MergeSort.create(exchange.getInput(), exchange.getCollation(), null, null);
+            mergeSort.setRelatedId(exchange.getRelatedId());
+            ExecutorFactory ret = visitMergeSort(parent, mergeSort, pipelineFragment);
+            ret.setExchange(exchange);
+            return ret;
+        } else {
+            //对Gather && MppExchange特殊处理，Gather现在并没有统计CPU耗时，
+            // 计算Gather && MppExchange的cpu耗时时，不再减去input算子的耗时，否则结果会负数
+            RuntimeStatistics statistics = (RuntimeStatistics) context.getRuntimeStatistics();
+            if (statistics != null) {
+                RuntimeStatistics.OperatorStatisticsGroup og =
+                    statistics.getRelationToStatistics().get(exchange.getRelatedId());
+                if (og != null) {
+                    og.hasInputOperator = false;
+                }
+            }
+
+            ExecutorFactory ret = visit(parent, exchange.getInput(), pipelineFragment);
+            ret.setExchange(exchange);
+            return ret;
         }
     }
 
@@ -1383,9 +1648,9 @@ public class LocalExecutionPlanner {
 
             SplitInfo splitInfo;
             if (logicalView.fromTableOperation() != null) {
-                splitInfo = new SplitManager().getSingleSplit(logicalView, context);
+                splitInfo = splitManager.getSingleSplit(logicalView, context);
             } else {
-                splitInfo = new SplitManager().getSplits(logicalView, context, false);
+                splitInfo = splitManager.getSplits(logicalView, context, false);
             }
 
             if (logicalView.pushedRelNodeIsSort()) {
@@ -1404,38 +1669,15 @@ public class LocalExecutionPlanner {
                 } else {
                     if (defaultParallelism > 1 && !holdCollation) {
                         if (!pipelineFragment.isHoldParallelism()) {
-                            int parallelism = isUnderMergeSort ? 1 :
-                                context.getParamManager().getInt(ConnectionParams.PARALLELISM);
-                            if (parallelism < 0) {
-                                int shards;
-                                switch (splitInfo.getConcurrencyPolicy()) {
-                                case GROUP_CONCURRENT_BLOCK:
-                                    shards = splitInfo.getSplitParallelism();
-                                    break;
-                                case RELAXED_GROUP_CONCURRENT:
-                                    shards = splitInfo.getSplitParallelism();
-                                    break;
-                                case CONCURRENT:
-                                    shards = splitInfo.getSplitCount();
-                                    break;
-                                default:
-                                    // disable parallel query
-                                    shards = 1;
-                                    break;
-                                }
-                                parallelism = ExecUtils.getParallelismForLogicalView(shards);
+                            boolean columnarIndex =
+                                logicalView instanceof OSSTableScan && ((OSSTableScan) logicalView).isColumnarIndex();
+                            int parallelism =
+                                !columnarIndex ? getParallelismForInnodbScan(isUnderMergeSort, splitInfo) :
+                                    getParallelismForColumnarScan(isUnderMergeSort, defaultParallelism, parent == null,
+                                        splitInfo.getSplitCount());
+                            if (!columnarIndex && parallelism >= splitInfo.getSplitCount()) {
+                                prefetch = parallelism;
                             }
-
-                            if (parallelism >= splitInfo.getSplitCount()) {
-                                parallelism = splitInfo.getSplitCount();
-                                prefetch = 1 * parallelism;
-                            }
-
-                            if (parallelism == 0) {
-                                // Parallel query is disabled but we have a parallel plan... Very strange...
-                                parallelism = 1;
-                            }
-
                             pipelineFragment.setParallelism(parallelism);
                         }
                     } else {
@@ -1456,7 +1698,113 @@ public class LocalExecutionPlanner {
             }
         }
 
-        return createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, prefetch, isUnderMergeSort);
+        LogicalViewExecutorFactory logicalViewExecutorFactory =
+            createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, prefetch, isUnderMergeSort);
+
+        boolean isProbeSideOfJoin =
+            parent != null && parent instanceof HashJoin && ((HashJoin) parent).getOuter() == logicalView;
+        boolean useFileConcurrency =
+            ExecUtils.getQueryConcurrencyPolicy(context, logicalView) == QueryConcurrencyPolicy.FILE_CONCURRENT;
+        boolean enableScanRandomShuffle =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_SCAN_RANDOM_SHUFFLE);
+
+        boolean localPairWise =
+            parent != null && parent instanceof HashJoin
+                && parent.getTraitSet().getPartitionWise().isLocalPartition()
+                && context.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN);
+
+        boolean joinKeepPartition =
+            parent != null && parent instanceof HashJoin && ((HashJoin) parent).isKeepPartition();
+
+        // Don't use scan random shuffle when using fragment RF.
+        if (isProbeSideOfJoin && useFileConcurrency && enableScanRandomShuffle
+            && splitCountMap.containsKey(logicalView.getLogicalTableName())
+            && !localPairWise && pipelineFragment.getFragmentRFManager() == null && !joinKeepPartition) {
+
+            // NOTE: the task number equal to the count of workers that executing this query.
+            final int totalFileCount = splitCountMap.get(logicalView.getLogicalTableName());
+            final int targetParallelism = pipelineFragment.getParallelism();
+
+            int shuffleThreshold = context.getParamManager().getInt(ConnectionParams.SCAN_RANDOM_SHUFFLE_THRESHOLD);
+
+            if (totalFileCount >= targetParallelism * taskNumber * shuffleThreshold) {
+                return logicalViewExecutorFactory;
+            }
+
+            final List<DataType> scanOutputTypes = CalciteUtils.getTypes(logicalView.getRowType());
+
+            // Create local buffer exec.
+            LocalBufferExecutorFactory bufferExecFactory =
+                new LocalBufferExecutorFactory(createLocalMemoryManager(), scanOutputTypes, targetParallelism);
+
+            // Create local exchanger exec.
+            LocalExchange localExchange = new LocalExchange(scanOutputTypes, ImmutableList.of(),
+                LocalExchange.LocalExchangeMode.RANDOM, true);
+
+            LocalExchangeConsumerFactory consumerFactory =
+                new LocalExchangeConsumerFactory(bufferExecFactory, createLocalMemoryManager(), localExchange);
+
+            // Create a pipeline with structure of (producer: SCAN) -> (consumer: EXCHANGER -> CACHE)
+            PipelineFragment newPipelineFragment = new PipelineFragment(targetParallelism, logicalView);
+            PipelineFactory newPipelineFactory = new PipelineFactory(
+                logicalViewExecutorFactory, consumerFactory, newPipelineFragment.setPipelineId(pipelineIdGen++));
+
+            // Handle dependency between pipelines
+            pipelineFragment.addDependency(newPipelineFactory.getPipelineId());
+            pipelineFragment.addChild(newPipelineFragment);
+            pipelineFactorys.add(newPipelineFactory);
+
+            return bufferExecFactory;
+        }
+
+        return logicalViewExecutorFactory;
+    }
+
+    private int getParallelismForInnodbScan(boolean isUnderMergeSort, SplitInfo splitInfo) {
+        int parallelism = isUnderMergeSort ? 1 :
+            context.getParamManager().getInt(ConnectionParams.PARALLELISM);
+        if (parallelism < 0) {
+            int shards;
+            switch (splitInfo.getConcurrencyPolicy()) {
+            case GROUP_CONCURRENT_BLOCK:
+                shards = splitInfo.getSplitParallelism();
+                break;
+            case RELAXED_GROUP_CONCURRENT:
+                shards = splitInfo.getSplitParallelism();
+                break;
+            case CONCURRENT:
+                shards = splitInfo.getSplitCount();
+                break;
+            default:
+                // disable parallel query
+                shards = 1;
+                break;
+            }
+            parallelism = ExecUtils.getParallelismForLogicalView(shards);
+        }
+
+        if (parallelism >= splitInfo.getSplitCount()) {
+            parallelism = splitInfo.getSplitCount();
+        }
+
+        if (parallelism == 0) {
+            // Parallel query is disabled but we have a parallel plan... Very strange...
+            parallelism = 1;
+        }
+
+        return parallelism;
+    }
+
+    private int getParallelismForColumnarScan(boolean isUnderMergeSort, int defaultParallelism, boolean noParent,
+                                              int fileCount) {
+        int parallelism = isUnderMergeSort ? 1 : context.getParamManager().getInt(ConnectionParams.PARALLELISM);
+        if (parallelism < 0) {
+            parallelism = defaultParallelism > 0 ? defaultParallelism : ExecUtils.getParallelismForLocal(context);
+        }
+        if (noParent && fileCount > 0) {
+            parallelism = Math.min(parallelism, fileCount);
+        }
+        return parallelism;
     }
 
     private LogicalViewExecutorFactory createViewFactory(
@@ -1503,8 +1851,9 @@ public class LocalExecutionPlanner {
                 break;
             }
         }
-        return new LogicalViewExecutorFactory(logicalView, prefetch, pipelineFragment.getParallelism(),
-            maxRowCount, bSort, fetched, offset, spillerFactory, bloomFilterExpressionMap, enableRuntimeFilter,
+        return new LogicalViewExecutorFactory(pipelineFragment, logicalView, prefetch,
+            pipelineFragment.getParallelism(),
+            maxRowCount, bSort, sort, fetched, offset, spillerFactory, bloomFilterExpressionMap, enableRuntimeFilter,
             randomSplits);
     }
 
@@ -1598,7 +1947,7 @@ public class LocalExecutionPlanner {
                                                     PipelineFragment pipelineFragment) {
         ExecutorFactory childExecutorFactory = visit(filterBuilder, filterBuilder.getInput(), pipelineFragment);
         return new RuntimeFilterBuilderExecFactory(filterBuilder, childExecutorFactory, httpClient,
-            runtimeFilterUpdateUri);
+            runtimeFilterUpdateUri, localBloomFilter);
     }
 
     private ExecutorFactory visitHashAgg(HashAgg agg, PipelineFragment pipelineFragment) {
@@ -1615,8 +1964,9 @@ public class LocalExecutionPlanner {
         LocalExchange localExchange = null;
         if (agg.isPartial()) {
             if (supportBuffer) {
-                LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
-                    LocalExchange.LocalExchangeMode.SINGLE : LocalExchange.LocalExchangeMode.PARTITION;
+                LocalExchange.LocalExchangeMode mode =
+                    childFragment.getParallelism() == pipelineFragment.getParallelism() ?
+                        LocalExchange.LocalExchangeMode.DIRECT : LocalExchange.LocalExchangeMode.RANDOM;
                 localExchange = new LocalExchange(columns, ImmutableList.of(), mode, true);
             } else {
                 LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
@@ -1630,8 +1980,22 @@ public class LocalExecutionPlanner {
                     asyncConsume);
                 pipelineFragment.holdSingleTonParallelism();
             } else {
-                LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
-                    LocalExchange.LocalExchangeMode.SINGLE : LocalExchange.LocalExchangeMode.PARTITION;
+                int parallelism = pipelineFragment.getParallelism();
+
+                boolean localPairWise = localPartitionCount > 0 && context.getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
+                    && agg.getTraitSet().getPartitionWise().isLocalPartition();
+
+                LocalExchange.LocalExchangeMode mode;
+                if (localPairWise && localPartitionCount == parallelism) {
+                    // if parts_per_worker = parallelism * N, N = 1
+                    mode = LocalExchange.LocalExchangeMode.DIRECT;
+                } else if (parallelism == 1) {
+                    mode = LocalExchange.LocalExchangeMode.SINGLE;
+                } else {
+                    mode = LocalExchange.LocalExchangeMode.PARTITION;
+                }
+
                 localExchange = new LocalExchange(columns, agg.getGroupSet().toList(), mode, asyncConsume);
             }
         }
@@ -1695,10 +2059,10 @@ public class LocalExecutionPlanner {
                 new PipelineFactory(
                     localBufferExecutorFactory, localConsumerFactory, produceFragment.setPipelineId(pipelineIdGen++));
 
-            pipelineFactorys.add(producePipelineFactory);
+            pipelineFactorys.add(producePipelineFactory); //
             pipelineFragment.addDependency(consumerPipeFactory.getPipelineId());
-            pipelineFragment.addDependency(producePipelineFactory.getPipelineId());
-            pipelineFragment.addBufferNodeChild(localBufferNode.getInput().getRelatedId(), produceFragment);
+            pipelineFragment.addDependency(producePipelineFactory.getPipelineId()); //
+            pipelineFragment.addBufferNodeChild(localBufferNode.getInput().getRelatedId(), produceFragment); //
             return producePipelineFactory;
         } else {
             //generate child's pipelineFactory

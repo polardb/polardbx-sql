@@ -76,7 +76,7 @@ public final class ShowHelp {
         // write rows
         byte packetId = eof.packetId;
         for (String key : keys) {
-            RowDataPacket row = getRow(key, helps.get(key), c.getCharset());
+            RowDataPacket row = getRow(key, helps.get(key), c.getResultSetCharset());
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

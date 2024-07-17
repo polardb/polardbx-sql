@@ -101,6 +101,12 @@ public class GsiCheckTest extends DDLBaseNewDBTestCase {
                 do {
                     final String insert = GSI_INSERTS.get(ThreadLocalRandom.current().nextInt(GSI_INSERTS.size()));
 
+                    // remove enum of 0 and '00'
+                    if (insert.contains("c_enum") && (insert.contains("311, '00'") || insert.contains("311, 0"))) {
+                        // ignore bad inserts
+                        continue;
+                    }
+
                     count += gsiExecuteUpdate(conn, mysqlConnection, insert, failedList, true, true);
                 } while (!stop.get());
 

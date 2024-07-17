@@ -137,6 +137,7 @@ public class PartitionFunctionProxy extends PartitionIntFunction {
             int pos = partColInputPositions.get(i);
             fullParamsFieldArr[pos] = partColFld;
         }
+
         for (int i = 0; i < constExprParamFields.size(); i++) {
             PartitionField constExprFld = constExprParamFields.get(i);
             int pos = constExprParamInputPositions.get(i);

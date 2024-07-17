@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -189,7 +190,7 @@ public class LogicalAlterTableModifyPartition extends BaseDdlOperation {
          * (including allocate the phy_db value for the new partition group )
          */
         preparedData.setDropVal(isDropVal);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(preparedData.isUseSubPart());
 
         /**
          * Collect all the partitionNames from the new partition groups
@@ -211,43 +212,47 @@ public class LogicalAlterTableModifyPartition extends BaseDdlOperation {
         preparedData.setTableName(logicalTableName);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MODIFY_PARTITION);
         preparedData.setPartBoundExprInfo(alterTable.getAllRexExprInfo());
+        preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
 
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        /**
-         * Allocate a mock location with empty phyTbl name and a real phy_db for each new partition group
-         *
-         * key: part_grp_name( also as part_name)
-         * val: a pair of location val
-         *      key: phy_tbl_name
-         *      val: phy_db_name
-         */
-        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
-        for (int j = 0; j < newPartitionGroups.size(); j++) {
-            String mockTableName = "";
-            mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
-                GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).phy_db)));
+        if (preparedData.needFindCandidateTableGroup()) {
+            List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+            /**
+             * Allocate a mock location with empty phyTbl name and a real phy_db for each new partition group
+             *
+             * key: part_grp_name( also as part_name)
+             * val: a pair of location val
+             *      key: phy_tbl_name
+             *      val: phy_db_name
+             */
+            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
+                new TreeMap<>(String::compareToIgnoreCase);
+            for (int j = 0; j < newPartitionGroups.size(); j++) {
+                String mockTableName = "";
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
+                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).phy_db)));
+            }
+
+            /**
+             *  Assign the physical location for new partition partSpec by using new partiiton groups
+             */
+            PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+                .getNewPartitionInfo(
+                    preparedData,
+                    curPartitionInfo,
+                    false,
+                    sqlAlterTableModifyPartitionValues,
+                    preparedData.getOldPartitionNames(),
+                    preparedData.getNewPartitionNames(),
+                    preparedData.getTableGroupName(),
+                    null,
+                    preparedData.getInvisiblePartitionGroups(),
+                    mockOrderedTargetTableLocations,
+                    ec);
+
+            int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
+            preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
+                null, flag, ec);
         }
-
-        /**
-         *  Assign the physical location for new partition partSpec by using new partiiton groups
-         */
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfo(
-                preparedData,
-                curPartitionInfo,
-                false,
-                sqlAlterTableModifyPartitionValues,
-                preparedData.getOldPartitionNames(),
-                preparedData.getNewPartitionNames(),
-                preparedData.getTableGroupName(),
-                null,
-                preparedData.getInvisiblePartitionGroups(),
-                mockOrderedTargetTableLocations,
-                ec);
-
-        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
-            null, flag, ec);
     }
 
     public AlterTableGroupModifyPartitionPreparedData getPreparedData() {

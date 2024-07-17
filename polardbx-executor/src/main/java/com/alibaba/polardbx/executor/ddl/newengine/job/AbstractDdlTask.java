@@ -37,6 +37,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_EACH_DDL_TASK_FAIL_ONCE;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_FAIL_ON_DDL_TASK_NAME;
@@ -68,14 +69,14 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     @Override
     public void execute(ExecutionContext executionContext) {
         beginExecuteTs = System.nanoTime();
-        beforeTransaction(executionContext);
+        skipExecuteWrapper("beforeTransaction", () -> beforeTransaction(executionContext));
         final DdlTask currentTask = this;
         DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
 
             @Override
             protected Integer invoke() {
                 int result = 0;
-                duringTransaction(getConnection(), executionContext);
+                skipExecuteWrapper("duringTransaction", () -> duringTransaction(getConnection(), executionContext));
                 DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
                 taskRecord.setState(DdlTaskState.SUCCESS.name());
                 result += engineTaskAccessor.updateTask(taskRecord);
@@ -96,7 +97,7 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
         };
         delegate.execute();
         //will not execute this if there's a failure
-        onExecutionSuccess(executionContext);
+        skipExecuteWrapper("onExecutionSuccess", () -> onExecutionSuccess(executionContext));
         currentTask.setState(DdlTaskState.SUCCESS);
         endExecuteTs = System.nanoTime();
     }
@@ -119,13 +120,15 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     public void rollback(ExecutionContext executionContext) {
         beginRollbackTs = System.nanoTime();
         final DdlTask currentTask = this;
-        beforeRollbackTransaction(executionContext);
+        skipRollbackWrapper("beforeRollbackTransaction", () -> beforeRollbackTransaction(executionContext));
         DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
 
             @Override
             protected Integer invoke() {
                 int result = 0;
-                duringRollbackTransaction(getConnection(), executionContext);
+                skipRollbackWrapper(
+                    "duringRollbackTransaction",
+                    () -> duringRollbackTransaction(getConnection(), executionContext));
                 DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
                 if (executionContext.getDdlContext().isRollbackToReady()) {
                     taskRecord.setState(DdlTaskState.READY.name());
@@ -150,7 +153,7 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
             }
         };
         delegate.execute();
-        onRollbackSuccess(executionContext);
+        skipRollbackWrapper("onRollbackSuccess", () -> onRollbackSuccess(executionContext));
         currentTask.setState(DdlTaskState.ROLLBACK_SUCCESS);
         endRollbackTs = System.nanoTime();
     }
@@ -368,13 +371,48 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     }
 
     private String color(DdlTaskState ddlTaskState) {
-        if (ddlTaskState == DdlTaskState.SUCCESS) {
+        if (ddlTaskState == DdlTaskState.SUCCESS && !isSkipExecute()) {
             return "fillcolor=\"#90ee90\" style=filled";
         } else if (ddlTaskState == DdlTaskState.DIRTY) {
             return "fillcolor=\"#fff68f\" style=filled";
-        } else if (ddlTaskState == DdlTaskState.ROLLBACK_SUCCESS) {
+        } else if (ddlTaskState == DdlTaskState.ROLLBACK_SUCCESS && !isSkipRollback()) {
             return "fillcolor=\"#f08080\" style=filled";
         }
         return "";
+    }
+
+    private void skipWrapper(BooleanSupplier skip, String actMsg, Runnable action) {
+        if (skip.getAsBoolean()) {
+            LOGGER.warn(
+                String.format(
+                    "%s for %s is skipped because of hint SKIP_DDL_TASKS = %s",
+                    actMsg,
+                    this.getName(),
+                    this.getName()));
+        } else {
+            action.run();
+        }
+    }
+
+    private void skipExecuteWrapper(String step, Runnable action) {
+        skipWrapper(this::isSkipExecute, "execute " + step, action);
+    }
+
+    private void skipRollbackWrapper(String step, Runnable action) {
+        skipWrapper(this::isSkipRollback, "rollback " + step, action);
+    }
+
+    /**
+     * FOR TEST USE ONLY !!
+     */
+    protected boolean isSkipExecute() {
+        return false;
+    }
+
+    /**
+     * FOR TEST USE ONLY !!
+     */
+    protected boolean isSkipRollback() {
+        return false;
     }
 }

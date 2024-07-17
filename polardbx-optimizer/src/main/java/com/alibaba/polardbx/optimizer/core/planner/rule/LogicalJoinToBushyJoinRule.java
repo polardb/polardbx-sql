@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.BushyJoin;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;

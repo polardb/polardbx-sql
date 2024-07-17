@@ -24,12 +24,16 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.scheduler.executor.spm.SPMBaseLineSyncScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticRowCountCollectionScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableScheduledJob;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import org.apache.commons.lang3.StringUtils;
+
+import java.util.List;
+import java.util.Map;
 
 public abstract class SchedulerExecutor {
 
@@ -87,7 +91,7 @@ public abstract class SchedulerExecutor {
         }
 
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
-            ScheduledJobExecutorType.CLEAN_LOG_TABLE.name())) {
+            ScheduledJobExecutorType.CLEAN_LOG_TABLE_V2.name())) {
             return new CleanLogTableScheduledJob(job);
         }
         return null;
@@ -96,6 +100,11 @@ public abstract class SchedulerExecutor {
     public void executeBackgroundSql(String sql, String schemaName, InternalTimeZone timeZone) {
         IServerConfigManager serverConfigManager = getServerConfigManager();
         serverConfigManager.executeBackgroundSql(sql, schemaName, timeZone);
+    }
+
+    public List<Map<String, Object>> executeInternalQuery(String sql, String schemaName, InternalTimeZone timeZone) {
+        IServerConfigManager serverConfigManager = getServerConfigManager();
+        return serverConfigManager.executeQuerySql(sql, schemaName, timeZone);
     }
 
     public IServerConfigManager getServerConfigManager() {

@@ -90,3 +90,38 @@ CREATE TABLE `tb7` (
 inspect full index from tb7;
 SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
 inspect_lsi_auto,tb7,idx2,LOCAL INDEX,name,addr,null,null,null,null,found duplicate local indexes: idx2, idx1,None,alter table `tb7` drop index `idx2`;
+# larger primary key(has same effect as primary key)
+create table tb8(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id, name, addr),
+  local index idx1(id, name)
+) partition by hash(id);
+inspect full index from tb8;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb8,idx1,LOCAL INDEX,id,name,null,null,null,null,index idx1 has the same effect as primary key,None,alter table `tb8` drop index `idx1`;
+# same unique key and logical key
+create table tb9(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(name),
+  unique key key1(id, name, addr),
+  local index idx2(id, name, addr)
+) partition by hash(id);
+inspect full index from tb9;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb9,idx2,LOCAL INDEX,id,name,addr,null,null,null,null,found duplicate local indexes: idx2, key1;,None,alter table `tb9` drop index `idx2`;
+# same unique key and logical key(different order)
+create table tb10(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(addr),
+  local index idx1(id, name, addr),
+  unique key key2(id, name, addr)
+) partition by hash(id);
+inspect full index from tb10;
+SCHEMA,TABLE,INDEX,INDEX_TYPE,INDEX_COLUMN,COVERING_COLUMN,USE_COUNT,LAST_ACCESS_TIME,DISCRIMINATION,PROBLEM,ADVICE (STEP1),ADVICE (STEP2)
+inspect_lsi_auto,tb10,idx1,LOCAL INDEX,id,name,null,null,null,null,found duplicate local indexes: idx1, key2;,None,alter table `tb10` drop index `idx1`;

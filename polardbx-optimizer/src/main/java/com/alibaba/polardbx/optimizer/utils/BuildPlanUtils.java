@@ -1028,7 +1028,7 @@ public class BuildPlanUtils {
                         gsiUpdateColumnMapping.add(new ArrayList<>());
                     }
 
-                    if (null != gsi.getColumn(column)) {
+                    if (gsi.containsColumn(column)) {
                         gsiUpdateColumnMapping.get(gsiIndex).add(i);
                     }
                 });

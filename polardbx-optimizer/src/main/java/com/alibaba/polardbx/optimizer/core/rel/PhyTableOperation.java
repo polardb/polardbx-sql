@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -91,6 +92,13 @@ public final class PhyTableOperation extends BaseTableOperation {
     PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType, CursorMeta cursorMeta,
                       RelNode logicalPlan) {
         super(cluster, traitSet, rowType, cursorMeta, logicalPlan);
+    }
+
+    /**
+     * for ut test only
+     */
+    public PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
+        super(cluster, traitSet);
     }
 
     public void setRowType(RelDataType rowType) {

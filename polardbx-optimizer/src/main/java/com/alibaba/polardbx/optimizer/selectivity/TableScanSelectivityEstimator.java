@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.selectivity;
 
-import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMdSelectivity;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -327,29 +326,28 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
                         Object value = DrdsRexFolder.fold(rexNode, plannerContext);
 
                         if (value instanceof List) {
-                            for (Object o : (List) value) {
-                                StatisticResult statisticResult = StatisticManager.getInstance()
-                                    .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(),
-                                        columnMeta.getName(), o.toString(), plannerContext.isNeedStatisticTrace());
-                                if (plannerContext.isNeedStatisticTrace()) {
-                                    plannerContext.recordStatisticTrace(statisticResult.getTrace());
+                            StatisticResult statisticResult = StatisticManager.getInstance()
+                                .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(),
+                                    columnMeta.getName(), (List) value, plannerContext.isNeedStatisticTrace());
+                            if (plannerContext.isNeedStatisticTrace()) {
+                                plannerContext.recordStatisticTrace(statisticResult.getTrace());
+                            }
+                            long count = statisticResult.getLongValue();
+                            if (count >= 0) {
+                                if (inCount == null) {
+                                    inCount = count;
+                                } else {
+                                    inCount += count;
                                 }
-                                long count = statisticResult.getLongValue();
-                                if (count >= 0) {
-                                    if (inCount == null) {
-                                        inCount = count;
-                                    } else {
-                                        inCount += count;
-                                    }
-                                } else if (CBOUtil.isIndexColumn(tableMeta, columnMeta)) {
-                                    // lack of statistics
-                                    count =
-                                        Math.min(LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT, tableRowCount.longValue());
-                                    if (inCount == null) {
-                                        inCount = count;
-                                    } else {
-                                        inCount += count;
-                                    }
+                            } else if (CBOUtil.isIndexColumn(tableMeta, columnMeta)) {
+                                // lack of statistics
+                                int rowSize = ((List<?>) value).size();
+                                count = rowSize * Math.min(LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT,
+                                    tableRowCount.longValue());
+                                if (inCount == null) {
+                                    inCount = count;
+                                } else {
+                                    inCount += count;
                                 }
                             }
                         } else if (value != null) {

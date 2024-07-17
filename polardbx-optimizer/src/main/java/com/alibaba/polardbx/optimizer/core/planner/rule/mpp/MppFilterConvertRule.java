@@ -24,7 +24,6 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.core.RelFactories;
-import org.apache.calcite.rel.logical.LogicalFilter;
 
 /**
  * @author dylan

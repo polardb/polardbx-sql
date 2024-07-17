@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.autoNewPartition;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
@@ -33,7 +33,7 @@ import java.util.List;
 
 import static com.google.common.truth.Truth.assertThat;
 
-
+@CdcIgnore(ignoreReason = "cdc未支持insert overwrite")
 public class AutoPartitionInsertOverwriteTest extends BaseAutoPartitionNewPartition {
     private final static String testTableName = "insert_overwrite_test";
     private final static String testGsiTableName = "insert_overwrite_test_index";

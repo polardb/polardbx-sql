@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -38,6 +39,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumberExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
@@ -57,8 +59,14 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
+import com.alibaba.polardbx.gms.metadb.seq.SequencesRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityLabel;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityPolicy;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -112,11 +120,16 @@ import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static java.lang.Math.max;
 
 /**
  * @author chenmo.cm
@@ -632,6 +645,9 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                     .getGsiManager()
                     .getGsiTableAndIndexMeta(schemaName, tableName, IndexStatus.ALL);
 
+                boolean containImplicitColumn = false;
+                boolean containAutoIncrement = false;
+
                 // handle implicit pk
                 final MySqlCreateTableStatement createTable =
                     (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(sql,
@@ -643,6 +659,9 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 for (SQLTableElement sqlTableElement : createTable.getTableElementList()) {
                     if (tableMeta != null && sqlTableElement instanceof SQLColumnDefinition) {
                         SQLColumnDefinition sqlColumnDefinition = (SQLColumnDefinition) sqlTableElement;
+                        if (sqlColumnDefinition.isAutoIncrement()) {
+                            containAutoIncrement = true;
+                        }
                         String columnName = SQLUtils.normalizeNoTrim(sqlColumnDefinition.getColumnName());
                         ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
                         if (columnMeta != null && columnMeta.isBinaryDefault()) {
@@ -656,6 +675,11 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                             sqlColumnDefinition.setLogical(true);
                             sqlColumnDefinition.setDefaultExpr(null);
                         }
+                    }
+
+                    if (sqlTableElement instanceof SQLColumnDefinition
+                        && SqlValidatorImpl.isImplicitKey(((SQLColumnDefinition) sqlTableElement).getNameAsString())) {
+                        containImplicitColumn = true;
                     }
 
                     if (sqlTableElement instanceof SQLColumnDefinition
@@ -683,7 +707,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                         // Only single to single table was allowed to create foreign keys.
                         String defaultGroupName = tddlRuleManager.getDefaultDbIndex().toLowerCase();
                         String phyReferencedTableName =
-                            SQLUtils.normalize(foreignKey.getReferencedTableName().getSimpleName());
+                            SQLUtils.normalizeNoTrim(foreignKey.getReferencedTableName().getSimpleName());
                         String fullQualifiedPhyRefTableName = defaultGroupName + "." + phyReferencedTableName;
 
                         Set<String> logicalTableNames =
@@ -791,7 +815,125 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                     createTable.getTableElementList().addAll(gsiDefs);
                 }
 
-                sql = createTable.toString();
+                //handle lbac attr
+                buildLBACAttr(createTable, schemaName, tableName);
+
+                /**
+                 * fix autoIncrement 显示问题:
+                 * 1. 值取自sequence manager里的真实sequence值, 而非物理表上自带的autoIncrement值
+                 * 2. 如果存在`_drds_implicit_id_`列, 则不显示autoIncrement值
+                 * 3. 对于group, new, simple sequence, 如果当前table还未触发sequence.nextval, 则不显示autoIncrement值(与mysql保持一致)
+                 * */
+                SQLAssignItem autoIncrementOption = createTable
+                    .getTableOptions()
+                    .stream()
+                    .filter(option -> {
+                        if (option instanceof SQLAssignItem) {
+                            if (option.getTarget().toString().equalsIgnoreCase("AUTO_INCREMENT")) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    })
+                    .findFirst()
+                    .orElse(null);
+
+                if (!containImplicitColumn && containAutoIncrement) {
+                    String sequenceName = SequenceAttribute.AUTO_SEQ_PREFIX + tableName;
+
+                    SequencesAccessor sequencesAccessor = new SequencesAccessor();
+
+                    boolean hide = false;
+                    List<SequencesRecord> sequence = null;
+                    try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+                        sequencesAccessor.setConnection(metaDbConn);
+                        String whereClause = String.format(" where name = \"%s\"", sequenceName);
+                        sequence = sequencesAccessor.show(schemaName, whereClause);
+                    } catch (SQLException e) {
+                        logger.error("failed to query sequence info", e);
+                        hide = true;
+                    }
+
+                    Long valueInMeta = null;
+                    if (sequence != null && sequence.size() == 1) {
+                        SequencesRecord sequencesRecord = sequence.get(0);
+                        SequenceAttribute.Type type = Type.fromString(sequencesRecord.type);
+                        if (type == Type.NEW || type == Type.SIMPLE) {
+                            Long startWith = null;
+                            boolean parseSucceed = true;
+                            try {
+                                valueInMeta = Long.parseLong(sequencesRecord.value);
+                                startWith = Long.parseLong(sequencesRecord.startWith);
+                            } catch (Exception ignore) {
+                                hide = true;
+                                parseSucceed = false;
+                            }
+
+                            if (parseSucceed && valueInMeta.equals(startWith)) {
+                                hide = true;
+                            }
+                        } else if (type == Type.GROUP) {
+                            Long unitCount = null, unitIndex = null, innerStep = null;
+                            boolean parseSucceed = true;
+                            try {
+                                valueInMeta = Long.parseLong(sequencesRecord.value);
+                                unitCount = Long.parseLong(sequencesRecord.unitCount);
+                                unitIndex = Long.parseLong(sequencesRecord.unitIndex);
+                                innerStep = Long.parseLong(sequencesRecord.innerStep);
+                            } catch (Exception ignore) {
+                                hide = true;
+                                parseSucceed = false;
+                            }
+                            //value为初始值，代表sequence尚未被用, 可以隐藏
+                            if (parseSucceed) {
+                                Long initBound = (unitIndex + unitCount) * innerStep;
+                                if (valueInMeta < initBound) {
+                                    hide = true;
+                                }
+                            }
+                        }
+                    } else {
+                        hide = true;
+                    }
+
+                    if (!hide) {
+                        Long seqVal = SequenceManagerProxy.getInstance()
+                            .currValue(schemaName, sequenceName) + 1L;
+                        if (valueInMeta != null) {
+                            seqVal = max(seqVal, valueInMeta);
+                        }
+                        if (autoIncrementOption != null) {
+                            autoIncrementOption.setValue(new SQLIntegerExpr(seqVal));
+                        } else {
+                            autoIncrementOption = new SQLAssignItem();
+                            autoIncrementOption.setTarget(new SQLIdentifierExpr("AUTO_INCREMENT"));
+                            autoIncrementOption.setValue(new SQLIntegerExpr(seqVal));
+                            createTable.getTableOptions().add(autoIncrementOption);
+                        }
+                    } else {
+                        Iterator<SQLAssignItem> iterator = createTable.getTableOptions().iterator();
+                        while (iterator.hasNext()) {
+                            SQLAssignItem option = iterator.next();
+                            if (option.getTarget().toString().equalsIgnoreCase("AUTO_INCREMENT")) {
+                                iterator.remove();
+                            }
+                        }
+                    }
+                } else {
+                    Iterator<SQLAssignItem> iterator = createTable.getTableOptions().iterator();
+                    while (iterator.hasNext()) {
+                        SQLAssignItem option = iterator.next();
+                        if (option.getTarget().toString().equalsIgnoreCase("AUTO_INCREMENT")) {
+                            iterator.remove();
+                        }
+                    }
+                }
+
+//                sql = createTable.toString();
+                final boolean outputMySQLIndent =
+                    executionContext.getParamManager().getBoolean(ConnectionParams.OUTPUT_MYSQL_INDENT);
+                sql = createTable.toSqlString(false, outputMySQLIndent);
+
                 // Sharding table or single table with broadcast
                 if (tableRule != null) {
                     // Check if any implicit key exists. If yes, it means that
@@ -804,9 +946,20 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                         // Get the corresponding sequence type.
                         String seqName = SequenceAttribute.AUTO_SEQ_PREFIX + tableName;
                         try {
-                            SequenceAttribute.Type seqType =
-                                SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
-                            if (seqType != SequenceAttribute.Type.NA) {
+                            String sequenceName = SequenceAttribute.AUTO_SEQ_PREFIX + tableName;
+                            SequencesAccessor sequencesAccessor = new SequencesAccessor();
+                            List<SequencesRecord> sequence = null;
+                            try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+                                sequencesAccessor.setConnection(metaDbConn);
+                                String whereClause = String.format(" where name = \"%s\"", sequenceName);
+                                sequence = sequencesAccessor.show(schemaName, whereClause);
+                            } catch (SQLException e) {
+                                logger.error("failed to query sequence info", e);
+                            }
+                            Type seqType =
+                                sequence != null && sequence.size() == 1 ? Type.fromString(sequence.get(0).type) :
+                                    Type.NA;
+                            if (seqType != Type.NA) {
                                 // Replace it with extended syntax.
                                 String replacement = SequenceAttribute.EXTENDED_AUTO_INC_SYNTAX + seqType;
                                 sql = StringUtils.replaceOnce(sql,
@@ -847,6 +1000,33 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
             // 关闭cursor
             if (cursor != null) {
                 cursor.close(new ArrayList<Throwable>());
+            }
+        }
+    }
+
+    public static void buildLBACAttr(MySqlCreateTableStatement createTable, String schemaName, String tableName) {
+        //for unit test
+        if (MetaDbDataSource.getInstance() == null) {
+            return;
+        }
+        //handle lbac attr
+        LBACSecurityPolicy policy = LBACSecurityManager.getInstance().getTablePolicy(schemaName, tableName);
+        if (policy != null) {
+            String policyName = policy.getPolicyName();
+            createTable.addOption("security policy", new SQLIdentifierExpr(policyName));
+            for (SQLTableElement sqlTableElement : createTable.getTableElementList()) {
+                if (sqlTableElement instanceof SQLColumnDefinition) {
+                    String columnName = ((SQLColumnDefinition) sqlTableElement).getColumnName();
+                    if (columnName.startsWith("`")) {
+                        columnName = columnName.substring(1, columnName.length() - 1);
+                    }
+                    LBACSecurityLabel
+                        label = LBACSecurityManager.getInstance().getColumnLabel(schemaName, tableName, columnName);
+                    if (label != null) {
+                        ((SQLColumnDefinition) sqlTableElement).setSecuredWith(
+                            new SQLIdentifierExpr(label.getLabelName()));
+                    }
+                }
             }
         }
     }
@@ -976,7 +1156,11 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
         final String policy = onTable ? indexTableMeta.tbPartitionPolicy : indexTableMeta.dbPartitionPolicy;
         final String key = onTable ? indexTableMeta.tbPartitionKey : indexTableMeta.dbPartitionKey;
 
-        if (null == indexTableMeta || TStringUtil.isBlank(policy)) {
+        return buildPartitionBy(policy, key, onTable);
+    }
+
+    public static SQLExpr buildPartitionBy(String policy, String key, boolean onTable) {
+        if (TStringUtil.isBlank(policy)) {
             return null;
         }
 
@@ -1015,7 +1199,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
         return partitionBy;
     }
 
-    public boolean isSingleParam(String partitionPolicy) {
+    public static boolean isSingleParam(String partitionPolicy) {
         return TStringUtil.startsWithIgnoreCase(partitionPolicy, "hash")
             || TStringUtil.startsWithIgnoreCase(partitionPolicy, "yyyymm_opt")
             || TStringUtil.startsWithIgnoreCase(partitionPolicy, "yyyydd_opt")

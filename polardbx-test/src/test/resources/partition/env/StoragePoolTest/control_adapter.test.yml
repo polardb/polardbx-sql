@@ -1,0 +1,78 @@
+storageList: [$dn1, $dn2, $dn3, $dn4, $dn5, $dn6, $dn7, $dn8]
+testCases:
+  ## first pass, create database and table
+  - prepareDDls:
+      - "use polardbx"
+      - "alter storage pool sp3 drain node '$dn8'"
+    dbNames: [orders_comm1]
+    rejectDDls:
+      - ddl: "drop storage pool sp2;"
+        message: "The storage pool definition contains storage inst still in use!"
+    expectedSQLs:
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated';###0"
+      - "select count(1) from information_schema.ddl_plan where resource not like 'rebalance_TENANT_`%' and ddl_stmt like '%TENANT%';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7" "$dn7"
+        - _recycle "$dn8" ""
+        - _default "$dn1,$dn2" $dn1
+      datasourceCheck:
+        - test_db1 $dn3,$dn4
+        - test_db2 $dn5,$dn6
+        - test_db3 $dn3,$dn4,$dn5,$dn6
+        - test_db4 $dn3,$dn4,$dn7
+        - old_auto_database $dn1,$dn2
+        - old_auto_database2 $dn1,$dn2
+        - orders_comm1 $dn3,$dn4,$dn7
+      localityValueCheck:
+      tableGroupMatchCheck:
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+
+  - prepareDDls:
+      - "use polardbx"
+      - "alter storage pool _recycle drain node '$dn8'"
+    dbNames: [orders_comm1]
+    rejectDDls:
+      - ddl: "drop storage pool sp2;"
+        message: "The storage pool definition contains storage inst still in use!"
+    expectedSQLs:
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated';###0"
+      - "select count(1) from information_schema.ddl_plan where resource not like 'rebalance_TENANT_`%' and ddl_stmt like '%TENANT%';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7" "$dn7"
+        - _recycle "" ""
+        - _default "$dn1,$dn2" $dn1
+      datasourceCheck:
+        - test_db1 $dn3,$dn4
+        - test_db2 $dn5,$dn6
+        - test_db3 $dn3,$dn4,$dn5,$dn6
+        - test_db4 $dn3,$dn4,$dn7
+        - old_auto_database $dn1,$dn2
+        - old_auto_database2 $dn1,$dn2
+        - orders_comm1 $dn3,$dn4,$dn7
+      localityValueCheck:
+      tableGroupMatchCheck:
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "use polardbx;"

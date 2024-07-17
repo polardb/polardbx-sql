@@ -28,3 +28,9 @@ test_drop_idx_with_cgsi
 test_alter_repartition_with_ugsi
 test_create_tb_with_gsi2
 test_add_global_index_failed
+test_backfill_charset
+test_modify_column
+test_online_modify_column
+test_online_modify_column_gsi
+test_compressed_table
+test_create_table_with_blank

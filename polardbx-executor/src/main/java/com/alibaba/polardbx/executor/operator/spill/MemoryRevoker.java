@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
+import com.google.common.util.concurrent.ListenableFuture;
 
 public interface MemoryRevoker {
 

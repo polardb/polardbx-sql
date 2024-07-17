@@ -74,5 +74,6 @@ public abstract class DataTypes {
     public static final DataType NullType = UndecidedType;
     public static final DataType IntervalType = new IntervalType();
     public static final DataType<byte[]> BinaryType = new BinaryType();
+    public static final DataType RowType = new RowType();
     public static final DataType<String> JsonType = new JsonType();
 }

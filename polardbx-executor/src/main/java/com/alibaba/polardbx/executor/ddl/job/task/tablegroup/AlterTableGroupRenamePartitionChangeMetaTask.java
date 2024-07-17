@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
@@ -31,7 +29,9 @@ import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -39,13 +39,11 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
 import java.sql.Connection;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -79,8 +77,11 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
 
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-        final TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
-        final List<TablePartRecordInfoContext> tablePartitionInfoRecords = tableGroupConfig.getAllTables();
+        final TableGroupConfig tgCofig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
+        final TableGroupDetailConfig tableGroupConfig =
+            TableGroupUtils.getTableGroupDetailInfoByGroupId(null, tgCofig.getTableGroupRecord().id);
+        final List<TablePartRecordInfoContext> tablePartitionInfoRecords =
+            tableGroupConfig.getTablesPartRecordInfoContext();
         String firstTableInTg = tablePartitionInfoRecords.get(0).getTableName();
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(firstTableInTg);
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
@@ -202,7 +203,7 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
         }
     }
 
-    private void processRenameFirstLevelLogicalPartition(TableGroupConfig tableGroupConfig,
+    private void processRenameFirstLevelLogicalPartition(TableGroupDetailConfig tableGroupConfig,
                                                          PartitionInfo partitionInfo,
                                                          List<PartitionGroupRecord> partitionGroupRecords,
                                                          List<TablePartitionRecord> newTablePartitionRecords,
@@ -218,7 +219,7 @@ public class AlterTableGroupRenamePartitionChangeMetaTask extends BaseDdlTask {
         boolean useSubPartTemplate = subPartBy.isUseSubPartTemplate();
 
         Map<String, List<TablePartitionRecord>> firstLevelPartitionRecords = new TreeMap<>(String::compareToIgnoreCase);
-        for (TablePartRecordInfoContext tablePartInfo : tableGroupConfig.getTables()) {
+        for (TablePartRecordInfoContext tablePartInfo : tableGroupConfig.getTablesPartRecordInfoContext()) {
             tablePartInfo.getPartitionRecList().stream().forEach(
                 o -> firstLevelPartitionRecords.computeIfAbsent(o.partName, k -> new ArrayList<>()).add(o.copy()));
         }

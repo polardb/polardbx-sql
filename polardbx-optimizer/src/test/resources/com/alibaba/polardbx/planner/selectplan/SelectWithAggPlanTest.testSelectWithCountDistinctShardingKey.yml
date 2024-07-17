@@ -4,8 +4,6 @@ sql: |
 
 
 plan: |
-
-  hashagg(count(distinct id)="count(id)")
-    hashagg(group="id")
-      gather(concurrent=true)
-        logicalview(tables="[0000-0003].test_hash_tb4", shardcount=4, sql="select `id` from `test_hash_tb4` as `test_hash_tb4`")
+  hashagg(count(distinct id)="sum(count(distinct id))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb4", shardcount=4, sql="select count(distinct `id`) as `count(distinct id)` from `test_hash_tb4` as `test_hash_tb4`")

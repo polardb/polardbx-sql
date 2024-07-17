@@ -25,9 +25,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
-import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
-import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -38,10 +36,8 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -200,7 +196,7 @@ public class ActionMoveTablePartition implements BalanceAction, Comparable<Actio
             EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
         }
         return ActionUtils.convertToDelegatorJob(schema, sql,
-            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize, 1L));
     }
 
     @Override

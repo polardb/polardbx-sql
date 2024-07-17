@@ -38,6 +38,7 @@ import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.PolarDbXSystemTableView;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.PerformanceSchemaViewManager;
+import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlShow;
@@ -107,7 +108,7 @@ public class LogicalShowIndexHandler extends BaseDalHandler {
         result.addColumn("Seq_in_index", null, DataTypes.IntegerType);
         result.addColumn("Column_name", null, DataTypes.StringType);
         result.addColumn("Collation", null, DataTypes.StringType);
-        result.addColumn("Cardinality", null, DataTypes.IntegerType);
+        result.addColumn("Cardinality", null, DataTypes.LongType);
         result.addColumn("Sub_part", null, DataTypes.IntegerType);
         result.addColumn("Packed", null, DataTypes.StringType);
         result.addColumn("Null", null, DataTypes.StringType);
@@ -121,7 +122,9 @@ public class LogicalShowIndexHandler extends BaseDalHandler {
             if (IMPLICIT_COL_NAME.equalsIgnoreCase(row.getString(4))) {
                 continue;
             }
-            result.addRow(row.getValues().toArray());
+            final Object[] objects = row.getValues().toArray();
+            objects[0] = tableName.toLowerCase();
+            result.addRow(objects);
         }
 
         indexFromMain.close(new ArrayList<>());
@@ -225,7 +228,7 @@ public class LogicalShowIndexHandler extends BaseDalHandler {
         result.addColumn("Seq_in_index", null, DataTypes.IntegerType);
         result.addColumn("Column_name", null, DataTypes.StringType);
         result.addColumn("Collation", null, DataTypes.StringType);
-        result.addColumn("Cardinality", null, DataTypes.IntegerType);
+        result.addColumn("Cardinality", null, DataTypes.LongType);
         result.addColumn("Sub_part", null, DataTypes.IntegerType);
         result.addColumn("Packed", null, DataTypes.StringType);
         result.addColumn("Null", null, DataTypes.StringType);
@@ -240,6 +243,7 @@ public class LogicalShowIndexHandler extends BaseDalHandler {
                 continue;
             }
             final Object[] objects = row.getValues().toArray();
+            objects[0] = tableName.toLowerCase();
             final String indexName = objects[2].toString();
             if (indexName.startsWith(AUTO_LOCAL_INDEX_PREFIX)) {
                 objects[2] = indexName.substring(AUTO_LOCAL_INDEX_PREFIX.length()); // Fake one.

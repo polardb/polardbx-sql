@@ -20,30 +20,22 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.JoinGroupValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoAccessor;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
 import java.sql.Connection;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.stream.Collectors;
 
 @Getter
 @TaskName(name = "JoinGroupValidateTask")
@@ -54,26 +46,28 @@ public class JoinGroupValidateTask extends BaseValidateTask {
     private boolean onlyCompareTableGroup;
 
     @JSONCreator
-    public JoinGroupValidateTask(String schemaName, List<String> tableGroups, String tableName, boolean onlyCompareTableGroup) {
+    public JoinGroupValidateTask(String schemaName, List<String> tableGroups, String tableName,
+                                 boolean onlyCompareTableGroup) {
         super(schemaName);
         this.tableGroups = tableGroups;
-        this.tableName=tableName;
+        this.tableName = tableName;
         this.onlyCompareTableGroup = onlyCompareTableGroup;
     }
 
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         if (GeneralUtil.isEmpty(tableGroups)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,"the tableGroup list can't be empty");
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT, "the tableGroup list can't be empty");
         }
         String targetTableGroup = tableGroups.get(0);
-        TableGroupValidator.validateTableGroupInfo(schemaName, targetTableGroup, true, executionContext.getParamManager());
-        TableGroupInfoManager tableGroupInfoManager = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+        TableGroupValidator.validateTableGroupInfo(schemaName, targetTableGroup, true,
+            executionContext.getParamManager());
+        TableGroupInfoManager tableGroupInfoManager =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(targetTableGroup);
         String targetJoinGroup = "";
         if (GeneralUtil.isNotEmpty(tableGroupConfig.getTables())) {
-            TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupConfig.getTables().get(0);
-            String tbName = tablePartRecordInfoContext.getTableName();
+            String tbName = tableGroupConfig.getTables().get(0);
             TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tbName);
             if (tableMeta.isGsi()) {
                 tbName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
@@ -81,11 +75,12 @@ public class JoinGroupValidateTask extends BaseValidateTask {
             JoinGroupInfoRecord record = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tbName, metaDbConnection);
             targetJoinGroup = record == null ? "" : record.joinGroupName;
         }
-        if(onlyCompareTableGroup) {
+        if (onlyCompareTableGroup) {
             if (tableGroups.size() < 2) {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,"the tableGroup list should great than 2");
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                    "the tableGroup list should great than 2");
             }
-            for (int i=1; i< tableGroups.size();i++) {
+            for (int i = 1; i < tableGroups.size(); i++) {
                 String sourceTableGroup = tableGroups.get(i);
                 String errMsg = String.format(
                     "The joinGroup of tableGroup:[%s] is not match with the joinGroup of tableGroup[%s]",
@@ -100,8 +95,9 @@ public class JoinGroupValidateTask extends BaseValidateTask {
             if (tableMeta.isGsi()) {
                 tbName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
             }
-            if(GeneralUtil.isNotEmpty(tableGroupConfig.getTables())) {
-                JoinGroupInfoRecord joinGroupInfoRecord = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tbName, metaDbConnection);
+            if (GeneralUtil.isNotEmpty(tableGroupConfig.getTables())) {
+                JoinGroupInfoRecord joinGroupInfoRecord =
+                    JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tbName, metaDbConnection);
                 String sourceJoinGroup = joinGroupInfoRecord == null ? "" : joinGroupInfoRecord.joinGroupName;
                 boolean isValid = targetJoinGroup.equalsIgnoreCase(sourceJoinGroup);
                 if (!isValid) {

@@ -16,13 +16,12 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -31,6 +30,7 @@ import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamGroupAccessor;
 import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamGroupRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Maps;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlFlushLogs;
@@ -42,13 +42,15 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+
 /**
  * @author chengjin
  * @since 2023/7/21 14:37
  **/
 public class LogicalFlushLogsHandler extends HandlerCommon {
 
-    private static final Logger logger = LoggerFactory.getLogger(LogicalShowCdcStorageHandler.class);
+    private static final Logger cdcLogger = SQLRecorderLogger.cdcLogger;
 
     public LogicalFlushLogsHandler(IRepository repo) {
         super(repo);
@@ -77,11 +79,11 @@ public class LogicalFlushLogsHandler extends HandlerCommon {
 
         }
 
-        Map<String, Object> extendParams = Maps.newHashMap();
+        Map<String, Object> extendParams = buildExtendParameter(executionContext);
         extendParams.put(ICdcManager.CDC_GROUP_NAME, groupName);
-        CdcManagerHelper.getInstance()
-            .notifyDdlNew("", null, SqlKind.FLUSH_LOGS.name(), executionContext.getOriginSql(), null, null, null,
-                DdlVisibility.Private, extendParams);
+        CdcManagerHelper.getInstance().notifyDdlNew("", null, SqlKind.FLUSH_LOGS.name(),
+            executionContext.getOriginSql(), null, null, null,
+            CdcDdlMarkVisibility.Private, extendParams);
         return new AffectRowCursor(0);
     }
 }

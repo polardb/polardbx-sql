@@ -17,45 +17,47 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
-import org.apache.calcite.util.Pair;
+import org.apache.commons.collections.MapUtils;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author qianjing
  */
 public class TableColumnMeta extends AbstractLifecycle {
-    private final String tableSchema;
-    private final String tableName;
 
-    private final Pair<String, String> columnMultiWriteMapping;
-    private final boolean modifying;
-    private boolean modifyPartitionKey;
+    private final Map<String, String> columnMultiWriteMapping;
+    private boolean modifying;
 
-    public TableColumnMeta(String tableSchema, String tableName, ColumnMeta sourceColumn, ColumnMeta targetColumn) {
-        this.tableSchema = tableSchema;
-        this.tableName = tableName;
-
-        modifying = sourceColumn != null || targetColumn != null;
-
-        if (sourceColumn != null && targetColumn != null) {
-            this.columnMultiWriteMapping = new Pair<>(sourceColumn.getName(), targetColumn.getName());
-        } else {
+    public TableColumnMeta(TableMeta tableMeta) {
+        List<ColumnMeta> columnMetas = tableMeta.getAllColumns();
+        modifying = tableMeta.rebuildingTable();
+        Map<String, String> columnMapping = new HashMap<>();
+        for (ColumnMeta columnMeta : columnMetas) {
+            if (columnMeta.getMappingName() != null) {
+                // old --> new
+                columnMapping.put(columnMeta.getMappingName().toLowerCase(), columnMeta.getName().toLowerCase());
+            }
+        }
+        if (columnMapping.isEmpty()) {
             this.columnMultiWriteMapping = null;
+        } else {
+            this.columnMultiWriteMapping = columnMapping;
+            this.modifying = true;
         }
     }
 
-    protected boolean isModifying() {
+    public boolean isModifying() {
         return modifying;
     }
 
-    protected boolean isModifyPrimaryKey() {
-        return modifyPartitionKey;
-    }
-
-    public void setModifyPartitionKey(boolean modifyPartitionKey) {
-        this.modifyPartitionKey = modifyPartitionKey;
-    }
-
-    protected Pair<String, String> getColumnMultiWriteMapping() {
+    public Map<String, String> getColumnMultiWriteMapping() {
         return columnMultiWriteMapping;
+    }
+
+    public boolean isGsiModifying() {
+        return MapUtils.isNotEmpty(columnMultiWriteMapping);
     }
 }

@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Sets;
 import lombok.Getter;
@@ -92,6 +93,29 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
             .filter(o -> partitionNameSet.contains((o.pg == null) ? "" : o.pg.getPartition_name()))
             .map(
                 PartitionGroupStat::getDataRows).mapToLong(o -> o).sum();
+    }
+
+    @Override
+    public Long getDiskSize() {
+        Set<String> partitionNameSet = new HashSet<>(this.partitionNames);
+        TableGroupStat tableGroupStat = stats.getTableGroupStats().stream()
+            .filter(o -> o.getTableGroupConfig().getTableGroupRecord().getTg_name().equals(this.tableGroupName))
+            .collect(
+                Collectors.toList()).get(0);
+        return tableGroupStat.getPartitionGroups().stream()
+            .filter(o -> partitionNameSet.contains((o.pg == null) ? "" : o.pg.getPartition_name()))
+            .map(
+                PartitionGroupStat::getTotalDiskSize).mapToLong(o -> o).sum();
+    }
+
+    @Override
+    public double getLogicalTableCount() {
+        TableGroupStat tableGroupStat = stats.getTableGroupStats().stream()
+            .filter(o -> o.getTableGroupConfig().getTableGroupRecord().getTg_name().equals(this.tableGroupName))
+            .collect(
+                Collectors.toList()).get(0);
+
+        return tableGroupStat.getTableGroupConfig().getTableCount();
     }
 
     public static List<ActionMovePartition> createMoveToGroups(String schema,
@@ -226,7 +250,7 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
             EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
         }
         return ActionUtils.convertToDelegatorJob(schema, sql,
-            CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize, (long) getLogicalTableCount()));
     }
 
     @Override

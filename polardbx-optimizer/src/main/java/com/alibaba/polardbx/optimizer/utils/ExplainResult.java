@@ -85,7 +85,9 @@ public class ExplainResult {
         // show vectorized plan
         VEC,
         // show statistic detail
-        COST_TRACE;
+        COST_TRACE,
+        // show pipeline level stats
+        PIPELINE;
 
         public boolean isLogic() {
             return this == LOGIC || isSimple();
@@ -151,6 +153,10 @@ public class ExplainResult {
             return this == STATISTICS;
         }
 
+        public boolean isPipeline() {
+            return this == PIPELINE;
+        }
+
         public boolean isA(EnumSet enumSet) {
             return null != enumSet && enumSet.contains(this);
         }
@@ -202,6 +208,10 @@ public class ExplainResult {
 
     public static boolean isExplainStatistics(ExplainResult er) {
         return er != null && er.explainMode.isStatistics();
+    }
+
+    public static boolean isExplainPipeline(ExplainResult er) {
+        return er != null && er.explainMode.isPipeline();
     }
 
     public static boolean isExplainVec(ExplainResult er) {

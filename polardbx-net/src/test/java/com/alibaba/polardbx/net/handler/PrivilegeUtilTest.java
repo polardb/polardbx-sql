@@ -3,7 +3,6 @@ package com.alibaba.polardbx.net.handler;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.DbPriv;
 import com.alibaba.polardbx.common.model.TbPriv;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.net.util.PrivilegeUtil;
 import com.taobao.tddl.common.privilege.EncrptPassword;
 import org.junit.Test;
@@ -35,15 +34,6 @@ public class PrivilegeUtilTest {
 
         // trust login
         assert null == PrivilegeUtil.checkSchema(schema2, user, host, true, getPrivileges());
-
-        // fast mock
-        ConfigDataMode.Mode origin = ConfigDataMode.getMode();
-        try {
-            ConfigDataMode.setMode(ConfigDataMode.Mode.FAST_MOCK);
-            assert null == PrivilegeUtil.checkSchema(schema2, user, host, false, getPrivileges());
-        } finally {
-            ConfigDataMode.setMode(origin);
-        }
 
         // user has privilege
         assert null == PrivilegeUtil.checkSchema(schema1, user, host, false, getPrivileges());

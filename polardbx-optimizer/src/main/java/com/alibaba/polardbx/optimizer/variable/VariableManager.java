@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.variable;
 
-import org.apache.commons.lang3.StringUtils;
-import com.google.common.collect.ImmutableMap;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
@@ -26,6 +24,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.biv.MockUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.ImmutableMap;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -62,12 +62,6 @@ public class VariableManager extends AbstractLifecycle {
     @Override
     protected void doInit() {
         super.doInit();
-        if (ConfigDataMode.isFastMock()) {
-            sessionVariablesCache = ImmutableMap.<String, Object>builder().build();
-            globalVariablesCache = ImmutableMap.<String, Object>builder().build();
-            lastSwapTime = new AtomicLong(System.nanoTime());
-            return;
-        }
         sessionVariablesCache = variableProxy.getSessionVariables();
         globalVariablesCache = variableProxy.getGlobalVariables();
         lastSwapTime = new AtomicLong(System.nanoTime());

@@ -54,6 +54,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
+
 /**
  * Created by zhuqiwei.
  *
@@ -66,9 +68,9 @@ public class CdasLoader extends Loader {
     private CdasLoader(String schemaName, String tableName, SqlInsert insert, SqlInsert insertIgnore,
                        ExecutionPlan checkerPlan, int[] checkerPkMapping, int[] checkerParamMapping,
                        BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
-                       int[] insertedParamMapping, boolean needParamProject) {
+                       int[] insertedParamMapping, boolean needParamProject, String backfillReturning) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc, false);
+            executeFunc, false, backfillReturning);
         this.insertedParamMapping = insertedParamMapping;
         this.needParamProjection = needParamProject;
     }
@@ -79,6 +81,9 @@ public class CdasLoader extends Loader {
                                     boolean useHint, ExecutionContext ec, boolean needParamProject) {
         final OptimizerContext optimizerContextDst = OptimizerContext.getContext(dstSchemaName);
         final OptimizerContext optimizerContextSrc = OptimizerContext.getContext(srcSchemaName);
+
+        boolean canUseReturning =
+            canUseBackfillReturning(ec, dstSchemaName) && canUseBackfillReturning(ec, srcSchemaName);
 
         // Construct target table
         final SqlNode targetTableParam = BuildPlanUtils.buildTargetTable();
@@ -150,7 +155,8 @@ public class CdasLoader extends Loader {
         final TddlRuleManager tddlRuleManagerDst = optimizerContextDst.getRuleManager();
         final Set<String> filterColumns = Sets.newTreeSet(String::compareToIgnoreCase);
         final Set<String> primaryKeys = Sets.newTreeSet(String::compareToIgnoreCase);
-        primaryKeys.addAll(GlobalIndexMeta.getPrimaryKeys(srcTableMeta));
+        final List<String> pkList = GlobalIndexMeta.getPrimaryKeys(srcTableMeta);
+        primaryKeys.addAll(pkList);
         filterColumns.addAll(primaryKeys);
         filterColumns.addAll(tddlRuleManagerSrc.getSharedColumns(srcTableName));
         filterColumns.addAll(tddlRuleManagerDst.getSharedColumns(dstTableName));
@@ -179,7 +185,8 @@ public class CdasLoader extends Loader {
 
         return new CdasLoader(dstSchemaName, dstTableName, sqlInsert, sqlInsertIgnore, checkerPlan, checkerPkMapping,
             checkerParamMapping,
-            executeFunc, insertMappings, needParamProject);
+            executeFunc, insertMappings, needParamProject,
+            canUseReturning ? String.join(",", pkList) : null);
 
     }
 
@@ -187,8 +194,13 @@ public class CdasLoader extends Loader {
     public int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
                              ExecutionContext executionContext, String sourceDbIndex, String phyTableName) {
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
-        return InsertIndexExecutor
-            .insertIntoTable(null, sqlInsert, tableMeta, schemaName, executionContext, executeFunc, false);
+        List<Map<Integer, ParameterContext>> returningRes = new ArrayList<>();
+        int affectRows = InsertIndexExecutor
+            .insertIntoTable(null, sqlInsert, tableMeta, "", "",
+                schemaName, executionContext, executeFunc, false, true,
+                "", usingBackfillReturning, returningRes);
+
+        return usingBackfillReturning ? getReturningAffectRows(returningRes, executionContext) : affectRows;
     }
 
     @Override

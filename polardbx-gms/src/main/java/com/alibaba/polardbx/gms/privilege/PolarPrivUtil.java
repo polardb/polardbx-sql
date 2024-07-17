@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.taobao.tddl.common.privilege.AuthPlugin;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -54,6 +55,7 @@ public class PolarPrivUtil {
     public static final String CREATE_USER_PRIV = "create_user_priv";
     public static final String REPLICATION_SLAVE_PRIV = "replication_slave_priv";
     public static final String REPLICATION_CLIENT_PRIV = "replication_client_priv";
+    public static final String PLUGIN = "plugin";
     public static final String META_DB_PRIV = "meta_db_priv";
 
     public static final String DB_PRIV_TABLE = "db_priv";
@@ -106,10 +108,12 @@ public class PolarPrivUtil {
         colAndValues.getKey().add(HOST);
         colAndValues.getKey().add(ACCOUNT_TYPE);
         colAndValues.getKey().add(PASSWORD);
+        colAndValues.getKey().add(PLUGIN);
         colAndValues.getValue().add(PolarPrivUtil.quote(userInfo.getUsername()));
         colAndValues.getValue().add(PolarPrivUtil.quote(userInfo.getHost()));
         colAndValues.getValue().add(PolarPrivUtil.quote(userInfo.getAccountType().getId() + ""));
         colAndValues.getValue().add(PolarPrivUtil.quote(userInfo.getPassword()));
+        colAndValues.getValue().add(PolarPrivUtil.quote(userInfo.getAuthPlugin().toLowerCase()));
 
         String ignoreDuplicates = "";
         if (ifNotExists) {
@@ -128,8 +132,10 @@ public class PolarPrivUtil {
 
         switch (type) {
         case SET_PASSWORD:
-            colNames.add("password");
+            colNames.add(PASSWORD);
+            colNames.add(PLUGIN);
             colValues.add(PolarPrivUtil.quote(userInfo.getPassword()));
+            colValues.add(PolarPrivUtil.quote(AuthPlugin.POLARDBX_NATIVE_PASSWORD.name()));
             break;
         case GRANT_PRIVILEGE:
         case REVOKE_PRIVILEGE:

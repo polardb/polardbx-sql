@@ -32,6 +32,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 public class TruncateTableJobFactory extends DdlJobFactory {
 
     private final PhysicalPlanData physicalPlanData;
@@ -62,7 +64,7 @@ public class TruncateTableJobFactory extends DdlJobFactory {
 
         DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, tableGroupConfig);
         DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
+        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(Lists.newArrayList(

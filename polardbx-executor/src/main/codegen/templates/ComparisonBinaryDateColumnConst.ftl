@@ -52,28 +52,28 @@ public class ${className} extends AbstractVectorizedExpression {
     public void eval(EvaluationContext ctx) {
         children[0].eval(ctx);
 
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot =
-            chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot =
+		chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        if (leftInputVectorSlot instanceof DateBlock) {
-            long[] array1 = ((DateBlock) leftInputVectorSlot).getPacked();
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+		if (leftInputVectorSlot instanceof DateBlock) {
+		long[] array1 = (leftInputVectorSlot.cast(DateBlock.class)).getPacked();
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
-            if (rightIsNull) {
-                boolean[] outputNulls = outputVectorSlot.nulls();
-                if (isSelectionInUse) {
-                    for (int i = 0; i < batchSize; i++) {
-                        int j = sel[i];
-                        outputNulls[j] = true;
-                    }
-                } else {
-                    for (int i = 0; i < batchSize; i++) {
+		if (rightIsNull) {
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		outputNulls[j] = true;
+		}
+		} else {
+		for (int i = 0; i < batchSize; i++) {
                         outputNulls[i] = true;
                     }
                 }
@@ -86,23 +86,23 @@ public class ${className} extends AbstractVectorizedExpression {
                 } else {
                     for (int i = 0; i < batchSize; i++) {
                         res[i] = (array1[i] ${operator.op} right) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-                    }
-                }
+		}
+		}
 
-                VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
-            }
-        } else if (leftInputVectorSlot instanceof ReferenceBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
-            if (rightIsNull) {
-                boolean[] outputNulls = outputVectorSlot.nulls();
-                if (isSelectionInUse) {
-                    for (int i = 0; i < batchSize; i++) {
-                        int j = sel[i];
-                        outputNulls[j] = true;
-                    }
-                } else {
-                    for (int i = 0; i < batchSize; i++) {
-                        outputNulls[i] = true;
+		VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
+		}
+		} else if (leftInputVectorSlot instanceof ReferenceBlock) {
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+		if (rightIsNull) {
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		outputNulls[j] = true;
+		}
+		} else {
+		for (int i = 0; i < batchSize; i++) {
+		outputNulls[i] = true;
                     }
                 }
             } else {

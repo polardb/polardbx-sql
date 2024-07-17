@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.druid.util.FnvHash;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.async.XARecoverTask;
 import org.apache.commons.lang3.ArrayUtils;
@@ -140,7 +141,14 @@ public class XAUtils {
      */
     public static String toXidString(long transId, String group, long primaryGroupUid, long readViewSeq) {
         String xid = String.format("'drds-%s@%s', '%s@%04d'", Long.toHexString(transId),
-            Long.toHexString(primaryGroupUid), group, readViewSeq);
+            Long.toHexString(primaryGroupUid), uniqueGroupForBqual(group), readViewSeq);
+        return xid;
+    }
+
+    public static String toXidStringWithFormatId(long transId, String group, long primaryGroupUid, long readViewSeq,
+                                                 long formatId) {
+        String xid = String.format("'drds-%s@%s', '%s@%04d', %s", Long.toHexString(transId),
+            Long.toHexString(primaryGroupUid), uniqueGroupForBqual(group), readViewSeq, formatId);
         return xid;
     }
 
@@ -161,7 +169,13 @@ public class XAUtils {
      */
     public static String toXidString(long transId, String group, long primaryGroupUid) {
         String xid = String.format("'drds-%s@%s', '%s'", Long.toHexString(transId),
-            Long.toHexString(primaryGroupUid), group);
+            Long.toHexString(primaryGroupUid), uniqueGroupForBqual(group));
+        return xid;
+    }
+
+    public static String toXidStringWithFormatId(long transId, String group, long primaryGroupUid, long formatId) {
+        String xid = String.format("'drds-%s@%s', '%s', %s", Long.toHexString(transId),
+            Long.toHexString(primaryGroupUid), uniqueGroupForBqual(group), formatId);
         return xid;
     }
 
@@ -177,8 +191,8 @@ public class XAUtils {
         public final String trimedBqual;
         public final int formatId;
 
-        public XATransInfo(long transId, String gtrid, String bqual, long uid) {
-            this.gtrid = gtrid;
+        public XATransInfo(long transId, String bqual, long uid) {
+            this.gtrid = null;
             this.transId = transId;
             this.primaryGroupUid = uid;
             this.bqual = bqual;
@@ -228,13 +242,12 @@ public class XAUtils {
         if (formatID == 1) {
             byte[] gtridData = Arrays.copyOfRange(data, 0, gtridLength);
             byte[] bqualData = Arrays.copyOfRange(data, gtridLength, gtridLength + bqualLength);
-            if (checkGtridPrefix(gtridData)) {
+            if (ExecUtils.checkGtridPrefix(gtridData)) {
                 int atSymbolIndex = ArrayUtils.indexOf(gtridData, (byte) '@');
                 String txid = new String(gtridData, 5, atSymbolIndex - 5);
                 String primaryGroupUid = new String(gtridData, atSymbolIndex + 1, gtridData.length - atSymbolIndex - 1);
                 String group = new String(bqualData);
-                String gtrid = new String(gtridData);
-                return new XATransInfo(Long.parseLong(txid, 16), gtrid, group, tryParseLong(primaryGroupUid, 16));
+                return new XATransInfo(Long.parseLong(txid, 16), group, tryParseLong(primaryGroupUid, 16));
             } else {
                 return null;
             }
@@ -261,14 +274,6 @@ public class XAUtils {
     }
 
     /**
-     * Check whether begins with prefix 'drds-'
-     */
-    private static boolean checkGtridPrefix(byte[] data) {
-        return data.length > 5
-            && data[0] == 'd' && data[1] == 'r' && data[2] == 'd' && data[3] == 's' && data[4] == '-';
-    }
-
-    /**
      * Return zero if failed to parse
      */
     public static long tryParseLong(String s, int radix) {
@@ -279,3 +284,4 @@ public class XAUtils {
         }
     }
 }
+

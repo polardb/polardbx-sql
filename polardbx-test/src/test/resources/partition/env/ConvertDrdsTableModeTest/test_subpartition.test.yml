@@ -1,0 +1,215 @@
+## DISABLE_FAST_SQL_PARSER
+use polardbx;
+
+## test dd
+convert create table `tb1` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime,
+`col7` datetime,
+`col8` datetime,
+primary key(`col0`),
+unique clustered index `tb1_k1`(`col1`, `col3`) dbpartition by yyyymm(`col1`) tbpartition by dd(`col3`) tbpartitions 4,
+clustered index `tb1_k2` (`col4`, `col3`) dbpartition by hash(`col4`) tbpartition by dd(`col3`) tbpartitions 4,
+unique global index `tb1_k3` (`col6`, `col5`) dbpartition by hash(`col5`) tbpartition by dd(`col6`) tbpartitions 4,
+unique global index `tb1_k4` (`col6`, `col7`) covering (`col8`) dbpartition by hash(`col6`) tbpartition by dd(`col7`) tbpartitions 4
+) dbpartition by hash(`col1`) tbpartition by dd(`col2`) tbpartitions 4;  
+  
+## test hash
+convert create table `tb2` (
+`col0` int(11) not null auto_increment,
+`col1` int(11) default NULL,
+`col2` varchar(20),
+`col3` varchar(20),
+`col4` varchar(20),
+`col5` varchar(20),
+`col6` varchar(20),
+`col7` varchar(20),
+`col8` varchar(20),
+`col9` varchar(20),
+primary key(`col0`),
+unique clustered index `tb2_k1`(`col1`, `col2`) dbpartition by hash(`col1`)  tbpartition by hash(`col2`) tbpartitions 4,
+clustered index `tb2_k2` (`col2`, `col3`) dbpartition by hash(`col2`) tbpartition by hash(`col3`) tbpartitions 4,
+unique global index `tb2_k3` (`col5`, `col6`) dbpartition by hash(`col5`) tbpartition by hash(`col6`) tbpartitions 2,
+global index `tb2_k4` (`col8`, `col9`) dbpartition by hash(`col8`) tbpartition by hash(`col9`) tbpartitions 3
+) dbpartition by hash(`col1`) tbpartition by hash(`col2`) tbpartitions 4;
+
+## test mm
+convert create table `tb3` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime，
+`col7` datetime,
+`col8` datetime,
+primary key(`col0`),
+unique clustered index `tb3_k1`(`col1`, `col3`) dbpartition by yyyydd(`col1`) tbpartition by mm(`col3`) tbpartitions 4,
+clustered index `tb3_k2` (`col4`, `col3`) dbpartition by hash(`col4`) tbpartition by mm(`col3`) tbpartitions 4,
+unique global index `tb3_k3` (`col6`, `col5`) dbpartition by yyyydd(`col5`) tbpartition by mm(`col6`) tbpartitions 4,
+global index  `tb3_k4` (`col6`, `col7`) covering (`col8`) dbpartition by yyyydd(`col6`) tbpartition by mm(`col7`) tbpartitions 4
+) dbpartition by yyyymm(`col1`) tbpartition by mm(`col2`) tbpartitions 4;
+  
+## test mmdd
+convert create table `tb4` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+primary key(`col0`)
+) dbpartition by yyyymm(`col1`) tbpartition by mmdd(`col2`) tbpartitions 2;
+  
+## test range hash
+convert create table `tb5` (
+`col0` int(11) not null auto_increment,
+`col1` varchar(20) default NULL,
+`col2` varchar(20),
+`col3` varchar(20),
+`col4` varchar(20),
+`col5` varchar(20),
+`col6` varchar(20)，
+`col7` varchar(20),
+`col8` varchar(20),
+`col9` varchar(20),
+primary key(`col0`),
+unique clustered index `tb5_k1`(`col1`, `col2`, `col3`) dbpartition by range_hash(`col1`, `col2`, 10) tbpartition by range_hash(`col2`, `col3`, 10) tbpartitions 4,
+clustered index `tb5_k2` (`col2`, `col3`, `col4`) dbpartition by hash(`col2`) tbpartition by range_hash(`col3`, `col4`, 10) tbpartitions 4,
+unique global index `tb5_k3` (`col5`, `col6`, `col7`) dbpartition by range_hash(`col5`, `col6`, 10) tbpartition by hash(`col7`) tbpartitions 2,
+global index `tb5_k4` (`col8`, `col9`) dbpartition by range_hash(`col8`, `col9`, 8) tbpartition by range_hash(`col9`, `col8`, 10) tbpartitions 3
+) dbpartition by range_hash(`col1`, `col2`, 5) tbpartition by range_hash(`col2`, `col3`, 10) tbpartitions 4;
+
+## test right shift
+convert create table `tb6` (
+`col0` int(11) not null auto_increment,
+`col1` int(11) default NULL,
+`col2` varchar(20),
+`col3` varchar(20),
+`col4` varchar(20),
+`col5` varchar(20),
+`col6` varchar(20)，
+`col7` varchar(20),
+`col8` varchar(20),
+`col9` varchar(20),
+primary key(`col0`),
+unique clustered index `tb6_k1`(`col1`, `col2`) dbpartition by right_shift(`col1`,4)  tbpartition by right_shift(`col2`, 4) tbpartitions 4,
+clustered index `tb6_k2` (`col2`, `col3`) dbpartition by right_shift(`col2`, 5) tbpartition by hash(`col3`) tbpartitions 4,
+unique global index `tb6_k3` (`col5`, `col6`) dbpartition by hash(`col5`) tbpartition by right_shift(`col6`, 5) tbpartitions 2,
+global index `tb6_k4` (`col8`, `col9`) dbpartition by right_shift(`col8`, 5) tbpartition by hash(`col9`) tbpartitions 3
+) dbpartition by right_shift(`col1`, 5) tbpartition by right_shift(`col2`, 5) tbpartitions 4;
+
+## test str hash
+convert create table `tb7` (
+`col0` int(11) not null auto_increment,
+`col1` varchar(20) default NULL,
+`col2` varchar(20),
+`col3` varchar(20),
+`col4` varchar(20),
+`col5` varchar(20),
+`col6` varchar(20)，
+`col7` varchar(20),
+`col8` varchar(20),
+`col9` varchar(20),
+primary key(`col0`),
+unique clustered index `tb7_k1`(`col1`, `col2`) dbpartition by str_hash(`col1`, -1, 5) tbpartition by str_hash(`col2`, -1, 10) tbpartitions 4,
+clustered index `tb7_k2` (`col2`, `col3`) dbpartition by hash(`col2`) tbpartition by str_hash(`col3`, -1, 10) tbpartitions 4,
+unique global index `tb7_k3` (`col5`, `col6`, `col7`) dbpartition by str_hash(`col5`, -1, 10) tbpartition by hash(`col7`) tbpartitions 2,
+global index `tb7_k4` (`col8`, `col9`) dbpartition by str_hash(`col9`, -1, 8) tbpartition by str_hash(`col8`, 10, -1) tbpartitions 3
+) dbpartition by str_hash(`col1`, -1, 5) tbpartition by str_hash(`col2`, -1, 10) tbpartitions 4;
+
+## test uni hash
+convert create table `tb8` (
+`col0` int(11) not null auto_increment,
+`col1` int(11) default NULL,
+`col2` varchar(20),
+`col3` varchar(20),
+`col4` varchar(20),
+`col5` varchar(20),
+`col6` varchar(20)，
+`col7` varchar(20),
+`col8` varchar(20),
+`col9` varchar(20),
+primary key(`col0`),
+unique clustered index `tb8_k1`(`col1`, `col2`) dbpartition by uni_hash(`col1`)  tbpartition by uni_hash(`col2`) tbpartitions 4,
+clustered index `tb8_k2` (`col2`, `col3`) dbpartition by hash(`col2`) tbpartition by uni_hash(`col3`) tbpartitions 4,
+unique global index `tb8_k3` (`col5`, `col6`) dbpartition by uni_hash(`col5`) tbpartition by hash(`col6`) tbpartitions 2,
+global index `tb8_k4` (`col8`, `col9`) dbpartition by uni_hash(`col8`) tbpartition by uni_hash(`col9`) tbpartitions 3
+) dbpartition by uni_hash(`col1`) tbpartition by uni_hash(`col2`) tbpartitions 4;
+  
+## test week
+convert create table `tb9` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime，
+`col7` datetime,
+`col8` datetime,
+primary key(`col0`),
+unique clustered index `tb9_k1`(`col1`, `col3`) dbpartition by yyyydd(`col1`) tbpartition by week(`col3`) tbpartitions 4,
+clustered index `tb9_k2` (`col4`, `col3`) dbpartition by hash(`col4`) tbpartition by week(`col3`) tbpartitions 4,
+unique global index `tb9_k3` (`col6`, `col5`) dbpartition by yyyydd(`col5`) tbpartition by week(`col6`) tbpartitions 4,
+global index  `tb9_k4` (`col6`, `col7`) covering (`col8`) dbpartition by yyyydd(`col6`) tbpartition by week(`col7`) tbpartitions 4
+) dbpartition by yyyymm(`col1`) tbpartition by week(`col2`) tbpartitions 4;
+
+
+## test yyyydd
+convert create table `tb10` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime，
+`col7` datetime,
+`col8` datetime,
+primary key(`col0`),
+unique clustered index `tb10_k1`(`col1`, `col3`) dbpartition by yyyydd(`col1`) tbpartition by yyyydd(`col3`) tbpartitions 4,
+clustered index `tb10_k2` (`col4`, `col3`) dbpartition by hash(`col4`) tbpartition by yyyydd(`col3`) tbpartitions 4,
+unique global index `tb10_k3` (`col6`, `col5`) dbpartition by yyyydd(`col5`) tbpartition by hash(`col6`) tbpartitions 4,
+global index  `tb10_k4` (`col6`, `col7`) dbpartition by yyyydd(`col6`) tbpartition by yyyydd(`col7`) tbpartitions 4
+) dbpartition by yyyydd(`col1`) tbpartition by yyyydd(`col2`) tbpartitions 4;
+  
+## test yyyymm
+convert create table `tb11` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime，
+`col7` datetime,
+`col8` datetime,
+primary key(`col0`),
+unique clustered index `tb11_k1`(`col1`, `col3`) dbpartition by yyyymm(`col1`) tbpartition by yyyymm(`col3`) tbpartitions 4,
+clustered index `tb11_k2` (`col4`, `col3`) dbpartition by hash(`col4`) tbpartition by yyyymm(`col3`) tbpartitions 4,
+unique global index `tb11_k3` (`col6`, `col5`) dbpartition by yyyymm(`col5`) tbpartition by hash(`col6`) tbpartitions 4,
+global index  `tb11_k4` (`col6`, `col7`) covering (`col8`) dbpartition by yyyymm(`col6`) tbpartition by yyyymm(`col7`) tbpartitions 4
+) dbpartition by yyyymm(`col1`) tbpartition by yyyymm(`col2`) tbpartitions 4;
+
+## test yyyyweek
+convert create table `tb12` (
+`col0` date,
+`col1` date default NULL,
+`col2` date,
+`col3` date,
+`col4` datetime,
+`col5` datetime,
+`col6` datetime，
+`col7` datetime,
+`col8` datetime,
+primary key(`col0`),
+unique clustered index `tb12_k1`(`col1`, `col3`) dbpartition by yyyyweek(`col1`) tbpartition by yyyyweek(`col3`) tbpartitions 4,
+clustered index `tb12_k2` (`col4`, `col3`) dbpartition by hash(`col4`) tbpartition by yyyyweek(`col3`) tbpartitions 4,
+unique global index `tb12_k3` (`col6`, `col5`) dbpartition by yyyyweek(`col5`) tbpartition by hash(`col6`) tbpartitions 4,
+global index  `tb12_k4` (`col6`, `col7`) covering (`col8`) dbpartition by yyyyweek(`col6`) tbpartition by yyyyweek(`col7`) tbpartitions 4
+) dbpartition by yyyyweek(`col1`) tbpartition by yyyyweek(`col2`) tbpartitions 4;

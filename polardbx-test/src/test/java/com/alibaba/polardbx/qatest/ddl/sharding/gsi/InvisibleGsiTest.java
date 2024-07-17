@@ -432,7 +432,7 @@ public class InvisibleGsiTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
 
         //change visibility
-        JdbcUtil.executeFaied(tddlConnection, MessageFormat.format(
+        JdbcUtil.executeFailed(tddlConnection, MessageFormat.format(
             "alter table {0} alter index key_name invisible",
             TABLE_NAME
         ), "only global index's visibility can be altered");

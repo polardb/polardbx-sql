@@ -9,7 +9,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -434,7 +433,7 @@ public class InvisibleGsiTest extends BaseAutoPartitionNewPartition {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
 
         //change visibility
-        JdbcUtil.executeFaied(tddlConnection, MessageFormat.format(
+        JdbcUtil.executeFailed(tddlConnection, MessageFormat.format(
             "alter table {0} alter index key_name invisible",
             TABLE_NAME
         ), "only global index's visibility can be altered");

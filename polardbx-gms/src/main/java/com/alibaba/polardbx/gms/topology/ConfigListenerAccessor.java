@@ -50,6 +50,10 @@ public class ConfigListenerAccessor extends AbstractAccessor {
 
     private static final String SELECT_DATA_ID_BY_PREFIX = SELECT_ALL_DATA_ID + " where data_id like ?";
 
+    private static final String SELECT_DATA_ID_ONLY_BY_PREFIX =
+        "select data_id from `" + CONFIG_LISTENER_TABLE + "`" + " where status="
+            + ConfigListenerRecord.DATA_ID_STATUS_NORMAL + " and  data_id like ?";
+
     private static final String SELECT_DATA_ID_SET_BY_GMT_MODIFIED =
         "select * from `" + CONFIG_LISTENER_TABLE + "` where gmt_modified >= DATE_ADD(now(),INTERVAL -1 * ? MINUTE)";
 
@@ -109,6 +113,20 @@ public class ConfigListenerAccessor extends AbstractAccessor {
             String likeFilter = dataIdPrefix + "%";
             Map<Integer, ParameterContext> selectParams = MetaDbUtil.buildStringParameters(new String[] {likeFilter});
             return MetaDbUtil.query(SELECT_DATA_ID_BY_PREFIX, selectParams, ConfigListenerRecord.class, connection);
+        } catch (Exception e) {
+            MetaDbLogUtil.META_DB_LOG
+                .error("Failed to query active records the system table '" + CONFIG_LISTENER_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query active records",
+                CONFIG_LISTENER_TABLE, e.getMessage());
+        }
+    }
+
+    public List<ConfigListenerDataIdRecord> getDataIdsOnlyByPrefix(String dataIdPrefix) {
+        try {
+            String likeFilter = dataIdPrefix + "%";
+            Map<Integer, ParameterContext> selectParams = MetaDbUtil.buildStringParameters(new String[] {likeFilter});
+            return MetaDbUtil.query(SELECT_DATA_ID_ONLY_BY_PREFIX, selectParams, ConfigListenerDataIdRecord.class,
+                connection);
         } catch (Exception e) {
             MetaDbLogUtil.META_DB_LOG
                 .error("Failed to query active records the system table '" + CONFIG_LISTENER_TABLE + "'", e);

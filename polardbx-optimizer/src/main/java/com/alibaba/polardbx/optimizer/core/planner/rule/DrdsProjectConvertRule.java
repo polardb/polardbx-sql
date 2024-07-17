@@ -17,29 +17,32 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalProject;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptUtil;
-import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.logical.LogicalProject;
-import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.rex.RexNode;
 
 public class DrdsProjectConvertRule extends ConverterRule {
-    public static final DrdsProjectConvertRule INSTANCE = new DrdsProjectConvertRule();
+    public static final DrdsProjectConvertRule SMP_INSTANCE = new DrdsProjectConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsProjectConvertRule() {
+    public static final DrdsProjectConvertRule COL_INSTANCE = new DrdsProjectConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsProjectConvertRule(Convention outConvention) {
         super(LogicalProject.class, RelOptUtil.PROJECT_PREDICATE, Convention.NONE,
-            DrdsConvention.INSTANCE, RelFactories.LOGICAL_BUILDER,
+            outConvention, RelFactories.LOGICAL_BUILDER,
             "DrdsProjectConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
@@ -47,12 +50,12 @@ public class DrdsProjectConvertRule extends ConverterRule {
         final LogicalProject project = (LogicalProject) rel;
         return new PhysicalProject(
             rel.getCluster(),
-            project.getTraitSet().simplify().replace(DrdsConvention.INSTANCE),
-            convert(project.getInput(), project.getInput().getTraitSet().simplify().replace(DrdsConvention.INSTANCE)),
+            project.getTraitSet().simplify().replace(outConvention),
+            convert(project.getInput(), project.getInput().getTraitSet().simplify().replace(outConvention)),
             project.getProjects(),
             project.getRowType(),
             project.getOriginalRowType(),
             project.getVariablesSet()
-            );
+        );
     }
 }

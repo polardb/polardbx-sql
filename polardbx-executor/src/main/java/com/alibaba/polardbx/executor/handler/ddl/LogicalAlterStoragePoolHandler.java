@@ -19,20 +19,33 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
+import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.factory.storagepool.AlterStoragePoolAddNodeJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.storagepool.AlterStoragePoolDrainNodeJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.storagepool.CreateStoragePoolJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.handler.LogicalRebalanceHandler;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
+import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterStoragePool;
+import org.apache.calcite.rel.RelNode;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.text.DecimalFormat;
+import java.util.List;
 
 public class LogicalAlterStoragePoolHandler extends LogicalCommonDdlHandler {
 
@@ -85,4 +98,53 @@ public class LogicalAlterStoragePoolHandler extends LogicalCommonDdlHandler {
             return false;
         }
     }
+//
+//    @Override
+//    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+//        BaseDdlOperation logicalDdlPlan = (BaseDdlOperation) logicalPlan;
+//
+//        initDdlContext(logicalDdlPlan, executionContext);
+//
+//        // Validate the plan on file storage first
+//        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
+//        // Validate the plan first and then return immediately if needed.
+//        boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
+//
+//        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName());
+//
+//        if (isNewPartDb) {
+//            setPartitionDbIndexAndPhyTable(logicalDdlPlan);
+//        } else {
+//            setDbIndexAndPhyTable(logicalDdlPlan);
+//        }
+//
+//        // Build a specific DDL job by subclass.
+//        DdlJob ddlJob = returnImmediately ?
+//            new TransientDdlJob() :
+//            buildDdlJob(logicalDdlPlan, executionContext);
+//
+//        // Validate the DDL job before request.
+//        validateJob(logicalDdlPlan, ddlJob, executionContext);
+//
+//
+//        // Handle the client DDL request on the worker side.
+//        handleDdlRequest(ddlJob, executionContext);
+//
+//        if (executionContext.getDdlContext().isSubJob()) {
+//            return buildSubJobResultCursor(ddlJob, executionContext);
+//        }
+//        return buildCursor(logicalDdlPlan, ddlJob, executionContext);
+//    }
+//
+//    protected Cursor buildCursor(RelNode logicalPlan, DdlJob ddlJob, ExecutionContext ec) {
+//
+//        ArrayResultCursor result = new ArrayResultCursor("AlterStoragePool");
+//        result.addColumn("PLAN_ID", DataTypes.LongType);
+//        Long planId = fetchPlanIdFromMetaDb(ddlJob, ec);
+//
+//
+//
+//
+//        return result;
+//    }
 }

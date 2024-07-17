@@ -19,14 +19,17 @@ package com.alibaba.polardbx.manager.handler;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.manager.ManagerConnection;
 import com.alibaba.polardbx.manager.parser.ManagerParseShow;
+import com.alibaba.polardbx.manager.response.ShowBinlog;
 import com.alibaba.polardbx.manager.response.ShowCclStats;
 import com.alibaba.polardbx.manager.response.ShowCollation;
+import com.alibaba.polardbx.manager.response.ShowColumnarRead;
 import com.alibaba.polardbx.manager.response.ShowCommand;
 import com.alibaba.polardbx.manager.response.ShowConfig;
 import com.alibaba.polardbx.manager.response.ShowConnection;
 import com.alibaba.polardbx.manager.response.ShowConnectionSQL;
 import com.alibaba.polardbx.manager.response.ShowDataSource;
 import com.alibaba.polardbx.manager.response.ShowDatabase;
+import com.alibaba.polardbx.manager.response.ShowDirectMemory;
 import com.alibaba.polardbx.manager.response.ShowDiscardLog;
 import com.alibaba.polardbx.manager.response.ShowHelp;
 import com.alibaba.polardbx.manager.response.ShowHtc;
@@ -58,6 +61,9 @@ public final class ShowHandler {
             break;
         case ManagerParseShow.COLLATION:
             ShowCollation.execute(c);
+            break;
+        case ManagerParseShow.COLUMNAR_R:
+            ShowColumnarRead.execute(c);
             break;
         case ManagerParseShow.CONNECTION:
             ShowConnection.execute(c);
@@ -133,6 +139,12 @@ public final class ShowHandler {
             break;
         case ManagerParseShow.TRANS_STATS:
             ShowTransStats.execute(c);
+            break;
+        case ManagerParseShow.BINLOG:
+            ShowBinlog.execute(c);
+            break;
+        case ManagerParseShow.DIRECT_MEM:
+            ShowDirectMemory.execute(c);
             break;
         default:
             c.writeErrMessage(ErrorCode.ER_YES, "Unsupported statement");

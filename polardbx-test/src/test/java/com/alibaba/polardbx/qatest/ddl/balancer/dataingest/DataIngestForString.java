@@ -43,6 +43,7 @@ public class DataIngestForString extends DataIngest {
         int k = ThreadLocalRandom.current().nextInt(dataRows);
         ps.setInt(2, k);
         this.kSum += k;
+        this.kSum = this.kSum % MOD_DIVISOR;
     }
 
     @Override

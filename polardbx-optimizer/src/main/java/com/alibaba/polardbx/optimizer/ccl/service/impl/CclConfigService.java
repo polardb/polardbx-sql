@@ -16,25 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.ccl.service.impl;
 
-import com.alibaba.polardbx.config.ConfigDataHandler;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.optimizer.ccl.common.CclRuleInfo;
-import com.alibaba.polardbx.optimizer.ccl.common.CclRuleRecordsWrapper;
-import com.alibaba.polardbx.optimizer.ccl.common.CclTriggerInfo;
-import com.alibaba.polardbx.optimizer.ccl.common.RescheduleTask;
-import com.alibaba.polardbx.optimizer.ccl.service.ICclConfigService;
-import com.alibaba.polardbx.optimizer.ccl.service.ICclService;
-import com.alibaba.polardbx.optimizer.ccl.service.ICclTriggerService;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-import com.google.common.hash.BloomFilter;
-import com.google.common.hash.Funnel;
-import com.google.common.hash.PrimitiveSink;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
@@ -44,7 +31,19 @@ import com.alibaba.polardbx.gms.metadb.ccl.CclTriggerAccessor;
 import com.alibaba.polardbx.gms.metadb.ccl.CclTriggerRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.ccl.common.CclRuleInfo;
+import com.alibaba.polardbx.optimizer.ccl.common.CclRuleRecordsWrapper;
+import com.alibaba.polardbx.optimizer.ccl.common.CclTriggerInfo;
+import com.alibaba.polardbx.optimizer.ccl.common.RescheduleTask;
+import com.alibaba.polardbx.optimizer.ccl.service.ICclConfigService;
+import com.alibaba.polardbx.optimizer.ccl.service.ICclService;
+import com.alibaba.polardbx.optimizer.ccl.service.ICclTriggerService;
 import com.alibaba.polardbx.optimizer.utils.CclUtils;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import com.google.common.hash.BloomFilter;
+import com.google.common.hash.Funnel;
+import com.google.common.hash.PrimitiveSink;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
@@ -89,8 +88,6 @@ public class CclConfigService implements ICclConfigService {
     private volatile List<CclRuleRecord> latestCclRuleRecords;
     private volatile long latestVersion;
 
-    private ConfigDataHandler configDataHandler;
-
     private String dataId;
 
     /**
@@ -133,7 +130,6 @@ public class CclConfigService implements ICclConfigService {
                                     rescheduleTask.getWaitStartTs() + cclRuleInfo.getCclRuleRecord().waitTimeout * 1000
                                         + CclUtils.generateNoise();
                                 if (rescheduleTask == polledRescheduleTask && deadline < ts) {
-                                    rescheduleTask.getReschedulable().setRescheduled(false, null);
                                     rescheduleTask.getCclRuleInfo().getCclRuntimeStat().killedCount.getAndIncrement();
                                     rescheduleTask.getReschedulable()
                                         .handleRescheduleError(new TddlRuntimeException(ErrorCode.ERR_CCL, String
@@ -143,6 +139,7 @@ public class CclConfigService implements ICclConfigService {
                                                 cclRuleInfo.getCclRuleRecord().id,
                                                 (ts - rescheduleTask.getWaitStartTs())),
                                             null));
+                                    rescheduleTask.getReschedulable().setRescheduled(false, null);
                                     cclRuleInfo.getStayCount().decrementAndGet();
                                 } else {
                                     cclRuleInfo.getWaitQueue().addFirst(polledRescheduleTask);
@@ -418,16 +415,6 @@ public class CclConfigService implements ICclConfigService {
     @Override
     public List<CclTriggerInfo> getCclTriggerInfos() {
         return this.cclTriggerInfoList;
-    }
-
-    @Override
-    public void setConfigDataHandler(ConfigDataHandler configDataHandler) {
-        this.configDataHandler = configDataHandler;
-    }
-
-    @Override
-    public ConfigDataHandler getConfigDataHandler() {
-        return this.configDataHandler;
     }
 
     @Override

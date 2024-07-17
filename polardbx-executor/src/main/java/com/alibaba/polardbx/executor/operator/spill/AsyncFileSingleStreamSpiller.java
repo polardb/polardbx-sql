@@ -29,13 +29,13 @@
  */
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.io.Closer;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.optimizer.spill.LocalSpillMonitor;
+import com.google.common.io.Closer;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -147,7 +147,6 @@ public class AsyncFileSingleStreamSpiller
             throw new RuntimeException(e);
         }
     }
-
 
     @Override
     public ListenableFuture<List<Chunk>> getAllSpilledChunks() {

@@ -20,8 +20,11 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumberExpr;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.handler.LogicalShowCreateTablesForShardingDatabaseHandler;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
@@ -29,13 +32,13 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePartitionsPrepareData;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartSpecNormalizationParams;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
@@ -48,8 +51,10 @@ import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionBy;
+import org.apache.calcite.sql.SqlPartitionByCoHash;
 import org.apache.calcite.sql.SqlPartitionByHash;
 import org.apache.calcite.sql.SqlPartitionByList;
 import org.apache.calcite.sql.SqlPartitionByRange;
@@ -57,6 +62,7 @@ import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
 import org.apache.calcite.sql.SqlSubPartition;
 import org.apache.calcite.sql.SqlSubPartitionBy;
+import org.apache.calcite.sql.SqlSubPartitionByCoHash;
 import org.apache.calcite.sql.SqlSubPartitionByHash;
 import org.apache.calcite.sql.SqlSubPartitionByList;
 import org.apache.calcite.sql.SqlSubPartitionByRange;
@@ -124,6 +130,43 @@ public class AlterRepartitionUtils {
             alterTablePartitionKey.getDbPartitionBy(),
             alterTablePartitionKey.getTablePartitionBy(),
             alterTablePartitionKey.getTbpartitions(),
+            null,
+            null,
+            false
+        );
+
+        indexDef.setBroadcast(alterTablePartitionKey.isBroadcast());
+        indexDef.setSingle(alterTablePartitionKey.isSingle());
+        indexDef.setPrimaryTableNode(primaryTableNode);
+        indexDef.setPrimaryTableDefinition(primaryTableDefinition);
+        return indexDef;
+    }
+
+    /**
+     * for sharding db omc
+     */
+    public static SqlIndexDefinition initIndexInfo4DrdsOmc(String newIndexName,
+                                                           List<String> indexKeys,
+                                                           List<String> coverKeys,
+                                                           boolean isPrimary,
+                                                           boolean isUnique,
+                                                           String primaryTableDefinition,
+                                                           SqlCreateTable primaryTableNode,
+                                                           SqlAlterTablePartitionKey alterTablePartitionKey) {
+        if (StringUtils.isEmpty(newIndexName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, "partition table name is empty");
+        }
+
+        SqlIndexDefinition indexDef = genSqlIndexDefinition(
+            primaryTableNode,
+            indexKeys,
+            coverKeys,
+            isPrimary,
+            isUnique,
+            newIndexName,
+            alterTablePartitionKey.getDbPartitionBy(),
+            alterTablePartitionKey.getTablePartitionBy(),
+            alterTablePartitionKey.getTbpartitions(),
             null
         );
 
@@ -183,7 +226,10 @@ public class AlterRepartitionUtils {
             null,
             null,
             null,
-            alterTableNewPartition.getSqlPartition()
+            alterTableNewPartition.getSqlPartition(),
+            StringUtils.isNotEmpty(alterTableNewPartition.getTargetImplicitTableGroupName()) ?
+                new SqlIdentifier(alterTableNewPartition.getTargetImplicitTableGroupName(), SqlParserPos.ZERO) : null,
+            StringUtils.isNotEmpty(alterTableNewPartition.getTargetImplicitTableGroupName())
         );
 
         indexDef.setBroadcast(alterTableNewPartition.isBroadcast());
@@ -203,7 +249,9 @@ public class AlterRepartitionUtils {
                                                    boolean isPrimary,
                                                    boolean isUnique,
                                                    String primaryTableDefinition,
-                                                   SqlCreateTable primaryTableNode) {
+                                                   SqlCreateTable primaryTableNode,
+                                                   SqlNode tableGroupName,
+                                                   boolean withImplicitTablegroup) {
         if (StringUtils.isEmpty(newIndexName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, "partition table name is empty");
         }
@@ -228,7 +276,9 @@ public class AlterRepartitionUtils {
             null,
             null,
             null,
-            genPartitioning(partitionKeys)
+            genPartitioning(partitionKeys),
+            tableGroupName,
+            withImplicitTablegroup
         );
 
         indexDef.setBroadcast(false);
@@ -248,7 +298,9 @@ public class AlterRepartitionUtils {
                                                    boolean isUnique,
                                                    String primaryTableDefinition,
                                                    SqlCreateTable primaryTableNode,
-                                                   SqlNode partitioning) {
+                                                   SqlNode partitioning,
+                                                   SqlNode tableGroup,
+                                                   boolean withImplicitTablegroup) {
         if (StringUtils.isEmpty(newIndexName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, "partition table name is empty");
         }
@@ -263,7 +315,9 @@ public class AlterRepartitionUtils {
             null,
             null,
             null,
-            partitioning
+            partitioning,
+            tableGroup,
+            withImplicitTablegroup
         );
 
         indexDef.setBroadcast(false);
@@ -280,7 +334,9 @@ public class AlterRepartitionUtils {
     public static List<SqlIndexDefinition> initIndexInfo(String schemaName, int partitions,
                                                          List<AlterTablePartitionsPrepareData> createGsiPrepareData,
                                                          SqlCreateTable primaryTableNode,
-                                                         String primaryTableDefinition) {
+                                                         String primaryTableDefinition,
+                                                         SqlNode tableGroupName,
+                                                         boolean withImplicitTablegroup) {
         if (createGsiPrepareData == null || createGsiPrepareData.isEmpty()) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, "partition table name is empty");
         }
@@ -328,7 +384,9 @@ public class AlterRepartitionUtils {
                 null,
                 null,
                 null,
-                sqlPartitionBy
+                sqlPartitionBy,
+                tableGroupName,
+                withImplicitTablegroup
             );
 
             indexDef.setPrimaryTableNode(primaryTableNode);
@@ -345,6 +403,17 @@ public class AlterRepartitionUtils {
                                                             boolean isPrimary, boolean isUnique, String newTableName,
                                                             SqlNode dbPartitionBy, SqlNode tbPartitionBy,
                                                             SqlNode tbPartitions, SqlNode partitioning) {
+        return genSqlIndexDefinition(sqlCreateTable, partitionColumnList, coveringColumnList, isPrimary, isUnique,
+            newTableName, dbPartitionBy, tbPartitionBy, tbPartitions, partitioning, null, false);
+    }
+
+    private static SqlIndexDefinition genSqlIndexDefinition(SqlCreateTable sqlCreateTable,
+                                                            List<String> partitionColumnList,
+                                                            List<String> coveringColumnList,
+                                                            boolean isPrimary, boolean isUnique, String newTableName,
+                                                            SqlNode dbPartitionBy, SqlNode tbPartitionBy,
+                                                            SqlNode tbPartitions, SqlNode partitioning,
+                                                            SqlNode tableGroup, boolean withImplicitTablegroup) {
         if (sqlCreateTable == null || partitionColumnList == null || partitionColumnList.isEmpty()) {
             return null;
         }
@@ -377,7 +446,54 @@ public class AlterRepartitionUtils {
             tbPartitions,
             partitioning,
             new LinkedList<>(),
+            tableGroup,
+            withImplicitTablegroup,
+            true);
+    }
+
+    public static SqlIndexDefinition genSqlIndexDefinition(List<String> partitionColumnList,
+                                                           List<String> coveringColumnList,
+                                                           boolean isUnique,
+                                                           SqlIndexDefinition.SqlIndexType indexType,
+                                                           String indexName,
+                                                           String tableName,
+                                                           SqlNode dbPartitionBy,
+                                                           SqlNode tbPartitionBy,
+                                                           SqlNode tbPartitions,
+                                                           SqlNode partitioning,
+                                                           boolean withImplicitTableGroup) {
+        if (partitionColumnList == null || partitionColumnList.isEmpty()) {
+            return null;
+        }
+
+        List<SqlIndexColumnName> indexColumns = partitionColumnList.stream()
+            .map(e -> new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(e, SqlParserPos.ZERO), null, null))
+            .collect(Collectors.toList());
+
+        List<SqlIndexColumnName> coveringColumns = coveringColumnList.stream()
+            .map(e -> new SqlIndexColumnName(SqlParserPos.ZERO, new SqlIdentifier(e, SqlParserPos.ZERO), null, null))
+            .collect(Collectors.toList());
+
+        return SqlIndexDefinition.columnarIndex(
+            SqlParserPos.ZERO,
+            false,
             null,
+            isUnique ? "UNIQUE" : null,
+            indexType,
+            new SqlIdentifier(indexName, SqlParserPos.ZERO),
+            new SqlIdentifier(tableName, SqlParserPos.ZERO),
+            indexColumns,
+            coveringColumns,
+            dbPartitionBy,
+            tbPartitionBy,
+            tbPartitions,
+            partitioning,
+            null,
+            new LinkedList<>(),
+            null,
+            null,
+            new LinkedList<>(),
+            withImplicitTableGroup,
             true);
     }
 
@@ -405,13 +521,15 @@ public class AlterRepartitionUtils {
             columns.addAll(subPartitionBy.getColumns());
         }
         for (SqlNode column : columns) {
-            if (column instanceof SqlBasicCall) {
-                for (SqlNode col : ((SqlBasicCall) column).operands) {
-                    shardColumns.addAll(((SqlIdentifier) col).names);
-                }
-            } else {
-                shardColumns.addAll(((SqlIdentifier) column).names);
-            }
+//            if (column instanceof SqlBasicCall) {
+//                for (SqlNode col : ((SqlBasicCall) column).operands) {
+//                    shardColumns.addAll(((SqlIdentifier) col).names);
+//                }
+//            } else {
+//                shardColumns.addAll(((SqlIdentifier) column).names);
+//            }
+            String colName = PartitionInfoUtil.findPartitionColumn(column);
+            shardColumns.add(colName);
         }
         return new ArrayList<>(shardColumns);
     }
@@ -625,6 +743,66 @@ public class AlterRepartitionUtils {
 //        return sqlPartitionBy;
 //    }
 
+    public static SqlAlterTablePartitionKey generateSqlPartitionKey(String schemaName, String tableName,
+                                                                    ExecutionContext executionContext) {
+        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        if (null == executorContext) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
+        }
+        GsiMetaManager metaManager = executorContext.getGsiManager().getGsiMetaManager();
+        List<GsiMetaManager.TableRecord> tableRecords = metaManager.getTableRecords(schemaName, tableName);
+        GsiMetaManager.TableRecord tableRecord = tableRecords.get(0);
+
+        SQLExpr dbPartitionBy = LogicalShowCreateTablesForShardingDatabaseHandler.buildPartitionBy(
+            tableRecord.getDbPartitionPolicy(),
+            tableRecord.getDbPartitionKey(),
+            false
+        );
+
+        SQLExpr tbPartitionBy = LogicalShowCreateTablesForShardingDatabaseHandler.buildPartitionBy(
+            tableRecord.getTbPartitionPolicy(),
+            tableRecord.getTbPartitionKey(),
+            true
+        );
+
+        final SQLExpr dbPartitions =
+            tableRecord.getDbPartitionCount() == null ? null : new SQLNumberExpr(tableRecord.getDbPartitionCount());
+
+        final SQLExpr tbPartitions =
+            tableRecord.getTbPartitionCount() == null ? null : new SQLNumberExpr(tableRecord.getTbPartitionCount());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("alter table ");
+        sb.append(SqlIdentifier.surroundWithBacktick(tableName));
+
+        if (tableRecord.getTableType() == GsiMetaManager.TableType.SHARDING.getValue()
+            || tableRecord.getTableType() == GsiMetaManager.TableType.GSI.getValue()) {
+            if (dbPartitionBy != null) {
+                sb.append(" dbpartition by ").append(dbPartitionBy);
+                if (dbPartitions != null) {
+                    sb.append(" dbpartitions ").append(dbPartitions);
+                }
+
+                if (tbPartitionBy != null) {
+                    sb.append(" tbpartition by ").append(tbPartitionBy);
+                    if (tbPartitions != null) {
+                        sb.append(" tbpartitions ").append(tbPartitions);
+                    }
+                }
+            }
+        } else if (tableRecord.getTableType() == GsiMetaManager.TableType.SINGLE.getValue()) {
+            sb.append(" single");
+        } else if (tableRecord.getTableType() == GsiMetaManager.TableType.BROADCAST.getValue()) {
+            sb.append(" broadcast");
+        }
+
+        String sql = sb.toString();
+
+        SqlNodeList astList = new FastsqlParser().parse(sql, executionContext);
+
+        return (SqlAlterTablePartitionKey) astList.get(0);
+    }
+
     public static SqlPartitionBy generateSqlPartitionBy(String tableName,
                                                         String tableGroupName,
                                                         PartitionInfo srcPartitionInfo,
@@ -704,6 +882,11 @@ public class AlterRepartitionUtils {
         case KEY:
             sqlPartitionBy = new SqlPartitionByHash(true, false, SqlParserPos.ZERO);
             sourceSql = "key(" + builder + ") PARTITIONS " + refPartByDef.getPartitions().size();
+            break;
+        case CO_HASH:
+            sqlPartitionBy = new SqlPartitionByCoHash(SqlParserPos.ZERO);
+            sourceSql =
+                "co_hash(" + builder + ") PARTITIONS " + refPartByDef.getPartitions().size();
             break;
         case RANGE:
             sqlPartitionBy = new SqlPartitionByRange(SqlParserPos.ZERO);
@@ -823,6 +1006,14 @@ public class AlterRepartitionUtils {
             if (refSubPartByDef.isUseSubPartTemplate()) {
                 sourceSql += " SUBPARTITIONS " + refSubPartByDef.getPartitions().size();
             }
+            break;
+        case CO_HASH:
+            sqlSubPartitionBy = new SqlSubPartitionByCoHash(SqlParserPos.ZERO);
+            sourceSql = "co_hash(" + builder + ")";
+            if (refSubPartByDef.isUseSubPartTemplate()) {
+                sourceSql += " SUBPARTITIONS " + refSubPartByDef.getPartitions().size();
+            }
+
             break;
         case UDF_HASH:
             sqlSubPartitionBy = new SqlSubPartitionByUdfHash(SqlParserPos.ZERO);

@@ -86,3 +86,68 @@
         LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`id` = 1) AND (`create_time` > 0))")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` IN (...))")
+
+-
+  sql: |
+    select create_time, (select id from test_hash_tb2 a where a.name = b.name and a.create_time=b.create_time and a.id=b.id) as id from test_hash_tb b where b.id = 1 and b.create_time > 0;
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb2,test_hash_tb", shardcount=4, sql="select `create_time`, (((select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = `t`.`name`) and (`create_time` = `t`.`create_time`) and (`id` = `t`.`id`))))) as `id` from (select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` where ((`id` = 1) and (`create_time` > 0))) as `t`")
+-
+  sql: |
+    select create_time, (select id from test_tb4 a where a.name = b.name and a.name1=b.name1 and a.name2=b.name2) as id from test_tb4 b where b.id = 1 and b.create_time > 0;
+  plan: |
+    project(create_time="create_time", id="id0", cor=[$cor2])
+      semibkajoin(condition="name = name and name1 = name1 and name2 = name2", type="left")
+        logicalview(tables="optest_0001.test_tb4", sql="select `id`, `name`, `name1`, `name2`, `create_time` from `test_tb4` as `test_tb4` where ((`id` = 1) and (`create_time` > 0))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_tb4", shardcount=4, sql="select `id`, `name`, `name1`, `name2` from `test_tb4` as `test_tb4` where (((`name`, `name1`, `name2`)) in (...))")
+-
+  sql: |
+    select create_time, (select id from test_tb4 a where a.name2 = b.name2 and a.name1=b.name1 and a.name=b.name and a.create_time=b.create_time) as id from test_tb4 b where b.id = 1 ;
+  plan: |
+    project(create_time="create_time", id="id0", cor=[$cor])
+      semibkajoin(condition="name2 = name2 and name1 = name1 and name = name and create_time = create_time", type="left")
+        logicalview(tables="optest_0001.test_tb4", sql="select `id`, `name`, `name1`, `name2`, `create_time` from `test_tb4` as `test_tb4` where (`id` = 1)")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_tb4", shardcount=4, sql="select `id`, `name`, `name1`, `name2`, `create_time` from `test_tb4` as `test_tb4` where (((`name2`, `name1`, `name`, `create_time`)) in (...))")
+-
+  sql: |
+    select create_time from test_tb4 b where b.id >all (select id from test_tb4 a where a.name2 = b.name2 and a.name1=b.name1 and a.name=b.name and a.create_time=b.create_time) ;
+  plan: |
+    project(create_time="create_time")
+      seminljoin(condition="id <= id and name2 = name2 and name1 = name1 and name = name and create_time = create_time", type="anti")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_tb4", shardcount=4, sql="select `id`, `name`, `name1`, `name2`, `create_time` from `test_tb4` as `test_tb4`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_tb4", shardcount=4, sql="select `id`, `name`, `name1`, `name2`, `create_time` from `test_tb4` as `test_tb4`")
+
+-
+  sql: |
+    /*TDDL:ENABLE_DIRECT_PLAN=false ENABLE_POST_PLANNER=false ENABLE_PUSH_CORRELATE=false FORBID_APPLY_CACHE=true*/
+    SELECT
+      (SELECT EXISTS
+        (SELECT *
+         FROM single_tbl d
+         WHERE d.id = a.id)
+      OR EXISTS
+        (SELECT *
+         FROM single_tbl1 f
+         WHERE f.bid = a.bid)),
+      (SELECT 1
+       FROM single_tbl2 g
+       WHERE g.name = a.name)
+    FROM single_tbl2 a
+  plan: |
+    project(expr$0="$f0", (((select 1 from single_tbl2 as g where (g.name = a.name))))="1", cor=[$cor])
+      semihashjoin(condition="name = name", type="left", build="inner")
+        correlateapply(cor=$cor, leftconditions=[], opkind=null, type=left)
+          logicalview(tables="optest_0000.single_tbl2", sql="select `id`, `bid`, `name` from `single_tbl2` as `single_tbl2`")
+          project($f0="apply_boolean or apply_boolean0")
+            correlateapply(cor=$cor, leftconditions=[], opkind=null, type=semi)
+              project(apply_boolean="apply_boolean")
+                correlateapply(cor=$cor, leftconditions=[], opkind=null, type=semi)
+                  values(table="dual")
+                  logicalview(tables="optest_0000.single_tbl", sql="select `id`, `bid`, `name` from `single_tbl` as `single_tbl` where (`id` = `id`)")
+              logicalview(tables="optest_0000.single_tbl1", sql="select `id`, `bid`, `name` from `single_tbl1` as `single_tbl1` where (`bid` = `bid`)")
+        logicalview(tables="optest_0000.single_tbl2", sql="select 1 as `1`, `name` from `single_tbl2` as `single_tbl2`")

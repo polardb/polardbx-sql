@@ -13,15 +13,7 @@ public class RandomInt {
     }
 
     public int[] uniformDistribution(int scale, int offset, int count) {
-        return MyUtils.double2int(
-            MyUtils.offset(
-                MyUtils.scale(
-                    randomDouble.uniformDistribution(count),
-                    scale
-                ),
-                offset
-            )
-        );
+        return MyUtils.scaleAndOffsetToInt(randomDouble.uniformDistribution(count), scale, offset);
     }
 
     public int normalDistribution(int scale, int offset) {

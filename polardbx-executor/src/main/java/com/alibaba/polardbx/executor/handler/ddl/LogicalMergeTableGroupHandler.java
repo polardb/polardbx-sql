@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.ddl.job.factory.AlterJoinGroupJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.MergeTableGroupJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
@@ -33,10 +32,8 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterJoinGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalMergeTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MergeTableGroupPreparedData;
-import org.apache.calcite.sql.SqlAlterTableGroup;
 
 /**
  * Created by luoyanxin.

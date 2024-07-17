@@ -42,12 +42,10 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * @author luoyanxin
@@ -86,7 +84,7 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
 
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, alterTableGroupMergePartitionPreparedData.getTableGroupName(),
-                tablesVersion, true, alterTableGroupMergePartitionPreparedData.getTargetPhysicalGroups());
+                tablesVersion, true, alterTableGroupMergePartitionPreparedData.getTargetPhysicalGroups(), false);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupMergePartitionPreparedData.getTableGroupName());
 
@@ -165,6 +163,7 @@ public class AlterTableGroupMergePartitionJobFactory extends AlterTableGroupBase
                 syncTableGroupTask
             ));
         executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
+        attacheCdcFinalMarkTask(executableDdlJob);
         return executableDdlJob;
     }
 

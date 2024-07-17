@@ -99,6 +99,11 @@ public interface FailPointKey {
     String FP_PHYSICAL_DDL_TIMEOUT = "FP_PHYSICAL_DDL_TIMEOUT";
 
     /**
+     * changeset catchup task sleep time (ms)
+     */
+    String FP_CATCHUP_TASK_SUSPEND = "FP_CATCHUP_TASK_SUSPEND";
+
+    /**
      * set @FP_RANDOM_BACKFILL_EXCEPTION='30';
      * Backfill时随机失败，可指定失败概率
      */
@@ -289,5 +294,44 @@ public interface FailPointKey {
      * 调整expire local partition的超时时间，单位是秒
      */
     String FP_TTL_PAUSE = "FP_TTL_PAUSE";
+
+    /**
+     * Fail before creating tmp tables at status 0.
+     * No tmp table is created.
+     */
+    String FP_TRX_LOG_TB_FAILED_BEFORE_CREATE_TMP = "FP_TRX_LOG_TB_FAILED_BEFORE_CREATE_TMP";
+
+    /**
+     * Fail during creating tmp tables at status 0.
+     * At least one DN finishes creating tmp table.
+     * Status is still 0.
+     */
+    String FP_TRX_LOG_TB_FAILED_DURING_CREATE_TMP = "FP_TRX_LOG_TB_FAILED_DURING_CREATE_TMP";
+
+    /**
+     * Fail before switching tables at status 1.
+     */
+    String FP_TRX_LOG_TB_FAILED_BEFORE_SWITCH_TABLE = "FP_TRX_LOG_TB_FAILED_BEFORE_SWITCH_TABLE";
+
+    /**
+     * Fail during switching tables at status 1.
+     * At least one DN finishes switching tables.
+     * Status is still 1.
+     */
+    String FP_TRX_LOG_TB_FAILED_DURING_SWITCH_TABLE = "FP_TRX_LOG_TB_FAILED_DURING_SWITCH_TABLE";
+
+    /**
+     * Fail before dropping archive tables at status 2.
+     */
+    String FP_TRX_LOG_TB_FAILED_BEFORE_DROP_TABLE = "FP_TRX_LOG_TB_FAILED_BEFORE_DROP_TABLE";
+
+    /**
+     * Fail during switching tables at status 2.
+     * At least one DN finishes dropping archive tables.
+     * Status is still 2.
+     */
+    String FP_TRX_LOG_TB_FAILED_DURING_DROP_TABLE = "FP_TRX_LOG_TB_FAILED_DURING_DROP_TABLE";
+
+    String FP_UPDATE_TABLES_VERSION_ERROR = "FP_UPDATE_TABLES_VERSION_ERROR";
 
 }

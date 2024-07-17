@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.chunk.BigIntegerBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -118,5 +119,17 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
                 accumulator.ifPresent(a -> a.appendHash(Long.hashCode(longValue)));
             }
         }
+    }
+
+    @Override
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+            return;
+        }
+
+        byte[] bytes = row.getBytes(columnId);
+        long longVal = ColumnProvider.bigBitLongFromByte(bytes, bytes.length);
+        blockBuilder.writeBigInteger(BigInteger.valueOf(longVal));
     }
 }

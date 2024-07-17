@@ -25,7 +25,6 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -34,7 +33,6 @@ import java.sql.SQLException;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.HLL_REGBYTES;
 import static com.alibaba.polardbx.executor.statistic.ndv.HyperLogLogUtil.bitToInt;

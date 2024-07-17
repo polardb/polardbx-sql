@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
@@ -67,6 +68,7 @@ public class AlterPartitionCountValidateTask extends BaseValidateTask {
     protected void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, primaryTable, executionContext);
         GsiValidator.validateGsiSupport(schemaName, executionContext);
+        TableValidator.validateTableWithCCI(schemaName, primaryTable, executionContext, SqlKind.ALTER_TABLE);
 
         // validate current gsi existence
         tableNameMap.keySet().stream()

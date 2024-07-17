@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.collect.ImmutableMap;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.collect.ImmutableMap;
 
 import java.util.Map;
 import java.util.function.ToIntFunction;

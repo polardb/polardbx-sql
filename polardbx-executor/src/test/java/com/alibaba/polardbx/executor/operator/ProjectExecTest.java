@@ -50,4 +50,21 @@ public class ProjectExecTest extends BaseExecTest {
             .row(1, 3).row(2, 4).row(3, 5).row(4, 6).build();
         execForSmpMode(project, expects, false);
     }
+
+    @Test
+    public void projectMaintainPartitionInfo() {
+        RowChunksBuilder rowChunksBuilder =
+            RowChunksBuilder.rowChunksBuilder(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.IntegerType)
+                .row(1, 2, 3).row(2, 3, 4).row(3, 4, 5).row(4, 5, 6).partIndex(2).partCount(4);
+        MockExec input = rowChunksBuilder.buildExec();
+
+        context.setParams(new Parameters());
+
+        List<IExpression> expressions = Arrays.asList(new InputRefExpression(0), new InputRefExpression(2));
+        List<DataType> columns = ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
+        ProjectExec project = new ProjectExec(input, expressions, columns, context);
+        List<Chunk> expects = RowChunksBuilder.rowChunksBuilder(DataTypes.IntegerType, DataTypes.IntegerType)
+            .row(1, 3).row(2, 4).row(3, 5).row(4, 6).build();
+        execForSmpMode(project, expects, 2, 4);
+    }
 }

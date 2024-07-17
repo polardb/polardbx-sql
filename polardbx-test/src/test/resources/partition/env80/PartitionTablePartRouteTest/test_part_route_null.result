@@ -9,16 +9,16 @@ part_rs
 p24
 explain select c,b,a from hash_tbl where (c,b,a)=(null,null,null);
 Logical ExecutionPlan
-LogicalView(tables="hash_tbl[p24]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl` AS `hash_tbl` WHERE ((`c`, `b`, `a`) =(NULL, NULL, NULL))")
+PhyTableOperation(tables="hash_tbl[p24]", sql="SELECT `hash_tbl`.`c` AS `c`, `hash_tbl`.`b` AS `b`, `hash_tbl`.`a` AS `a` FROM ? AS `hash_tbl` WHERE ((`hash_tbl`.`c`, `hash_tbl`.`b`, `hash_tbl`.`a`) =(NULL, NULL, NULL))")
 explain select c,b,a from hash_tbl where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
-LogicalView(tables="hash_tbl[p24]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl` AS `hash_tbl` WHERE ((`c`, `b`, `a`) =(NULL, ?, ?))")
+PhyTableOperation(tables="hash_tbl[p24]", sql="SELECT `hash_tbl`.`c` AS `c`, `hash_tbl`.`b` AS `b`, `hash_tbl`.`a` AS `a` FROM ? AS `hash_tbl` WHERE ((`hash_tbl`.`c`, `hash_tbl`.`b`, `hash_tbl`.`a`) =(NULL, ?, ?))", params="10000,2020-12-12 00:00:00")
 select part_route('','hash_tbl', null,"2020-12-12 00:00:00",10000) as part_rs;
 part_rs
 p24
 explain select c,b,a from hash_tbl where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
-LogicalView(tables="hash_tbl[p24]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl` AS `hash_tbl` WHERE ((`c`, `b`, `a`) =(NULL, ?, ?))")
+PhyTableOperation(tables="hash_tbl[p24]", sql="SELECT `hash_tbl`.`c` AS `c`, `hash_tbl`.`b` AS `b`, `hash_tbl`.`a` AS `a` FROM ? AS `hash_tbl` WHERE ((`hash_tbl`.`c`, `hash_tbl`.`b`, `hash_tbl`.`a`) =(NULL, ?, ?))", params="10000,2020-12-12 00:00:00")
 create table if not exists hash_tbl2 (a bigint unsigned, b timestamp, c varchar(128) not null)
 partition by hash(c,b,a) partitions 64;
 select part_route('','hash_tbl2', null,null,null) as part_rs;
@@ -26,13 +26,13 @@ part_rs
 p47
 explain select c,b,a from hash_tbl2 where (c,b,a)=(null,null,null);
 Logical ExecutionPlan
-LogicalView(tables="hash_tbl2[p47]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl2` AS `hash_tbl2` WHERE ((`c`, `b`, `a`) =(NULL, NULL, NULL))")
+PhyTableOperation(tables="hash_tbl2[p47]", sql="SELECT `hash_tbl2`.`c` AS `c`, `hash_tbl2`.`b` AS `b`, `hash_tbl2`.`a` AS `a` FROM ? AS `hash_tbl2` WHERE ((`hash_tbl2`.`c`, `hash_tbl2`.`b`, `hash_tbl2`.`a`) =(NULL, NULL, NULL))")
 select part_route('','hash_tbl2', null,"2020-12-12 00:00:00",10000) as part_rs;
 part_rs
 p9
 explain select c,b,a from hash_tbl2 where (c,b,a)=(null,"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
-LogicalView(tables="hash_tbl2[p9]", sql="SELECT `c`, `b`, `a` FROM `hash_tbl2` AS `hash_tbl2` WHERE ((`c`, `b`, `a`) =(NULL, ?, ?))")
+PhyTableOperation(tables="hash_tbl2[p9]", sql="SELECT `hash_tbl2`.`c` AS `c`, `hash_tbl2`.`b` AS `b`, `hash_tbl2`.`a` AS `a` FROM ? AS `hash_tbl2` WHERE ((`hash_tbl2`.`c`, `hash_tbl2`.`b`, `hash_tbl2`.`a`) =(NULL, ?, ?))", params="10000,2020-12-12 00:00:00")
 drop table if exists rc_tbl;
 create table if not exists rc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
 partition by range columns(c,b,a) (
@@ -45,13 +45,13 @@ part_rs
 p0
 explain select c,b,a from rc_tbl where (c,b,a)=(null,null,null);
 Logical ExecutionPlan
-LogicalView(tables="rc_tbl[p0]", sql="SELECT `c`, `b`, `a` FROM `rc_tbl` AS `rc_tbl` WHERE ((`c`, `b`, `a`) =(NULL, NULL, NULL))")
+PhyTableOperation(tables="rc_tbl[p0]", sql="SELECT `rc_tbl`.`c` AS `c`, `rc_tbl`.`b` AS `b`, `rc_tbl`.`a` AS `a` FROM ? AS `rc_tbl` WHERE ((`rc_tbl`.`c`, `rc_tbl`.`b`, `rc_tbl`.`a`) =(NULL, NULL, NULL))")
 select part_route('','rc_tbl', 'H',"2020-12-12 00:00:00",10000) as part_rs;
 part_rs
 p0
 explain select c,b,a from rc_tbl where (c,b,a)=('H',"2020-12-12 00:00:00",10000);
 Logical ExecutionPlan
-LogicalView(tables="rc_tbl[p0]", sql="SELECT `c`, `b`, `a` FROM `rc_tbl` AS `rc_tbl` WHERE ((`c`, `b`, `a`) =(?, ?, ?))")
+PhyTableOperation(tables="rc_tbl[p0]", sql="SELECT `rc_tbl`.`c` AS `c`, `rc_tbl`.`b` AS `b`, `rc_tbl`.`a` AS `a` FROM ? AS `rc_tbl` WHERE ((`rc_tbl`.`c`, `rc_tbl`.`b`, `rc_tbl`.`a`) =(?, ?, ?))", params="2020-12-12 00:00:00,H,10000")
 create table if not exists lc_tbl (a bigint unsigned, b datetime, c varchar(128) not null)
 partition by list columns(c) (
 partition p0 values in ('1','4','8'),
@@ -63,10 +63,10 @@ part_rs
 p2
 explain select c,b,a from lc_tbl where (c)=(null);
 Logical ExecutionPlan
-LogicalView(tables="lc_tbl[p2]", sql="SELECT `c`, `b`, `a` FROM `lc_tbl` AS `lc_tbl` WHERE (`c` = ?)")
+PhyTableOperation(tables="lc_tbl[p2]", sql="SELECT `lc_tbl`.`c` AS `c`, `lc_tbl`.`b` AS `b`, `lc_tbl`.`a` AS `a` FROM ? AS `lc_tbl` WHERE (`lc_tbl`.`c` = ?)", params="NULL")
 select part_route('','lc_tbl', '6') as part_rs;
 part_rs
 p2
 explain select c,b,a from lc_tbl where (c)=('6');
 Logical ExecutionPlan
-LogicalView(tables="lc_tbl[p2]", sql="SELECT `c`, `b`, `a` FROM `lc_tbl` AS `lc_tbl` WHERE (`c` = ?)")
+PhyTableOperation(tables="lc_tbl[p2]", sql="SELECT `lc_tbl`.`c` AS `c`, `lc_tbl`.`b` AS `b`, `lc_tbl`.`a` AS `a` FROM ? AS `lc_tbl` WHERE (`lc_tbl`.`c` = ?)", params="6")

@@ -38,7 +38,12 @@ public class GsiBackfill extends AbstractRelNode {
     private String baseTableName;
     private List<String> indexNames; // Add one column and backfill one multi clustered index.
     private List<String> columns;
+    private boolean useChangeSet = false;
+    private boolean modifyColumn = false;
+    private boolean mirrorCopy = false;
+    private List<String> modifyStringColumns;
     private Map<String, String> virtualColumnMap;
+    private Map<String, String> backfillColumnMap;
 
     public static GsiBackfill createGsiBackfill(String schemaName, String baseTableName, String indexName,
                                                 ExecutionContext ec) {
@@ -119,5 +124,45 @@ public class GsiBackfill extends AbstractRelNode {
 
     public void setVirtualColumnMap(Map<String, String> virtualColumnMap) {
         this.virtualColumnMap = virtualColumnMap;
+    }
+
+    public Map<String, String> getBackfillColumnMap() {
+        return backfillColumnMap;
+    }
+
+    public void setBackfillColumnMap(Map<String, String> backfillColumnMap) {
+        this.backfillColumnMap = backfillColumnMap;
+    }
+
+    public boolean isUseChangeSet() {
+        return useChangeSet;
+    }
+
+    public void setUseChangeSet(boolean useChangeSet) {
+        this.useChangeSet = useChangeSet;
+    }
+
+    public void setMirrorCopy(boolean mirrorCopy) {
+        this.mirrorCopy = mirrorCopy;
+    }
+
+    public boolean isMirrorCopy() {
+        return mirrorCopy;
+    }
+
+    public List<String> getModifyStringColumns() {
+        return modifyStringColumns;
+    }
+
+    public void setModifyStringColumns(List<String> modifyStringColumns) {
+        this.modifyStringColumns = modifyStringColumns;
+    }
+
+    public void setModifyColumn(boolean modifyColumn) {
+        this.modifyColumn = modifyColumn;
+    }
+
+    public boolean isModifyColumn() {
+        return modifyColumn;
     }
 }

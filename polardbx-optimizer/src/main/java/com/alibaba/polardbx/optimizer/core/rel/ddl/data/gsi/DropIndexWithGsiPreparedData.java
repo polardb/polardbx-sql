@@ -16,14 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
 import lombok.Data;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
-public class DropIndexWithGsiPreparedData {
+public class DropIndexWithGsiPreparedData extends DdlPreparedData {
 
     private String schemaName;
 
@@ -42,4 +44,13 @@ public class DropIndexWithGsiPreparedData {
             .anyMatch(x -> x.isOnClustered() && x.getTableName().equalsIgnoreCase(clusteredIndexName));
     }
 
+    public void setDdlVersionId(@NotNull Long versionId) {
+        super.setDdlVersionId(versionId);
+        if (null != globalIndexPreparedData) {
+            globalIndexPreparedData.setDdlVersionId(versionId);
+        }
+        if (null != localIndexPreparedDataList) {
+            localIndexPreparedDataList.forEach(p -> p.setDdlVersionId(versionId));
+        }
+    }
 }

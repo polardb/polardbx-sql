@@ -93,7 +93,13 @@ public class SqlFunction extends SqlOperator {
         NON_PUSHDOWN_FUNCTION.add("RELEASE_ALL_LOCKS");
         NON_PUSHDOWN_FUNCTION.add("IS_FREE_LOCK");
         NON_PUSHDOWN_FUNCTION.add("IS_USED_LOCK");
+        NON_PUSHDOWN_FUNCTION.add("HYPERLOGLOG");
         NON_PUSHDOWN_FUNCTION.add("PART_HASH");
+        SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_CHECK");
+        SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_READ");
+        SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_WRITE");
+        SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_WRITE_STRICT_CHECK");
+        SqlFunction.NON_PUSHDOWN_FUNCTION.add("LBAC_USER_WRITE_LABEL");
 
         // Time Function
         DYNAMIC_FUNCTION.add("CURDATE");

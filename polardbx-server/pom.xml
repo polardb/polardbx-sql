@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.18-SNAPSHOT</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -79,13 +79,29 @@
             <artifactId>junit</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.google.truth</groupId>
+            <artifactId>truth</artifactId>
+            <version>${truth.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>${mockito.verison}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
             <!-- deploy模块的packaging通常是jar，如果项目中没有java 源代码或资源文件，加上这一段配置使项目能通过构建 -->
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
+                <version>2.4</version>
                 <configuration>
                     <archive>
                         <addMavenDescriptor>true</addMavenDescriptor>

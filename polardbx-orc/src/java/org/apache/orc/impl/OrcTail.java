@@ -29,6 +29,7 @@ import org.apache.orc.Reader;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.StripeStatistics;
 import org.apache.orc.TypeDescription;
+import org.apache.orc.customized.ORCMemoryAllocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,7 +85,7 @@ public final class OrcTail {
           chunk = (BufferChunk) chunk.next) {
         len += chunk.getLength();
       }
-      ByteBuffer result = ByteBuffer.allocate(len);
+      ByteBuffer result = ORCMemoryAllocator.getInstance().allocateOnHeap(len);
       for(BufferChunk chunk=serializedTail;
           chunk != null;
           chunk = (BufferChunk) chunk.next) {

@@ -1,0 +1,36 @@
+drop table if exists `example_table`;
+CREATE TABLE example_table (
+id INT AUTO_INCREMENT,
+sample_int INT DEFAULT 0,
+sample_int1 INT DEFAULT '0',
+sample_int2 INT null,
+sample_bigint BIGINT DEFAULT 0,
+sample_decimal DECIMAL(10,2) DEFAULT 0.00,
+sample_float FLOAT DEFAULT 0.0,
+sample_double DOUBLE DEFAULT 0.0,
+sample_double1 DOUBLE DEFAULT '0.0',
+sample_bit BIT(8) DEFAULT b'1',
+sample_bit1 BIT(8) DEFAULT b'1111',
+sample_boolean BOOLEAN DEFAULT FALSE,
+sample_char CHAR(10) DEFAULT 'default',
+sample_varchar VARCHAR(255) DEFAULT 'default',
+sample_blob BLOB,
+sample_enum ENUM('value1', 'value2', 'value3') DEFAULT 'value1',
+sample_set SET('a', 'b', 'c', 'd') DEFAULT 'a',
+sample_date DATE DEFAULT '1000-01-01',
+sample_time TIME DEFAULT '00:00:00',
+sample_datetime DATETIME DEFAULT CURRENT_TIMESTAMP,
+sample_datetime1 DATETIME DEFAULT '1970-01-01 00:00:00',
+sample_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+sample_year YEAR DEFAULT 1901,
+sample_year1 YEAR DEFAULT '1901',
+sample_binary BINARY(8) DEFAULT '0',
+sample_binary1 BINARY(8) DEFAULT b'0',
+sample_binary2 BINARY(8) DEFAULT 0x48656C6C6F,
+sample_binary3 BINARY(8) DEFAULT 'hello',
+sample_varbinary VARBINARY(255) DEFAULT 'hello',
+sample_varbinary1 VARBINARY(255) DEFAULT 0x48656C6C6F,
+PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/show create table `example_table`;
+drop table if exists `example_table`;

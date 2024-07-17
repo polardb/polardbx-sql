@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.operator.util.bloomfilter;
 
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
 import java.util.HashMap;

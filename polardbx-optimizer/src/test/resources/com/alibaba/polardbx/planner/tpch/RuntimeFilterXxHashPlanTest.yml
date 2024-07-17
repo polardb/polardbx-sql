@@ -141,7 +141,6 @@
         exchange(distribution=hash[1], collation=[])
           logicalview(tables="[0000-0003].partsupp_[00-15]", shardcount=16, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")
 
-
 #测试生成bloomfilter(left join)
 - sql: |
     /*+TDDL:ENABLE_RUNTIME_FILTER=true BLOOM_FILTER_PROBE_MIN_ROW_COUNT=-1 FORCE_ENABLE_RUNTIME_FILTER=("p_partkey,s_nationkey") ENABLE_MPP=true*/

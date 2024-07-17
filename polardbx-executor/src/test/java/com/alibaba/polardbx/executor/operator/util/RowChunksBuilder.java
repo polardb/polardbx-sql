@@ -54,7 +54,7 @@ public class RowChunksBuilder {
     private RowChunkBuilder builder;
     private final Optional<List<Integer>> hashChannels;
 
-    RowChunksBuilder(Iterable<DataType> types) {
+    public RowChunksBuilder(Iterable<DataType> types) {
         this(false, Optional.empty(), types);
     }
 
@@ -86,6 +86,16 @@ public class RowChunksBuilder {
         return this;
     }
 
+    public RowChunksBuilder partIndex(int partIndex) {
+        builder.setPartIndex(partIndex);
+        return this;
+    }
+
+    public RowChunksBuilder partCount(int partCount) {
+        builder.setPartCount(partCount);
+        return this;
+    }
+
     public RowChunksBuilder row(Object... values) {
         builder.row(values);
         return this;
@@ -107,7 +117,10 @@ public class RowChunksBuilder {
 
     public RowChunksBuilder chunkBreak() {
         if (!builder.isEmpty()) {
-            chunks.add(builder.build());
+            Chunk chunk = builder.build();
+            chunk.setPartIndex(builder.getPartIndex());
+            chunk.setPartCount(builder.getPartCount());
+            chunks.add(chunk);
             builder = rowChunkBuilder(types);
         }
         return this;

@@ -28,7 +28,7 @@ partition by hash(myf1bintbint2bint(c1, c2))
 partitions 2;
 
 
-  ## error_msg: $# multi columns with using partition #$
+  ## error_msg: $# partition column count mismatch #$
 create table h_myf1bintbint2bint_4(
 c1 bigint not null,
 c2 bigint not null

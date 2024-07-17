@@ -37,6 +37,9 @@ public enum DdlType {
     ALTER_FUNCTION,
     PUSH_DOWN_UDF,
 
+    CREATE_VIEW,
+    ALTER_VIEW,
+    DROP_VIEW,
     CREATE_JAVA_FUNCTION,
     DROP_JAVA_FUNCTION,
 
@@ -45,6 +48,7 @@ public enum DdlType {
     DROP_GLOBAL_INDEX,
     RENAME_GLOBAL_INDEX,
     CHECK_GLOBAL_INDEX,
+    CHECK_COLUMNAR_INDEX,
 
     MOVE_DATABASE,
     REBALANCE,
@@ -57,7 +61,22 @@ public enum DdlType {
 
     ALTER_TABLE_SET_TABLEGROUP,
     ALTER_TABLEGROUP_ADD_TABLE,
+    ALTER_TABLE_RENAME_PARTITION,
+
+    ALTER_TABLE_ADD_COLUMN,
+    ALTER_TABLE_DROP_COLUMN,
+    ALTER_TABLE_MODIFY_COLUMN,
+    ALTER_TABLE_CHANGE_COLUMN,
+
     MERGE_TABLEGROUP;
+
+    public enum AlterColumnSpecification {
+        AlterColumnName,
+        AlterColumnType,
+        AlterColumnDefault,
+        AlterColumnComment,
+        AlterColumnOrder
+    }
 
     public static boolean needDefaultDdlShareLock(DdlType type) {
         if (type == null) {

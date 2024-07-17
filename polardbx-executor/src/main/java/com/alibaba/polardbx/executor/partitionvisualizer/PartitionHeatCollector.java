@@ -16,24 +16,23 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.PartitionHeatInfo;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxis;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayer;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualTypeConstants;
+import org.apache.commons.collections.CollectionUtils;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.PartitionHeatInfo;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxis;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualTypeConstants;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayer;
-
-import org.apache.commons.collections.CollectionUtils;
-
 /**
  * 分区热度信息采集
+ *
  * @author ximing.yd
- * @date 2021/12/20 上午11:17
  */
 public class PartitionHeatCollector {
 
@@ -84,6 +83,5 @@ public class PartitionHeatCollector {
         axis.setValuesMap(valuesMap);
         return axis;
     }
-
 
 }

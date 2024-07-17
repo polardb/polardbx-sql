@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.operator.spill;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.Closeable;
 import java.util.Iterator;

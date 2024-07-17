@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
@@ -40,7 +39,6 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 
 import java.sql.Connection;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -113,7 +111,7 @@ public class AlterTableGroupBaseBuilder {
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
-        return tableGroupConfig.getAllTables().stream().map(o -> o.getTableName()).collect(Collectors.toList());
+        return tableGroupConfig.getAllTables();
     }
 
     public Map<String, List<PhyDdlTableOperation>> getNewPartitionsPhysicalPlansMap() {

@@ -12,6 +12,7 @@ import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.ManualHotSpotDataG
 import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.NormalDistributionDataGenerator;
 import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.UniformDistributionDataGenerator;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
@@ -35,14 +36,18 @@ public class BalanceCase extends BaseTestCase {
     }
 
     void runCase() throws InterruptedException, SQLException {
-        tddlConnection = getPolardbxConnection();
-        runCreateDatabase(balanceCaseBean.schemaName);
-        for (BalanceCaseBean.SingleBalanceCaseBean singleBalanceCaseBean : balanceCaseBean.getSingleBalanceCaseBeans()) {
-            runCreateTableActions(singleBalanceCaseBean.createTableActions);
-            runManipulateActions(singleBalanceCaseBean.manipulateActions);
-            runCheckDataDistributionActions(singleBalanceCaseBean.dataDistributionCheckActions);
+        List<Boolean> usePhysicalBackfill = Lists.newArrayList(Boolean.FALSE, Boolean.TRUE);
+        for (boolean usePhyicalBackfill : usePhysicalBackfill) {
+            tddlConnection = getPolardbxConnection();
+            runCreateDatabase(balanceCaseBean.schemaName);
+            for (BalanceCaseBean.SingleBalanceCaseBean singleBalanceCaseBean : balanceCaseBean.getSingleBalanceCaseBeans()) {
+                runCreateTableActions(singleBalanceCaseBean.createTableActions);
+                runManipulateActions(singleBalanceCaseBean.manipulateActions, usePhyicalBackfill,
+                    balanceCaseBean.schemaName);
+                runCheckDataDistributionActions(singleBalanceCaseBean.dataDistributionCheckActions);
+            }
+            Thread.sleep(2 * 1000);
         }
-        Thread.sleep(2 * 1000);
 //        runDropDatabase(balanceCaseBean.schemaName);
 
     }
@@ -94,7 +99,7 @@ public class BalanceCase extends BaseTestCase {
             DataGenerator dataGenerator =
                 fromDistribution(createTableAction.keyDistribution, createTableAction.distributionParameter);
             DataLoader dataLoader = DataLoader.create(tddlConnection, tableName, dataGenerator);
-            dataLoader.batchInsert(createTableAction.getRowNum());
+            dataLoader.batchInsert(createTableAction.getRowNum(), false);
         }
     }
 
@@ -122,31 +127,57 @@ public class BalanceCase extends BaseTestCase {
 
     void waitTillSatisfiy(String conditionStmt, List<String> expectedConditionStmt, List<Integer> columns)
         throws InterruptedException {
+        Long loopTimeoutTimes = 3600 / 2L;
         Boolean flag = false;
         Long waitInterval = 2 * 1000L;
         if (conditionStmt == null) {
             return;
         }
-        while (!flag) {
+        while (!flag && loopTimeoutTimes >= 0) {
+            loopTimeoutTimes--;
             Thread.sleep(waitInterval);
             List<List<Object>> results = JdbcUtil.getAllResult(JdbcUtil.executeQuery(conditionStmt, tddlConnection));
             flag = compareResult(results, expectedConditionStmt, columns);
         }
+        if (loopTimeoutTimes < 0) {
+            throw new RuntimeException("wait timeout for this case!");
+        }
     }
 
-    void runManipulateActions(List<BalanceCaseBean.ManipulateAction> manipulateActions) throws InterruptedException {
+    void doAnalyzeOnTable(String schemaName, String table) {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "analyze table " + table);
+    }
+
+    void doAnalyzeOnDb(String schemaName) {
+        List<String> tables =
+            JdbcUtil.getAllResult(JdbcUtil.executeQuerySuccess(tddlConnection, "show tables")).stream()
+                .map(o -> o.get(0).toString()).collect(
+                    Collectors.toList());
+        for (String table : tables) {
+            doAnalyzeOnTable(schemaName, table);
+        }
+    }
+
+    void runManipulateActions(List<BalanceCaseBean.ManipulateAction> manipulateActions, boolean usePhysicalBackfill,
+                              String schemaName)
+        throws InterruptedException {
         for (int i = 0; i < manipulateActions.size(); i++) {
             BalanceCaseBean.ManipulateAction manipulateAction = manipulateActions.get(i);
             waitTillSatisfiy(manipulateAction.conditionStmt, manipulateAction.expectedConditionResult,
                 manipulateAction.expectedConditionColumns);
-            LOG.info("execute " + manipulateAction.manipulateStmt);
+//            doAnalyzeOnDb(schemaName);
+            String hint = usePhysicalBackfill ?
+                "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=true, PHYSICAL_BACKFILL_SPEED_TEST=false)*/" :
+                "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=false)*/";
+            String stmt = hint + manipulateAction.manipulateStmt;
+            LOG.info("execute " + stmt);
             List<List<Object>> results = new ArrayList<>();
             if (manipulateAction.getException() == null) {
                 if (manipulateAction.expectedManipulateResult == null
                     || manipulateAction.expectedManipulateResult.isEmpty()) {
-                    JdbcUtil.executeUpdateSuccess(tddlConnection, manipulateAction.manipulateStmt);
+                    JdbcUtil.executeUpdateSuccess(tddlConnection, stmt);
                 } else {
-                    ResultSet resultSet = JdbcUtil.executeQuery(manipulateAction.manipulateStmt, tddlConnection);
+                    ResultSet resultSet = JdbcUtil.executeQuery(stmt, tddlConnection);
                     results = JdbcUtil.getAllResult(resultSet);
                     String assertTips =
                         String.format("expected %s, while get %s", manipulateAction.expectedManipulateResult, results);
@@ -156,7 +187,7 @@ public class BalanceCase extends BaseTestCase {
                 }
             } else {
                 try {
-                    JdbcUtil.executeQuery(manipulateAction.manipulateStmt, tddlConnection);
+                    JdbcUtil.executeQuery(stmt, tddlConnection);
                 } catch (AssertionError exception) {
                     if (!exception.getMessage().contains(manipulateAction.getException())) {
                         throw exception;

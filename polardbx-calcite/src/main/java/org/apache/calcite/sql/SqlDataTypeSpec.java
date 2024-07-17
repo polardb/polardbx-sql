@@ -25,6 +25,7 @@ import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.sql.SqlWriter.FrameTypeEnum;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.EnumSqlType;
+import org.apache.calcite.sql.type.SetSqlType;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -596,6 +597,11 @@ public class SqlDataTypeSpec extends SqlNode {
             }
         }
 
+        //bit 类型 bit(1) length > 1， 则使用BIG_BIT，兼容DataTypeUtil.jdbcTypeToRelDataType
+        if (sqlTypeName == SqlTypeName.BIT && precision > 1) {
+            sqlTypeName = SqlTypeName.BIG_BIT;
+        }
+
         // For time/datetime/timestamp types
         if (SqlTypeFamily.DATETIME.getTypeNames().contains(sqlTypeName) && sqlTypeName != SqlTypeName.DATE) {
             // fix scale and precision of datetime type.
@@ -617,6 +623,15 @@ public class SqlDataTypeSpec extends SqlNode {
                 list.add(stringValue);
             }
             RelDataType newType = new EnumSqlType(typeFactory.getTypeSystem(), SqlTypeName.ENUM, list, null, null);
+            type = ((SqlTypeFactoryImpl) typeFactory).canonize(newType);
+        } else if (drdsTypeName == DrdsTypeName.SET) {
+            List<String> list = new ArrayList();
+            for (SqlNode sqlNode : this.collectionVals.getList()) {
+                assert sqlNode instanceof SqlLiteral;
+                final String stringValue = ((SqlLiteral) sqlNode).getStringValue();
+                list.add(stringValue);
+            }
+            RelDataType newType = new SetSqlType(typeFactory.getTypeSystem(), sqlTypeName, list);
             type = ((SqlTypeFactoryImpl) typeFactory).canonize(newType);
         } else if ((precision >= 0) && (scale >= 0)) {
             assert sqlTypeName.allowsPrecScale(true, true);
@@ -716,7 +731,8 @@ public class SqlDataTypeSpec extends SqlNode {
         MEDIUMTEXT(SqlTypeName.VARCHAR),
         LONGTEXT(SqlTypeName.VARCHAR),
         ENUM(SqlTypeName.ENUM),
-        SET(SqlTypeName.VARCHAR),
+        //metaDb中构建用的char
+        SET(SqlTypeName.CHAR),
         GEOMETRY(SqlTypeName.GEOMETRY),
         POINT(SqlTypeName.BINARY),
         LINESTRING(SqlTypeName.BINARY),
@@ -735,7 +751,7 @@ public class SqlDataTypeSpec extends SqlNode {
         ;
 
         public static final EnumSet TYPE_WITH_LENGTH =
-            EnumSet.of(TINYINT, SMALLINT, MEDIUMINT, INTEGER, BIGINT, DOUBLE, REAL, FLOAT, DECIMAL);
+            EnumSet.of(TINYINT, SMALLINT, MEDIUMINT, INTEGER, BIGINT, DOUBLE, REAL, FLOAT, DECIMAL, BIT);
 
         public static final EnumSet TYPE_WITH_LENGTH_DECIMALS =
             EnumSet.of(DOUBLE, REAL, FLOAT, DECIMAL);
@@ -806,6 +822,34 @@ public class SqlDataTypeSpec extends SqlNode {
 
     public boolean isUnsigned() {
         return unsigned;
+    }
+
+    public boolean isZerofill() {
+        return zerofill;
+    }
+
+    public boolean isBinary() {
+        return binary;
+    }
+
+    public SqlLiteral getDecimals() {
+        return decimals;
+    }
+
+    public SqlLiteral getCharSet() {
+        return charSet;
+    }
+
+    public SqlLiteral getCollation() {
+        return collation;
+    }
+
+    public SqlNodeList getCollectionVals() {
+        return collectionVals;
+    }
+
+    public SqlLiteral getFsp() {
+        return fsp;
     }
 }
 

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.type.EnumSqlType;
+import org.apache.calcite.sql.type.SetSqlType;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 
 import java.util.Optional;
@@ -99,10 +100,15 @@ public class DataTypeFactoryImpl implements DataTypeFactory {
         case VARCHAR:
             return new VarcharType(charsetName, collationName, precision);
         case CHAR:
-            return new CharType(charsetName, collationName, precision);
+            if (relDataType instanceof SetSqlType) {
+                return new SetType(((SetSqlType) relDataType).getSetValues());
+            } else {
+                return new CharType(charsetName, collationName, precision);
+            }
         case BLOB:
             return DataTypes.BlobType;
         case BINARY:
+            return new BinaryType(precision);
         case VARBINARY:
         case GEOMETRY:
             return DataTypes.BinaryType;

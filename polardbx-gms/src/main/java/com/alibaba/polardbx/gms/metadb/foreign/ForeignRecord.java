@@ -61,9 +61,8 @@ public class ForeignRecord implements SystemTableRecord {
     }
 
     protected Map<Integer, ParameterContext> buildInsertParams() {
-        Map<Integer, ParameterContext> params = new HashMap<>(13);
+        Map<Integer, ParameterContext> params = new HashMap<>(12);
         int index = 0;
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.id);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.schemaName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.indexName);

@@ -10,9 +10,7 @@ import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -75,7 +73,7 @@ public class RoutinesTest extends AutoReadBaseTestCase {
     public void informationSchemaRoutines() throws SQLException {
         try (Connection connection = getPolardbxConnection()) {
             String sql = "select * from information_schema.routines";
-            JdbcUtil.executeFaied(connection, sql, "syntax error");
+            JdbcUtil.executeFailed(connection, sql, "syntax error");
             JdbcUtil.executeSuccess(connection, "/*+TDDL: ORIGIN_CONTENT_IN_ROUTINES = true*/" + sql);
         }
     }

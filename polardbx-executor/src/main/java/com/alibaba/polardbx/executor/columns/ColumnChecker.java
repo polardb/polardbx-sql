@@ -287,10 +287,17 @@ public class ColumnChecker {
             return result;
         };
 
+        ParamManager.setVal(
+            baseEc.getParamManager().getProps(),
+            ConnectionParams.SOCKET_TIMEOUT,
+            Integer.toString(1000 * 60 * 60 * 24 * 7),
+            true
+        );
+
         List<List<Pair<ParameterContext, byte[]>>> result =
             GsiUtils.retryOnException(() -> GsiUtils.wrapWithSingleDbTrx(tm, baseEc, select),
                 e -> Boolean.TRUE,
-                (e, retryCount) -> errConsumer(selectPlan, baseEc, e, retryCount));
+                (e, retryCount) -> errConsumer(plan, baseEc, e, retryCount));
 
         if (!result.isEmpty()) {
             throw GeneralUtil.nestedException(

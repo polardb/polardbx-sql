@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -57,7 +58,8 @@ public class ClearAutoPartitionFlagTask extends BaseGmsTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         //sync have to be successful to continue
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName),
+            SyncScope.ALL);
         executionContext.refreshTableMeta();
     }
 

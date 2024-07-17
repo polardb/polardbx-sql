@@ -33,30 +33,30 @@ public class ${className} extends AbstractVectorizedExpression {
 
     @Override
     public void eval(EvaluationContext ctx) {
-        children[0].eval(ctx);
+		children[0].eval(ctx);
 
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
-        boolean[] nulls1 = leftInputVectorSlot.nulls();
-        boolean leftInputHasNull = leftInputVectorSlot.hasNull();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
-        boolean[] outputNulls = outputVectorSlot.nulls();
-        outputVectorSlot.setHasNull(leftInputVectorSlot.hasNull() | rightIsNull);
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
+		boolean[] nulls1 = leftInputVectorSlot.nulls();
+		boolean leftInputHasNull = leftInputVectorSlot.hasNull();
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		outputVectorSlot.setHasNull(leftInputVectorSlot.hasNull() | rightIsNull);
 
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                boolean null1 = !leftInputHasNull ? false : nulls1[j];
-                boolean b1 = (array1[j] != 0);
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		boolean null1 = !leftInputHasNull ? false : nulls1[j];
+		boolean b1 = (array1[j] != 0);
 
-                <#if operator.classHeader = "And">
+        <#if operator.classHeader = "And">
                 outputNulls[j] = (null1 && rightIsNull) || (null1 && right) || (rightIsNull && b1);
                 res[j] = ((!null1 && !b1) || (!rightIsNull && !right)) ? LongBlock.FALSE_VALUE : LongBlock.TRUE_VALUE;
                 </#if>

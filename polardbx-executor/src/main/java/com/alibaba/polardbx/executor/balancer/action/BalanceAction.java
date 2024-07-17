@@ -51,6 +51,16 @@ public interface BalanceAction {
 
     @JSONField(deserialize = false, serialize = false)
     default Long getBackfillRows() {
-        return -1L;
+        return 0L;
+    }
+
+    @JSONField(deserialize = false, serialize = false)
+    default Long getDiskSize() {
+        return 0L;
+    }
+
+    @JSONField(deserialize = false, serialize = false)
+    default double getLogicalTableCount() {
+        return 0;
     }
 }

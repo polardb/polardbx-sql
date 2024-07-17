@@ -126,7 +126,7 @@ mkdir -p /u01/my3306/{data,log,run,tmp,mysql}
 
 - metadb user：以下采用`my_polarx`
 - metadb database：创建metadb库，以下采用 `polardbx_meta_db_polardbx`
-- 密码加密key（dnPasswordKey)：以下采用 `asdf1234ghjk5678` (如果要修改加密key, 新key的长度要求为16位)
+- 密码加密key（dnPasswordKey)：以下采用 `asdf1234ghjk5678`
 - PolarDB-X默认用户名：默认为 `polarx_root`
 - PolarDB-X默认用户密码：默认为 `123456`，可通过 `-S` 参数修改
 
@@ -199,7 +199,7 @@ mysql -h127.1 -P8527 -upolardbx_root
 - metadb database：和启动PolarDB-X时设置的值保持一致，以下采用 `polardbx_meta_db_polardbx`
 - metadb password：和启动PolarDB-X时设置的值保持一致，需使用密文，以下采用`HMqvkvXZtT7XedA6t2IWY8+D7fJWIJir/mIY1Nf1b58=`
 - metadb port：和启动MySQL时设置的值保持一致，以下采用 `4886`
-- 密码加密key（dnPasswordKey)：和启动PolarDB-X时设置的值保持一致，以下采用 `asdf1234ghjk5678` (如果要修改加密key, 新key的长度要求为16位)
+- 密码加密key（dnPasswordKey)：和启动PolarDB-X时设置的值保持一致，以下采用 `asdf1234ghjk5678`
 - PolarDB-X用户名：和启动PolarDB-X时设置的值保持一致，以下采用默认值 `polardbx_root`
 - PolarDB-X用户密码：和启动PolarDB-X时设置的值保持一致，需使用密文，以下采用默认值`H1AzXc2NmCs61dNjH5nMvA==`
 - PolarDB-X端口：和启动PolarDB-X时设置的值保持一致，以下采用默认值 `8527`

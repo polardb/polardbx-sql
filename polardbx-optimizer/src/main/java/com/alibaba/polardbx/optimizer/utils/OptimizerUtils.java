@@ -20,15 +20,31 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.model.sqljep.Comparative;
+import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
+import com.alibaba.polardbx.common.model.sqljep.DynamicComparative;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.ShardProcessor;
+import com.alibaba.polardbx.optimizer.core.rel.SimpleShardProcessor;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertManager;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertType;
 import com.alibaba.polardbx.optimizer.parse.bean.PreparedParamRef;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
@@ -48,14 +64,19 @@ import java.text.ParseException;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
+import static java.util.Collections.EMPTY_SET;
 
 /**
  * @since 5.0.0
@@ -86,6 +107,21 @@ public class OptimizerUtils {
         } else {
             return EMPTY_KEY;
         }
+    }
+
+    public static Set<Integer> getInParamsIndexes(ExecutionContext ec) {
+        if (ec.getParams() == null) {
+            return EMPTY_SET;
+        }
+        Set<Integer> rs = new HashSet<>();
+        Map<Integer, ParameterContext> currentParameter = ec.getParams().getCurrentParameter();
+        for (int i = 1; i <= currentParameter.size(); i++) {
+            ParameterContext pc = currentParameter.get(i);
+            if (pc != null && pc.getValue() instanceof RawString) {
+                rs.add(i);
+            }
+        }
+        return rs;
     }
 
     public static String buildInExprKey(ExecutionContext ec) {
@@ -241,6 +277,7 @@ public class OptimizerUtils {
         case DROP_SCHEDULE:
         case ALTER_FILESTORAGE:
         case DROP_FILESTORAGE:
+        case CLEAR_FILESTORAGE:
         case CREATE_FILESTORAGE:
         case PAUSE_SCHEDULE:
         case CONTINUE_SCHEDULE:
@@ -254,6 +291,19 @@ public class OptimizerUtils {
         case DROP_STORAGE_POOL:
         case ALTER_STORAGE_POOL:
         case INSPECT_INDEX:
+        case IMPORT_DATABASE:
+        case IMPORT_SEQUENCE:
+        case CREATE_SECURITY_LABEL_COMPONENT:
+        case DROP_SECURITY_LABEL_COMPONENT:
+        case CREATE_SECURITY_LABEL:
+        case DROP_SECURITY_LABEL:
+        case CREATE_SECURITY_POLICY:
+        case DROP_SECURITY_POLICY:
+        case CREATE_SECURITY_ENTITY:
+        case DROP_SECURITY_ENTITY:
+        case GRANT_SECURITY_LABEL:
+        case REVOKE_SECURITY_LABEL:
+        case ALTER_INSTANCE:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {
@@ -342,6 +392,405 @@ public class OptimizerUtils {
         }
 
         return new RelSemiJoinFinder().run(rootRel);
+    }
+
+    public static Map<Pair<String, List<String>>, Parameters> pruningInValue(LogicalView lv,
+                                                                             ExecutionContext context) {
+        if (!DynamicConfig.getInstance().isEnablePruningIn()) {
+            return null;
+        }
+        Set<Integer> shardIndexes = lv.getPushDownOpt().getShardRelatedInTypeParamIndexes();
+        if (shardIndexes != null) {
+            Pair<Integer, RawString>[] rawStrings = findAllRawStrings(shardIndexes, context);
+            int maxPruneTime = context.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME);
+            Parameters requestParams = context.getParams();
+            if (requestParams == null || rawStrings.length == 0) {
+                return null;
+            }
+
+            PruningRawStringStep iterator = OptimizerUtils.iterateRawStrings(rawStrings, maxPruneTime);
+            if (iterator == null) {
+                return null;
+            }
+            // final result
+            Map<Pair<String, List<String>>, Parameters> pruningResult;
+
+            // start pruning
+            long startTime = System.currentTimeMillis();
+            Pair<Integer, PruneRawString>[] pruningPairArr = iterator.getTargetPair();
+
+            // reuse parameter and execution context for pruning
+            Parameters parameters = copy(requestParams, pruningPairArr, false);
+
+            if (lv.isNewPartDbTbl()) {
+                // pruning
+                Pair<Map<List<BitSet>, Parameters>, List<PartPrunedResult>> pair =
+                    pruningPartTable(lv, iterator, parameters, context);
+                if (pair == null) {
+                    // meaning full scan
+                    return null;
+                }
+
+                // merge
+                pruningResult = mergePartTablePruningResult(pair, iterator.getTargetIndex());
+            } else {
+                Pair<Integer, Integer> pair = couldSimpleShard(lv, context);
+                if (pair != null) {
+                    // rawStrings length must be one in simple shard mode
+                    int rawStringIndex = rawStrings[0].getKey();
+                    List<Object> pruningObject = rawStrings[0].getValue().getObjList();
+
+                    // simple pruning
+                    Map<Integer, BitSet> bitSetMap = simplePruning(lv, context, rawStringIndex, pair.getValue());
+
+                    // merge result
+                    pruningResult =
+                        mergeSimplePruning(lv, context, bitSetMap, rawStringIndex, pruningObject, parameters);
+                } else {
+                    // shard pruning has no middle pruning result:bitset. and this will make it merging slow
+                    pruningResult = pruningShardTable(lv, iterator, context, parameters, pruningPairArr);
+                }
+            }
+            long endTime = System.currentTimeMillis();
+            long pruningTime = endTime - startTime;
+            if (pruningTime > DynamicConfig.getInstance().getPruningTimeWarningThreshold()) {
+                OptimizerAlertManager.getInstance().log(OptimizerAlertType.PRUNING_SLOW, context);
+            }
+            context.addPruningTime(pruningTime);
+            return pruningResult;
+        }
+        return null;
+    }
+
+    /**
+     * pruning and merge result in a same iterator, this might be really slow
+     */
+    private static Map<Pair<String, List<String>>, Parameters> pruningShardTable(LogicalView lv,
+                                                                                 PruningRawStringStep iterator,
+                                                                                 ExecutionContext context,
+                                                                                 Parameters parameters,
+                                                                                 Pair<Integer, PruneRawString>[] pruningPairArr) {
+        Map<Pair<String, List<String>>, Parameters> pruningResult = Maps.newHashMap();
+        ExecutionContext contextForInPruning = new ExecutionContext(context.getSchemaName());
+        contextForInPruning.setParamManager(context.getParamManager());
+        contextForInPruning.setParams(parameters);
+        boolean checked = false;
+        while (iterator.hasNext()) {
+            iterator.next();
+            Map<String, List<List<String>>> groupAndTables = lv.buildTargetTables(contextForInPruning);
+
+            if (!checked) {
+                checked = true;
+                int shardCount = 0;
+                for (List list : groupAndTables.values()) {
+                    shardCount += list.size();
+                }
+                if (shardCount == lv.getTotalShardCount()) {
+                    // meaning full scan
+                    return null;
+                }
+            }
+
+            // merge result
+            for (Map.Entry<String, List<List<String>>> entry1 : groupAndTables.entrySet()) {
+                String group = entry1.getKey();
+                List<List<String>> tables = entry1.getValue();
+                for (List<String> tbls : tables) {
+                    Pair<String, List<String>> pairs = new Pair<>(group, tbls);
+                    if (pruningResult.get(pairs) == null) {
+                        pruningResult.put(pairs, copy(parameters, pruningPairArr, true));
+                    } else {
+                        mergeRawStringParameters(pruningResult.get(pairs), pruningPairArr);
+                    }
+                }
+            }
+        }
+        return pruningResult;
+    }
+
+    /**
+     * merge pruning result for simple shard table
+     */
+    private static Map<Pair<String, List<String>>, Parameters> mergeSimplePruning(LogicalView lv,
+                                                                                  ExecutionContext executionContext,
+                                                                                  Map<Integer, BitSet> bitSetMap,
+                                                                                  int rawStringIndex,
+                                                                                  List<Object> pruningObject,
+                                                                                  Parameters parameters) {
+        Map<Pair<String, List<String>>, Parameters> pruningResult = Maps.newHashMap();
+        TddlRuleManager or = executionContext.getSchemaManager().getTddlRuleManager();
+        TableRule tr = or.getTableRule(lv.getShardingTable());
+
+        for (Map.Entry<Integer, BitSet> entry : bitSetMap.entrySet()) {
+            int shard = entry.getKey();
+            BitSet bitSet = entry.getValue();
+            Pair<String, List<String>> pairs =
+                new Pair<>(tr.getDbNames()[shard], Lists.newArrayList(tr.getTbNames()[shard]));
+            Pair<Integer, PruneRawString>[] pruningPairArrTmp = new Pair[1];
+            pruningPairArrTmp[0] = new Pair<>(rawStringIndex,
+                new PruneRawString(pruningObject, PruneRawString.PRUNE_MODE.MULTI_INDEX, -1, -1, bitSet));
+            pruningResult.put(pairs, copy(parameters, pruningPairArrTmp, false));
+        }
+        return pruningResult;
+    }
+
+    /**
+     * simple pruning for shard table, pretty fast
+     *
+     * @return shard index -> bitset for pruning value
+     */
+    private static Map<Integer, BitSet> simplePruning(LogicalView lv, ExecutionContext executionContext,
+                                                      int rawStringIndex, int skIndex) {
+        SimpleShardProcessor simpleShardProcessor =
+            ShardProcessor.buildSimple(lv, lv.getShardingTable(), executionContext);
+        ParameterContext pc = executionContext.getParams().getCurrentParameter().get(rawStringIndex);
+        RawString rawString = (RawString) pc.getValue();
+        Map<Integer, BitSet> bitSetMap = Maps.newHashMap();
+        for (int i = 0; i < rawString.size(); i++) {
+            Object obj = rawString.getObj(i, skIndex);
+            int shard = simpleShardProcessor.simpleShard(obj, executionContext.getEncoding());
+            bitSetMap.computeIfAbsent(shard, k -> new BitSet()).set(i);
+        }
+        return bitSetMap;
+    }
+
+    /**
+     * merge pruning result for part table
+     */
+    private static Map<Pair<String, List<String>>, Parameters> mergePartTablePruningResult(
+        Pair<Map<List<BitSet>, Parameters>, List<PartPrunedResult>> pair, int[] pruningTargetIndex) {
+        Map<Pair<String, List<String>>, Parameters> pruneRawStringMap = Maps.newHashMap();
+        Map<List<BitSet>, Parameters> pruningMapForPartTable = pair.getKey();
+        List<PartPrunedResult> partPrunedResultsCache = pair.getValue();
+
+        for (Map.Entry<List<BitSet>, Parameters> entry : pruningMapForPartTable.entrySet()) {
+            // transform bitset to PartPrunedResult
+            List<PartPrunedResult> partPrunedResultsTmp = Lists.newArrayList();
+            for (int i = 0; i < partPrunedResultsCache.size(); i++) {
+                PartPrunedResult partPrunedResult = partPrunedResultsCache.get(i).copy();
+                partPrunedResult.setPartBitSet(entry.getKey().get(i));
+                partPrunedResultsTmp.add(partPrunedResult);
+            }
+            Map<String, List<List<String>>> groupAndTbl =
+                PartitionPrunerUtils.buildTargetTablesByPartPrunedResults(partPrunedResultsTmp);
+
+            Parameters beMerged = entry.getValue();
+            // one bitset represents multi group&shard table
+            for (Map.Entry<String, List<List<String>>> entry1 : groupAndTbl.entrySet()) {
+                String group = entry1.getKey();
+                List<List<String>> tables = entry1.getValue();
+
+                for (List<String> tbls : tables) {
+                    // logical view might have multi logical table pushed,
+                    // tbls represents physical table for each logical table
+                    Pair<String, List<String>> pairs = new Pair<>(group, tbls);
+                    if (pruneRawStringMap.get(pairs) == null) {
+                        pruneRawStringMap.put(pairs, copy(entry.getValue(), pruningTargetIndex, true));
+                    } else {
+                        Parameters merge = pruneRawStringMap.get(pairs);
+                        for (int rawStringIndex : pruningTargetIndex) {
+                            PruneRawString pruneRawStringMerge =
+                                (PruneRawString) merge.getCurrentParameter().get(rawStringIndex).getValue();
+                            PruneRawString pruneRawStringBeMerged =
+                                (PruneRawString) beMerged.getCurrentParameter().get(rawStringIndex).getValue();
+                            pruneRawStringMerge.merge(pruneRawStringBeMerged);
+                        }
+                    }
+                }
+            }
+        }
+        return pruneRawStringMap;
+    }
+
+    /**
+     * pruning part table
+     *
+     * @param lv target logicalview
+     * @param iterator pruning iterator
+     * @param parameters pruning parameters
+     * @param context execution context
+     * @return pruning result and prunedResult
+     */
+    private static Pair<Map<List<BitSet>, Parameters>, List<PartPrunedResult>> pruningPartTable(LogicalView lv,
+                                                                                                PruningRawStringStep iterator,
+                                                                                                Parameters parameters,
+                                                                                                ExecutionContext context) {
+        boolean checked = false;
+        List<PartPrunedResult> partPrunedResultsCache = null;
+        ExecutionContext contextForInPruning = new ExecutionContext(context.getSchemaName());
+        contextForInPruning.setParamManager(context.getParamManager());
+        contextForInPruning.setParams(parameters);
+
+        Pair<Integer, PruneRawString>[] pruningPairArr = iterator.getTargetPair();
+
+        // use bitset to represent part table when process iterate and pruning
+        Map<List<BitSet>, Parameters> pruningMapForPartTable = Maps.newHashMap();
+
+        while (iterator.hasNext()) {
+            iterator.next();
+
+            // pruning part table
+            List<PartPrunedResult> partPrunedResults = lv.getPartPrunedResults(contextForInPruning);
+
+            // transform PartPrunedResult to bitset list
+            List<BitSet> physicalPartBitSet = Lists.newArrayList();
+            for (int i = 0; i < partPrunedResults.size(); i++) {
+                physicalPartBitSet.add(partPrunedResults.get(i).getPhysicalPartBitSet());
+            }
+
+            // full scan check
+            if (!checked) {
+                checked = true;
+                partPrunedResultsCache = partPrunedResults;
+
+                int shardCount = partPrunedResults.get(0).getPartBitSet().cardinality();
+                if (shardCount == partPrunedResults.get(0).getPartInfo().getAllPhysicalPartitionCount()) {
+                    return null;
+                }
+            }
+
+            // record pruning result by bitset list
+            if (pruningMapForPartTable.get(physicalPartBitSet) == null) {
+                pruningMapForPartTable.put(physicalPartBitSet, copy(parameters, pruningPairArr, true));
+            } else {
+                mergeRawStringParameters(pruningMapForPartTable.get(physicalPartBitSet), pruningPairArr);
+            }
+        }
+        return Pair.of(pruningMapForPartTable, partPrunedResultsCache);
+    }
+
+    private static Parameters copy(Parameters parameters, int[] targetIndex, boolean clonePruning) {
+        // deep copy
+        Parameters newParams = parameters.clone();
+        for (int index : targetIndex) {
+            ParameterContext pc = newParams.getCurrentParameter().get(index);
+            PruneRawString pruneRawString = (PruneRawString) pc.getValue();
+            ParameterContext newContext = new ParameterContext();
+            newContext.setParameterMethod(pc.getParameterMethod());
+            newContext.setArgs(new Object[] {index, clonePruning ? pruneRawString.clone() : pruneRawString});
+            newParams.getCurrentParameter().put(index, newContext);
+        }
+        return newParams;
+    }
+
+    private static Pair<Integer, Integer> couldSimpleShard(LogicalView lv, ExecutionContext executionContext) {
+        // check rule
+        if (lv.getTableNames().size() != 1) {
+            return null;
+        }
+        String tableName = lv.getTableNames().get(0);
+        TableRule tr =
+            executionContext.getSchemaManager(lv.getSchemaName()).getTddlRuleManager().getTableRule(tableName);
+        if (!ShardProcessor.isSimpleRule(tr)) {
+            return null;
+        }
+        Map<String, Comparative> comparativeMap = lv.getComparative();
+        if (comparativeMap.size() != 1) {
+            return null;
+        }
+        if (tr.getShardColumns().size() != 1) {
+            return null;
+        }
+        if (!comparativeMap.containsKey(tr.getShardColumns().get(0))) {
+            return null;
+        }
+
+        // check comparative
+        Comparative comparative = comparativeMap.values().iterator().next();
+        if (comparative instanceof ComparativeOR) {
+            ComparativeOR comparativeOR = (ComparativeOR) comparative;
+            if (comparativeOR.getList().size() != 1) {
+                return null;
+            }
+            Comparative comparativeSub = comparativeOR.getList().get(0);
+            if (!(comparativeSub instanceof DynamicComparative)) {
+                return null;
+            }
+            DynamicComparative dynamicComparative = (DynamicComparative) comparativeSub;
+            if (dynamicComparative.getComparison() != Comparative.Equivalent) {
+                return null;
+            }
+            Object value = dynamicComparative.getValue();
+            if (!(value instanceof RexDynamicParam)) {
+                return null;
+            } else {
+                return Pair.of(((RexDynamicParam) value).getIndex(), dynamicComparative.getSkIndex());
+            }
+        }
+        return null;
+    }
+
+    private static Parameters copy(Parameters parameters, Pair<Integer, PruneRawString>[] pruningPairArr,
+                                   boolean clonePruning) {
+        // deep copy
+        Parameters newParams = parameters.clone();
+        for (Pair<Integer, PruneRawString> p : pruningPairArr) {
+            PruneRawString pruneRawString = p.getValue();
+            ParameterContext pc = newParams.getCurrentParameter().get(p.getKey());
+            ParameterContext newContext = new ParameterContext();
+            newContext.setParameterMethod(pc.getParameterMethod());
+            newContext.setArgs(new Object[] {p.getKey(), clonePruning ? pruneRawString.clone() : pruneRawString});
+            newParams.getCurrentParameter().put(p.getKey(), newContext);
+        }
+        return newParams;
+    }
+
+    public static PruningRawStringStep iterateRawStrings(Pair<Integer, RawString>[] rawStrings, int maxPruneTime) {
+        if (rawStrings.length == 1) {
+            Integer rawStringIndex = rawStrings[0].getKey();
+            RawString rawString = rawStrings[0].getValue();
+            int pruningTime = rawString.size();
+            if (pruningTime > maxPruneTime) {
+                return null;
+            }
+            return new SingleRawStringPruningIterator(rawString, rawStringIndex);
+        }
+        Map<Integer, RawString> rawStringPruningMap = new HashMap<>();
+        int currentPruningTime = 1;
+        for (int i = rawStrings.length - 1; i >= 0; i--) {
+            Pair<Integer, RawString> pair = rawStrings[i];
+            if (currentPruningTime * pair.getValue().size() > maxPruneTime) {
+                return null;
+            }
+            currentPruningTime = currentPruningTime * pair.getValue().size();
+            rawStringPruningMap.put(pair.getKey(), pair.getValue());
+        }
+        if (currentPruningTime == 1) {
+            return null;
+        }
+
+        return new MultiRawStringPruningIterator(currentPruningTime, rawStringPruningMap);
+    }
+
+    static void mergeRawStringParameters(Parameters parameterContexts, Pair<Integer, PruneRawString>[] r) {
+        for (Pair<Integer, PruneRawString> pair : r) {
+            Integer index = pair.getKey();
+            PruneRawString pruneRawString = pair.getValue();
+            RawString rawString = (RawString) parameterContexts.getCurrentParameter().get(index).getValue();
+            if (rawString instanceof PruneRawString) {
+                ((PruneRawString) rawString).merge(pruneRawString);
+            }
+        }
+    }
+
+    public static Pair<Integer, RawString>[] findAllRawStrings(Set<Integer> shardIndexes,
+                                                               ExecutionContext executionContext) {
+        List<Pair<Integer, RawString>> allRawString = Lists.newArrayList();
+        if (executionContext.getParams() != null && shardIndexes != null) {
+            Map<Integer, ParameterContext> parameterContextMap = executionContext.getParams().getCurrentParameter();
+
+            for (int shardIndex : shardIndexes) {
+                ParameterContext parameterContext = parameterContextMap.get(shardIndex);
+                if (parameterContext.getValue() instanceof RawString) {
+                    RawString rawString = (RawString) parameterContext.getValue();
+                    allRawString.add(Pair.of(shardIndex, rawString));
+                } else {
+                    // TODO warning
+                }
+            }
+        }
+        allRawString.sort(Comparator.comparingInt(o -> o.getValue().size()));
+        return allRawString.toArray(new Pair[0]);
     }
 
     static public class DynamicDeepFinder extends RexVisitorImpl<Void> {

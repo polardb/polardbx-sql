@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.planner.dml;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.planner.common.PlanTestCommon;
 import org.junit.runners.Parameterized.Parameters;
 
@@ -32,7 +33,7 @@ public class TimeFuncNullValTest extends PlanTestCommon {
 
     @Override
     protected void initExecutionContext() {
-        this.ec.setRandomPhyTableEnabled(false);
+        ec.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
     }
 
     @Parameters(name = "{0}:{1}")

@@ -28,6 +28,7 @@ import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
@@ -51,6 +52,7 @@ import java.util.List;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.OSS_BACKFILL_SPEED_LIMITATION;
 import static com.google.common.truth.Truth.assertWithMessage;
 
+@CdcIgnore(ignoreReason = "FP_RANDOM_BACKFILL_EXCEPTION的设置，对其它并行运行的用例有影响，该用例对CDC不是刚需，故忽略")
 public class FileStorageExpireTest extends BaseTestCase {
 
     private static String testDataBase = "fileStorageExpireDatabase";

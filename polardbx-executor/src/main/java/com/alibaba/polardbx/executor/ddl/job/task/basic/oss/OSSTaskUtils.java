@@ -182,7 +182,7 @@ public class OSSTaskUtils {
         }
         List<GmsNode> candidates = new ArrayList<>(remoteNodeList);
         candidates.add(null);
-        int mod = (int) (MurmurHashUtils.murmurHashWithZeroSeed(taskId) % candidates.size());
+        int mod = (int) (MurmurHashUtils.murmurHash128WithZeroSeed(taskId) % candidates.size());
         if (mod < 0) {
             mod = mod + candidates.size();
         }

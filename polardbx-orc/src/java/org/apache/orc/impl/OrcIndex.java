@@ -24,13 +24,16 @@ public final class OrcIndex {
   OrcProto.RowIndex[] rowGroupIndex;
   OrcProto.Stream.Kind[] bloomFilterKinds;
   OrcProto.BloomFilterIndex[] bloomFilterIndex;
+  private OrcProto.BitmapIndex[] bitmapIndex;
 
   public OrcIndex(OrcProto.RowIndex[] rgIndex,
                   OrcProto.Stream.Kind[] bloomFilterKinds,
-                  OrcProto.BloomFilterIndex[] bfIndex) {
+                  OrcProto.BloomFilterIndex[] bfIndex,
+                  OrcProto.BitmapIndex[] bitmapIndex) {
     this.rowGroupIndex = rgIndex;
     this.bloomFilterKinds = bloomFilterKinds;
     this.bloomFilterIndex = bfIndex;
+    this.bitmapIndex = bitmapIndex;
   }
 
   public OrcProto.RowIndex[] getRowGroupIndex() {
@@ -47,5 +50,9 @@ public final class OrcIndex {
 
   public void setRowGroupIndex(OrcProto.RowIndex[] rowGroupIndex) {
     this.rowGroupIndex = rowGroupIndex;
+  }
+
+  public OrcProto.BitmapIndex[] getBitmapIndex() {
+    return bitmapIndex;
   }
 }

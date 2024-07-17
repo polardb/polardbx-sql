@@ -19,11 +19,14 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableMergePartitionBuilder;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupsSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
@@ -79,6 +82,8 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
             return mergeAndMoveToExistTableGroup();
         } else if (preparedData.isCreateNewTableGroup()) {
             return mergeInNewTableGroup();
+        } else if (StringUtils.isNotEmpty(preparedData.getTargetImplicitTableGroupName())) {
+            return withImplicitTableGroup(executionContext);
         } else {
             throw new RuntimeException("unexpected");
         }
@@ -98,11 +103,11 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
         DdlTask validateSourceTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 sourceTableGroup, tablesVersion, false,
-                /*todo*/null);
+                /*todo*/null, false);
         DdlTask validateTargetTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 targetTableGroup, preparedData.getFirstTableVersionInTargetTableGroup(), false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         executableDdlJob.addTask(emptyTask);
         executableDdlJob.addTask(validateSourceTableGroup);
@@ -172,7 +177,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
                 preparedData.getTableGroupName(), tablesVersion, false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         SubJobTask subJobMoveTableToNewGroup =
             new SubJobTask(schemaName, String.format(SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);
@@ -200,7 +205,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
 
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, alterTableMergePartitionPreparedData.getTableGroupName(),
-                tablesVersion, true, alterTableMergePartitionPreparedData.getTargetPhysicalGroups());
+                tablesVersion, true, alterTableMergePartitionPreparedData.getTargetPhysicalGroups(), false);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableMergePartitionPreparedData.getTableGroupName());
 

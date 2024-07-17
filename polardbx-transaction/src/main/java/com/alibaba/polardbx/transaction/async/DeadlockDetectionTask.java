@@ -20,7 +20,7 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -33,6 +33,8 @@ import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
 import com.alibaba.polardbx.executor.utils.transaction.LocalTransaction;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLock;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.sync.FetchTransForDeadlockDetectionSyncAction;
 import com.alibaba.polardbx.transaction.utils.DiGraph;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
 
 import java.sql.Connection;
@@ -344,7 +347,8 @@ public class DeadlockDetectionTask implements Runnable {
     private TrxLookupSet fetchTransInfo() {
         final TrxLookupSet lookupSet = new TrxLookupSet();
         final List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(new FetchTransForDeadlockDetectionSyncAction(null), DEFAULT_DB_NAME);
+            SyncManagerHelper.sync(new FetchTransForDeadlockDetectionSyncAction(null), DEFAULT_DB_NAME,
+                SyncScope.CURRENT_ONLY);
         for (final List<Map<String, Object>> result : results) {
             if (result == null) {
                 continue;
@@ -375,17 +379,21 @@ public class DeadlockDetectionTask implements Runnable {
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
-        SyncManagerHelper.sync(killSyncAction, DEFAULT_DB_NAME);
+        SyncManagerHelper.sync(killSyncAction, DEFAULT_DB_NAME, SyncScope.CURRENT_ONLY);
     }
 
     @Override
     public void run() {
-
         if (!hasLeadership()) {
             TransactionLogger.debug("Skip deadlock detection task since I am not the leader "
                 + "or there are no active schemas.");
             return;
         }
+
+        if (ExecUtils.isMysql80Version() && !InstConfUtil.getBool(ConnectionParams.ENABLE_DEADLOCK_DETECTION_80)) {
+            return;
+        }
+
         TransactionLogger.debug("Deadlock detection task starts.");
         try {
 
@@ -402,6 +410,11 @@ public class DeadlockDetectionTask implements Runnable {
                 if (CollectionUtils.isNotEmpty(groupDataSources)) {
                     // Since all data sources are in the same DN, any data source is ok
                     final TGroupDataSource groupDataSource = groupDataSources.get(0);
+
+                    if (StringUtils.containsIgnoreCase(groupDataSource.getMasterDNId(), "pxc-xdb-m-")) {
+                        // Skip meta-db.
+                        continue;
+                    }
 
                     // Get all group names in this DN
                     final Set<String> groupNames =

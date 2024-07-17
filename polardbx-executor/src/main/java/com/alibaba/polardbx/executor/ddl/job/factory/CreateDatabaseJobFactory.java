@@ -30,13 +30,10 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateDatabasePreparedData;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import jdk.nashorn.internal.codegen.MapCreator;
-import org.checkerframework.checker.units.qual.C;
 
 import java.util.ArrayList;
 import java.util.List;

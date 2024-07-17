@@ -190,6 +190,11 @@ public class RelDrdsWriter implements RelWriter {
                 s.append(", actual time = ").append(String.format("%.3f", sketch.getStartupDuration()))
                         .append(" + ").append(String.format("%.3f", sketch.getDuration()));
                 s.append(", actual rowcount = ").append(sketch.getRowCount());
+
+                if (sketch.getRuntimeFilteredRowCount() > 0) {
+                    s.append(", runtime filtered count = ").append(sketch.getRuntimeFilteredRowCount());
+                }
+
                 s.append(", actual memory = ").append(sketch.getMemory());
                 if (sketch.getSpillCnt() > 0) {
                     s.append(", spill count = ").append(sketch.getSpillCnt());

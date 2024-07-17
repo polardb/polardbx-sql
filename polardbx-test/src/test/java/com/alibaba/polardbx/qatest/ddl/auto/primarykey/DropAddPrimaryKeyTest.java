@@ -98,6 +98,26 @@ public class DropAddPrimaryKeyTest extends ModifyPartitionKeyTest {
     }
 
     @Test
+    public void testModifyPrimaryKeyWithUpperCase() {
+        String tableName = "modify_pk_test_tbl_upper" + RandomUtils.getStringBetween(1, 5);
+        String indexName = "modify_pk_gsi_test_tbl_upper" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        dropTableIfExists(indexName);
+        String sql =
+            String.format(
+                "create table %s (a int auto_increment primary key, b int, c int, local index idx_a(`a`)) partition by key(a)",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql =
+            String.format(" create unique clustered index `%s` on %s (`b`) partition by key(b)", indexName, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s drop primary key, add primary key(B)", tableName);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+    }
+
+    @Test
     public void testModifyPrimaryKeyFailed() {
         String tableName = "modify_pk_test_tbl_li_f" + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);

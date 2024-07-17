@@ -120,11 +120,11 @@ public class MySqlLexer extends Lexer {
             return;
         }
 
-        if (isPolarxOriginSqlComment()) {
+        /*if (isPolarxOriginSqlComment()) {
             super.meetPolarxOriginSql = true;
             pos += POLARX_ORIGIN_SQL_COMMENT_PREFIX.length();
             return;
-        }
+        }*/
 
         Token lastToken = this.token;
 

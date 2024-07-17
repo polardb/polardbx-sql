@@ -23,6 +23,10 @@ import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.ReferenceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlock;
+import com.alibaba.polardbx.executor.chunk.columnar.CommonLazyBlock;
+import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
+import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMapping;
+import com.alibaba.polardbx.executor.operator.scan.impl.SingleDictionaryMapping;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
@@ -38,12 +42,14 @@ import java.util.Arrays;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
-@ExpressionSignatures(names = {"EQ", "EQUAL", "="}, argumentTypes = {"Varchar", "Char"}, argumentKinds = {Variable, Const})
+@ExpressionSignatures(names = {"EQ", "EQUAL", "="}, argumentTypes = {"Varchar", "Char"},
+    argumentKinds = {Variable, Const})
 public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorizedExpression {
     protected final CollationHandler collationHandler;
 
     protected final boolean operandIsNull;
     protected final Slice operand;
+    protected final DictionaryMapping mapping;
 
     public EQVarcharColCharConstVectorizedExpression(
         int outputIndex,
@@ -57,11 +63,14 @@ public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorize
         if (operand1Value == null) {
             operandIsNull = true;
             operand = null;
+            mapping = null;
         } else {
             operandIsNull = false;
             operand = sliceType.convertFrom(operand1Value);
-        }
 
+            // Create dictionary mapping and merge the parameter list
+            mapping = new SingleDictionaryMapping(operand);
+        }
     }
 
     @Override
@@ -87,7 +96,7 @@ public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorize
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         if (operandIsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -98,10 +107,53 @@ public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorize
 
         VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
 
+        BlockDictionary blockDictionary;
+        if ((leftInputVectorSlot instanceof SliceBlock || leftInputVectorSlot instanceof CommonLazyBlock)
+            && mapping != null
+            && (blockDictionary = leftInputVectorSlot.cast(SliceBlock.class).getDictionary()) != null) {
+            // Best case: use dictionary
+            int[] reMapping = mapping.merge(blockDictionary);
+            int targetDictId = reMapping[0];
+
+            if (targetDictId == -1) {
+                // no matched value.
+                if (isSelectionInUse) {
+                    for (int i = 0; i < batchSize; i++) {
+                        int j = sel[i];
+
+                        output[j] = LongBlock.FALSE_VALUE;
+                    }
+                } else {
+                    for (int i = 0; i < batchSize; i++) {
+                        output[i] = LongBlock.FALSE_VALUE;
+                    }
+                }
+                return;
+            }
+
+            SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
+            if (isSelectionInUse) {
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+
+                    output[j] = (targetDictId == sliceBlock.getDictId(j))
+                        ? LongBlock.TRUE_VALUE
+                        : LongBlock.FALSE_VALUE;
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    output[i] = (targetDictId == sliceBlock.getDictId(i))
+                        ? LongBlock.TRUE_VALUE
+                        : LongBlock.FALSE_VALUE;
+                }
+            }
+
+            return;
+        }
 
         if (!compatible && leftInputVectorSlot instanceof SliceBlock) {
             // best case.
-            SliceBlock sliceBlock = (SliceBlock) leftInputVectorSlot;
+            SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
@@ -110,13 +162,20 @@ public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorize
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
-                    output[i] =  sliceBlock.equals(i, (Slice) operandSortKey);
+                    output[i] = sliceBlock.equals(i, (Slice) operandSortKey);
                 }
             }
         } else {
             if (leftInputVectorSlot instanceof SliceBlock) {
                 // normal case.
-                SliceBlock sliceBlock = (SliceBlock) leftInputVectorSlot;
+                SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
+
+                if (sliceBlock.getDictionary() != null && sliceBlock.getDictIds() != null
+                    && sliceBlock.getDictionary().size() < 100) {
+
+                    compareWithDict(sliceBlock, outputVectorSlot, output, batchSize, isSelectionInUse, sel);
+                    return;
+                }
 
                 if (isSelectionInUse) {
                     for (int i = 0; i < batchSize; i++) {
@@ -174,5 +233,40 @@ public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorize
             }
         }
 
+    }
+
+    private void compareWithDict(SliceBlock sliceBlock, RandomAccessBlock outputVectorSlot,
+                                 long[] output, int batchSize, boolean isSelectionInUse, int[] sel) {
+        int operandDictIdx;
+        for (operandDictIdx = 0; operandDictIdx < sliceBlock.getDictionary().size(); operandDictIdx++) {
+            if (operand.compareTo(sliceBlock.getDictionary().getValue(operandDictIdx)) == 0) {
+                break;
+            }
+        }
+
+        if (operandDictIdx == sliceBlock.getDictionary().size()) {
+            // none match
+            boolean[] outputNulls = outputVectorSlot.nulls();
+            outputVectorSlot.setHasNull(true);
+            Arrays.fill(outputNulls, true);
+            return;
+        }
+
+        int[] dictIds = sliceBlock.getDictIds();
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
+
+                output[j] = (operandDictIdx == dictIds[j])
+                    ? LongBlock.TRUE_VALUE
+                    : LongBlock.FALSE_VALUE;
+            }
+        } else {
+            for (int i = 0; i < batchSize; i++) {
+                output[i] = (operandDictIdx == dictIds[i])
+                    ? LongBlock.TRUE_VALUE
+                    : LongBlock.FALSE_VALUE;
+            }
+        }
     }
 }

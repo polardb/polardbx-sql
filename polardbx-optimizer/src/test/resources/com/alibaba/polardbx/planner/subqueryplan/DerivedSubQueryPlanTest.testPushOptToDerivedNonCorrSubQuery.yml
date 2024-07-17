@@ -28,7 +28,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 5)")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb`) as `a` where (`a`.`id` = 5)")
 
 - sql: |
     select a.id, a.name
@@ -102,11 +102,9 @@
   plan: |
 
     limit(offset=2, fetch=5)
-      hashagg(count(distinct id)="count(id)")
-        hashagg(group="id")
-          gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` > 5)")
-
+      hashagg(count(distinct id)="sum(count(distinct id))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select count(distinct `id`) as `count(distinct id)` from `test_hash_tb` as `test_hash_tb` where (`id` > 5)")
 - sql: |
     select count(distinct id)
     from
@@ -124,8 +122,99 @@
 
   plan: |
 
-    Limit(offset=2, fetch=5)
-      HashAgg(count(DISTINCT id)="COUNT(id)")
-        Project(id="id")
-          MergeSort(sort="name ASC", offset=0, fetch=10)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 5) ORDER BY `name` LIMIT 10")
+    limit(offset=2, fetch=5)
+      hashagg(count(distinct id)="count(id)")
+        project(id="id")
+          mergesort(sort="name asc", offset=0, fetch=10)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (`id` > 5) order by `name` limit 10")
+
+- sql: |
+
+    SELECT
+        ord.*,
+        orde.*
+    FROM
+        (
+            SELECT
+                *
+            FROM
+                (
+                (
+                    SELECT
+                        *
+                    FROM
+                        or_order oro
+                    LEFT JOIN
+                        (
+                            SELECT
+                                COUNT( 1 ) butoon_Type,
+                                TRANS_NO   out_trans_no
+                            FROM
+                                OR_OUT_STOCK
+                            GROUP BY
+                                out_trans_no ) oros
+                    ON
+                        oro.TRANS_NO = oros.out_trans_no
+                    WHERE
+                        oro.platform_code IN ( 'ELE',
+                                              'MT',
+                                              'BD',
+                                              'JDDJ' )
+                    AND oro.create_time >= NOW( ) - INTERVAL 24 HOUR )
+            UNION
+                (
+                    SELECT
+                        *
+                    FROM
+                        or_order oro
+                    LEFT JOIN
+                        (
+                            SELECT
+                                COUNT( 1 ) butoon_Type,
+                                TRANS_NO   out_trans_no
+                            FROM
+                                OR_OUT_STOCK
+                            GROUP BY
+                                out_trans_no ) oros
+                    ON
+                        oro.TRANS_NO = oros.out_trans_no
+                    WHERE
+                        oro.platform_code IN ( 'ELE',
+                                              'MT',
+                                              'BD',
+                                              'JDDJ' )
+                    AND oro.create_time < NOW( ) - INTERVAL 24 HOUR
+                    AND oro.STATUS IN ("101",
+                                       "102",
+                                       "103",
+                                       "106",
+                                       "107",
+                                       "108",
+                                       "401") ) ) orders
+            ORDER BY
+                orders.create_time DESC LIMIT 0,5 ) ord,
+        or_order_item orde
+    WHERE
+        ord.order_no = orde.order_no;
+
+  plan: |
+    bkajoin(condition="order_no = order_no", type="inner")
+      topn(sort="create_time desc", offset=0, fetch=5)
+        hashagg(group="order_no,trans_no,platform_code,platform_name,shop_code,shop_name,allot_shop_code,allot_shop_name,channel_type,type,business_type,business_date,create_type,is_copy,order_time,expect_arrival_time,status,trans_status,package_fee,package_number,platform_user_id,is_fetch,o2o_dist_mode,consignee_name,consignee_telephone,salesman_mobile,salesman_type,consignee_postcode,consignee_province_code,consignee_province_name,consignee_city_code,consignee_city_name,consignee_area_code,consignee_area_name,consignee_address,express_company,logistics_no,total_amount,adjust_amount,freight_amount,discount_amount,payment_amount,payment_type,used_integral,payment_time,buyer_remark,seller_remark,is_need_invoice,invoice_type,invoice_header,invoice_content,invoice_taxer_id,product_weight,platform_commision,distributor_commision,product_volume,is_retain_order,retain_order_time,is_locked,locker,shop_income,return_flag,group_code,is_group_leader,sourcing_model,create_by,create_time,last_update_by,last_update_time,delivery_status,tip,platform_shop_code,lock_stock_type,receive_model,salesman_commision,reminder_flag,salesman_second_commision,butoon_type,out_trans_no")
+          unionall(concurrent=true)
+            hashjoin(condition="trans_no = out_trans_no", type="left")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].or_order", shardcount=4, sql="select `order_no`, `trans_no`, `platform_code`, `platform_name`, `shop_code`, `shop_name`, `allot_shop_code`, `allot_shop_name`, `channel_type`, `type`, `business_type`, `business_date`, `create_type`, `is_copy`, `order_time`, `expect_arrival_time`, `status`, `trans_status`, `package_fee`, `package_number`, `platform_user_id`, `is_fetch`, `o2o_dist_mode`, `consignee_name`, `consignee_telephone`, `salesman_mobile`, `salesman_type`, `consignee_postcode`, `consignee_province_code`, `consignee_province_name`, `consignee_city_code`, `consignee_city_name`, `consignee_area_code`, `consignee_area_name`, `consignee_address`, `express_company`, `logistics_no`, `total_amount`, `adjust_amount`, `freight_amount`, `discount_amount`, `payment_amount`, `payment_type`, `used_integral`, `payment_time`, `buyer_remark`, `seller_remark`, `is_need_invoice`, `invoice_type`, `invoice_header`, `invoice_content`, `invoice_taxer_id`, `product_weight`, `platform_commision`, `distributor_commision`, `product_volume`, `is_retain_order`, `retain_order_time`, `is_locked`, `locker`, `shop_income`, `return_flag`, `group_code`, `is_group_leader`, `sourcing_model`, `create_by`, `create_time`, `last_update_by`, `last_update_time`, `delivery_status`, `tip`, `platform_shop_code`, `lock_stock_type`, `receive_model`, `salesman_commision`, `reminder_flag`, `salesman_second_commision` from `or_order` as `or_order` where ((`platform_code` in('ele', 'mt', 'bd', 'jddj')) and (`create_time` >= date_sub(now(), interval 24 hour)))")
+              project(butoon_type="butoon_type", out_trans_no="trans_no")
+                hashagg(group="trans_no", butoon_type="sum(butoon_type)")
+                  gather(concurrent=true)
+                    logicalview(tables="[0000-0003].or_out_stock", shardcount=4, sql="select `trans_no`, count(*) as `butoon_type` from `or_out_stock` as `or_out_stock` group by `trans_no`")
+            hashjoin(condition="trans_no = out_trans_no", type="left")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].or_order", shardcount=4, sql="select `order_no`, `trans_no`, `platform_code`, `platform_name`, `shop_code`, `shop_name`, `allot_shop_code`, `allot_shop_name`, `channel_type`, `type`, `business_type`, `business_date`, `create_type`, `is_copy`, `order_time`, `expect_arrival_time`, `status`, `trans_status`, `package_fee`, `package_number`, `platform_user_id`, `is_fetch`, `o2o_dist_mode`, `consignee_name`, `consignee_telephone`, `salesman_mobile`, `salesman_type`, `consignee_postcode`, `consignee_province_code`, `consignee_province_name`, `consignee_city_code`, `consignee_city_name`, `consignee_area_code`, `consignee_area_name`, `consignee_address`, `express_company`, `logistics_no`, `total_amount`, `adjust_amount`, `freight_amount`, `discount_amount`, `payment_amount`, `payment_type`, `used_integral`, `payment_time`, `buyer_remark`, `seller_remark`, `is_need_invoice`, `invoice_type`, `invoice_header`, `invoice_content`, `invoice_taxer_id`, `product_weight`, `platform_commision`, `distributor_commision`, `product_volume`, `is_retain_order`, `retain_order_time`, `is_locked`, `locker`, `shop_income`, `return_flag`, `group_code`, `is_group_leader`, `sourcing_model`, `create_by`, `create_time`, `last_update_by`, `last_update_time`, `delivery_status`, `tip`, `platform_shop_code`, `lock_stock_type`, `receive_model`, `salesman_commision`, `reminder_flag`, `salesman_second_commision` from `or_order` as `or_order` where ((`platform_code` in('ele', 'mt', 'bd', 'jddj')) and (`status` in('101', '102', '103', '106', '107', '108', '401')) and (`create_time` < date_sub(now(), interval 24 hour)))")
+              project(butoon_type="butoon_type", out_trans_no="trans_no")
+                hashagg(group="trans_no", butoon_type="sum(butoon_type)")
+                  gather(concurrent=true)
+                    logicalview(tables="[0000-0003].or_out_stock", shardcount=4, sql="select `trans_no`, count(*) as `butoon_type` from `or_out_stock` as `or_out_stock` group by `trans_no`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].or_order_item", shardcount=4, sql="select `id`, `order_no`, `sub_order_no`, `bag_code`, `product_code`, `product_name`, `one_category_code`, `one_category_name`, `two_category_code`, `two_category_name`, `three_category_code`, `three_category_name`, `product_brand_code`, `product_brand_name`, `product_barcode`, `product_sku`, `product_price`, `product_spec`, `platform_product_sku`, `product_meter_unit`, `platform_product_code`, `platform_product_name`, `platform_product_url`, `buy_number`, `out_stock_number`, `product_weight`, `product_volume`, `discount_amount`, `share_amount`, `payable_amount`, `coupon_duct_amount`, `paid_amount`, `is_split`, `group_product_code`, `group_product_name`, `integral_share`, `is_out_stock`, `is_gift`, `activity_name`, `activity_id`, `platform_commision_point`, `platform_commision`, `distributor_commision`, `salesman_commision`, `return_type`, `factory_cost`, `is_cancel`, `erp_order_item_id`, `create_by`, `create_time`, `last_update_by`, `last_update_time`, `platform_product_index`, `salesman_second_commision` from `or_order_item` as `or_order_item` where (`order_no` in (...))")

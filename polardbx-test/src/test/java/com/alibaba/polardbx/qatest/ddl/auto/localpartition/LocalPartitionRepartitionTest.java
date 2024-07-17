@@ -16,21 +16,20 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.localpartition;
 
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
-
-import net.jcip.annotations.NotThreadSafe;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 
 @NotThreadSafe
+@BinlogIgnore(ignoreReason = "drop local partition的动作目前无法透传给下游，导致binlog实验室上下游数据不一致，暂时忽略")
 public class LocalPartitionRepartitionTest extends LocalPartitionBaseTest {
 
     private String primaryTableName;

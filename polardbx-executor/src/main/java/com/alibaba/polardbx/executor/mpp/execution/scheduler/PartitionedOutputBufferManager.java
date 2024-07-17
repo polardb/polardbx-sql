@@ -29,9 +29,9 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.google.common.collect.ImmutableMap;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
+import com.google.common.collect.ImmutableMap;
 
 import javax.annotation.concurrent.ThreadSafe;
 import java.util.List;

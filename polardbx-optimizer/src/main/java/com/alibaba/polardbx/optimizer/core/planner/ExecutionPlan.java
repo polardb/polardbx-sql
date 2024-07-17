@@ -19,14 +19,18 @@ package com.alibaba.polardbx.optimizer.core.planner;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.metadb.encdb.EncdbRule;
 import com.alibaba.polardbx.optimizer.core.profiler.memory.PlanMemEstimation;
 import com.alibaba.polardbx.optimizer.core.rel.GatherReferencedGsiNameRelVisitor;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.profiler.memory.PlanMemEstimation;
+import com.alibaba.polardbx.optimizer.core.rel.GatherReferencedGsiNameRelVisitor;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.sharding.result.PlanShardInfo;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.Maps;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
@@ -136,12 +140,29 @@ public class ExecutionPlan {
      */
     private boolean canOptByForcePrimary = false;
 
+    /**
+     * forbid xplan if the flag is set
+     */
+    private volatile boolean forbidXplan = false;
+
+    /**
+     * check tpSlow or not
+     */
+    private boolean checkTpSlow = true;
+
     private Map<Integer, ParameterContext> constantParams = null;
 
     /**
      * A collection of hints used for this plan
      */
     private HintConverter.HintCollection hintCollection = null;
+
+    private boolean useColumnar = false;
+
+    /**
+     * plan输出的列对应的的origin column name
+     */
+    private List<List<String[]>> originColumnNames;
 
     public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, BitSet planProperties) {
         this(ast, plan, columnMeta);
@@ -167,6 +188,14 @@ public class ExecutionPlan {
             }
             this.referencedGsiNames = visitor.getReferencedGsiNames();
         }
+    }
+
+    private ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta,
+                          Map<String, Set<String>> referencedGsiNames) {
+        this.ast = ast;
+        this.plan = plan;
+        this.cursorMeta = columnMeta;
+        this.referencedGsiNames = referencedGsiNames;
     }
 
     public RelNode getPlan() {
@@ -206,7 +235,7 @@ public class ExecutionPlan {
     }
 
     public ExecutionPlan copy(RelNode plan) {
-        ExecutionPlan newExecutionPlan = new ExecutionPlan(ast, plan, this.cursorMeta);
+        ExecutionPlan newExecutionPlan = new ExecutionPlan(ast, plan, this.cursorMeta, this.referencedGsiNames);
         newExecutionPlan.hitCache = this.hitCache;
         newExecutionPlan.isExplain = this.isExplain;
         newExecutionPlan.getPlanProperties().or(this.planProperties);
@@ -228,9 +257,12 @@ public class ExecutionPlan {
         newExecutionPlan.isDirectShardingKey = this.isDirectShardingKey;
         newExecutionPlan.dbIndexAndTableName = this.dbIndexAndTableName;
         newExecutionPlan.canOptByForcePrimary = this.canOptByForcePrimary;
-        newExecutionPlan.referencedGsiNames = this.referencedGsiNames;
         newExecutionPlan.constantParams = this.constantParams;
         newExecutionPlan.hintCollection = this.hintCollection;
+        newExecutionPlan.useColumnar = this.useColumnar;
+        newExecutionPlan.forbidXplan = this.forbidXplan;
+        newExecutionPlan.originColumnNames = this.originColumnNames;
+        newExecutionPlan.checkTpSlow = this.checkTpSlow;
         return newExecutionPlan;
     }
 
@@ -376,8 +408,32 @@ public class ExecutionPlan {
         this.canOptByForcePrimary = canOptByForcePrimary;
     }
 
+    public boolean isForbidXplan() {
+        return forbidXplan;
+    }
+
+    public void disableXplanByFeedBack() {
+        this.forbidXplan = true;
+    }
+
+    public boolean isCheckTpSlow() {
+        return checkTpSlow;
+    }
+
+    public void disableCheckTpSlow() {
+        this.checkTpSlow = false;
+    }
+
     public Map<String, Set<String>> getReferencedGsiNames() {
         return referencedGsiNames;
+    }
+
+    public boolean isUseColumnar() {
+        return useColumnar;
+    }
+
+    public void setUseColumnar(boolean useColumnar) {
+        this.useColumnar = useColumnar;
     }
 
     public Map<Integer, ParameterContext> getConstantParams() {
@@ -397,6 +453,15 @@ public class ExecutionPlan {
         this.hintCollection = hintCollection;
         return this;
     }
+
+    public List<List<String[]>> getOriginColumnNames() {
+        return originColumnNames;
+    }
+
+    public void setOriginColumnNames(List<List<String[]>> originColumnNames) {
+        this.originColumnNames = originColumnNames;
+    }
+
 }
 
 

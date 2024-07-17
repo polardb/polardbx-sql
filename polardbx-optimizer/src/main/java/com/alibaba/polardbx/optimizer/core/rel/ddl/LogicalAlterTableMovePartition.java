@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -78,7 +79,7 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
         assert notIncludeGsiName;
     }
 
-    public void preparedData(ExecutionContext ec) {
+    public void preparedData(ExecutionContext ec, boolean usePhysicalBackfill) {
         AlterTable alterTable = (AlterTable) relDdl;
         SqlAlterTable sqlAlterTable = (SqlAlterTable) alterTable.getSqlNode();
 
@@ -99,65 +100,71 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
 
         preparedData = new AlterTableMovePartitionPreparedData();
 
-        doPrepare(sqlAlterTableMovePartition, tableGroupName);
+        doPrepare(sqlAlterTableMovePartition, tableGroupName, usePhysicalBackfill);
 
         preparedData.setTableName(logicalTableName);
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
+        preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
+        if (preparedData.needFindCandidateTableGroup()) {
+            List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
 
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
+                new TreeMap<>(String::compareToIgnoreCase);
+            Map<String, String> partitionLocations = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
-        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
-        Map<String, String> partitionLocations = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            for (int i = 0; i < newPartitionGroups.size(); i++) {
+                String partName = newPartitionGroups.get(i).partition_name;
+                String groupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(partName);
+                mockOrderedTargetTableLocations.put(partName, new Pair<>("", groupName));
+                partitionLocations.put(partName, groupName);
+            }
 
-        for (int i = 0; i < newPartitionGroups.size(); i++) {
-            String partName = newPartitionGroups.get(i).partition_name;
-            String groupName = GroupInfoUtil.buildGroupNameFromPhysicalDb(partName);
-            mockOrderedTargetTableLocations.put(partName, new Pair<>("", groupName));
-            partitionLocations.put(partName, groupName);
-        }
+            PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+                .getNewPartitionInfo(
+                    preparedData,
+                    curPartInfo,
+                    false,
+                    sqlAlterTableMovePartition,
+                    preparedData.getOldPartitionNames(),
+                    preparedData.getNewPartitionNames(),
+                    preparedData.getTableGroupName(),
+                    null,
+                    preparedData.getInvisiblePartitionGroups(),
+                    mockOrderedTargetTableLocations,
+                    ec);
 
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfo(
-                preparedData,
-                curPartInfo,
-                false,
-                sqlAlterTableMovePartition,
-                preparedData.getOldPartitionNames(),
-                preparedData.getNewPartitionNames(),
-                preparedData.getTableGroupName(),
-                null,
-                preparedData.getInvisiblePartitionGroups(),
-                mockOrderedTargetTableLocations,
-                ec);
+            PartitionByDefinition partByDef = newPartInfo.getPartitionBy();
+            PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
 
-        PartitionByDefinition partByDef = newPartInfo.getPartitionBy();
-        PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
-
-        for (PartitionSpec partSpec : newPartInfo.getPartitionBy().getPartitions()) {
-            if (subPartByDef != null) {
-                for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
-                    PartitionLocation location = subPartSpec.getLocation();
+            for (PartitionSpec partSpec : newPartInfo.getPartitionBy().getPartitions()) {
+                if (subPartByDef != null) {
+                    for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                        PartitionLocation location = subPartSpec.getLocation();
+                        if (!location.isVisiable()) {
+                            String groupKey = partitionLocations.get(subPartSpec.getName());
+                            assert groupKey != null;
+                            location.setGroupKey(groupKey);
+                        }
+                    }
+                } else {
+                    PartitionLocation location = partSpec.getLocation();
                     if (!location.isVisiable()) {
-                        String groupKey = partitionLocations.get(subPartSpec.getName());
+                        String groupKey = partitionLocations.get(partSpec.getName());
                         assert groupKey != null;
                         location.setGroupKey(groupKey);
                     }
                 }
-            } else {
-                PartitionLocation location = partSpec.getLocation();
-                if (!location.isVisiable()) {
-                    String groupKey = partitionLocations.get(partSpec.getName());
-                    assert groupKey != null;
-                    location.setGroupKey(groupKey);
-                }
             }
-        }
 
-        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION | PartitionInfoUtil.COMPARE_NEW_PART_LOCATION;
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null, null, flag, ec);
+            int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION | PartitionInfoUtil.COMPARE_NEW_PART_LOCATION;
+            preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null, null, flag,
+                ec);
+        }
     }
 
-    protected void doPrepare(SqlAlterTableMovePartition sqlAlterTableMovePartition, String tableGroupName) {
+    protected void doPrepare(SqlAlterTableMovePartition sqlAlterTableMovePartition, String tableGroupName,
+                             boolean usePhysicalBackfill) {
+
         List<GroupDetailInfoExRecord> candidateGroupDetailInfoExRecords =
             TableGroupLocation.getOrderedGroupList(schemaName);
 
@@ -213,8 +220,10 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setTargetPartitionsLocation(targetPartitions);
 
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = false;
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION);
+        preparedData.setUsePhysicalBackfill(usePhysicalBackfill);
     }
 
     public AlterTableGroupMovePartitionPreparedData getPreparedData() {

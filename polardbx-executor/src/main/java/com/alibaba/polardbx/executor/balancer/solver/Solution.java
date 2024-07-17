@@ -16,12 +16,6 @@
 
 package com.alibaba.polardbx.executor.balancer.solver;
 
-import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
-import org.apache.calcite.util.Pair;
-
-import java.util.List;
-import java.util.Map;
-
 public class Solution {
     public Boolean withValidSolve = false;
 

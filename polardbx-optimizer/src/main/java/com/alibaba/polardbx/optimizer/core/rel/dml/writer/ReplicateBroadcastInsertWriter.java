@@ -84,7 +84,7 @@ public class ReplicateBroadcastInsertWriter extends BroadcastInsertWriter implem
                 if (canWrite) {
                     RelNode moveTableRel =
                         baseTableOperation.copy(baseTableOperation.getTraitSet(), baseTableOperation.getInputs());
-                    ((BaseTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaloutGroupName(dbIndex));
+                    ((BaseTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaleOutGroupName(dbIndex));
                     moveTableRelNodes.add(moveTableRel);
                     logReplicateSql(tableMeta, ((BaseTableOperation) moveTableRel).getDbIndex(),
                         (BaseQueryOperation) moveTableRel,

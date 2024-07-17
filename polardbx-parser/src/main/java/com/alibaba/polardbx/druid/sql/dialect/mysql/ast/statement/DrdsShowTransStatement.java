@@ -23,10 +23,19 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
  */
 public class DrdsShowTransStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
+    private boolean columnar = false;
+
     @Override
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
         visitor.endVisit(this);
     }
 
+    public void setColumnar(boolean columnar) {
+        this.columnar = columnar;
+    }
+
+    public boolean isColumnar() {
+        return columnar;
+    }
 }

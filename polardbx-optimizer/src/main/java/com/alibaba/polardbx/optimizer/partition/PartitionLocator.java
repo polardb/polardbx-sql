@@ -97,7 +97,7 @@ public class PartitionLocator {
         //Long sortKey = (Long) partitionSpec.boundSpec.getSingleDatum().getSingletonValue().getValue();
         Long sortKey = null;
         long sortKeyLongVal = sortKey.longValue();
-        long mmhVal = MurmurHashUtils.murmurHashWithZeroSeed(sortKeyLongVal);
+        long mmhVal = MurmurHashUtils.murmurHash128WithZeroSeed(sortKeyLongVal);
         int grpIdx = findGroupIndex(mmhVal);
 
         String phyTableName = String.format(PHYSICAL_TABLENAME_PATTERN, tbName, posi);

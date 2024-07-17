@@ -122,6 +122,7 @@ public class BaseVectorizedExpressionTest {
 
     @Before
     public void setup() {
+        ConfigDataMode.setMode(ConfigDataMode.Mode.MOCK);
         parser = new FastsqlParser();
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
         initOptimizerContext();

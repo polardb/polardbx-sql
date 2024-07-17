@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class IndexesAccessor extends AbstractAccessor {
 
@@ -75,8 +76,32 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String WHERE_SCHEMA_TABLE_INDEXES = WHERE_SCHEMA_TABLE + " and `index_name` in (%s)";
 
+    private static final String WHERE_SCHEMA_TABLE_INDEXES_ID = WHERE_SCHEMA_TABLE + " and `id` in (%s)";
+
     private static final String WHERE_SCHEMA_TABLE_INDEXES_COLUMNS_STATUS_GSI =
         WHERE_SCHEMA_TABLE_INDEXES + " and `column_name` in (%s) and `index_status` = ? and `index_location` = 1";
+
+    private static final String WHERE_COLUMNAR_INDEX =
+        String.format("where (`flag` & %d) <> 0", IndexesRecord.FLAG_COLUMNAR);
+
+    private static final String WHERE_SCHEMA_COLUMNAR_INDEX =
+        String.format("where `table_schema` = ? and `table_name` = ? and (`flag` & %d) <> 0",
+            IndexesRecord.FLAG_COLUMNAR);
+
+    private static final String WHERE_COLUMNAR_INDEX_SCHEMA =
+        String.format("where `table_schema` = ? and (`flag` & %d) <> 0", IndexesRecord.FLAG_COLUMNAR);
+
+    private static final String WHERE_COLUMNAR_INDEX_SCHEMA_INDEX_NAME =
+        String.format(
+            "where `table_schema` = ?  and `index_name` = ? and (`flag` & %d) <> 0 order by `seq_in_index`",
+            IndexesRecord.FLAG_COLUMNAR);
+
+    private static final String WHERE_COLUMNAR_INDEX_SCHEMA_TABLE_INDEX_NAME =
+        String.format(
+            "where `table_schema` = ? and `table_name` = ? and `index_name` = ? and (`flag` & %d) <> 0 order by `seq_in_index`",
+            IndexesRecord.FLAG_COLUMNAR);
+
+    private static final String GROUP_BY_INDEX_NAME = " group by `index_name`";
 
     private static final String SELECT_CLAUSE =
         "select `table_schema`, `table_name`, `non_unique`, `index_schema`, `index_name`, `seq_in_index`, "
@@ -110,6 +135,24 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String SELECT_ALL_INDEXES =
         SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA + ORDER_BY_SEQ;
 
+    private static final String SELECT_ALL_COLUMNAR_INDEXES =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_COLUMNAR_INDEX;
+
+    private static final String SELECT_COLUMNAR_INDEXES_BY_TABLE =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA_COLUMNAR_INDEX;
+
+    private static final String SELECT_ALL_COLUMNAR_INDEXES_BY_SCHEMA =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_COLUMNAR_INDEX_SCHEMA + GROUP_BY_INDEX_NAME;
+
+    private static final String SELECT_PRIMARY_KEY_BY_SCHEMA_TABLE =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA_TABLE_PRIMARY_KEY + ORDER_BY_SEQ;
+
+    private static final String SELECT_COLUMNAR_COLUMNS_BY_SCHEMA_TABLE_INDEX_NAME =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_COLUMNAR_INDEX_SCHEMA_TABLE_INDEX_NAME;
+
+    private static final String SELECT_COLUMNAR_COLUMNS_BY_SCHEMA_INDEX_NAME =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_COLUMNAR_INDEX_SCHEMA_INDEX_NAME;
+
     private static final String SELECT_ALL_PUBLIC_GSI =
         SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE
             + " where `index_status` = 4 and `index_location` = 1 and `seq_in_index` = 1";
@@ -135,6 +178,12 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_INDEXES_VERSION = UPDATE_INDEXES + "`version` = ?" + WHERE_SCHEMA_TABLE;
 
+    private static final String UPDATE_INDEXES_VERSION_BY_INDEX_NAME =
+        UPDATE_INDEXES + "`version` = ?" + WHERE_SCHEMA + " and `index_name` = ?";
+
+    private static final String UPDATE_INDEXES_FLAG_BY_INDEX_NAME =
+        UPDATE_INDEXES + "`flag` = ?" + WHERE_SCHEMA + " and `index_name` = ? and seq_in_index = 1";
+
     private static final String UPDATE_INDEXES_STATUS = UPDATE_INDEXES + "`index_status` = ?";
 
     private static final String UPDATE_INDEXES_STATUS_ALL = UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE;
@@ -149,6 +198,9 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String UPDATE_INDEXES_STATUS_SPECIFIED_COLUMNS =
         UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE + "and `column_name` in (%s)";
 
+    private static final String UPDATE_INDEXES_STATUS_BY_INDEX_NAME =
+        UPDATE_INDEXES_STATUS + WHERE_SCHEMA + " and `index_name` = ?";
+
     private static final String UPDATE_INDEXES_RENAME = UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_INDEXES_TABLE_NAME =
@@ -159,11 +211,14 @@ public class IndexesAccessor extends AbstractAccessor {
         UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE + " and `index_location` = 0";
 
     private static final String UPDATE_GLOBAL_INDEXES_CUT_OVER =
-        UPDATE_INDEXES + "`index_table_name` = ?" + WHERE_SCHEMA + "and index_table_name = ? and `index_location` = 1";
+        UPDATE_INDEXES + "`index_name` = ?, `index_table_name` = `index_name`"
+            + WHERE_SCHEMA + "and index_name = ? and `index_location` = 1";
 
     private static final String UPDATE_INDEXES_COLUMN_NAME =
         UPDATE_INDEXES + "`column_name` = ?" + WHERE_SCHEMA_TABLE_COLUMN;
 
+    private static final String UPDATE_INDEXES_COLUMN_NAMES =
+        UPDATE_INDEXES + "`column_name` = ?" + WHERE_SCHEMA_TABLE_COLUMN;
     private static final String DELETE_INDEXES = "delete" + FROM_INDEXES_TABLE;
 
     private static final String DELETE_INDEXES_ALL = DELETE_INDEXES + WHERE_SCHEMA;
@@ -175,6 +230,10 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String DELETE_INDEXES_COLUMNS = DELETE_INDEXES + WHERE_SCHEMA_TABLE_COLUMNS;
 
     private static final String DELETE_PRIMARY_KEY = DELETE_INDEXES + WHERE_SCHEMA_TABLE_PRIMARY_KEY;
+
+    public List<IndexesRecord> queryTableIndexes(String tableSchema, String tableName) {
+        return query(tableSchema, tableName);
+    }
 
     public int[] insert(List<IndexesRecord> records, String tableSchema, String tableName) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -367,9 +426,57 @@ public class IndexesAccessor extends AbstractAccessor {
             firstColumnName);
     }
 
+    public List<IndexesRecord> queryColumnarIndex() {
+        return query(SELECT_ALL_COLUMNAR_INDEXES, INDEXES_TABLE, IndexesRecord.class, (String) null);
+    }
+
+    public List<IndexesRecord> queryColumnarIndexByTable(String tableSchema, String tableName) {
+        return query(SELECT_COLUMNAR_INDEXES_BY_TABLE, INDEXES_TABLE, IndexesRecord.class, tableSchema, tableName);
+    }
+
+    public List<IndexesRecord> queryColumnarIndexBySchema(String tableSchema) {
+        return query(SELECT_ALL_COLUMNAR_INDEXES_BY_SCHEMA, INDEXES_TABLE, IndexesRecord.class, tableSchema);
+    }
+
+    public List<IndexesRecord> queryColumnarIndexColumnsByName(String tableSchema, String tableName, String indexName) {
+        return query(SELECT_COLUMNAR_COLUMNS_BY_SCHEMA_TABLE_INDEX_NAME, INDEXES_TABLE, IndexesRecord.class,
+            tableSchema, tableName, indexName);
+    }
+
+    public List<IndexesRecord> queryColumnarIndexColumnsByName(String tableSchema, String indexName) {
+        return query(SELECT_COLUMNAR_COLUMNS_BY_SCHEMA_INDEX_NAME, INDEXES_TABLE, IndexesRecord.class,
+            tableSchema, indexName);
+    }
+
+    public List<IndexesRecord> queryPrimaryKeyBySchemaAndTable(String tableSchema, String tableName) {
+        return query(SELECT_PRIMARY_KEY_BY_SCHEMA_TABLE, INDEXES_TABLE, IndexesRecord.class,
+            tableSchema, tableName);
+    }
+
     public boolean checkIfExists(String tableSchema, String tableName) {
         List<IndexesRecord> records = query(tableSchema, tableName);
         return records != null && records.size() > 0;
+    }
+
+    public boolean checkIfColumnarExists(String tableSchema, String tableName) {
+        List<IndexesRecord> records = query(tableSchema, tableName);
+        if (records != null) {
+            for (IndexesRecord record : records) {
+                if (record.isColumnar()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public long getColumnarIndexNum(String tableSchema, String tableName) {
+        List<IndexesRecord> records = query(tableSchema, tableName);
+
+        if (records != null) {
+            return records.stream().filter(IndexesRecord::isColumnar).count();
+        }
+        return 0L;
     }
 
     public boolean checkIfExists(String tableSchema, String tableName, String indexName) {
@@ -386,6 +493,10 @@ public class IndexesAccessor extends AbstractAccessor {
         return update(UPDATE_INDEXES_VERSION, INDEXES_TABLE, tableSchema, tableName, newOpVersion);
     }
 
+    public int updateIndexVersion(String tableSchema, String indexName, long newOpVersion) {
+        return update(UPDATE_INDEXES_VERSION_BY_INDEX_NAME, INDEXES_TABLE, tableSchema, indexName, newOpVersion);
+    }
+
     public int updateStatus(String tableSchema, String tableName, int newStatus) {
         return update(UPDATE_INDEXES_STATUS_ALL, INDEXES_TABLE, tableSchema, tableName, newStatus);
     }
@@ -397,6 +508,14 @@ public class IndexesAccessor extends AbstractAccessor {
     public int updateStatus(String tableSchema, String tableName, List<String> indexNames, int newStatus) {
         Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, indexNames, newStatus);
         return update(String.format(UPDATE_INDEXES_STATUS_SPECIFIED, concatParams(indexNames)), INDEXES_TABLE, params);
+    }
+
+    public int updateStatusByIndexName(String tableSchema, String indexName, long newStatus) {
+        return update(UPDATE_INDEXES_STATUS_BY_INDEX_NAME, INDEXES_TABLE, tableSchema, indexName, newStatus);
+    }
+
+    public int updateFlagByIndexName(String tableSchema, String indexName, long newStatus) {
+        return update(UPDATE_INDEXES_FLAG_BY_INDEX_NAME, INDEXES_TABLE, tableSchema, indexName, newStatus);
     }
 
     public int updateStatus(String tableSchema, String tableName, List<String> indexNames, List<String> columns,
@@ -439,6 +558,31 @@ public class IndexesAccessor extends AbstractAccessor {
         Map<Integer, ParameterContext> params = MetaDbUtil
             .buildStringParameters(new String[] {newColumnName, tableSchema, tableName, oldColumnName});
         return update(UPDATE_INDEXES_COLUMN_NAME, INDEXES_TABLE, params);
+    }
+
+    public int[] updateIndexesByRewrite(String tableSchema, String tableName, List<IndexesRecord> records,
+                                        List<String> indexNames) {
+        int[] affectedRows = new int[0];
+        if (indexNames == null || indexNames.isEmpty()) {
+            return affectedRows;
+        }
+        List<Map<Integer, ParameterContext>> paramsForInsert = new ArrayList<>(records.size());
+        for (IndexesRecord record : records) {
+            paramsForInsert.add(record.buildInsertParams());
+        }
+
+        Map<Integer, ParameterContext> paramsForDelete = buildParams(tableSchema, tableName, indexNames);
+        try {
+            delete(String.format(DELETE_INDEXES_SPECIFIED, concatParams(indexNames)), INDEXES_TABLE, paramsForDelete);
+            DdlMetaLogUtil.logSql(INSERT_INDEXES, paramsForInsert);
+            affectedRows = MetaDbUtil.insert(INSERT_INDEXES, paramsForInsert, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to insert a batch of new records into " + INDEXES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",
+                INDEXES_TABLE,
+                e.getMessage());
+        }
+        return affectedRows;
     }
 
     public int[] rename(String tableSchema, String tableName, List<Pair<String, String>> indexNamePairs) {

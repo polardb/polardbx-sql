@@ -46,5 +46,10 @@ public enum CacheResult {
     /**
      * The data we're reading is not in cache and we don't have quota to write them to cache
      */
-    CACHE_QUOTA_EXCEED
+    CACHE_QUOTA_EXCEED,
+
+    /**
+     * The cache is unavailable.
+     */
+    CACHE_IS_UNAVAILABLE
 }

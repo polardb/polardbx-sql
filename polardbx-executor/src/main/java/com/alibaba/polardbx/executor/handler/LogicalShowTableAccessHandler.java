@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.statis.PlanAccessStat;
@@ -72,7 +73,7 @@ public class LogicalShowTableAccessHandler extends HandlerCommon {
         }
 
         List<List<Map<String, Object>>> tableAccessStatOfAllCn =
-            SyncManagerHelper.sync(showTableAccessAction, executionContext.getSchemaName());
+            SyncManagerHelper.sync(showTableAccessAction, executionContext.getSchemaName(), SyncScope.ALL);
 
         ArrayResultCursor cursor = new ArrayResultCursor("SHOW_TABLE_ACCESS");
         cursor.addColumn("TABLE_SCHEMA", DataTypes.StringType);

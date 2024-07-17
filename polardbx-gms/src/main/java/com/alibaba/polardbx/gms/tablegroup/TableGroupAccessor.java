@@ -27,6 +27,7 @@ import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -127,6 +128,7 @@ public class TableGroupAccessor extends AbstractAccessor {
             String sql =
                 forUpdate ? GET_TABLE_GROUP_BY_SCHEMA_GROUP_NAME_FOR_UPDATE : GET_TABLE_GROUP_BY_SCHEMA_GROUP_NAME;
 
+            DdlMetaLogUtil.logSql(sql, params);
             records =
                 MetaDbUtil.query(sql, params, TableGroupRecord.class, connection);
 
@@ -162,6 +164,15 @@ public class TableGroupAccessor extends AbstractAccessor {
             Map<Integer, ParameterContext> params = new HashMap<>();
 
             int i = 1;
+            boolean isBroadCast = tableGroupRecord.getTg_name() != null && tableGroupRecord.tg_name.equalsIgnoreCase(
+                TableGroupNameUtil.BROADCAST_TG_NAME_TEMPLATE);
+            boolean isDefaultSinle = tableGroupRecord.getTg_name() != null && tableGroupRecord.tg_name.equalsIgnoreCase(
+                TableGroupNameUtil.SINGLE_DEFAULT_TG_NAME_TEMPLATE);
+            if (isBroadCast) {
+                tableGroupRecord.tg_type = tableGroupRecord.TG_TYPE_BROADCAST_TBL_TG;
+            } else if (isDefaultSinle) {
+                tableGroupRecord.tg_type = tableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG;
+            }
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setString, tableGroupRecord.schema);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setString, tableGroupRecord.tg_name);
             MetaDbUtil.setParameter(i++, params, ParameterMethod.setString, tableGroupRecord.locality);
@@ -176,7 +187,7 @@ public class TableGroupAccessor extends AbstractAccessor {
             paramsBatch.add(params);
             DdlMetaLogUtil.logSql(INSERT_IGNORE_TABLE_GROUP, params);
 
-            return MetaDbUtil.insertAndRetureLastInsertId(INSERT_IGNORE_TABLE_GROUP, paramsBatch, this.connection);
+            return MetaDbUtil.insertAndReturnLastInsertId(INSERT_IGNORE_TABLE_GROUP, paramsBatch, this.connection);
         } catch (Exception e) {
             LOGGER.error("Failed to insert into the system table " + GmsSystemTables.TABLE_GROUP, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,

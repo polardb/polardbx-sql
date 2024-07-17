@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
+import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
 import java.util.List;
@@ -40,6 +41,14 @@ public class LessEqual extends AbstractCollationScalarFunction {
         }
 
         DataType type = getCompareType();
+        if (type instanceof RowType) {
+            Integer ret = ((RowType) type).nullNotSafeCompare(args[0], args[1], false);
+            if (ret != null) {
+                return ret <= 0 ? 1l : 0l;
+            } else {
+                return ret;
+            }
+        }
         return type.compare(args[0], args[1]) <= 0 ? 1L : 0L;
     }
 

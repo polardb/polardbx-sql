@@ -40,6 +40,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -56,6 +57,7 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
+import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -162,6 +164,7 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
     protected void buildSqlTemplate() {
         super.buildSqlTemplate();
         sqlTemplateFkRewrite();
+        sqlTemplateWithTableGroupRewrite();
         this.sequenceBean = ((SqlAlterTable) this.sqlTemplate).getAutoIncrement();
     }
 
@@ -367,6 +370,22 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
             sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
             sqlTemplate.setSourceSql(writer.toSqlString().getSql());
         }
+
+        this.sqlTemplate = sqlTemplate;
+    }
+
+    public void sqlTemplateWithTableGroupRewrite() {
+        final SqlAlterTable sqlTemplate = (SqlAlterTable) this.sqlTemplate;
+        if (sqlTemplate.getIndexTableGroupMap().isEmpty() && StringUtils.isEmpty(
+            sqlTemplate.getTargetImplicitTableGroupName())) {
+            return;
+        }
+        SQLAlterTableStatement alterTableStmt =
+            (SQLAlterTableStatement) FastsqlUtils.parseSql(sqlTemplate.getSourceSql()).get(0);
+        alterTableStmt.setTargetImplicitTableGroup(null);
+        alterTableStmt.getIndexTableGroupPair().clear();
+        //alterTableStmt.getTableSource().setExpr("?");
+        sqlTemplate.setSourceSql(alterTableStmt.toString());
 
         this.sqlTemplate = sqlTemplate;
     }

@@ -1,0 +1,10 @@
+- sql: |
+    select * from lineitem, partsupp, orders where ps_partkey = l_partkey AND ps_suppkey = l_suppkey and o_orderkey = l_orderkey and l_shipdate < o_orderdate and ps_comment <> l_comment;
+  plan: |
+    project(l_orderkey="l_orderkey", l_partkey="l_partkey", l_suppkey="l_suppkey", l_linenumber="l_linenumber", l_quantity="l_quantity", l_extendedprice="l_extendedprice", l_discount="l_discount", l_tax="l_tax", l_returnflag="l_returnflag", l_linestatus="l_linestatus", l_shipdate="l_shipdate", l_commitdate="l_commitdate", l_receiptdate="l_receiptdate", l_shipinstruct="l_shipinstruct", l_shipmode="l_shipmode", l_comment="l_comment", ps_partkey="ps_partkey", ps_suppkey="ps_suppkey", ps_availqty="ps_availqty", ps_supplycost="ps_supplycost", ps_comment="ps_comment", o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
+      hashjoin(condition="l_partkey = ps_partkey and l_suppkey = ps_suppkey and ps_comment <> l_comment", type="inner")
+        exchange(distribution=hash[1]4, collation=[])
+          hashjoin(condition="l_orderkey = o_orderkey and l_shipdate < o_orderdate", type="inner", partition=[local])
+            osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem` as `lineitem`")
+            osstablescan(tables="orders[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders` as `orders`")
+        osstablescan(tables="partsupp[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")

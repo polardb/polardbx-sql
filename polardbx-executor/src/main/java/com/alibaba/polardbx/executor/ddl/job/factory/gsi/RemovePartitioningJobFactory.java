@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
@@ -32,14 +33,11 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4AlterTable;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.operator.Sub;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -119,11 +117,15 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
         });
 
         RepartitionCutOverTask cutOverTask =
-            new RepartitionCutOverTask(schemaName, primaryTableName, indexTableName, false, false, true);
+            new RepartitionCutOverTask(schemaName, primaryTableName, indexTableName, false, false, true, false);
         RepartitionSyncTask repartitionSyncTask = new RepartitionSyncTask(schemaName, primaryTableName, indexTableName);
 
         // cdc
-        DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(schemaName, primaryTableName, SqlKind.ALTER_TABLE);
+        if (executionContext.getDdlContext().isSubJob()) {
+            throw new RuntimeException("unexpected parent ddl job");
+        }
+        DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(
+            schemaName, primaryTableName, SqlKind.ALTER_TABLE, CdcDdlMarkVisibility.Protected);
 
         // drop gsi
         DropGlobalIndexPreparedData dropGlobalIndexPreparedData =

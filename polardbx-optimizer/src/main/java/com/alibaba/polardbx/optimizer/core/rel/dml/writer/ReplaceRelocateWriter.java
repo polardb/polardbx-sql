@@ -86,12 +86,10 @@ public class ReplaceRelocateWriter extends RelocateWriter {
             final List<Object> before = row.before;
             final Map<Integer, ParameterContext> after = row.insertParam;
 
-            // Use delete + insert to avoid dup key error while adding column
-            final boolean isOnlineModifyColumn = TableColumnUtils.isModifying(schemaName, tableName, ec);
             // If this table contains all local/global uk and sk does not modified, do REPLACE
             final boolean pushReplace =
                 row.duplicated && row.doReplace && canPushReplace(ec) && identicalSk.test(this, Pair.of(before, after))
-                    && (!canWriteForScaleout || isReadyToPublishForScaleout) && !isOnlineModifyColumn;
+                    && (!canWriteForScaleout || isReadyToPublishForScaleout);
             addResult(before, after, row.duplicated, pushReplace, row.doInsert, ec, result);
         });
 
@@ -178,7 +176,10 @@ public class ReplaceRelocateWriter extends RelocateWriter {
         // conflict rows than expected, because SELECT FOR UPDATE that we previously used to select conflict rows
         // will not lock gap in isolation level below RR.
         return ec.getParamManager().getBoolean(ConnectionParams.DML_FORCE_PUSHDOWN_RC_REPLACE)
-            || ec.getTxIsolation() > Connection.TRANSACTION_READ_COMMITTED;
+            || ec.getTxIsolation() > Connection.TRANSACTION_READ_COMMITTED
+            // If primary table and all GSI contain all uk, and all uk contains all sharding keys,
+            // we can push down REPLACE even under RC isolation level.
+            || parent.isUkContainsAllSkAndGsiContainsAllUk();
     }
 
     public boolean isContainsAllUk() {

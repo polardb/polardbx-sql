@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -61,6 +62,7 @@ public class PipelineDepTree {
                 TreeNode treeNode = getOrCreateTreeNode(pipeline.getPipelineId());
                 treeNode.setParallelism(pipeline.getParallelism());
                 treeNode.setBuildDepOnAllConsumers(pipeline.getFragment().isBuildDepOnAllConsumers());
+
                 for (Integer dependChild : pipeline.getDependency()) {
                     TreeNode dependChildNode = getOrCreateTreeNode(dependChild);
                     treeNode.addDependChild(dependChildNode);
@@ -127,7 +129,11 @@ public class PipelineDepTree {
 
     }
 
-    protected static class TreeNode {
+    public int size() {
+        return nodeIndex.size();
+    }
+
+    public static class TreeNode {
         private TreeNode parent;
         private Set<TreeNode> dependChildren = new HashSet<>();
         private Set<TreeNode> children = new HashSet<>();
@@ -215,6 +221,10 @@ public class PipelineDepTree {
 
         public void setChildrenFuture(ListenableFuture<?> childrenFuture) {
             this.childrenFuture = childrenFuture;
+        }
+
+        public int getId() {
+            return id;
         }
 
         @Override

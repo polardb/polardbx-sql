@@ -20,7 +20,7 @@ import java.util.Map;
 
 public interface IMppReadOnlyTransaction extends ITransaction {
 
-    void setTsoTimestamp(long tsoTimestamp);
+    void setSnapshotTimestamp(long snapshotTimestamp);
 
     void setDnLsnMap(Map<String, Long> dnLsnMap);
 

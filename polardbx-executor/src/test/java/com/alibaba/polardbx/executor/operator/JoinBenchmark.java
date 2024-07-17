@@ -101,12 +101,12 @@ public class JoinBenchmark {
                 joinKeys.add(new EquiJoinKey(i, i, DataTypes.LongType, false));
             }
             IExpression otherCondition = null;
-            ParallelHashJoinExec.Synchronizer synchronizer =
-                new ParallelHashJoinExec.Synchronizer(1, false);
+            Synchronizer synchronizer =
+                new Synchronizer(joinType, false, 1, false, 1);
             ParallelHashJoinExec hashJoinExec =
                 new ParallelHashJoinExec(synchronizer, outerInput, innerInput, joinType, maxOneRow, joinKeys,
                     otherCondition,
-                    null, false, context, 0);
+                    null, false, context, 0, 1, false);
             execForMppBenchmark(hashJoinExec, -1, false);
         });
     }

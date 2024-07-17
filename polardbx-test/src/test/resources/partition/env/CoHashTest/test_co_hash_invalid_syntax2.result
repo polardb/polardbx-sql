@@ -1,0 +1,27 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $# must be more than 1 #$
+CREATE TABLE `ch_l4_l4` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`),
+KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(left(`c`,-4),left(`d`,-4))
+PARTITIONS 8;
+must be more than 1
+## error_msg: $# must be more than 1 #$
+CREATE TABLE `ch_r4_r4` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`),
+KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(right(`c`,-4),right(`d`,-4))
+PARTITIONS 8;
+must be more than 1

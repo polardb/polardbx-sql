@@ -25,7 +25,6 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.validator.JoinGroupValidator;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
@@ -108,7 +107,6 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionValue;
@@ -249,7 +247,7 @@ public class AlterTableGroupUtils {
         boolean alterTableOnly = !(sqlAlterTableSplitPartition instanceof SqlAlterTableGroupSplitPartition);
         String tgSchema = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = OptimizerContext.getContext(tgSchema).getLatestSchemaManager();
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         TableMeta tableMeta = schemaManager.getTable(tableInCurrentGroup);
         TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
         String tgName = tableGroupRecord.getTg_name();
@@ -678,8 +676,11 @@ public class AlterTableGroupUtils {
             SqlLiteral constLiteral = ((SqlLiteral) sqlAlter.getAtValue());
             String constStr = constLiteral.getValueAs(String.class);
             atVal.store(constStr, new CharType());
-        } else if (strategy != PartitionStrategy.HASH && strategy != PartitionStrategy.KEY && GeneralUtil.isEmpty(
-            sqlAlter.getNewPartitions())) {
+        } else if (strategy != PartitionStrategy.HASH
+            && strategy != PartitionStrategy.KEY
+            && strategy != PartitionStrategy.DIRECT_HASH
+            && strategy != PartitionStrategy.CO_HASH
+            && GeneralUtil.isEmpty(sqlAlter.getNewPartitions())) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT, "Missing the new partitions spec");
         }
         if (GeneralUtil.isNotEmpty(sqlAlter.getNewPartitions())) {
@@ -710,7 +711,7 @@ public class AlterTableGroupUtils {
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
 
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         TableMeta tableMeta = schemaManager.getTable(tableInCurrentGroup);
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
 
@@ -827,7 +828,7 @@ public class AlterTableGroupUtils {
 
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
-        String firstTableName = tableGroupConfig.getAllTables().get(0).getTableName();
+        String firstTableName = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = schemaManager.getTable(firstTableName).getPartitionInfo();
 
         PartitionByDefinition partByDef = partitionInfo.getPartitionBy();
@@ -1372,7 +1373,7 @@ public class AlterTableGroupUtils {
         }
 
         String tgSchema = tableGroupConfig.getTableGroupRecord().getSchema();
-        String firstTableName = tableGroupConfig.getAllTables().get(0).getTableName();
+        String firstTableName = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo =
             OptimizerContext.getContext(tgSchema).getPartitionInfoManager().getPartitionInfo(firstTableName);
 
@@ -1424,8 +1425,8 @@ public class AlterTableGroupUtils {
     private static void alterTableGroupExtractPartitionCheck(SqlAlterTableGroup sqlAlterTableGroup,
                                                              TableGroupConfig tableGroupConfig,
                                                              ExecutionContext executionContext) {
-        String schemaName = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableSchema;
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
 
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
 
@@ -1464,6 +1465,7 @@ public class AlterTableGroupUtils {
                 "can't execute the extract partition command for single/broadcast tables");
         }
         if (partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.HASH
+            && partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.CO_HASH
             && partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.KEY
             && partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.LIST
             && partitionInfo.getPartitionBy().getStrategy() != PartitionStrategy.LIST_COLUMNS) {
@@ -1483,8 +1485,8 @@ public class AlterTableGroupUtils {
         boolean modifyNonTemplateSubPartition =
             subPartitionSplit && sqlAlterTableSplitPartitionByHotValue.getModifyPartitionName() != null;
 
-        String schemaName = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableSchema;
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
 
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
 
@@ -1623,7 +1625,7 @@ public class AlterTableGroupUtils {
 
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getTableName();
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = schemaManager.getTable(tableInCurrentGroup).getPartitionInfo();
 
         PartitionByDefinition partByDef = partitionInfo.getPartitionBy();
@@ -1712,17 +1714,17 @@ public class AlterTableGroupUtils {
                 "Don't allow to drop all the partitions");
         }
 
-        for (TablePartRecordInfoContext record : tableGroupConfig.getAllTables()) {
-            TableMeta tbMeta = schemaManager.getTable(record.getTableName());
-            if (tbMeta.withGsi()) {
+        for (String tableName : tableGroupConfig.getAllTables()) {
+            TableMeta tbMeta = schemaManager.getTable(tableName);
+            if (tbMeta.withGsi() && !tbMeta.withCci()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                     String.format("it's not support to drop partition/subpartition when table[%s] with GSI",
-                        record.getTableName()));
+                        tableName));
             }
-            if (tbMeta.isGsi()) {
+            if (tbMeta.isGsi() && !tbMeta.isColumnar()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
                     String.format("it's not support to drop global index[%s]'s partition/subpartition",
-                        record.getTableName()));
+                        tableName));
             }
         }
     }
@@ -1733,7 +1735,7 @@ public class AlterTableGroupUtils {
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
 
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = schemaManager.getTable(tableInCurrentGroup).getPartitionInfo();
 
         PartitionByDefinition subPartByDef = partitionInfo.getPartitionBy().getSubPartitionBy();
@@ -1744,17 +1746,17 @@ public class AlterTableGroupUtils {
                 "Don't allow to drop subpartitions from one-level partitioned table");
         }
 
-        for (TablePartRecordInfoContext record : tableGroupConfig.getAllTables()) {
-            TableMeta tbMeta = schemaManager.getTable(record.getTableName());
+        for (String tableName : tableGroupConfig.getAllTables()) {
+            TableMeta tbMeta = schemaManager.getTable(tableName);
             if (tbMeta.withGsi()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                     String.format("it's not support to truncate partition/subpartition when table[%s] with GSI",
-                        record.getTableName()));
+                        tableName));
             }
             if (tbMeta.isGsi()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
                     String.format("it's not support to truncate global index[%s]'s partition/subpartition",
-                        record.getTableName()));
+                        tableName));
             }
         }
     }
@@ -1764,12 +1766,12 @@ public class AlterTableGroupUtils {
                                                                  SqlAlterTableModifyPartitionValues sqlModifyListPartitionValues,
                                                                  ExecutionContext executionContext) {
 
-        TablePartitionRecord tablePartitionRecord = tableGroupConfig.getAllTables().get(0).getLogTbRec();
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
         SchemaManager schemaManager =
-            OptimizerContext.getContext(tablePartitionRecord.getTableSchema()).getLatestSchemaManager();
+            OptimizerContext.getContext(tableGroupRecord.getSchema()).getLatestSchemaManager();
         PartitionInfo partitionInfo =
-            OptimizerContext.getContext(tablePartitionRecord.getTableSchema()).getPartitionInfoManager()
-                .getPartitionInfo(tablePartitionRecord.getTableName());
+            OptimizerContext.getContext(tableGroupRecord.getSchema()).getPartitionInfoManager()
+                .getPartitionInfo(tableGroupConfig.getAllTables().get(0));
 
         SqlPartition partSpecAst = sqlModifyListPartitionValues.getPartition();
         SqlSubPartition subpartSpecAst = null;
@@ -1902,15 +1904,15 @@ public class AlterTableGroupUtils {
                     "the number of drop values should less than the number of values contain by partition[%s]",
                     targetPartNameStr));
             }
-            for (TablePartRecordInfoContext record : tableGroupConfig.getAllTables()) {
-                TableMeta tbMeta = schemaManager.getTable(record.getTableName());
+            for (String tableName : tableGroupConfig.getAllTables()) {
+                TableMeta tbMeta = schemaManager.getTable(tableName);
                 if (tbMeta.withGsi()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                        String.format("it's not support to drop value when table[%s] with GSI", record.getTableName()));
+                        String.format("it's not support to drop value when table[%s] with GSI", tableName));
                 }
                 if (tbMeta.isGsi()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE,
-                        String.format("it's not support to drop value for global index[%s]", record.getTableName()));
+                        String.format("it's not support to drop value for global index[%s]", tableName));
                 }
             }
         }
@@ -1923,7 +1925,7 @@ public class AlterTableGroupUtils {
         final String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
 
-        String firstTableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String firstTableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         TableMeta tableMeta = schemaManager.getTable(firstTableInCurrentGroup);
 
         Set<String> oldPartitionNames = new HashSet<>();
@@ -2049,7 +2051,7 @@ public class AlterTableGroupUtils {
         String tgSchema = tableGroupConfig.getTableGroupRecord().getSchema();
         final SchemaManager schemaManager = OptimizerContext.getContext(tgSchema).getLatestSchemaManager();
         String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
-        String firstTableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String firstTableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = schemaManager.getTable(firstTableInCurrentGroup).getPartitionInfo();
         if (partitionInfo.isSingleTable() || partitionInfo.isBroadcastTable()) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
@@ -2136,7 +2138,7 @@ public class AlterTableGroupUtils {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_IS_EMPTY,
                 "it not allow to merge tables into empty tablegroup");
         }
-        String firstTable = tableGroupConfig.getAllTables().get(0).getTableName();
+        String firstTable = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(firstTable);
         TableMeta tableMeta = ec.getSchemaManager(preparedData.getSchemaName()).getTable(firstTable);
         if (tableMeta.isGsi()) {
@@ -2157,7 +2159,7 @@ public class AlterTableGroupUtils {
                 String.format("The joinGroup of tableGroup:[%s] is not match with the joinGroup of tableGroup[%s]",
                     tableGroup, targetTableGroup);
             if (GeneralUtil.isNotEmpty(tableGroupConfig.getAllTables())) {
-                String sourceTable = tableGroupConfig.getAllTables().get(0).getTableName();
+                String sourceTable = tableGroupConfig.getAllTables().get(0);
                 PartitionInfo sourcePartitionInfo = partitionInfoManager.getPartitionInfo(sourceTable);
                 if (!sourcePartitionInfo.equals(partitionInfo)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
@@ -2197,7 +2199,7 @@ public class AlterTableGroupUtils {
         }
         PartitionInfo partitionInfo = null;
         if (GeneralUtil.isNotEmpty(tableGroupConfig.getAllTables())) {
-            String firstTable = tableGroupConfig.getAllTables().get(0).getTableName();
+            String firstTable = tableGroupConfig.getAllTables().get(0);
             partitionInfo = partitionInfoManager.getPartitionInfo(firstTable);
         } else {
             partitionInfo = partitionInfoManager.getPartitionInfo(preparedData.getReferenceTable());
@@ -2327,7 +2329,7 @@ public class AlterTableGroupUtils {
                 "can't modify the tablegroup:" + tableGroupName + " when it's empty");
         }
 
-        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
         TableMeta tableMeta = schemaManager.getTable(tableInCurrentGroup);
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
 
@@ -2350,7 +2352,7 @@ public class AlterTableGroupUtils {
     public static String convertExtractPartitionToSplitPartitionSql(
         LogicalAlterTableExtractPartition extractPartitionPlan, boolean isAlterTable,
         ExecutionContext executionContext) {
-        final String SPLIT_SQL = isAlterTable ? "ALTER TABLE {0} SPLIT INTO {1} PARTITIONS 1 BY HOT VALUE({2});" :
+        final String SPLIT_SQL = isAlterTable ? "ALTER TABLE {0} SPLIT INTO {1} PARTITIONS 1 BY HOT VALUE({2})" :
             "ALTER TABLEGROUP {0} SPLIT INTO {1} PARTITIONS 1 BY HOT VALUE({2})";
         PartitionInfo partitionInfo;
         SqlAlterTableExtractPartition sqlAlterTableExtractPartition;
@@ -2468,8 +2470,8 @@ public class AlterTableGroupUtils {
      */
     public static String convertExtractListRelToSplitListSql(LogicalAlterTableExtractPartition extractPartitionPlan,
                                                              boolean isAlterTable, ExecutionContext executionContext) {
-        final String SPLIT_SQL = isAlterTable ? "ALTER TABLE {0} split PARTITION {1} into ({2});" :
-            "ALTER TABLEGROUP {0} split PARTITION {1} into ({2});";
+        final String SPLIT_SQL = isAlterTable ? "ALTER TABLE {0} split PARTITION {1} into ({2})" :
+            "ALTER TABLEGROUP {0} split PARTITION {1} into ({2})";
         final String PARTITION_DEF = "PARTITION {0} VALUES IN({1})";
         PartitionInfo partitionInfo;
         SqlAlterTableExtractPartition sqlAlterTableExtractPartition;
@@ -2789,8 +2791,8 @@ public class AlterTableGroupUtils {
      */
     public static String convertAddListRelToSplitListSql(LogicalAlterTableAddPartition addPartitionPlan,
                                                          boolean isAlterTable, ExecutionContext executionContext) {
-        final String SPLIT_TABLEGROUP_SQL = isAlterTable ? "ALTER TABLE {0} split PARTITION {1} into ({2});" :
-            "ALTER TABLEGROUP {0} split PARTITION {1} into ({2});";
+        final String SPLIT_TABLEGROUP_SQL = isAlterTable ? "ALTER TABLE {0} split PARTITION {1} into ({2})" :
+            "ALTER TABLEGROUP {0} split PARTITION {1} into ({2})";
 
         PartitionInfo partitionInfo;
         SqlAlterTableAddPartition sqlAlterTableAddPartition;
@@ -2922,24 +2924,76 @@ public class AlterTableGroupUtils {
             }
         }
 
-        List<String> newPartitionsStr = new ArrayList<>();
-        for (SqlPartition newSqlPartition : newPartitions) {
-            newPartitionsStr.add(newSqlPartition.toString());
+        boolean useSubPart = partitionInfo.getPartitionBy().getSubPartitionBy() != null;
+        boolean useSubPartTemp = false;
+        if (useSubPart) {
+            useSubPartTemp = partitionInfo.getPartitionBy().getSubPartitionBy().isUseSubPartTemplate();
         }
 
-        PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
-        tobePrintDefaultSpec.setLogical(false);
-        newPartitionsStr.add(
-            tobePrintDefaultSpec.toString()
-        );
-        String finalNewpartsExpr = String.join(", ", newPartitionsStr);
-        return MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewpartsExpr);
+        if (!useSubPart || useSubPartTemp) {
+            /**
+             * Only for 1st-level-part of list
+             */
+            List<String> newPartitionsStr = new ArrayList<>();
+            for (SqlPartition newSqlPartition : newPartitions) {
+                newPartitionsStr.add(newSqlPartition.toString());
+            }
+
+            PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
+            tobePrintDefaultSpec.setLogical(false);
+            newPartitionsStr.add(
+                tobePrintDefaultSpec.toString()
+            );
+            String finalNewPartsExpr = String.join(", ", newPartitionsStr);
+            String finalSplitSql =
+                MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewPartsExpr);
+            return finalSplitSql;
+        } else {
+            /**
+             * For 1st-level-part with specifying 2nd-level-part of list
+             */
+
+            /**
+             * Here only handle the add partition operations
+             * of non-template-subpartition list/list_columns containing default partition or
+             * non-template-subpartition range/range_columns containing maxvalue partition
+             */
+
+            List<String> newPartitionsStr = new ArrayList<>();
+            for (SqlPartition newSqlPartition : newPartitions) {
+                newPartitionsStr.add(newSqlPartition.toString());
+            }
+
+            PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
+            newPartitionsStr.add(
+                tobePrintDefaultSpec.toString()
+            );
+
+            String finalNewpartsExpr = String.join(", ", newPartitionsStr);
+            String finalSplitSql =
+                MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewpartsExpr);
+            return finalSplitSql;
+        }
+
+//        List<String> newPartitionsStr = new ArrayList<>();
+//        for (SqlPartition newSqlPartition : newPartitions) {
+//            newPartitionsStr.add(newSqlPartition.toString());
+//        }
+//
+//        PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
+//        tobePrintDefaultSpec.setLogical(false);
+//        newPartitionsStr.add(
+//            tobePrintDefaultSpec.toString()
+//        );
+//        String finalNewpartsExpr = String.join(", ", newPartitionsStr);
+//        String finalSplitSql = MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewpartsExpr);
+//        return finalSplitSql;
     }
 
     public static String convertAddListRelToSplitListSqlForSubPartition(LogicalAlterTableAddPartition addPartitionPlan,
                                                                         boolean isAlterTable,
                                                                         ExecutionContext executionContext) {
-        final String SPLIT_SQL = isAlterTable ? "alter table {0} split subpartition {1} into ({2});" :
+        final String SPLIT_SQL = isAlterTable ? "alter table {0} split subpartition {1} into ({2})" :
             "alter tablegroup {0} split subpartition {1} into ({2})";
 
         PartitionInfo partitionInfo;

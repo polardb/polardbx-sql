@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
+import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.alibaba.polardbx.executor.utils.OrderByOption;
 
 import java.util.List;
 
@@ -35,7 +35,7 @@ public class PartitioningScheme {
         @JsonProperty("partChannels") List<Integer> partChannels,
         @JsonProperty("orderByOptions") List<OrderByOption> orderByOptions,
         @JsonProperty("shuffleHandle")
-            PartitionShuffleHandle shuffleHandle) {
+        PartitionShuffleHandle shuffleHandle) {
         this.partChannels = partChannels;
         this.orderByOptions = orderByOptions;
         this.shuffleHandle = shuffleHandle;
@@ -62,6 +62,22 @@ public class PartitioningScheme {
 
     public void setPartitionCount(int partitionCount) {
         shuffleHandle.setPartitionCount(partitionCount);
+    }
+
+    public boolean isRemotePairWise() {
+        return shuffleHandle.isRemotePairWise();
+    }
+
+    public List<Integer> getPrunePartitions() {
+        return shuffleHandle.getPrunePartitions();
+    }
+
+    public void setPrunePartitions(List<Integer> prunePartitions) {
+        shuffleHandle.setPrunePartitions(prunePartitions);
+    }
+
+    public int getFullPartCount() {
+        return shuffleHandle.getFullPartCount();
     }
 
     public PartitionShuffleHandle.PartitionShuffleMode getPartitionMode() {

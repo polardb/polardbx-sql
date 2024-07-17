@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.ReferenceBlock;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
@@ -65,6 +66,9 @@ public class VectorizedProjectExec extends AbstractExecutor {
      */
     private Pair<Integer, Integer>[] commonSubExpressions;
 
+    private ObjectPools objectPools;
+    private boolean shouldRecycle;
+
     public VectorizedProjectExec(Executor input, List<VectorizedExpression> expressions,
                                  List<MutableChunk> preAllocatedChunks,
                                  List<DataType> dataTypes,
@@ -76,6 +80,8 @@ public class VectorizedProjectExec extends AbstractExecutor {
         this.preAllocatedChunks = preAllocatedChunks;
         this.commonSubExpressions = new Pair[expressions.size()];
         this.dataTypes = dataTypes;
+        this.objectPools = ObjectPools.create();
+        this.shouldRecycle = context.getParamManager().getBoolean(ConnectionParams.ENABLE_DRIVER_OBJECT_POOL);
         Preconditions.checkArgument(expressions.size() == dataTypes.size());
     }
 
@@ -84,7 +90,7 @@ public class VectorizedProjectExec extends AbstractExecutor {
         this.outputBlocks = new Block[dataTypes.size()];
 
         if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE)) {
-            for(int i = 0; i < expressions.size(); i++) {
+            for (int i = 0; i < expressions.size(); i++) {
                 this.commonSubExpressions[i] = null;
                 VectorizedExpression e = expressions.get(i);
 
@@ -105,10 +111,11 @@ public class VectorizedProjectExec extends AbstractExecutor {
                     List<Integer> otherInputIndexes = VectorizedExpressionUtils.getInputIndex(otherExpression);
                     DataType otherOutputDataType = otherExpression.getOutputDataType();
 
-                    for(int k = 0; k < e.getChildren().length; k++) {
+                    for (int k = 0; k < e.getChildren().length; k++) {
                         VectorizedExpression child = e.getChildren()[k];
 
-                        if (child.getOutputIndex() == outputIndex && DataTypeUtil.equalsSemantically(outputDataType, otherOutputDataType)) {
+                        if (child.getOutputIndex() == outputIndex && DataTypeUtil.equalsSemantically(outputDataType,
+                            otherOutputDataType)) {
                             List<Integer> inputIndexes = VectorizedExpressionUtils.getInputIndex(child);
                             if (!otherInputIndexes.equals(inputIndexes)) {
                                 break;
@@ -128,7 +135,6 @@ public class VectorizedProjectExec extends AbstractExecutor {
                 }
             }
         }
-
 
         for (int i = 0; i < expressions.size(); i++) {
             VectorizedExpression e = expressions.get(i);
@@ -158,7 +164,10 @@ public class VectorizedProjectExec extends AbstractExecutor {
             }
         }
 
-        return this.buildChunk(inputChunk);
+        Chunk result = this.buildChunk(inputChunk);
+        result.setPartIndex(inputChunk.getPartIndex());
+        result.setPartCount(inputChunk.getPartCount());
+        return result;
     }
 
     private void evaluateExpression(int index, Chunk inputChunk) {
@@ -181,16 +190,26 @@ public class VectorizedProjectExec extends AbstractExecutor {
 
         // Allocate the memory of output vector at runtime.
         if (this.commonSubExpressions[index] == null) {
-            preAllocatedChunk.reallocate(chunkSize, blockCount);
+            if (shouldRecycle) {
+                preAllocatedChunk.allocateWithObjectPool(chunkSize, blockCount, objectPools);
+            } else {
+                preAllocatedChunk.reallocate(chunkSize, blockCount);
+            }
+
         } else {
             // for common sub expression
             Pair<Integer, Integer> subExpressionInfo = this.commonSubExpressions[index];
             int expressionIndex = subExpressionInfo.getKey();
             int commonBlockIndex = subExpressionInfo.getValue();
-            preAllocatedChunk.reallocate(chunkSize, commonBlockIndex + 1);
+
+            if (shouldRecycle) {
+                preAllocatedChunk.allocateWithObjectPool(chunkSize, commonBlockIndex + 1, objectPools);
+            } else {
+                preAllocatedChunk.reallocate(chunkSize, commonBlockIndex + 1);
+            }
+
             preAllocatedChunk.setSlotAt((RandomAccessBlock) this.outputBlocks[expressionIndex], commonBlockIndex);
         }
-
 
         // Evaluation & Result Output.
         EvaluationContext evaluationContext = new EvaluationContext(preAllocatedChunk, this.context);
@@ -202,7 +221,8 @@ public class VectorizedProjectExec extends AbstractExecutor {
         Block outputBlock = (Block) Objects.requireNonNull(preAllocatedChunk.slotIn(outputIndex));
         if (outputBlock instanceof ReferenceBlock) {
             // If output block is reference block, try to get a type-specific materialized block from it.
-            Block typeSpecificBlock = ((ReferenceBlock) outputBlock).toTypeSpecificBlock(evaluationContext);
+            Block typeSpecificBlock =
+                ((ReferenceBlock) outputBlock).toTypeSpecificBlock(evaluationContext, dataTypes.get(index));
             outputBlock = typeSpecificBlock;
         } else {
             // compaction by selection array
@@ -239,6 +259,9 @@ public class VectorizedProjectExec extends AbstractExecutor {
 
     @Override
     void doClose() {
+        if (objectPools != null) {
+            objectPools.clear();
+        }
         input.close();
     }
 

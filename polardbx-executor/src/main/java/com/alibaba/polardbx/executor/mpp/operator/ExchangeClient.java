@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.base.Throwables;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.exception.MemoryNotEnoughException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -30,6 +26,10 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
+import com.google.common.base.Throwables;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.http.client.HttpClient;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -52,9 +52,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.alibaba.polardbx.executor.mpp.Threads.ENABLE_WISP;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
-import static com.alibaba.polardbx.executor.mpp.Threads.ENABLE_WISP;
 import static io.airlift.slice.Slices.EMPTY_SLICE;
 import static java.util.Objects.requireNonNull;
 

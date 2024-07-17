@@ -43,7 +43,7 @@ testCases:
       - "use polardbx;"
     checkTriggers:
       - "select count(1) from metadb.ddl_engine where state != 'success';###0"
-      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"
@@ -84,7 +84,7 @@ testCases:
       - "use polardbx;"
     checkTriggers:
       - "select count(1) from metadb.ddl_engine where state != 'success';###0"
-      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"

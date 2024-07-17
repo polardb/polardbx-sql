@@ -145,7 +145,7 @@ public class SqlPartitionBy extends SqlCall {
         }
         int partColCnt = partColTypes.size();
 
-        boolean allowNoPartBndVal = this instanceof SqlPartitionByHash;
+        boolean allowNoPartBndVal = (this instanceof SqlPartitionByHash) || (this instanceof SqlPartitionByCoHash);
         // Validate partitions
         SqlPartitionBy.validatePartitionDefs(validator, scope, this.getPartitions(), partColCnt, -1, allowNoPartBndVal,
             true);

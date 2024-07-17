@@ -52,6 +52,8 @@ public class CharsetFactoryImpl implements CharsetFactory {
                 return CollationHandlers.COLLATION_HANDLER_UTF8MB4_0900_AI_CI.getCharsetHandler();
             case UTF8MB4_UNICODE_520_CI:
                 return CollationHandlers.COLLATION_HANDLER_UTF8MB4_UNICODE_520_CI.getCharsetHandler();
+            case UTF8MB4_ZH_0900_AS_CS:
+                return CollationHandlers.COLLATION_HANDLER_UTF8MB4_ZH_0900_AS_CS.getCharsetHandler();
             }
         case UTF8:
             switch (collation) {
@@ -163,6 +165,8 @@ public class CharsetFactoryImpl implements CharsetFactory {
             return CollationHandlers.COLLATION_HANDLER_UTF8MB4_0900_AI_CI;
         case UTF8MB4_UNICODE_520_CI:
             return CollationHandlers.COLLATION_HANDLER_UTF8MB4_UNICODE_520_CI;
+        case UTF8MB4_ZH_0900_AS_CS:
+            return CollationHandlers.COLLATION_HANDLER_UTF8MB4_ZH_0900_AS_CS;
         case UTF8_GENERAL_CI:
             return CollationHandlers.COLLATION_HANDLER_UTF8_GENERAL_CI;
         case UTF8_UNICODE_CI:

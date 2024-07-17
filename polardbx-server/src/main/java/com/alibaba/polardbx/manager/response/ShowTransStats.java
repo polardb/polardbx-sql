@@ -84,7 +84,7 @@ public final class ShowTransStats {
         // write rows
         byte packetId = EOF.packetId;
 
-        RowDataPacket row = getRow(c.getCharset());
+        RowDataPacket row = getRow(c.getResultSetCharset());
         row.packetId = ++packetId;
         proxy = row.write(proxy);
 

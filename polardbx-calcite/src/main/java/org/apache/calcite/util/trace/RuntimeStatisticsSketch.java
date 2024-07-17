@@ -47,6 +47,8 @@ public class RuntimeStatisticsSketch {
      */
     protected final long rowCount;
 
+    protected final long runtimeFilteredRowCount;
+
     /**
      * Sum of produced bytes;
      */
@@ -68,11 +70,13 @@ public class RuntimeStatisticsSketch {
     protected final int spillCnt;
 
     public RuntimeStatisticsSketch(double startupDuration, double duration, double workerDuration, long rowCount,
+                                   long runtimeFilteredRowCount,
                                    long outputBytes, long memory, int instances, int spillCnt) {
         this.startupDuration = startupDuration;
         this.duration = duration;
         this.workerDuration = workerDuration;
         this.rowCount = rowCount;
+        this.runtimeFilteredRowCount = runtimeFilteredRowCount;
         this.outputBytes = outputBytes;
         this.memory = memory;
         this.instances = instances;
@@ -93,6 +97,10 @@ public class RuntimeStatisticsSketch {
 
     public long getRowCount() {
         return rowCount;
+    }
+
+    public long getRuntimeFilteredRowCount() {
+        return runtimeFilteredRowCount;
     }
 
     public long getMemory() {

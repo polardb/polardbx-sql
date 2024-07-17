@@ -47,6 +47,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_DRDS_MULTI_PHASE_DDL;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertThat;
@@ -798,7 +799,7 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void testAlterColumnWithInvalidDefaultValue1() throws SQLException {
+    public void testAlterColumnWithInvalidDefaultValue1OnLogacyMode() throws SQLException {
         if (TStringUtil.isNotEmpty(schemaPrefix)) {
             return;
         }
@@ -815,7 +816,7 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
             tddlConnection,
             String.format(sql, tableName),
             isMySQL80() ? "optimize error by Referenced identifier" :
-                "Not all physical DDLs have been executed successfully"
+                "You have an error in your SQL syntax;"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -838,7 +839,7 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            "BLOB, TEXT, GEOMETRY or JSON column 'c1' can't have a default value"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -861,7 +862,7 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            "Invalid default value for 'c1'"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -1001,48 +1002,63 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(tableName);
 
         String sql = "create table %s (id int not null primary key, name varchar(10), age int, dept int) broadcast";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "create index idx_name on %s(name, dept)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "create index idx_age on %s(age)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s rename index idx_age to `'`";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s change column `name` `'` varchar(10)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s drop index `'`";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s add index `'`(age)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "drop index `'` on %s";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "create index `'` on %s(age)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s drop column `'`";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s add column `'` varchar(10)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "create index idx_new on %s(`'`, dept)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "drop index idx_new on %s";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s add index idx_new(`'`, dept)";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         sql = "alter table %s drop index idx_new";
+        log.info("execute sql: " + sql);
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
         dropTableIfExists(tableName);
@@ -2251,7 +2267,7 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void testHintIgnoreErrorCode() throws SQLException {
+    public void testHintIgnoreErrorCodeLegacyOnly() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = "test_hint_ignore_error_code";
         String tableName = schemaPrefix + simpleTableName;
@@ -2274,10 +2290,12 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection,
             String.format("alter table %s add index i1 (id)", tableName), "Duplicate key name");
 
+        // there are no way we could ignore error code in two phase ddl.
         //then: with hint 'PHYSICAL_DDL_IGNORED_ERROR_CODE', add index i1 to local table will be success
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("/*+TDDL:cmd_extra(PHYSICAL_DDL_IGNORED_ERROR_CODE='1061')*/" +
-                "alter table %s add index i1 (id)", tableName));
+            String.format(
+                "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false,PHYSICAL_DDL_IGNORED_ERROR_CODE='1061')*/" +
+                    "alter table %s add index i1 (id)", tableName));
     }
 
     private void checkTableMeta(String schemaName, String simpleTableName, String fullTableName, String expectedShow,
@@ -2755,6 +2773,12 @@ public class AlterTableTest extends DDLBaseNewDBTestCase {
         }
 
         dropTableIfExists(mytable);
+    }
+
+    @Test
+    public void testAlterTableDropColumnWithNotExitDb() {
+        String sql = "alter table xxxx.dahuidha drop column dagufaw";
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Unknown database 'xxxx'");
     }
 
     @Override

@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangeCrossDBPreemptiveSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -56,6 +57,7 @@ public class AtomicTablesSyncTask extends BaseSyncTask {
             SyncManagerHelper.sync(
                 new TablesMetaChangeCrossDBPreemptiveSyncAction(schemaName, multiSchemas, logicalTables, initWait,
                     interval, timeUnit),
+                SyncScope.ALL,
                 true);
         } catch (Throwable t) {
             LOGGER.error(String.format(
@@ -71,6 +73,7 @@ public class AtomicTablesSyncTask extends BaseSyncTask {
             SyncManagerHelper.sync(
                 new TablesMetaChangeCrossDBPreemptiveSyncAction(schemaName, multiSchemas, logicalTables, initWait,
                     interval, timeUnit),
+                SyncScope.ALL,
                 true);
         } catch (Throwable t) {
             LOGGER.error(String.format(

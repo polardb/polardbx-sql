@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
-import com.google.inject.Binder;
-import com.google.inject.Scopes;
 import com.alibaba.polardbx.executor.mpp.execution.NodeTaskMap;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTaskFactory;
@@ -34,6 +32,8 @@ import com.alibaba.polardbx.executor.mpp.web.DdlResource;
 import com.alibaba.polardbx.executor.mpp.web.ForQueryInfo;
 import com.alibaba.polardbx.executor.mpp.web.QueryResource;
 import com.alibaba.polardbx.executor.mpp.web.StageResource;
+import com.google.inject.Binder;
+import com.google.inject.Scopes;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;

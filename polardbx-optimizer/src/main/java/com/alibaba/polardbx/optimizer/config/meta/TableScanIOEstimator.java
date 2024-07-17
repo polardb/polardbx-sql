@@ -26,7 +26,6 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
@@ -505,31 +504,41 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
                     int leftIndex = ((RexInputRef) leftRexNode).getIndex();
 
                     ColumnMeta columnMeta = findColumnMeta(tableMeta, leftIndex);
+                    long frequency = 0;
                     if (columnMeta != null && columnMeta.equals(indexColumnMeta)) {
                         int fanOut = ((RexCall) rightRexNode).operands.size();
+                        StatisticResult statisticResult;
+                        for (RexNode rexNode : ((RexCall) rightRexNode).operands) {
+                            Object value = DrdsRexFolder.fold(rexNode, plannerContext);
+                            if (value instanceof List) {
+                                statisticResult = StatisticManager.getInstance()
+                                    .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(),
+                                        columnMeta.getName(),
+                                        (List) value, plannerContext.isNeedStatisticTrace());
+                            } else {
+                                statisticResult = StatisticManager.getInstance()
+                                    .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(),
+                                        columnMeta.getName(),
+                                        value == null ? null : value.toString(),
+                                        plannerContext.isNeedStatisticTrace());
+                            }
+                            if (plannerContext.isNeedStatisticTrace()) {
+                                plannerContext.recordStatisticTrace(statisticResult.getTrace());
+                            }
+                            frequency += statisticResult.getLongValue();
 
-                        Row.RowValue rowValue = (Row.RowValue) DrdsRexFolder.fold(rightRexNode, plannerContext);
-                        StatisticResult statisticResult = StatisticManager.getInstance()
-                            .getFrequency(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(),
-                                rowValue, plannerContext.isNeedStatisticTrace());
-                        if (plannerContext.isNeedStatisticTrace()) {
-                            plannerContext.recordStatisticTrace(statisticResult.getTrace());
                         }
-                        long frequency = statisticResult.getLongValue();
 
                         // if statistic result is empty, assign one default value
                         if (frequency < 0) {
                             // Meaning lack of statistics
-                            frequency = Math.min(LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT, tableRowCount.longValue());
-                            if (rightRexNode != null && ((RexCall) rightRexNode).getOperands() != null) {
-                                frequency = frequency * ((RexCall) rightRexNode).getOperands().size();
-                            }
+                            frequency = Math.min(LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT, tableRowCount.longValue())
+                                * fanOut;
                         }
 
-                        IndexContext indexContext =
+                        return
                             new IndexContext(Index.PredicateType.IN, columnMeta.getOriginColumnName(),
-                                frequency / (double) tableRowCount.longValue(), fanOut);
-                        return indexContext;
+                                frequency / (double) tableRowCount.longValue(), 1);
                     }
                 }
             }

@@ -49,14 +49,30 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 
 public class FunctionTest extends ReadBaseTestCase {
 
+    public FunctionTest(String baseOneTableName, String baseTwoTableName) {
+        this.baseOneTableName = baseOneTableName;
+        this.baseTwoTableName = baseTwoTableName;
+    }
+
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepare() {
         return Arrays.asList(ExecuteTableSelect.selectBaseOneBaseTwo());
     }
 
-    public FunctionTest(String baseOneTableName, String baseTwoTableName) {
-        this.baseOneTableName = baseOneTableName;
-        this.baseTwoTableName = baseTwoTableName;
+    /**
+     * 设置相同的随机初始变量
+     */
+    private static void setRandomBytes(String varName, Connection... connections) {
+        Random random = new Random();
+        final int IV_LEN = 16;
+        StringBuilder stringBuilder = new StringBuilder(IV_LEN);
+        for (int i = 0; i < IV_LEN; i++) {
+            stringBuilder.append(random.nextInt(9) + 1);
+        }
+        String setVarSql = String.format("SET @%s=%s", varName, stringBuilder.toString());
+        for (Connection conn : connections) {
+            JdbcUtil.updateDataTddl(conn, setVarSql, null);
+        }
     }
 
     @Test
@@ -491,7 +507,7 @@ public class FunctionTest extends ReadBaseTestCase {
     }
 
     @Test
-    public void hexTest() throws Exception {
+    public void hexTest() {
         String sql = "SELECT HEX ('abc' )";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
@@ -505,6 +521,14 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void hexAesEncryptTest() {
         String sql = "select hex(aes_encrypt('polardbx', 'key'))";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void hexFromBlobTest() {
+        String sql =
+            String.format("/*+ TDDL: enable_push_join=false enable_cbo_push_join=false*/ select hex(a.blob_test) "
+                + "from %s a join %s b where a.pk=b.pk order by a.pk limit 10;", baseOneTableName, baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -645,6 +669,9 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void addTimeTest() throws Exception {
         String sql = "SELECT ADDTIME('2007-12-31 23:59:59', '1:1:1.0')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "SELECT ADDTIME(date('2007-12-31'), '1:1:1.0')";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -1011,6 +1038,8 @@ public class FunctionTest extends ReadBaseTestCase {
             "901447430881.999",
             "-1682566145.09999",
             "1680285777908.578457934598",
+
+            // mysql 8.0 and 5.7 compatible test
             "11682566145.57845898979345"
         };
 
@@ -1122,6 +1151,14 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void lengthTest() throws Exception {
         String sql = "SELECT LENGTH('text')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void lengthFromBlobTest() {
+        String sql =
+            String.format("/*+ TDDL: enable_push_join=false enable_cbo_push_join=false*/ select length(a.blob_test) "
+                + "from %s a join %s b where a.pk=b.pk order by a.pk limit 10;", baseOneTableName, baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -1455,6 +1492,9 @@ public class FunctionTest extends ReadBaseTestCase {
     public void subtimeTest() throws Exception {
         String sql = "SELECT SUBTIME('2007-12-31 23:59:59','1:1:1')";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "SELECT SUBTIME(date('2007-12-31'),'1:1:1')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
     @Test
@@ -1526,14 +1566,14 @@ public class FunctionTest extends ReadBaseTestCase {
 
     @Test
     public void utcTimeTest() throws Exception {
-        String timeSql = "SELECT time_format(utc_time(), '%H:%i:%s')";
+        String timeSql = "/*+TDDL: enable_mpp=false*/SELECT time_format(utc_time(), '%H:%i:%s')";
         List<List<Object>> time = JdbcUtil.getAllResult(JdbcUtil.executeQuery(timeSql, tddlConnection));
         int seconds = Integer.parseInt(time.get(0).get(0).toString().split(":")[2]);
         if (seconds > 55) {
             //当前时间的秒数大于55，等6s再执行，防止分钟数不一样
             Thread.sleep(6000);
         }
-        String sql = "SELECT time_format(utc_time(), '%H:%i')";
+        String sql = "/*+TDDL: enable_mpp=false*/SELECT time_format(utc_time(), '%H:%i')";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -1672,6 +1712,12 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void currentUserTest() {
         String sql = "select current_user;";
+        JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void userTest() {
+        String sql = "select charset(user()), collation(user())";
         JdbcUtil.executeQuerySuccess(tddlConnection, sql);
     }
 
@@ -2086,22 +2132,6 @@ public class FunctionTest extends ReadBaseTestCase {
         byte[] res = rs.getBytes(1);
         Assert.assertFalse(rs.next());
         return res;
-    }
-
-    /**
-     * 设置相同的随机初始变量
-     */
-    private static void setRandomBytes(String varName, Connection... connections) {
-        Random random = new Random();
-        final int IV_LEN = 16;
-        StringBuilder stringBuilder = new StringBuilder(IV_LEN);
-        for (int i = 0; i < IV_LEN; i++) {
-            stringBuilder.append(random.nextInt(9) + 1);
-        }
-        String setVarSql = String.format("SET @%s=%s", varName, stringBuilder.toString());
-        for (Connection conn : connections) {
-            JdbcUtil.updateDataTddl(conn, setVarSql, null);
-        }
     }
 
     /**

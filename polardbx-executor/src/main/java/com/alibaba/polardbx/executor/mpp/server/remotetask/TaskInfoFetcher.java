@@ -29,8 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -43,6 +41,8 @@ import com.alibaba.polardbx.executor.mpp.execution.TaskManager;
 import com.alibaba.polardbx.executor.mpp.execution.TaskStatus;
 import com.alibaba.polardbx.executor.mpp.server.StatementResource;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.http.client.FullJsonResponseHandler;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpUriBuilder;

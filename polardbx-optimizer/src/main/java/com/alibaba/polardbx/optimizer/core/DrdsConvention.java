@@ -16,14 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.core;
 
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.RuleUtils;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.MemSort;
+import com.alibaba.polardbx.optimizer.core.rel.mpp.ColumnarExchange;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelDistributionTraitDef;
+import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelNode;
 
 public class DrdsConvention extends Convention.Impl {
@@ -50,9 +54,26 @@ public class DrdsConvention extends Convention.Impl {
             // left Convert Rule to deal with
             return null;
         } else if (input.getConvention() == DrdsConvention.INSTANCE) {
-            // only deal with collation
             RelCollation toCollation = required.getTrait(RelCollationTraitDef.INSTANCE);
             RelDistribution toDistribution = required.getTrait(RelDistributionTraitDef.INSTANCE);
+            if (CBOUtil.isColumnarOptimizer(input)) {
+                RelNode output = input;
+                if (toDistribution.getType() == RelDistribution.Type.SINGLETON
+                    && !RuleUtils.satisfyDistribution(toDistribution, input)) {
+                    // use merge sort + exchange(single)
+                    output = ensureCollation(output, toCollation);
+                    output = ColumnarExchange.create(output, toCollation, RelDistributions.SINGLETON);
+                } else if (!toCollation.getFieldCollations().isEmpty()
+                    && RuleUtils.satisfyCollation(toCollation, input)
+                    && !RuleUtils.satisfyDistribution(toDistribution, input)) {
+                    output = ColumnarExchange.create(output, toCollation, toDistribution);
+                } else {
+                    output = ensureDistribution(output, toDistribution);
+                    output = ensureCollation(output, toCollation);
+                }
+                return output;
+            }
+            // only deal with collation
             if (!RuleUtils.satisfyCollation(toCollation, input)) {
                 RelTraitSet emptyTraitSet = input.getCluster().getPlanner().emptyTraitSet();
                 MemSort memSort = MemSort.create(
@@ -65,6 +86,27 @@ public class DrdsConvention extends Convention.Impl {
             }
         } else {
             throw new AssertionError("Unable to convert input to " + INSTANCE + ", input = " + input);
+        }
+    }
+
+    private static RelNode ensureDistribution(RelNode node, RelDistribution requiredDistribution) {
+        if (!RuleUtils.satisfyDistribution(requiredDistribution, node)) {
+            ColumnarExchange mppExchange = ColumnarExchange.create(node, requiredDistribution);
+            return mppExchange;
+        } else {
+            return node;
+        }
+    }
+
+    private static RelNode ensureCollation(RelNode node, RelCollation requiredCollation) {
+        if (!RuleUtils.satisfyCollation(requiredCollation, node)) {
+            MemSort memSort = MemSort.create(
+                node.getTraitSet().replace(DrdsConvention.INSTANCE),
+                node,
+                requiredCollation);
+            return memSort;
+        } else {
+            return node;
         }
     }
 }

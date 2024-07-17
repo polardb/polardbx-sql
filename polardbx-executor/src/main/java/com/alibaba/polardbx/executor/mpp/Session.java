@@ -137,8 +137,10 @@ public final class Session {
                     this.omitTso = storageInfoManager.supportCtsTransaction() || this.lizard1PC;
                 }
                 if (!omitTso) {
-                    this.tsoTime = ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
-                    });
+                    long externalTso = clientContext.getSnapshotTs();
+                    this.tsoTime = externalTso > 0 ? externalTso :
+                        ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
+                        });
                 }
 
                 for (Map.Entry<String, String> group : groups.entrySet()) {
@@ -230,9 +232,11 @@ public final class Session {
             clientContext.getConnection().getLastInsertId(),
             clientContext.getTimeZone(),
             tsoTime,
+            clientContext.getFinalPlan().isUseColumnar(),
             dnLsns,
             omitTso,
             lizard1PC,
+            clientContext.getColumnarTracer(),
             clientContext.getWorkloadType(),
             extraServerVariables);
     }

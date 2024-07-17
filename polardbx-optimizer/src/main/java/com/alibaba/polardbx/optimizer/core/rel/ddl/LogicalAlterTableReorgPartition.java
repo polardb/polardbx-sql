@@ -158,7 +158,7 @@ public class LogicalAlterTableReorgPartition extends BaseDdlOperation {
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.REORGANIZE_PARTITION);
 
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(preparedData.isHasSubPartition());
 
         List<String> newPartGroupNames = new ArrayList<>();
         preparedData.getInvisiblePartitionGroups().forEach(p -> newPartGroupNames.add(p.getPartition_name()));
@@ -171,37 +171,40 @@ public class LogicalAlterTableReorgPartition extends BaseDdlOperation {
             sqlConverter.getRexInfoFromSqlAlterSpec(sqlAlterTable, ImmutableList.of(sqlAlterTableReorgPartition),
                 plannerContext);
         preparedData.getPartRexInfoCtx().putAll(partRexInfoCtx);
-
+        preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
 
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
-        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
+        if (preparedData.needFindCandidateTableGroup()) {
+            List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
+                new TreeMap<>(String::compareToIgnoreCase);
+            int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
 
-        for (int i = 0; i < newPartitionGroups.size(); i++) {
-            String mockTableName = "";
-            mockOrderedTargetTableLocations.put(newPartitionGroups.get(i).partition_name, new Pair<>(mockTableName,
-                GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(i).partition_name)));
+            for (int i = 0; i < newPartitionGroups.size(); i++) {
+                String mockTableName = "";
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(i).partition_name, new Pair<>(mockTableName,
+                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(i).partition_name)));
+            }
+
+            boolean isAlterTableGroup = this instanceof LogicalAlterTableGroupReorgPartition;
+
+            PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+                .getNewPartitionInfo(
+                    preparedData,
+                    partitionInfo,
+                    isAlterTableGroup,
+                    sqlAlterTableReorgPartition,
+                    preparedData.getOldPartitionNames(),
+                    preparedData.getNewPartitionNames(),
+                    preparedData.getTableGroupName(),
+                    null,
+                    preparedData.getInvisiblePartitionGroups(),
+                    mockOrderedTargetTableLocations,
+                    executionContext);
+
+            preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo,
+                preparedData.getNewPartitions(), null, flag, true, executionContext);
         }
-
-        boolean isAlterTableGroup = this instanceof LogicalAlterTableGroupReorgPartition;
-
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfo(
-                preparedData,
-                partitionInfo,
-                isAlterTableGroup,
-                sqlAlterTableReorgPartition,
-                preparedData.getOldPartitionNames(),
-                preparedData.getNewPartitionNames(),
-                preparedData.getTableGroupName(),
-                null,
-                preparedData.getInvisiblePartitionGroups(),
-                mockOrderedTargetTableLocations,
-                executionContext);
-
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo,
-            preparedData.getNewPartitions(), null, flag, true, executionContext);
     }
 
     protected void normalizeNewPartitionDefs(PartitionInfo partitionInfo,

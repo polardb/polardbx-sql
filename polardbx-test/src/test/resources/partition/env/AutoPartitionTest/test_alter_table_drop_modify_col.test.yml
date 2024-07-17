@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS tb1;
+
+create table tb1(id int, a int, b int, index(b));
+
+show create table tb1;
+
+alter table tb1 drop column id, modify column a int default 1;
+
+show create table tb1;

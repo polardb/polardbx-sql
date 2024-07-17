@@ -19,8 +19,8 @@ package com.alibaba.polardbx.qatest.ddl.auto.dag;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineResourceManager;
-import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
@@ -100,7 +100,7 @@ public class DdlEngineResourceManagerTest {
 
     @Test
     public void testJobFailedOnLegacyEngine() {
-        ConfigDataMode.setConfigServerMode(ConfigDataMode.Mode.GMS);
+        ConfigDataMode.setMode(ConfigDataMode.Mode.GMS);
         try (Connection metaConn = MetaDbUtil.getConnection()) {
             JdbcUtil.executeUpdateSuccess(metaConn, "delete from ddl_jobs where job_id=1346234132807548928");
             JdbcUtil
@@ -125,7 +125,7 @@ public class DdlEngineResourceManagerTest {
 
     @Test
     public void testJobFailedOnNewEngine() {
-        ConfigDataMode.setConfigServerMode(ConfigDataMode.Mode.GMS);
+        ConfigDataMode.setMode(ConfigDataMode.Mode.GMS);
         try (Connection metaConn = MetaDbUtil.getConnection()) {
             JdbcUtil.executeUpdateSuccess(metaConn, "delete from ddl_engine where job_id=1344845353727295488");
             JdbcUtil

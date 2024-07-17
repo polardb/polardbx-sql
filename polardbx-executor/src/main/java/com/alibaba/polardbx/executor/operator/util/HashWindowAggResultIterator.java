@@ -20,6 +20,7 @@ import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.google.common.base.Preconditions;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,14 +32,14 @@ public class HashWindowAggResultIterator implements AggResultIterator {
     private final int inputChunkSize;
 
     private final List<Chunk> inputChunks;
-    private final List<int[]> groupIds;
+    private final List<IntArrayList> groupIds;
 
     private BlockBuilder[] valueBlockBuilders;
 
     private final int chunkSize;
 
     public HashWindowAggResultIterator(List<Chunk> valueChunks,
-                                       List<Chunk> inputChunks, List<int[]> groupIds,
+                                       List<Chunk> inputChunks, List<IntArrayList> groupIds,
                                        BlockBuilder[] blockBuilders, int chunkSize) {
         Preconditions.checkArgument(groupIds.size() == inputChunks.size(),
             "size of input chunk should be same with group id list");
@@ -67,12 +68,14 @@ public class HashWindowAggResultIterator implements AggResultIterator {
             results[i] = inputChunk.getBlock(i);
         }
 
-        int[] groupId = groupIds.get(index);
+        IntArrayList groupId = groupIds.get(index);
 
         for (int pos = 0; pos < inputChunk.getPositionCount(); ++pos) {
             for (int i = 0; i < valueBlockCount; ++i) {
-                valueChunks.get(groupId[pos] / chunkSize).getBlock(i)
-                    .writePositionTo(groupId[pos] % chunkSize, valueBlockBuilders[i]);
+                int groupIdOfPos = groupId.getInt(pos);
+
+                valueChunks.get(groupIdOfPos / chunkSize).getBlock(i)
+                    .writePositionTo(groupIdOfPos % chunkSize, valueBlockBuilders[i]);
             }
         }
 

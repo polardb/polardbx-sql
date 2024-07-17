@@ -22,9 +22,16 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TableGroupSyncAction;
 import com.alibaba.polardbx.executor.sync.TruncateSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
 import java.util.Set;
@@ -71,8 +78,27 @@ public class TruncateSyncTask extends BaseSyncTask {
                     executionContext.getTraceId()
                 ),
                 schemaName,
+                SyncScope.ALL,
                 true
             );
+            if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+                Long tableGroupId = tableMeta.getPartitionInfo().getTableGroupId();
+                TableGroupInfoManager tableGroupInfoManager =
+                    OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+                TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigById(tableGroupId);
+                String targetTableGroup = tableGroupConfig.getTableGroupRecord().tg_name;
+                try {
+                    SyncManagerHelper
+                        .sync(new TableGroupSyncAction(schemaName, targetTableGroup), SyncScope.ALL);
+                } catch (Throwable t) {
+                    LOGGER.error(String.format(
+                        "error occurs while sync table group, schemaName:%s, tableGroupName:%s", schemaName,
+                        targetTableGroup));
+                    throw GeneralUtil.nestedException(t);
+                }
+            }
+
             FailPoint.injectException(FP_TRUNCATE_SYNC_FAILED);
 
             LOGGER.info(

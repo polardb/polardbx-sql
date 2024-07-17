@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleStreamSpillerFactory;
@@ -99,8 +98,6 @@ public class HybridHashJoinTest extends BaseExecTest {
     public static void beforeClass() {
         List<Path> spillPaths = new ArrayList<>();
         spillPaths.add(tempPath);
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().addAll(spillPaths);
         spillerFactory =
             new AsyncFileSingleStreamSpillerFactory(new SyncFileCleaner(), spillPaths, 4);
     }
@@ -113,7 +110,7 @@ public class HybridHashJoinTest extends BaseExecTest {
     @Before
     public void before() {
         Map connectionMap = new HashMap();
-        connectionMap.put(ConnectionParams.CHUNK_SIZE.getName(), 2);
+        connectionMap.put(ConnectionParams.CHUNK_SIZE.getName(), 1024);
         context.setParamManager(new ParamManager(connectionMap));
     }
 
@@ -142,9 +139,9 @@ public class HybridHashJoinTest extends BaseExecTest {
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
-            new ParallelHashJoinExec.Synchronizer(1, false),
+            new Synchronizer(JoinRelType.INNER, false, 1, false, 1),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0, 1, false);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 0, false, 0);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -176,9 +173,9 @@ public class HybridHashJoinTest extends BaseExecTest {
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
-            new ParallelHashJoinExec.Synchronizer(1, false),
+            new Synchronizer(JoinRelType.INNER, false, 1, false, 1),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.INNER, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0, 1, false);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 3, true, 3);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -217,9 +214,9 @@ public class HybridHashJoinTest extends BaseExecTest {
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
-            new ParallelHashJoinExec.Synchronizer(1, false),
+            new Synchronizer(JoinRelType.LEFT, false, 1, false, 1),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.LEFT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0, 1, false);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 0, false, 0);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -258,9 +255,9 @@ public class HybridHashJoinTest extends BaseExecTest {
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
-            new ParallelHashJoinExec.Synchronizer(1, false),
+            new Synchronizer(JoinRelType.LEFT, false, 1, false, 1),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.LEFT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0, 1, false);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 3, false, 3);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -297,9 +294,9 @@ public class HybridHashJoinTest extends BaseExecTest {
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
-            new ParallelHashJoinExec.Synchronizer(1, false),
+            new Synchronizer(JoinRelType.RIGHT, false, 1, false, 1),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.RIGHT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0, 1, false);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 0, false, 0);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());
@@ -336,9 +333,9 @@ public class HybridHashJoinTest extends BaseExecTest {
             bucketNum, spillerFactory);
 
         ParallelHashJoinExec parallelHashJoinExec = new ParallelHashJoinExec(
-            new ParallelHashJoinExec.Synchronizer(1, false),
+            new Synchronizer(JoinRelType.RIGHT, false, 1, false, 1),
             outerInputBuilder.buildExec(), innerInputBuilder.buildExec(), JoinRelType.RIGHT, false,
-            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0);
+            ImmutableList.of(new EquiJoinKey(0, 0, keyType, false)), null, null, false, context, 0, 1, false);
 
         List<Chunk> actuals = execForHybridJoinMppMode(joinExec, innerInput, 3, true, 3);
         List<Chunk> expects = execForJoinMppMode(parallelHashJoinExec, innerInputBuilder.buildExec());

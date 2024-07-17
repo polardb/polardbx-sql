@@ -218,7 +218,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         Double inputRowCount = mq.getRowCount(rel.getInput());
 
         Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-        long skipPlusFetch = 0;
+        double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
 
@@ -263,7 +263,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         Double inputRowCount = mq.getRowCount(rel.getInput());
 
         Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-        long skipPlusFetch = 0;
+        double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
 
@@ -300,7 +300,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         }
 
         Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-        long skipPlusFetch = 0;
+        double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
 
@@ -546,10 +546,18 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
             if (rel.getFixedCost().isHuge() || rel.getFixedCost().isInfinite()) {
                 return rel.getFixedCost();
             } else {
-                return rel.getFixedCost().plus(mq.getStartUpCost(rel.getLeft()));
+                if (!rel.isOuterBuild()) {
+                    return rel.getFixedCost().plus(mq.getStartUpCost(rel.getLeft()));
+                } else {
+                    return rel.getFixedCost().plus(mq.getStartUpCost(rel.getRight()));
+                }
             }
         }
-        return mq.getCumulativeCost(rel.getRight()).plus(mq.getStartUpCost(rel.getLeft()));
+        if (!rel.isOuterBuild()) {
+            return mq.getCumulativeCost(rel.getRight()).plus(mq.getStartUpCost(rel.getLeft()));
+        } else {
+            return mq.getCumulativeCost(rel.getLeft()).plus(mq.getStartUpCost(rel.getRight()));
+        }
     }
 
     public RelOptCost getStartUpCost(NLJoin rel, RelMetadataQuery mq) {
@@ -692,24 +700,10 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
     }
 
     public RelOptCost getStartUpCost(SortWindow rel, RelMetadataQuery mq) {
-        if (rel.getFixedCost() != null) {
-            if (rel.getFixedCost().isHuge() || rel.getFixedCost().isInfinite()) {
-                return rel.getFixedCost();
-            } else {
-                return rel.getFixedCost().plus(mq.getStartUpCost(rel.getInput()));
-            }
-        }
         return mq.getCumulativeCost(rel.getInput());
     }
 
     public RelOptCost getStartUpCost(HashWindow rel, RelMetadataQuery mq) {
-        if (rel.getFixedCost() != null) {
-            if (rel.getFixedCost().isHuge() || rel.getFixedCost().isInfinite()) {
-                return rel.getFixedCost();
-            } else {
-                return rel.getFixedCost().plus(mq.getStartUpCost(rel.getInput()));
-            }
-        }
         return mq.getCumulativeCost(rel.getInput());
     }
 

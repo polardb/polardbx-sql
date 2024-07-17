@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
+import com.alibaba.polardbx.executor.mpp.Threads;
 import com.google.common.base.Preconditions;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
-import com.alibaba.polardbx.executor.mpp.Threads;
 import io.airlift.configuration.ConfigBinder;
 import io.airlift.discovery.client.Announcement;
 import io.airlift.discovery.client.Announcer;

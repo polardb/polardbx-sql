@@ -34,7 +34,7 @@ public final class ByteString {
     private final Charset charset;
 
     private transient String generateStr;
-    private transient boolean multiLine;
+    private transient boolean multiLine = true;
 
     public ByteString(byte[] value, int offset, int length, Charset charset) {
         assert offset >= 0 && offset <= value.length;

@@ -43,7 +43,7 @@ public class DdlBackFillSpeedSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         ArrayResultCursor resultCursor = buildResultCursor();
-        for(ThrottleInfo throttleInfo: Throttle.getThrottleInfoList()){
+        for (ThrottleInfo throttleInfo : Throttle.getThrottleInfoList()) {
             resultCursor.addRow(buildRow(throttleInfo));
         }
         return resultCursor;
@@ -58,14 +58,12 @@ public class DdlBackFillSpeedSyncAction implements ISyncAction {
         return resultCursor;
     }
 
-
     private Object[] buildRow(ThrottleInfo throttleInfo) {
         return new Object[] {
-                throttleInfo.getBackFillId(),
-                throttleInfo.getSpeed(),
-                throttleInfo.getTotalRows()
+            throttleInfo.getBackFillId(),
+            throttleInfo.getSpeed(),
+            throttleInfo.getTotalRows()
         };
     }
-
 
 }

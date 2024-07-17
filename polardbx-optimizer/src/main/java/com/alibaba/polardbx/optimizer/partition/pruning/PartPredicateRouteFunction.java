@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -39,7 +40,9 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
@@ -67,19 +70,9 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
     protected ExprContextProvider contextHolder;
 
     /**
-     * The flag that label if the part routing need do map interval from query space to search space
+     * The partition strategy
      */
-    protected boolean needMapInterval = false;
-
-    /**
-     * The flag that label if need eval the part func value by using the expr value of predicate
-     */
-    protected boolean needEvalPartFunc = false;
-
-    /**
-     * label if the part int func is a not-monotonic func
-     */
-    protected boolean isNonMonotonic = false;
+    protected PartitionStrategy strategy;
 
     /**
      * The search expr from predicate
@@ -96,7 +89,22 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
     protected SearchExprInfo searchExprInfo = null;
 
     /**
-     * The charset of predicate expr of part key 0, just for range/list/hash
+     * The flag that label if the part routing need do interval mapping from query space to search space
+     */
+    protected boolean needMapInterval = false;
+
+    /**
+     * The flag that label if need eval the part func value for the first part key by using the expr value of predicate
+     */
+    protected boolean needEvalPartFunc = false;
+
+    /**
+     * label if the part int func of the first part key is a not-monotonic func
+     */
+    protected boolean isNonMonotonic = false;
+
+    /**
+     * The part func expr of part key 0, just for range/list/hash
      */
     protected SqlOperator partFuncOperator = null;
 
@@ -106,9 +114,9 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
     protected DataType partExprReturnType = null;
 
     /**
-     * The partition strategy
+     * The router info of part func expr of all part keys
      */
-    protected PartitionStrategy strategy;
+    protected PartFuncExprRouterInfo[] partFuncRouterInfoArr;
 
     public PartPredicateRouteFunction(PartitionInfo partInfo,
                                       SqlOperator partFuncOperator,
@@ -142,24 +150,92 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
             partByDef = partInfo.getPartitionBy().getSubPartitionBy();
         }
 
-        SqlNode partExpr = partByDef.getPartitionExprList().get(0);
-        if (PartitionFunctionBuilder.checkStrategySupportPartFunc(this.strategy)) {
-            if (partExpr instanceof SqlCall) {
-                /**
-                 * The part columns is wrapped with func, such year(partCol)...
-                 * , so need do map interval
-                 */
-                this.needEvalPartFunc = true;
-                RelDataType partExprDt = partByDef.getPartitionExprTypeList().get(0);
-                this.partExprReturnType = DataTypeUtil.calciteToDrdsType(partExprDt);
-                Monotonicity monotonicity = partByDef.getPartIntFuncMonotonicity();
-                this.isNonMonotonic = monotonicity == Monotonicity.NON_MONOTONIC;
-                if (this.cmpKind != ComparisonKind.EQUAL && this.cmpKind != ComparisonKind.NOT_EQUAL) {
-                    if (this.strategy == PartitionStrategy.RANGE || this.strategy == PartitionStrategy.LIST) {
-                        this.needMapInterval = true;
+        if (this.strategy != PartitionStrategy.CO_HASH) {
+            SqlNode partExpr = partByDef.getPartitionExprList().get(0);
+            if (PartitionFunctionBuilder.checkStrategySupportPartFunc(this.strategy)
+                || this.strategy == PartitionStrategy.DIRECT_HASH) {
+                if (partExpr instanceof SqlCall) {
+                    /**
+                     * The part columns is wrapped with func, such year(partCol)...
+                     * , so need do interval mapping
+                     */
+                    this.needEvalPartFunc = true;
+                    RelDataType partExprDt = partByDef.getPartitionExprTypeList().get(0);
+                    this.partExprReturnType = DataTypeUtil.calciteToDrdsType(partExprDt);
+                    Monotonicity monotonicity = partByDef.getPartIntFuncMonotonicity();
+                    this.isNonMonotonic = monotonicity == Monotonicity.NON_MONOTONIC;
+                    if (this.cmpKind != ComparisonKind.EQUAL && this.cmpKind != ComparisonKind.NOT_EQUAL) {
+                        if (this.strategy == PartitionStrategy.RANGE || this.strategy == PartitionStrategy.LIST) {
+                            this.needMapInterval = true;
+                        }
                     }
                 }
+
+                PartFuncExprRouterInfo tmpPartFuncExprRouterInfo = new PartFuncExprRouterInfo();
+                tmpPartFuncExprRouterInfo.setPartKeyIndex(0);
+                if (this.needEvalPartFunc) {
+                    PartitionIntFunction[] partFuncArr = partByDef.getPartFuncArr();
+                    tmpPartFuncExprRouterInfo.setPartFunc(partFuncArr[0]);
+                    tmpPartFuncExprRouterInfo.setNeedEvalPartFunc(this.needEvalPartFunc);
+                    tmpPartFuncExprRouterInfo.setPartExprReturnType(this.partExprReturnType);
+                    tmpPartFuncExprRouterInfo.setPartFuncOperator(this.partFuncOperator);
+
+                } else {
+                    tmpPartFuncExprRouterInfo.setPartFunc(null);
+                    tmpPartFuncExprRouterInfo.setNeedEvalPartFunc(false);
+                    tmpPartFuncExprRouterInfo.setPartExprReturnType(null);
+                    tmpPartFuncExprRouterInfo.setPartFuncOperator(null);
+                }
+                PartFuncExprRouterInfo[] tmpPartFuncRouterInfoArr =
+                    new PartFuncExprRouterInfo[partByDef.getPartitionExprList().size()];
+                tmpPartFuncRouterInfoArr[0] = tmpPartFuncExprRouterInfo;
+                this.partFuncRouterInfoArr = tmpPartFuncRouterInfoArr;
+            } else {
+                List<String> partColList = partByDef.getPartitionColumnNameList();
+                PartFuncExprRouterInfo[] tmpPartFuncRouterInfoArr = new PartFuncExprRouterInfo[partColList.size()];
+                for (int i = 0; i < tmpPartFuncRouterInfoArr.length; i++) {
+                    PartFuncExprRouterInfo tmpPartFuncExprRouterInfo = new PartFuncExprRouterInfo();
+                    tmpPartFuncExprRouterInfo.setPartKeyIndex(i);
+                    tmpPartFuncExprRouterInfo.setPartFunc(null);
+                    tmpPartFuncExprRouterInfo.setNeedEvalPartFunc(false);
+                    tmpPartFuncExprRouterInfo.setPartExprReturnType(null);
+                    tmpPartFuncExprRouterInfo.setPartFuncOperator(null);
+                    tmpPartFuncRouterInfoArr[i] = tmpPartFuncExprRouterInfo;
+                }
+                this.partFuncRouterInfoArr = tmpPartFuncRouterInfoArr;
             }
+        } else {
+            PartitionIntFunction[] partFuncArr = partByDef.getPartFuncArr();
+            PartFuncExprRouterInfo[] tmpPartFuncRouterInfoArr = new PartFuncExprRouterInfo[partFuncArr.length];
+            for (int i = 0; i < partFuncArr.length; i++) {
+                PartitionIntFunction partFunc = partFuncArr[i];
+                PartFuncExprRouterInfo tmpPartFuncExprRouterInfo = new PartFuncExprRouterInfo();
+                tmpPartFuncExprRouterInfo.setPartKeyIndex(i);
+                tmpPartFuncExprRouterInfo.setPartFunc(partFunc);
+                if (partFunc != null) {
+                    /**
+                     * The part columns is wrapped with func, such year(partCol)...
+                     * , so need do interval mapping
+                     */
+                    tmpPartFuncExprRouterInfo.setNeedEvalPartFunc(true);
+                    tmpPartFuncExprRouterInfo.setPartExprReturnType(partFunc.getReturnType());
+                    tmpPartFuncExprRouterInfo.setPartFuncOperator(partFunc.getSqlOperator());
+
+                } else {
+                    tmpPartFuncExprRouterInfo.setNeedEvalPartFunc(false);
+                    tmpPartFuncExprRouterInfo.setPartExprReturnType(null);
+                    tmpPartFuncExprRouterInfo.setPartFuncOperator(null);
+                }
+                tmpPartFuncRouterInfoArr[i] = tmpPartFuncExprRouterInfo;
+            }
+            this.partFuncRouterInfoArr = tmpPartFuncRouterInfoArr;
+            this.isNonMonotonic = true;
+            this.needMapInterval = false;
+
+            PartFuncExprRouterInfo firstPartFuncInfo = tmpPartFuncRouterInfoArr[0];
+            this.needEvalPartFunc = firstPartFuncInfo.isNeedEvalPartFunc();
+            this.partFuncOperator = firstPartFuncInfo.getPartFuncOperator();
+            this.partExprReturnType = firstPartFuncInfo.getPartExprReturnType();
         }
     }
 
@@ -171,48 +247,106 @@ public class PartPredicateRouteFunction extends PartRouteFunction {
         ComparisonKind cmpKind = this.searchExprInfo.getCmpKind();
         int partColNum = predExprExecArr.length;
         PartitionBoundVal[] searchValArr = new PartitionBoundVal[partColNum];
-        if (partColNum > 1) {
-            SearchExprEvalResult exprEvalResult =
-                PartitionPrunerUtils.evalExprValsAndBuildOneDatum(context, pruningCtx, this.searchExprInfo);
-            cmdKindOutput[0] = exprEvalResult.getComparisonKind();
-            SearchDatumInfo searchDatumInfo = exprEvalResult.getSearchDatumInfo();
-            return searchDatumInfo;
+        PartitionStrategy strategy = this.strategy;
+
+        if (strategy != PartitionStrategy.CO_HASH) {
+            if (partColNum > 1) {
+                SearchExprEvalResult exprEvalResult =
+                    PartitionPrunerUtils.evalExprValsAndBuildOneDatum(context, pruningCtx, this.searchExprInfo);
+                cmdKindOutput[0] = exprEvalResult.getComparisonKind();
+                SearchDatumInfo searchDatumInfo = exprEvalResult.getSearchDatumInfo();
+                return searchDatumInfo;
+            } else {
+                PartClauseExprExec exprExec = predExprExecArr[0];
+                PartFuncExprRouterInfo partFuncRouterInfo = partFuncRouterInfoArr[0];
+                PartitionBoundVal searchVal =
+                    evalExprAndThenEvalPartFunc(context, pruningCtx, cmpKind, exprExec, partFuncRouterInfo,
+                        cmdKindOutput);
+                searchValArr[0] = searchVal;
+                SearchDatumInfo searchDatumInfo = new SearchDatumInfo(searchValArr);
+                return searchDatumInfo;
+            }
         } else {
-            PartClauseExprExec exprExec = predExprExecArr[0];
-            boolean isAlwaysNull = exprExec.isAlwaysNullValue();
-            boolean[] epInfo = PartFuncMonotonicityUtil.buildIntervalEndPointInfo(cmpKind);
-            PartitionBoundValueKind valKind = exprExec.getValueKind();
-
-            // Compute the const expr val for part predicate
-            PartitionField exprValPartField = exprExec.evalPredExprVal(context, pruningCtx, epInfo);
-
-            // Do the interval mapping from predicate query space to partition search space
-            // and put the mapping result into the cmdKindOutput.
-            PartitionField newPartField = doIntervalMapping(exprExec, context, exprValPartField, cmdKindOutput, epInfo);
-
-            // Build the PartitionBoundVal
-            PartitionBoundVal searchVal =
-                PartitionBoundVal.createPartitionBoundVal(newPartField, valKind, isAlwaysNull);
-            searchValArr[0] = searchVal;
+            for (int i = 0; i < partColNum; i++) {
+                PartClauseExprExec exprExec = predExprExecArr[i];
+                PartFuncExprRouterInfo partFuncRouterInfo = partFuncRouterInfoArr[i];
+                PartitionBoundVal searchVal =
+                    evalExprAndThenEvalPartFunc(context, pruningCtx, cmpKind, exprExec, partFuncRouterInfo,
+                        cmdKindOutput);
+                searchValArr[i] = searchVal;
+            }
             SearchDatumInfo searchDatumInfo = new SearchDatumInfo(searchValArr);
             return searchDatumInfo;
         }
+
+//        if (partColNum > 1) {
+//            SearchExprEvalResult exprEvalResult =
+//                PartitionPrunerUtils.evalExprValsAndBuildOneDatum(context, pruningCtx, this.searchExprInfo);
+//            cmdKindOutput[0] = exprEvalResult.getComparisonKind();
+//            SearchDatumInfo searchDatumInfo = exprEvalResult.getSearchDatumInfo();
+//            return searchDatumInfo;
+//        } else {
+//            PartClauseExprExec exprExec = predExprExecArr[0];
+//            PartitionBoundVal searchVal =
+//                evalExprAndThenEvalPartFunc(context, pruningCtx, cmpKind, exprExec, cmdKindOutput);
+//            searchValArr[0] = searchVal;
+//            SearchDatumInfo searchDatumInfo = new SearchDatumInfo(searchValArr);
+//            return searchDatumInfo;
+//        }
+    }
+
+    /**
+     * Eval the const expr of part predicate and then eval the part func expr
+     * by using the eval result of the const expr above
+     */
+    @NotNull
+    private PartitionBoundVal evalExprAndThenEvalPartFunc(ExecutionContext context,
+                                                          PartPruneStepPruningContext pruningCtx,
+                                                          ComparisonKind cmpKind,
+                                                          PartClauseExprExec exprExec,
+                                                          PartFuncExprRouterInfo partFuncRouterInfo,
+                                                          ComparisonKind[] cmdKindOutput) {
+        boolean isAlwaysNull = exprExec.isAlwaysNullValue();
+        boolean[] epInfo = PartFuncMonotonicityUtil.buildIntervalEndPointInfo(cmpKind);
+        PartitionBoundValueKind valKind = exprExec.getValueKind();
+
+        // Compute the const expr val for part predicate
+        PartitionField exprValPartField = exprExec.evalPredExprVal(context, pruningCtx, epInfo);
+
+        PartitionField newPartField = null;
+        if (valKind == PartitionBoundValueKind.DATUM_NORMAL_VALUE) {
+            // Do the interval mapping from predicate query space to partition search space
+            // and put the mapping result into the cmdKindOutput.
+            newPartField =
+                doIntervalMapping(exprExec, partFuncRouterInfo, context, exprValPartField, cmdKindOutput, epInfo);
+        }
+
+        // Build the PartitionBoundVal
+        PartitionBoundVal searchVal =
+            PartitionBoundVal.createPartitionBoundVal(newPartField, valKind, isAlwaysNull);
+
+        return searchVal;
     }
 
     /**
      *
      */
     private PartitionField doIntervalMapping(PartClauseExprExec exprExec,
+                                             PartFuncExprRouterInfo partFuncRouterInfo,
                                              ExecutionContext context,
                                              PartitionField exprValPartField,
                                              ComparisonKind[] cmdKindOutput,
                                              boolean[] endpoints) {
+
+        boolean needEvalPartFunc = partFuncRouterInfo.isNeedEvalPartFunc();
+        DataType partExprReturnType = partFuncRouterInfo.getPartExprReturnType();
         ComparisonKind finalCmpKind = PartFuncMonotonicityUtil.buildComparisonKind(endpoints);
         PartitionField newPartField;
-        if (this.needEvalPartFunc) {
+        if (needEvalPartFunc) {
             PartitionIntFunction partIntFunc = exprExec.getPartIntFunc();
+
             PartitionField partFuncVal = PartitionPrunerUtils
-                .evalPartFuncVal(exprValPartField, partIntFunc, context, endpoints,
+                .evalPartFuncVal(exprValPartField, partIntFunc, getStrategy(), context, endpoints,
                     PartFieldAccessType.QUERY_PRUNING);
 
             if (this.needMapInterval && !isNonMonotonic && endpoints != null) {

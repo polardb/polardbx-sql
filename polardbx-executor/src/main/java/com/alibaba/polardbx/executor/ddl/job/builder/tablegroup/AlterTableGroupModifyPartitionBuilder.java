@@ -16,25 +16,16 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupModifyPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 
-import java.sql.Connection;
 import java.util.List;
 
 public class AlterTableGroupModifyPartitionBuilder extends AlterTableGroupBaseBuilder {

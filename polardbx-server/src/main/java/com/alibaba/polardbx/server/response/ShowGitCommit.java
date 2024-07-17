@@ -109,7 +109,7 @@ public class ShowGitCommit {
             proxy = eof.write(proxy);
         }
 
-        RowDataPacket gitCommitInfo = getGitCommitData(c.getCharset());
+        RowDataPacket gitCommitInfo = getGitCommitData(c.getResultSetCharset());
 
         gitCommitInfo.packetId = ++tmpPacketId;
         proxy = gitCommitInfo.write(proxy);

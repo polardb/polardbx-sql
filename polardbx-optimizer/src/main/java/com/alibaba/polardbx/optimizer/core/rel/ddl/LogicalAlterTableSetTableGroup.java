@@ -24,6 +24,7 @@ import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -56,6 +57,11 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
     }
 
     public void preparedData(ExecutionContext ec) {
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPart) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                "not support tablegroup in non-partitioning database");
+        }
         AlterTableSetTableGroup alterTableSetTableGroup = (AlterTableSetTableGroup) relDdl;
         String tableGroupName = alterTableSetTableGroup.getTableGroupName();
 
@@ -95,6 +101,7 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
         preparedData.setOriginalJoinGroup(joinGroupName);
         preparedData.setSourceSql(((SqlAlterTableSetTableGroup) alterTableSetTableGroup.getSqlNode()).getSourceSql());
         preparedData.setForce(alterTableSetTableGroup.isForce());
+        preparedData.setImplicit(alterTableSetTableGroup.isImplicit());
     }
 
     public AlterTableSetTableGroupPreparedData getPreparedData() {
@@ -109,7 +116,7 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableSetTableGroup alterTableSetTableGroup = (AlterTableSetTableGroup) relDdl;
         String tableGroupName = alterTableSetTableGroup.getTableGroupName();
-        if (TableGroupNameUtil.isOssTg(tableGroupName)) {
+        if (TableGroupNameUtil.isFileStorageTg(tableGroupName)) {
             return true;
         }
 

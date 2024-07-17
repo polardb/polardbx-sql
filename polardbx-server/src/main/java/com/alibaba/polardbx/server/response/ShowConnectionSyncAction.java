@@ -105,7 +105,7 @@ public class ShowConnectionSyncAction implements ISyncAction {
                     result.addRow(
                         new Object[] {
                             fc.getId(), fc.getHost(), fc.getPort(), fc.getLocalPort(), fc.getSchema(),
-                            fc.getCharset(), fc.getNetInBytes(), fc.getNetOutBytes(),
+                            fc.getResultSetCharset(), fc.getNetInBytes(), fc.getNetOutBytes(),
                             (TimeUtil.currentTimeMillis() - fc.getStartupTime()) / 1000L,
                             (System.nanoTime() - sc.getLastActiveTime()) / (1000 * 1000), count, trx,
                             needReconnect, sc.getPartitionHint()});

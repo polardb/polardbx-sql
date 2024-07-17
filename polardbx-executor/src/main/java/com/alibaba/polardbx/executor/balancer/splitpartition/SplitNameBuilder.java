@@ -50,7 +50,7 @@ public class SplitNameBuilder {
 
     /**
      * Generate partition name for merge-partition
-     *
+     * <p>
      * TODO(moyi) generate an elegant name
      *
      * @param toMerge partitions to merge

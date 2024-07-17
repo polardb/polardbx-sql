@@ -23,10 +23,10 @@ export const GLYPHICON_DEFAULT = {color: '#1edcff'};
 export const GLYPHICON_HIGHLIGHT = {color: '#999999'};
 
 const STATE_COLOR_MAP = {
-    QUEUED: '#1b8f72',
-    RUNNING: '#19874e',
+    QUEUED: '#7bb3fb',
+    RUNNING: '#265cdf',
     PLANNING: '#674f98',
-    FINISHED: '#1a4629',
+    FINISHED: '#22b647',
     BLOCKED: '#61003b',
     USER_ERROR: '#9a7d66',
     CANCELED: '#858959',
@@ -291,14 +291,14 @@ number
     return Number.parseInt(stageId.slice(stageId.indexOf('.') + 1, stageId.length))
 }
 
-export function getTaskIdSuffix(taskId
-
-:
-string
-):
-string
+export function getTaskIdSuffix(taskId: string): string
 {
     return taskId.slice(taskId.indexOf('.') + 1, taskId.length)
+}
+
+export function getFullSplitIdSuffix(driverId: string): string
+{
+    return driverId.substring(driverId.indexOf('.') + 1)
 }
 
 export function getTaskNumber(taskId
@@ -348,14 +348,7 @@ export function getHostAndPort(taskLocation) {
     return taskLocation.nodeServer.host + ":" + taskLocation.nodeServer.httpPort;
 }
 
-export function computeRate(count
-
-:
-number, ms
-:
-number
-):
-number
+export function computeRate(count: number, ms: number): number
 {
     if (ms === 0) {
         return 0;
@@ -363,12 +356,7 @@ number
     return (count / ms) * 1000.0;
 }
 
-export function precisionRound(n
-
-:
-number
-):
-string
+export function precisionRound(n: number): string
 {
     if (n < 10) {
         return n.toFixed(2);
@@ -379,12 +367,7 @@ string
     return Math.round(n).toString();
 }
 
-export function formatDuration(duration
-
-:
-number
-):
-string
+export function formatDurationMs(duration: number): string
 {
     let unit = "ms";
     if (duration > 1000) {
@@ -410,12 +393,46 @@ string
     return precisionRound(duration) + unit;
 }
 
-export function formatRows(count
+export function formatDurationNs(duration: number): string
+{
+    let unit = "ns";
+    if (duration > 1000) {
+        duration /= 1000;
+        unit = "us";
+    }
+    if (duration > 1000) {
+        duration /= 1000;
+        unit = "ms";
+    }
+    if (duration > 1000) {
+        duration /= 1000;
+        unit = "s";
+    }
+    if (unit === "s" && duration > 60) {
+        duration /= 60;
+        unit = "m";
+    }
+    if (unit === "m" && duration > 60) {
+        duration /= 60;
+        unit = "h";
+    }
+    if (unit === "h" && duration > 24) {
+        duration /= 24;
+        unit = "d";
+    }
+    if (unit === "d" && duration > 7) {
+        duration /= 7;
+        unit = "w";
+    }
+    return precisionRound(duration) + unit;
+}
 
-:
-number
-):
-string
+export function formatNumber(num: number): string
+{
+    return num.toLocaleString();
+}
+
+export function formatRows(count: number): string
 {
     if (count === 1) {
         return "1 row";
@@ -424,12 +441,7 @@ string
     return formatCount(count) + " rows";
 }
 
-export function formatCount(count
-
-:
-number
-):
-string
+export function formatCount(count: number): string
 {
     let unit = "";
     if (count > 1000) {
@@ -455,22 +467,12 @@ string
     return precisionRound(count) + unit;
 }
 
-export function formatDataSizeBytes(size
-
-:
-number
-):
-string
+export function formatDataSizeBytes(size: number): string
 {
     return formatDataSizeMinUnit(size, "");
 }
 
-export function formatDataSize(size
-
-:
-number
-):
-string
+export function formatDataSize(size: number): string
 {
     return formatDataSizeMinUnit(size, "B");
 }
@@ -541,13 +543,8 @@ switch (match[2]) {
 }
 }
 
-export function parseDuration(value
-
-:
-string
-):
-    ? number {
-        const DURATION_PATTERN = /^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]+)\s*$/;
+export function parseDuration(value: string): ? number {
+const DURATION_PATTERN = /^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]+)\s*$/;
 
 const match = DURATION_PATTERN.exec(value);
 if (match === null) {

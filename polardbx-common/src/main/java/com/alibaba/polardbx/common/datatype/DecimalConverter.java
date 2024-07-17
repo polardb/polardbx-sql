@@ -17,21 +17,58 @@
 package com.alibaba.polardbx.common.datatype;
 
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.binlog.LogBuffer;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.google.common.primitives.UnsignedLongs;
 import io.airlift.slice.Slice;
 
-import java.nio.charset.Charset;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
-import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.*;
+import static com.alibaba.polardbx.common.datatype.Decimal.MAX_128_BIT_PRECISION;
+import static com.alibaba.polardbx.common.datatype.Decimal.MAX_64_BIT_PRECISION;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.BINARY_SIZE;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIG_BASE;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIG_MASK;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIG_PER_DEC1;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIG_TO_BYTES;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_BAD_NUM;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_DIV_ZERO;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_ERROR;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OK;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OOM;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_OVERFLOW;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_TRUNCATED;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.MAX_DECIMAL_PRECISION;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.MAX_VALUE_IN_WORDS;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.POW_10;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.WORDS_LEN;
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.roundUp;
+import static com.alibaba.polardbx.common.utils.binlog.LogBuffer.DIG_MAX;
+import static com.alibaba.polardbx.common.utils.binlog.LogBuffer.SIZE_OF_INT32;
+import static com.alibaba.polardbx.common.utils.binlog.LogBuffer.dig2bytes;
 
 public class DecimalConverter {
     public static final DecimalStructure UNSIGNED_ZERO = new DecimalStructure();
     public static final DecimalStructure SIGNED_ZERO = new DecimalStructure();
+    private static final long UNSIGNED_MAX_LONG = 0xffffffffffffffffL;
+    private static final long MAX_UNSIGNED_LONG_DIV_DIG_BASE = UnsignedLongs.divide(UNSIGNED_MAX_LONG, DIG_BASE);
 
     static {
         unsignedlongToDecimal(0L, UNSIGNED_ZERO);
         longToDecimal(0L, SIGNED_ZERO);
+    }
+
+    public static boolean isDecimal64(int precision) {
+        return precision <= MAX_64_BIT_PRECISION && precision > 0;
+    }
+
+    public static boolean isDecimal128(int precision) {
+        return precision <= MAX_128_BIT_PRECISION && precision > 0;
+    }
+
+    public static boolean isDecimal64(Decimal decimal) {
+        return isDecimal64(decimal.precision());
     }
 
     /**
@@ -681,9 +718,6 @@ public class DecimalConverter {
         return new long[] {to, E_DEC_OK};
     }
 
-    private static final long UNSIGNED_MAX_LONG = 0xffffffffffffffffL;
-    private static final long MAX_UNSIGNED_LONG_DIV_DIG_BASE = UnsignedLongs.divide(UNSIGNED_MAX_LONG, DIG_BASE);
-
     /**
      * Convert decimal to unsigned long value.
      *
@@ -917,4 +951,216 @@ public class DecimalConverter {
             boundValue.copyTo(to);
         }
     }
+
+    public static long getUnscaledDecimal(byte[] buffer, int precision, int scale) {
+        int position = 0;
+        int origin = 0;
+        int limit = buffer.length;
+        int intg = precision - scale;
+        int intg0 = intg / 9;
+        int frac0 = scale / 9;
+        int intg0x = intg - intg0 * 9;
+        int frac0x = scale - frac0 * 9;
+        int binSize = intg0 * 4 + dig2bytes[intg0x] + frac0 * 4 + dig2bytes[frac0x];
+        if (position + binSize > origin + limit) {
+            throw new IllegalArgumentException("limit excceed: " + (position + binSize - origin));
+        } else {
+            BigDecimal decimal =
+                new BigDecimal(getDecimalString(buffer, position, intg, scale, intg0, frac0, intg0x, frac0x))
+                    .setScale(scale, RoundingMode.HALF_UP);
+            return decimal.unscaledValue().longValue();
+        }
+    }
+
+    public static Decimal getDecimal(byte[] buffer, int precision, int scale) {
+        int position = 0;
+        int origin = 0;
+        int limit = buffer.length;
+        int intg = precision - scale;
+        int intg0 = intg / 9;
+        int frac0 = scale / 9;
+        int intg0x = intg - intg0 * 9;
+        int frac0x = scale - frac0 * 9;
+        int binSize = intg0 * 4 + dig2bytes[intg0x] + frac0 * 4 + dig2bytes[frac0x];
+        if (position + binSize > origin + limit) {
+            throw new IllegalArgumentException("limit excceed: " + (position + binSize - origin));
+        } else {
+            String str = getDecimalString(buffer, position, intg, scale, intg0, frac0, intg0x, frac0x);
+            return Decimal.fromString(str);
+        }
+    }
+
+    /**
+     * TODO Optimize getting unscaled long
+     *
+     * @see LogBuffer#getDecimal0(int, int, int, int, int, int, int)
+     */
+    static String getDecimalString(byte[] buffer, int begin, int intg, int frac, int intg0, int frac0,
+                                   int intg0x, int frac0x) {
+        final int mask = ((buffer[begin] & 0x80) == 0x80) ? 0 : -1;
+        int from = begin;
+
+        /* max string length */
+        final int len = ((mask != 0) ? 1 : 0) + ((intg != 0) ? intg : 1) // NL
+            + ((frac != 0) ? 1 : 0) + frac;
+        char[] buf = new char[len];
+        int pos = 0;
+
+        if (mask != 0) /* decimal sign */ {
+            buf[pos++] = ('-');
+        }
+
+        final byte[] d_copy = buffer;
+        d_copy[begin] ^= 0x80; /* clear sign */
+        int mark = pos;
+
+        if (intg0x != 0) {
+            final int i = dig2bytes[intg0x];
+            int x = 0;
+            switch (i) {
+            case 1:
+                x = d_copy[from] /* one byte */;
+                break;
+            case 2:
+                x = getInt16BE(d_copy, from);
+                break;
+            case 3:
+                x = getInt24BE(d_copy, from);
+                break;
+            case 4:
+                x = getInt32BE(d_copy, from);
+                break;
+            }
+            from += i;
+            x ^= mask;
+            if (x < 0 || x >= POW_10[intg0x + 1]) {
+                throw new IllegalArgumentException("bad format, x exceed: " + x + ", " + POW_10[intg0x + 1]);
+            }
+            if (x != 0 /* !digit || x != 0 */) {
+                for (int j = intg0x; j > 0; j--) {
+                    final int divisor = POW_10[j - 1];
+                    final int y = x / divisor;
+                    if (mark < pos || y != 0) {
+                        buf[pos++] = ((char) ('0' + y));
+                    }
+                    x -= y * divisor;
+                }
+            }
+        }
+
+        for (final int stop = from + intg0 * SIZE_OF_INT32; from < stop; from += SIZE_OF_INT32) {
+            int x = getInt32BE(d_copy, from);
+            x ^= mask;
+            if (x < 0 || x > DIG_MAX) {
+                throw new IllegalArgumentException("bad format, x exceed: " + x + ", " + DIG_MAX);
+            }
+            if (x != 0) {
+                if (mark < pos) {
+                    for (int i = DIG_PER_DEC1; i > 0; i--) {
+                        final int divisor = POW_10[i - 1];
+                        final int y = x / divisor;
+                        buf[pos++] = ((char) ('0' + y));
+                        x -= y * divisor;
+                    }
+                } else {
+                    for (int i = DIG_PER_DEC1; i > 0; i--) {
+                        final int divisor = POW_10[i - 1];
+                        final int y = x / divisor;
+                        if (mark < pos || y != 0) {
+                            buf[pos++] = ((char) ('0' + y));
+                        }
+                        x -= y * divisor;
+                    }
+                }
+            } else if (mark < pos) {
+                for (int i = DIG_PER_DEC1; i > 0; i--) {
+                    buf[pos++] = ('0');
+                }
+            }
+        }
+
+        if (mark == pos)
+            /* fix 0.0 problem, only '.' may cause BigDecimal parsing exception. */ {
+            buf[pos++] = ('0');
+        }
+
+        if (frac > 0) {
+            buf[pos++] = ('.');
+            mark = pos;
+
+            for (final int stop = from + frac0 * SIZE_OF_INT32; from < stop; from += SIZE_OF_INT32) {
+                int x = getInt32BE(d_copy, from);
+                x ^= mask;
+                if (x < 0 || x > DIG_MAX) {
+                    throw new IllegalArgumentException("bad format, x exceed: " + x + ", " + DIG_MAX);
+                }
+                if (x != 0) {
+                    for (int i = DIG_PER_DEC1; i > 0; i--) {
+                        final int divisor = POW_10[i - 1];
+                        final int y = x / divisor;
+                        buf[pos++] = ((char) ('0' + y));
+                        x -= y * divisor;
+                    }
+                } else {
+                    for (int i = DIG_PER_DEC1; i > 0; i--) {
+                        buf[pos++] = ('0');
+                    }
+                }
+            }
+
+            if (frac0x != 0) {
+                final int i = dig2bytes[frac0x];
+                int x = 0;
+                switch (i) {
+                case 1:
+                    x = d_copy[from] /* one byte */;
+                    break;
+                case 2:
+                    x = getInt16BE(d_copy, from);
+                    break;
+                case 3:
+                    x = getInt24BE(d_copy, from);
+                    break;
+                case 4:
+                    x = getInt32BE(d_copy, from);
+                    break;
+                }
+                x ^= mask;
+                if (x != 0) {
+                    final int dig = DIG_PER_DEC1 - frac0x;
+                    x *= POW_10[dig];
+                    if (x < 0 || x > DIG_MAX) {
+                        throw new IllegalArgumentException("bad format, x exceed: " + x + ", " + DIG_MAX);
+                    }
+                    for (int j = DIG_PER_DEC1; j > dig; j--) {
+                        final int divisor = POW_10[j - 1];
+                        final int y = x / divisor;
+                        buf[pos++] = ((char) ('0' + y));
+                        x -= y * divisor;
+                    }
+                }
+            }
+
+            if (mark == pos)
+                /* make number more friendly */ {
+                buf[pos++] = ('0');
+            }
+        }
+
+        d_copy[begin] ^= 0x80; /* restore sign */
+        return String.valueOf(buf, 0, pos);
+    }
+
+    private static int getInt16BE(byte[] buffer, int pos) {
+        return buffer[pos] << 8 | 255 & buffer[pos + 1];
+    }
+
+    private static int getInt24BE(byte[] buffer, int pos) {
+        return buffer[pos] << 16 | (255 & buffer[pos + 1]) << 8 | 255 & buffer[pos + 2];
+    }
+
+    private static int getInt32BE(byte[] buffer, int pos) {
+        return buffer[pos] << 24 | (255 & buffer[pos + 1]) << 16 | (255 & buffer[pos + 2]) << 8 | 255 & buffer[pos + 3];
+    }
+
 }

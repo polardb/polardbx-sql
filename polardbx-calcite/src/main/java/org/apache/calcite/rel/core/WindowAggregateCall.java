@@ -67,6 +67,25 @@ public class WindowAggregateCall extends AggregateCall {
             filterArg, type, name, constants, offset);
     }
 
+    @Override
+    public AggregateCall copy(List<Integer> args, int filterArg) {
+        return new WindowAggregateCall(aggFunction, distinct, approximate, args,
+            filterArg, type, name, constants, offset);
+    }
+
+    @Override
+    public AggregateCall copy(List<Integer> args, int filterArg, boolean isDistinct, String newName) {
+        return new WindowAggregateCall(aggFunction, isDistinct, approximate, args,
+            filterArg, type, newName, constants, offset);
+    }
+
+    @Override
+    public AggregateCall withDistinct(boolean distinct) {
+        return distinct == this.distinct ? this
+            : new WindowAggregateCall(aggFunction, distinct, approximate, argList, filterArg, type, name,
+            constants, offset);
+    }
+
 
     public AggregateCall create(SqlAggFunction aggFunction,
                                 boolean distinct, boolean approximate, List<Integer> argList,

@@ -71,10 +71,7 @@ public class ProjectExecFactory extends ExecutorFactory {
         Executor input = getInputs().get(0).createExecutor(context, index);
 
         Executor exec = new ProjectExec(input, expressions, outputColumns, context);
-        exec.setId(project.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(project, exec, context);
-        }
+        registerRuntimeStat(exec, project, context);
         return exec;
     }
 
@@ -97,10 +94,7 @@ public class ProjectExecFactory extends ExecutorFactory {
             });
 
         Executor exec = new VectorizedProjectExec(inputExec, expressions, preAllocatedChunks, outputColumns, context);
-        exec.setId(project.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(project, exec, context);
-        }
+        registerRuntimeStat(exec, project, context);
         return exec;
     }
 }

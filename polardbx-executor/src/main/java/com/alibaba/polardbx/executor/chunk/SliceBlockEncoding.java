@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import io.airlift.slice.Slice;
@@ -48,7 +49,8 @@ public class SliceBlockEncoding implements BlockEncoding {
     @Override
     public void writeBlock(SliceOutput sliceOutput, Block block) {
         // write type information.
-        SliceBlock sliceBlock = (SliceBlock) block;
+        SliceBlock sliceBlock = block.cast(SliceBlock.class);
+
         SliceType dataType = (SliceType) sliceBlock.getType();
         byte[] charsetBytes = dataType.getCharsetName().name().getBytes(UTF8);
         byte[] collationBytes = dataType.getCollationName().name().getBytes(UTF8);
@@ -98,22 +100,41 @@ public class SliceBlockEncoding implements BlockEncoding {
         boolean[] valueIsNull = decodeNullBits(sliceInput, positionCount);
         boolean existNonNull = sliceInput.readBoolean();
 
-        int[] offset = new int[0];
-        Slice data = Slices.EMPTY_SLICE;
-
         if (existNonNull) {
-            offset = new int[positionCount];
-            for (int position = 0; position < positionCount; position++) {
-                offset[position] = sliceInput.readInt();
-            }
-            int maxOffset = offset[positionCount - 1];
+            boolean useDictionary = sliceInput.readBoolean();
 
-            if (maxOffset > 0) {
-                int length = sliceInput.readInt();
-                Slice subRegion = sliceInput.readSlice(length);
-                data = Slices.copyOf(subRegion);
+            if (useDictionary) {
+                // read dictionary and dictIds.
+                BlockDictionary dictionary = BlockDictionary.decoding(sliceInput);
+                int len = sliceInput.readInt();
+                int[] dictIds = new int[len];
+                for (int i = 0; i < len; i++) {
+                    dictIds[i] = sliceInput.readInt();
+                }
+                return new SliceBlock(dataType, 0, positionCount, valueIsNull, dictionary,
+                    dictIds, isCompatible);
+
+            } else {
+                // read offset and slice data.
+                int[] offset = new int[positionCount];
+                Slice data = Slices.EMPTY_SLICE;
+                for (int position = 0; position < positionCount; position++) {
+                    offset[position] = sliceInput.readInt();
+                }
+                int maxOffset = offset[positionCount - 1];
+
+                if (maxOffset > 0) {
+                    int length = sliceInput.readInt();
+                    Slice subRegion = sliceInput.readSlice(length);
+                    data = Slices.copyOf(subRegion);
+                }
+
+                return new SliceBlock(dataType, 0, positionCount, valueIsNull, offset,
+                    data, isCompatible);
             }
         }
-        return new SliceBlock(dataType, 0, positionCount, valueIsNull, offset, data, isCompatible);
+
+        return new SliceBlock(dataType, 0, positionCount, valueIsNull, new int[0],
+            Slices.EMPTY_SLICE, isCompatible);
     }
 }

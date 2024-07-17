@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.profiler.memory.MemoryStatAttribute;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
-import com.alibaba.polardbx.optimizer.memory.QueryMemoryPoolHolder;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
+import com.alibaba.polardbx.optimizer.memory.QueryMemoryPoolHolder;
+import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import org.apache.calcite.rel.RelNode;

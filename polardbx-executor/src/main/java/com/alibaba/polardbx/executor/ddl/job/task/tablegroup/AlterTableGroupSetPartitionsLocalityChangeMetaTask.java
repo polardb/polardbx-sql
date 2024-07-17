@@ -18,21 +18,17 @@ package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.executor.balancer.policy.PolicyUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.locality.LocalityDetailInfoRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
-import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
@@ -55,7 +51,8 @@ public class AlterTableGroupSetPartitionsLocalityChangeMetaTask extends BaseDdlT
 
     @JSONCreator
     public AlterTableGroupSetPartitionsLocalityChangeMetaTask(String schemaName, String tableGroupName,
-                                                              List<String> logicalTableNames, String partitionName, String targetLocality,
+                                                              List<String> logicalTableNames, String partitionName,
+                                                              String targetLocality,
                                                               List<LocalityDetailInfoRecord> toChangeMetaLocalityItems) {
         super(schemaName);
         this.tableGroupName = tableGroupName;
@@ -66,7 +63,7 @@ public class AlterTableGroupSetPartitionsLocalityChangeMetaTask extends BaseDdlT
         this.rollback = false;
     }
 
-    public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext){
+    public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         final TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         final TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
@@ -82,14 +79,14 @@ public class AlterTableGroupSetPartitionsLocalityChangeMetaTask extends BaseDdlT
         LocalityDetailInfoRecord localityDetailInfoRecord = toChangeMetaLocalityItems.get(0);
 
         String targetLocality = "";
-        if(rollback){
+        if (rollback) {
             targetLocality = localityDetailInfoRecord.getLocality();
-        }else{
+        } else {
             targetLocality = this.targetLocality;
         }
 
         List<String> tableNames;
-        try{
+        try {
             List<Long> pgIds = new ArrayList<>();
             pgIds.add(localityDetailInfoRecord.getObjectId());
             tablePartitionAccessor.resetTablePartitionsLocalityByGroupIds(schemaName, pgIds, targetLocality);
@@ -97,11 +94,11 @@ public class AlterTableGroupSetPartitionsLocalityChangeMetaTask extends BaseDdlT
             tableNames = logicalTableNames;
         } catch (Throwable t) {
             LOGGER.error(String.format(
-                    "error occurs while update tablegroup, schemaName:%s, tableGroupName:%s",
-                    schemaName, tableGroupName));
+                "error occurs while update tablegroup, schemaName:%s, tableGroupName:%s",
+                schemaName, tableGroupName));
             throw GeneralUtil.nestedException(t);
         }
-        for(String table:tableNames) {
+        for (String table : tableNames) {
             try {
                 TableInfoManager.updateTableVersion(schemaName, table, metaDbConnection);
             } catch (Exception e) {

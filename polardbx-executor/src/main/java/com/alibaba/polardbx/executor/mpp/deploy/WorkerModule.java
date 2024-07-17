@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
-import com.google.inject.Binder;
-import com.google.inject.Key;
-import com.google.inject.Scopes;
 import com.alibaba.polardbx.executor.mpp.execution.SqlTaskManager;
 import com.alibaba.polardbx.executor.mpp.execution.TaskManagementExecutor;
 import com.alibaba.polardbx.executor.mpp.execution.TaskManager;
@@ -27,6 +24,9 @@ import com.alibaba.polardbx.executor.mpp.web.ForWorkerInfo;
 import com.alibaba.polardbx.executor.mpp.web.StatusResource;
 import com.alibaba.polardbx.executor.mpp.web.ThreadResource;
 import com.alibaba.polardbx.executor.mpp.web.WorkerResource;
+import com.google.inject.Binder;
+import com.google.inject.Key;
+import com.google.inject.Scopes;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;

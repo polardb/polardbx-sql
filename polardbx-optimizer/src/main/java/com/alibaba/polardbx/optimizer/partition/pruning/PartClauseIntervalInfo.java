@@ -32,6 +32,8 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlOperator;
 
+import java.util.List;
+
 /**
  * The interval info of a partition predicate expr and its execution form
  *
@@ -77,6 +79,7 @@ public class PartClauseIntervalInfo extends AbstractLifecycle {
         boolean isNull = partPredClause.isNull();
         RexNode partPredExpr = partPredClause.getConstExpr();
         PartitionIntFunction partFunc = null;
+        List<ColumnMeta> partColMetas = partByDef.getPartitionFieldList();
 
 //        SqlOperator partFuncOp = PartitionPruneStepBuilder.getPartFuncSqlOperation(partLevel, partKeyIndex, partInfo);
 //        if (partFuncOp != null) {
@@ -85,7 +88,7 @@ public class PartClauseIntervalInfo extends AbstractLifecycle {
 
         SqlCall partFuncCall = PartitionFunctionBuilder.getPartFuncCall(partLevel, partKeyIndex, partInfo);
         if (partFuncCall != null) {
-            partFunc = PartitionFunctionBuilder.createPartFuncByPartFuncCal(partFuncCall);
+            partFunc = PartitionFunctionBuilder.createPartFuncByPartFuncCal(partFuncCall, partColMetas);
         }
 
         IExpression exprExec = RexUtils.getEvalFuncExec(partPredExpr, exprCtxHolder);
@@ -99,6 +102,10 @@ public class PartClauseIntervalInfo extends AbstractLifecycle {
         partClauseExec.setPartColMeta(partFldColMeta);
 
         partClauseExec.setValueKind(PartitionBoundValueKind.DATUM_NORMAL_VALUE);
+        if (partPredClause.isAnyValueEqCond()) {
+            partClauseExec.setValueKind(PartitionBoundValueKind.DATUM_ANY_VALUE);
+        }
+
         partClauseExec.setAlwaysNullValue(isNull);
         partClauseExec.setClauseInfo(partPredClause);
         partClauseExec.setDynamicConstExprOnly(partPredClause.isDynamicConstOnly());

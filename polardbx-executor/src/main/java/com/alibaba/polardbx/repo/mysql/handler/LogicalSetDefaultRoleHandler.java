@@ -16,11 +16,16 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSetDefaultRoleStatement;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
+import com.alibaba.polardbx.common.cdc.DdlScope;
+import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSetDefaultRoleStatement;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
@@ -31,16 +36,20 @@ import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.PolarRolePrivilege;
 import com.alibaba.polardbx.gms.privilege.PrivilegeKind;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlSetDefaultRole;
 import org.apache.calcite.sql.SqlUserName;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_SERVER;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
 /**
  * Handle set default role statements.
@@ -98,9 +107,8 @@ public class LogicalSetDefaultRoleHandler extends HandlerCommon {
             .map(manager::getAndCheckExactUser)
             .collect(Collectors.toList());
 
-        toUsers
-            .forEach(
-                user -> user.getRolePrivileges().checkRolesGranted(roles.stream().map(PolarAccountInfo::getAccount)));
+        toUsers.forEach(
+            user -> user.getRolePrivileges().checkRolesGranted(roles.stream().map(PolarAccountInfo::getAccount)));
 
         PolarRolePrivilege.DefaultRoleState defaultRoleState =
             PolarRolePrivilege.DefaultRoleState.from(sqlNode.getDefaultRoleSpec());
@@ -120,8 +128,26 @@ public class LogicalSetDefaultRoleHandler extends HandlerCommon {
         );
 
         manager.triggerReload();
+        markDdlForCdc(executionContext);
 
         return new AffectRowCursor(toUsers.size() * roles.size());
+    }
+
+    //TODO cdc@jinwu
+    private void markDdlForCdc(ExecutionContext executionContext) {
+        Map<String, Object> param = buildExtendParameter(executionContext);
+        param.put(ICdcManager.CDC_DDL_SCOPE, DdlScope.Instance);
+
+        CdcManagerHelper.getInstance().notifyDdlNew(
+            SystemDbHelper.DEFAULT_DB_NAME,
+            "*",
+            SqlKind.SQL_SET_DEFAULT_ROLE.name(),
+            executionContext.getOriginSql(),
+            DdlType.UNSUPPORTED,
+            null,
+            null,
+            CdcDdlMarkVisibility.Protected,
+            param);
     }
 
 }

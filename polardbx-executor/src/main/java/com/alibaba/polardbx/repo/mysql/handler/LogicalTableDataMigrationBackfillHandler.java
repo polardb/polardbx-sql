@@ -21,43 +21,32 @@ import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
-import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.BackfillExecutor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
-import com.alibaba.polardbx.executor.handler.LogicalShowTopologyHandler;
 import com.alibaba.polardbx.executor.partitionmanagement.fastchecker.LogicalTableDataMigrationFastChecker;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalTableDataMigrationBackfill;
-import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.sql.SqlShowTopology;
-import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
-import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 /**
  * Created by zhuqiwei.
@@ -79,6 +68,9 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
         BackfillExecutor backfillExecutor =
             new BackfillExecutor((List<RelNode> inputs, ExecutionContext executionContext) -> {
                 QueryConcurrencyPolicy queryConcurrencyPolicy = getQueryConcurrencyPolicy(executionContext);
+                if (Loader.canUseBackfillReturning(executionContext, dstSchemaName)) {
+                    queryConcurrencyPolicy = QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
+                }
                 List<Cursor> inputCursors = new ArrayList<>(inputs.size());
                 executeWithConcurrentPolicy(executionContext, inputs, queryConcurrencyPolicy, inputCursors,
                     dstSchemaName);
@@ -86,7 +78,10 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
             });
 
         ec = clearSqlMode(ec.copy());
-        upgradeEncoding(ec, srcSchemaName, srcLogicalTable);
+
+        if (!ec.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY)) {
+            upgradeEncoding(ec, srcSchemaName, srcLogicalTable);
+        }
 
         PhyTableOperationUtil.disableIntraGroupParallelism(dstSchemaName, ec);
 
@@ -120,66 +115,41 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
     protected boolean fastcheck(String schemaSrc, String schemaDst, String logicalTableSrc, String logicalTableDst,
                                 ExecutionContext ec) {
         long startTime = System.currentTimeMillis();
-        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+        SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
             "FastChecker for table data migration, srcSchema [{0}] dstSchema [{1}] logical table src [{2}] logical table dst [{3}]start",
             schemaSrc, schemaDst, logicalTableSrc, logicalTableDst));
-        final int fastCheckerParallelism =
-            ec.getParamManager().getInt(ConnectionParams.CREATE_DATABASE_AS_FASTCHECKER_PARALLELISM);
 
         List<FastChecker> fastCheckers =
-            LogicalTableDataMigrationFastChecker.create(schemaSrc, schemaDst, logicalTableSrc, logicalTableDst,
-                fastCheckerParallelism, ec);
+            LogicalTableDataMigrationFastChecker.create(schemaSrc, schemaDst, logicalTableSrc, logicalTableDst, ec);
         if (fastCheckers == null || fastCheckers.isEmpty()) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "failed to create table data migration fastchecker");
         }
 
         boolean checkResult = false;
-        final int maxRetryTimes =
-            ec.getParamManager().getInt(ConnectionParams.CREATE_DATABASE_AS_FASTCHECKER_RETRY_TIMES);
-
-        int tryTimes = 0;
-        while (tryTimes < maxRetryTimes && checkResult == false) {
-            try {
-                boolean singleResult = true;
-                for (FastChecker fastChecker : fastCheckers) {
-                    singleResult = fastChecker.check(ec);
-                    if (singleResult == false) {
-                        break;
-                    }
-                }
-                checkResult = singleResult;
-            } catch (TddlNestableRuntimeException e) {
-                if (StringUtils.containsIgnoreCase(e.getMessage(), "acquire lock timeout")) {
-                    //if acquire lock timeout, we will retry
-                    if (tryTimes < maxRetryTimes - 1) {
-                        try {
-                            TimeUnit.MILLISECONDS.sleep(2000L * (1 + tryTimes));
-                        } catch (InterruptedException ex) {
-                            throw new TddlNestableRuntimeException(ex);
-                        }
-                        continue;
-                    } else {
-                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE,
-                            "table data migration fastchecker retry exceed max times", e);
-                    }
-                } else if (StringUtils.containsIgnoreCase(e.getMessage(), "fetch phy table digest timeout")) {
-                    throw e;
-                } else {
-                    //other exception, we simply throw out
-                    throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, e,
-                        "table data migration fastchecker failed to check");
-                }
-            } finally {
-                tryTimes += 1;
-                SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
-                    "FastChecker for table data migration, srcSchema [{0}] dstSchema [{1}] logical tableSrc [{2}] logical tableDst [{3}] finish, time use [{4}], check result [{5}]",
-                    schemaSrc, schemaDst, logicalTableSrc, logicalTableDst,
-                    (System.currentTimeMillis() - startTime) / 1000.0, checkResult ? "pass" : "not pass"));
-                if (!checkResult) {
-                    EventLogger.log(EventType.DDL_WARN, "FastChecker failed");
+        try {
+            boolean singleResult = true;
+            for (FastChecker fastChecker : fastCheckers) {
+                singleResult = fastChecker.check(ec);
+                if (singleResult == false) {
+                    break;
                 }
             }
+            checkResult = singleResult;
+        } catch (TddlNestableRuntimeException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, e,
+                "table data migration fastchecker failed to check");
+        } finally {
+            SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
+                "FastChecker for table data migration, srcSchema [{0}] dstSchema [{1}] logical tableSrc [{2}] logical tableDst [{3}] finish, time use [{4}], check result [{5}]",
+                schemaSrc, schemaDst, logicalTableSrc, logicalTableDst,
+                (System.currentTimeMillis() - startTime) / 1000.0, checkResult ? "pass" : "not pass"));
+            if (!checkResult) {
+                EventLogger.log(EventType.DDL_WARN, "FastChecker failed");
+            } else {
+                EventLogger.log(EventType.DDL_INFO, "FastChecker succeed");
+            }
         }
+
         return checkResult;
     }
 
@@ -194,7 +164,7 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
             metaManager.getTableAndIndexMeta(primaryTableName, EnumSet.of(IndexStatus.PUBLIC));
 
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
-            if (bean.gsiMetaBean != null) {
+            if (bean.gsiMetaBean != null && !bean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean bean1 = bean.gsiMetaBean;
                 allGsiNames.add(bean1.indexName);
             }

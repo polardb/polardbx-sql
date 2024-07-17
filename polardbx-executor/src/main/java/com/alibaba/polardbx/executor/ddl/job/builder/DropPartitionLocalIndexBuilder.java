@@ -16,26 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
-import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.PreparedDataUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlAlterTableDropIndex;
-import org.apache.calcite.sql.SqlDdl;
-import org.apache.calcite.sql.SqlDdlNodes;
-import org.apache.calcite.sql.SqlDropIndex;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.parser.SqlParserPos;
 
 public class DropPartitionLocalIndexBuilder extends DropLocalIndexBuilder {
 

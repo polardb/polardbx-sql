@@ -16,13 +16,14 @@
 
 package com.alibaba.polardbx.executor.utils.transaction;
 
-import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+
+import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
 
 /**
  * @author chenghui.lch
@@ -37,11 +38,8 @@ public class PhyOpTrxConnUtils {
         ITransaction.RW rw,
         ExecutionContext ec,
         Long grpConnId
-    ) throws SQLException
-    {
-        ITransactionPolicy.TransactionClass tranClass = trans.getTransactionClass();
-
-        if (tranClass == ITransactionPolicy.TransactionClass.XA || tranClass == ITransactionPolicy.TransactionClass.TSO) {
+    ) throws SQLException {
+        if (trans.getTransactionClass().isA(SUPPORT_SHARE_READVIEW_TRANSACTION)) {
             return trans.getConnection(schemaName,
                 groupName,
                 grpConnId,

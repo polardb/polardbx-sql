@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf;
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.FunctionAccessor;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.ProcedureAccessor;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

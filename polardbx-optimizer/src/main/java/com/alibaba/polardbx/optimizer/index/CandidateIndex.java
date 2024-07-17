@@ -62,7 +62,7 @@ public class CandidateIndex {
 
     private static final String ADVISE_INDEX_PREFIX = "__advise_index_";
 
-    public static final int INDEX_LENGTH = 58;
+    public static final int INDEX_LENGTH = 50;
     private String schemaName;
 
     private String tableName;

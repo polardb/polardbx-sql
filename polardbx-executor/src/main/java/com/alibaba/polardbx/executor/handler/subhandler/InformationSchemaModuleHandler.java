@@ -24,11 +24,11 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaModule;
-import com.alibaba.polardbx.optimizer.view.InformationSchemaWorkload;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 
 import java.util.List;
@@ -75,7 +75,7 @@ public class InformationSchemaModuleHandler extends BaseVirtualViewSubClassHandl
         }
 
         List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(showSyncAction, SystemDbHelper.INFO_SCHEMA_DB_NAME);
+            SyncManagerHelper.sync(showSyncAction, SystemDbHelper.INFO_SCHEMA_DB_NAME, SyncScope.CURRENT_ONLY);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

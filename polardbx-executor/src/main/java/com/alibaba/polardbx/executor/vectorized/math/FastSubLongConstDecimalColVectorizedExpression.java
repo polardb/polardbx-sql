@@ -18,17 +18,17 @@ package com.alibaba.polardbx.executor.vectorized.math;
 
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.MathUtils;
 import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
-import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
-import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionPriority;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import io.airlift.slice.Slice;
@@ -45,18 +45,39 @@ import static com.alibaba.polardbx.executor.vectorized.metadata.ExpressionPriori
     priority = SPECIAL
 )
 public class FastSubLongConstDecimalColVectorizedExpression extends AbstractVectorizedExpression {
+    // avoid overflow of (left - a2)
+    private static final long MAX_LEFT_FOR_SIMPLE = 1_999_999_999L;
+    private static final long MIN_LEFT_FOR_SIMPLE = 999_999_999L;
     private final boolean leftIsNull;
     private final long left;
+    private final boolean useLeftWithScale;
+    private final long leftWithScale;
 
     public FastSubLongConstDecimalColVectorizedExpression(int outputIndex, VectorizedExpression[] children) {
         super(DataTypes.DecimalType, outputIndex, children);
         Object leftValue = ((LiteralVectorizedExpression) children[0]).getConvertedValue();
         if (leftValue == null) {
             leftIsNull = true;
-            left = (long) 0;
+            left = 0;
+            leftWithScale = 0;
+            useLeftWithScale = true;
         } else {
             leftIsNull = false;
             left = (long) leftValue;
+            if (left == 0) {
+                leftWithScale = 0;
+                useLeftWithScale = true;
+                return;
+            }
+            int scale = children[1].getOutputDataType().getScale();
+            if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
+                leftWithScale = 0;
+                useLeftWithScale = false;
+            } else {
+                long power = DecimalTypeBase.POW_10[scale];
+                leftWithScale = left * power;
+                useLeftWithScale = !MathUtils.longMultiplyOverflow(left, power, leftWithScale);
+            }
         }
     }
 
@@ -73,11 +94,19 @@ public class FastSubLongConstDecimalColVectorizedExpression extends AbstractVect
             return;
         }
 
-        DecimalBlock outputVectorSlot = (DecimalBlock) chunk.slotIn(outputIndex, outputDataType);
+        DecimalBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType).cast(DecimalBlock.class);
         DecimalBlock rightInputVectorSlot =
-            (DecimalBlock) chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
+            chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType()).cast(DecimalBlock.class);
 
-        Slice output = outputVectorSlot.getMemorySegments();
+        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[1].getOutputIndex());
+
+        if (rightInputVectorSlot.isDecimal64() && useLeftWithScale &&
+            checkResultScale(rightInputVectorSlot.getScale(), outputVectorSlot.getScale())) {
+            boolean success = doDecimal64Sub(batchSize, isSelectionInUse, sel, rightInputVectorSlot, outputVectorSlot);
+            if (success) {
+                return;
+            }
+        }
 
         DecimalStructure leftDec = new DecimalStructure();
 
@@ -88,13 +117,13 @@ public class FastSubLongConstDecimalColVectorizedExpression extends AbstractVect
 
         rightInputVectorSlot.collectDecimalInfo();
         boolean useFastMethod = !isSelectionInUse
-            && (rightInputVectorSlot.isSimple() && rightInputVectorSlot.getInt2Pos() == -1);
+            && (rightInputVectorSlot.isSimple() && (rightInputVectorSlot.getInt2Pos() == -1))
+            && isLeftInSimpleRange();
 
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[1].getOutputIndex());
         boolean[] isNulls = outputVectorSlot.nulls();
 
         if (!useFastMethod || !enableFastVec) {
-            normalSub(batchSize, isSelectionInUse, sel, rightInputVectorSlot, output, leftDec);
+            normalSub(batchSize, isSelectionInUse, sel, rightInputVectorSlot, outputVectorSlot, leftDec);
         } else {
             // a1 - (a2 + b2 * [-9])
             // = (a1 - a2) + (0 - b2) * [-9]
@@ -119,16 +148,96 @@ public class FastSubLongConstDecimalColVectorizedExpression extends AbstractVect
                 sub0 = !isNeg ? sub0 : -sub0;
 
                 if (sub0 < 1000_000_000) {
-                    outputVectorSlot.setSubResult1(i, (int)sub0, (int)sub9, isNeg);
+                    outputVectorSlot.setSubResult1(i, (int) sub0, (int) sub9, isNeg);
                 } else {
-                    outputVectorSlot.setSubResult2(i, 1, (int)(sub0 - 1000_000_000), (int)sub9, isNeg);
+                    outputVectorSlot.setSubResult2(i, 1, (int) (sub0 - 1000_000_000), (int) sub9, isNeg);
                 }
             }
         }
     }
 
-    private void normalSub(int batchSize, boolean isSelectionInUse, int[] sel, DecimalBlock rightInputVectorSlot,
-                           Slice output, DecimalStructure leftDec) {
+    private boolean checkResultScale(int scale, int resultScale) {
+        return scale == resultScale;
+    }
+
+    private boolean isLeftInSimpleRange() {
+        return left <= MAX_LEFT_FOR_SIMPLE && left >= MIN_LEFT_FOR_SIMPLE;
+    }
+
+    /**
+     * @return success: subtraction done without overflow
+     */
+    private boolean doDecimal64Sub(int batchSize, boolean isSelectionInUse, int[] sel,
+                                   DecimalBlock rightInputVectorSlot, DecimalBlock outputVectorSlot) {
+        long[] decimal64Output = outputVectorSlot.allocateDecimal64();
+        boolean isOverflowDec64 = false;
+
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
+
+                long rightDec64 = rightInputVectorSlot.getLong(j);
+                long result = leftWithScale - rightDec64;
+                decimal64Output[j] = result;
+                isOverflowDec64 |= ((left ^ rightDec64) & (left ^ result)) < 0;
+            }
+        } else {
+            for (int i = 0; i < batchSize; i++) {
+                long rightDec64 = rightInputVectorSlot.getLong(i);
+                long result = leftWithScale - rightDec64;
+                decimal64Output[i] = result;
+                isOverflowDec64 |= ((left ^ rightDec64) & (left ^ result)) < 0;
+            }
+        }
+        if (!isOverflowDec64) {
+            return true;
+        }
+
+        outputVectorSlot.allocateDecimal128();
+
+        long[] outputDec128Lows = outputVectorSlot.getDecimal128LowValues();
+        long[] outputDec128Highs = outputVectorSlot.getDecimal128HighValues();
+
+        long leftHigh = leftWithScale >= 0 ? 0 : -1;
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
+
+                long rightDec128Low = rightInputVectorSlot.getLong(j);
+                long rightDec128High = rightDec128Low >= 0 ? 0 : -1;
+
+                long newDec128High = leftHigh - rightDec128High;
+                long newDec128Low = leftWithScale - rightDec128Low;
+                long borrow = ((~leftWithScale & rightDec128Low)
+                    | (~(leftWithScale ^ rightDec128Low) & newDec128Low)) >>> 63;
+                long resultHigh = newDec128High - borrow;
+
+                outputDec128Lows[j] = newDec128Low;
+                outputDec128Highs[j] = resultHigh;
+            }
+        } else {
+            for (int i = 0; i < batchSize; i++) {
+                long rightDec128Low = rightInputVectorSlot.getLong(i);
+                long rightDec128High = rightDec128Low >= 0 ? 0 : -1;
+
+                long newDec128High = leftHigh - rightDec128High;
+                long newDec128Low = leftWithScale - rightDec128Low;
+                long borrow = ((~leftWithScale & rightDec128Low)
+                    | (~(leftWithScale ^ rightDec128Low) & newDec128Low)) >>> 63;
+                long resultHigh = newDec128High - borrow;
+
+                outputDec128Lows[i] = newDec128Low;
+                outputDec128Highs[i] = resultHigh;
+            }
+        }
+        return true;
+    }
+
+    private void normalSub(int batchSize, boolean isSelectionInUse, int[] sel,
+                           DecimalBlock rightInputVectorSlot,
+                           DecimalBlock outputVectorSlot, DecimalStructure leftDec) {
+        Slice output = outputVectorSlot.getMemorySegments();
+
         DecimalStructure rightDec;
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {
@@ -165,5 +274,6 @@ public class FastSubLongConstDecimalColVectorizedExpression extends AbstractVect
                 FastDecimalUtils.sub(leftDec, rightDec, toValue);
             }
         }
+        outputVectorSlot.setFullState();
     }
 }

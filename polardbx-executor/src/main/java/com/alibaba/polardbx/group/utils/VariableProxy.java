@@ -20,6 +20,7 @@ import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.variable.IVariableProxy;
@@ -49,7 +50,11 @@ public class VariableProxy implements IVariableProxy {
         this.tGroupDataSource = dataSource;
     }
 
+    @Override
     public ImmutableMap<String, Object> getSessionVariables() {
+        if (!ConfigDataMode.needDNResource()) {
+            return ImmutableMap.<String, Object>builder().build();
+        }
         TGroupDirectConnection tGroupDirectConnection = null;
         try {
             tGroupDirectConnection = tGroupDataSource.getConnection();
@@ -72,6 +77,9 @@ public class VariableProxy implements IVariableProxy {
 
     @Override
     public ImmutableMap<String, Object> getGlobalVariables() {
+        if (!ConfigDataMode.needDNResource()) {
+            return ImmutableMap.<String, Object>builder().build();
+        }
         TGroupDirectConnection tGroupDirectConnection = null;
         try {
             tGroupDirectConnection = tGroupDataSource.getConnection();

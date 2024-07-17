@@ -18,17 +18,22 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableConvertCharSet;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableDropColumnItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCharacterDataType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelect;
@@ -40,6 +45,9 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlExprImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlShowColumnOutpuVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
+import com.alibaba.polardbx.druid.util.CharsetNameForParser;
+import com.alibaba.polardbx.druid.util.CollationNameForParser;
+import com.alibaba.polardbx.druid.util.FnvHash;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 
@@ -57,6 +65,7 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
     private List<SQLCommentHint> hints = new ArrayList<SQLCommentHint>();
     private List<SQLCommentHint> optionHints = new ArrayList<SQLCommentHint>();
     private SQLName tableGroup; // for polarx
+    private boolean withImplicitTablegroup = false; // for polarx
     private SQLName joinGroup; // for polarx
     protected boolean prefixPartition; // for polarx
     protected boolean prefixBroadcast; // for polarx
@@ -231,6 +240,14 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         this.tableGroup = tableGroup;
     }
 
+    public boolean isWithImplicitTablegroup() {
+        return withImplicitTablegroup;
+    }
+
+    public void setWithImplicitTablegroup(boolean withImplicitTablegroup) {
+        this.withImplicitTablegroup = withImplicitTablegroup;
+    }
+
     public SQLName getJoinGroup() {
         return joinGroup;
     }
@@ -288,25 +305,77 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
 
         int applyCount = 0;
 
+        // alter collate pre handle if not exist charset
+        boolean hasCollate = false;
+        boolean hasCharset = false;
+        SQLAssignItem collateItem = null;
+        for (SQLAssignItem option : alter.getTableOptions()) {
+            if (isCharsetLabel(option)) {
+                hasCharset = true;
+                break;
+            }
+            if (option.getTarget().toString().contains("COLLATE")) {
+                hasCollate = true;
+                collateItem = option;
+            }
+        }
+        if (hasCollate && !hasCharset) {
+            String dstCollateName = null;
+            if (collateItem.getTarget() instanceof SQLIdentifierExpr) {
+                dstCollateName = collateItem.getValue().toString();
+            } else if (collateItem.getTarget() instanceof SQLBinaryOpExpr) {
+                dstCollateName = ((SQLBinaryOpExpr) collateItem.getTarget()).getRight().toString();
+            }
+            CharsetNameForParser charsetNameForParser = CollationNameForParser.getCharsetOf(dstCollateName);
+            alter.getTableOptions().add(new SQLAssignItem(new SQLIdentifierExpr("CHARSET"),
+                new SQLIdentifierExpr(charsetNameForParser.name())));
+        }
+
+        // alter table charset before modify column
+        if (hasCollate || hasCharset) {
+            beforeAlterCharset();
+            applyCount++;
+        }
+
         List<SQLAlterTableItem> laterItemList = Lists.newArrayList();
-        // modify column name and drop column
+
+        List<SQLAlterTableItem> changeList = Lists.newArrayList();
+
+        // drop first
         for (SQLAlterTableItem item : alter.getItems()) {
+            if (item instanceof SQLAlterTableDropColumnItem) {
+                if (alterApply(item)) {
+                    applyCount++;
+                }
+            } else {
+                changeList.add(item);
+            }
+        }
+
+        // modify or change column
+        for (SQLAlterTableItem item : changeList) {
 
             if (item instanceof MySqlAlterTableChangeColumn) {
                 // later apply first or after， split column def and seq
                 MySqlAlterTableChangeColumn sortColumn = (MySqlAlterTableChangeColumn) item;
                 MySqlAlterTableChangeColumn changeColumn = new MySqlAlterTableChangeColumn();
+                prepareColumnDefinitionWithoutCharset(sortColumn.getNewColumnDefinition());
                 changeColumn.setColumnName(sortColumn.getColumnName());
                 changeColumn.setNewColumnDefinition(sortColumn.getNewColumnDefinition());
                 item = changeColumn;
                 sortColumn.setColumnName(sortColumn.getNewColumnDefinition().getName());
                 laterItemList.add(sortColumn);
             } else if (item instanceof SQLAlterTableAddColumn) {
+                SQLAlterTableAddColumn addColumn = (SQLAlterTableAddColumn) item;
+                for (SQLColumnDefinition columnDefinition : addColumn.getColumns()) {
+                    prepareColumnDefinitionWithoutCharset(columnDefinition);
+                }
                 laterItemList.add(item);
                 continue;
             } else if (item instanceof MySqlAlterTableModifyColumn) {
                 MySqlAlterTableModifyColumn sortColumn = (MySqlAlterTableModifyColumn) item;
                 MySqlAlterTableModifyColumn modifyColumn = new MySqlAlterTableModifyColumn();
+                prepareColumnDefinitionWithoutCharset(sortColumn.getNewColumnDefinition());
                 modifyColumn.setSourceColumn(sortColumn.getSourceColumn());
                 modifyColumn.setParent(sortColumn.getParent());
                 modifyColumn.setHint(sortColumn.getHint());
@@ -314,6 +383,27 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
                 modifyColumn.setNewColumnDefinition(sortColumn.getNewColumnDefinition());
                 laterItemList.add(sortColumn);
                 item = modifyColumn;
+            } else if (item instanceof SQLAlterTableConvertCharSet) {
+                SQLAlterTableConvertCharSet convertCharSet = (SQLAlterTableConvertCharSet) item;
+                String targetCharset = null;
+                String targetCollate = null;
+                if (convertCharSet.getCharset() != null) {
+                    targetCharset = convertCharSet.getCharset().toString();
+                }
+                if (convertCharSet.getCollate() != null) {
+                    targetCollate = convertCharSet.getCollate().toString();
+                }
+                // clean and follow table charset
+                setColumnCharacter(targetCharset, targetCollate, true);
+                removeCharsetOptions();
+                if (convertCharSet.getCharset() != null) {
+                    tableOptions.add(
+                        new SQLAssignItem(new SQLIdentifierExpr("CHARSET"), convertCharSet.getCharset()));
+                }
+                if (convertCharSet.getCollate() != null) {
+                    tableOptions.add(new SQLAssignItem(new SQLIdentifierExpr("COLLATE"), convertCharSet.getCharset()));
+                }
+                applyCount++;
             }
 
             if (alterApply(item)) {
@@ -328,8 +418,237 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
             }
         }
 
+        // alter table charset
+        for (SQLAssignItem option : alter.getTableOptions()) {
+            if (isCharsetRelLabel(option)) {
+                option.setParent(this);
+                applyCount++;
+                tableOptions.add(option);
+            }
+        }
+
         return applyCount > 0;
     }
+
+    private void prepareColumnDefinitionWithoutCharset(SQLColumnDefinition newColumnDefinition) {
+        String charset = null;
+        String collate = null;
+        final SQLExpr charsetExpr = newColumnDefinition.getCharsetExpr();
+        if (charsetExpr != null) {
+            if (charsetExpr instanceof SQLIdentifierExpr) {
+                charset = ((SQLIdentifierExpr) charsetExpr).getName();
+            } else if (charsetExpr instanceof SQLBinaryOpExpr) {
+                charset = ((SQLBinaryOpExpr) charsetExpr).getRight().toString();
+            }
+        }
+        final SQLExpr collateExpr = newColumnDefinition.getCollateExpr();
+        if (collateExpr != null) {
+            if (collateExpr instanceof SQLIdentifierExpr) {
+                collate = ((SQLIdentifierExpr) collateExpr).getName();
+
+            } else if (collateExpr instanceof SQLBinaryOpExpr) {
+                collate = ((SQLBinaryOpExpr) collateExpr).getRight().toString();
+            }
+        }
+        final SQLDataType dataType = newColumnDefinition.getDataType();
+        if (dataType instanceof SQLCharacterDataType) {
+            SQLCharacterDataType sqlCharacterDataType = (SQLCharacterDataType) dataType;
+            if (collate == null) {
+                collate = sqlCharacterDataType.getCollate();
+            }
+            if (charset == null) {
+                charset = sqlCharacterDataType.getCharSetName();
+            }
+        }
+        if (collate != null && charset == null) {
+            CharsetNameForParser charsetNameForParser = CollationNameForParser.getCharsetOf(collate);
+            if (dataType instanceof SQLCharacterDataType) {
+                ((SQLCharacterDataType) dataType).setCharSetName(charsetNameForParser.name());
+            } else {
+                newColumnDefinition.setCharsetExpr(new SQLIdentifierExpr(charsetNameForParser.name()));
+            }
+        }
+    }
+
+    private void beforeAlterCharset() {
+        String charset = null;
+        String collate = null;
+        for (SQLAssignItem option : tableOptions) {
+            if (isCharsetLabel(option)) {
+                charset = option.getValue().toString();
+            } else if (StringUtils.equalsIgnoreCase(option.getTarget().toString(), "COLLATE")) {
+                collate = option.getValue().toString();
+            }
+        }
+        if (charset != null) {
+            setColumnCharacter(charset, collate, false);
+        }
+
+        removeCharsetOptions();
+    }
+
+    private static SQLCharacterDataType getSqlCharacterDataType(SQLColumnDefinition column) {
+        SQLCharacterDataType dataType = (SQLCharacterDataType) column.getDataType();
+        SQLCharacterDataType newDataType = null;
+        if (dataType.nameHashCode64() == FnvHash.Constants.NCHAR) {
+            newDataType = new SQLCharacterDataType("CHAR", dataType.getLength());
+            newDataType.setCharSetName("utf8");
+        } else if (dataType.nameHashCode64() == FnvHash.Constants.NVARCHAR) {
+            newDataType = new SQLCharacterDataType("VARCHAR", dataType.getLength());
+            newDataType.setCharSetName("utf8");
+        }
+        return newDataType;
+    }
+
+    private void setColumnCharacter(String character, String collate, boolean forceConvert) {
+        for (SQLColumnDefinition column : this.getColumnDefinitions()) {
+            if (forceConvert && column.getDataType() instanceof SQLCharacterDataType) {
+                // convert to character 语法会掉用到这里，所以这里要判断一下nchar/nvarchar，转换成普通类型)
+                SQLCharacterDataType newDataType = getSqlCharacterDataType(column);
+                if (newDataType != null) {
+                    column.setDataType(newDataType);
+                }
+            }
+            if (charsetSensitive(column.getDataType())) {
+                SQLCharacterDataType characterDataType = null;
+                if (column.getDataType() instanceof SQLCharacterDataType) {
+                    characterDataType = (SQLCharacterDataType) column.getDataType();
+                }
+                if (!isCanChangeCharset(column, forceConvert)) {
+                    continue;
+                }
+                if (forceConvert && characterDataType != null) {
+                    // 强制转换编码，text 视编码情况升级类型
+                    doSpecialConvertDataType(characterDataType,
+                        column.getCharsetExpr() == null ? null : column.getCharsetExpr().toString(), character);
+                }
+                if (StringUtils.isNotBlank(character)) {
+                    column.setCharsetExpr(new SQLIdentifierExpr(character));
+                    setCharacterSet(characterDataType, character);
+                } else {
+                    column.setCharsetExpr(null);
+                    setCharacterSet(characterDataType, null);
+                }
+                if (StringUtils.isNotBlank(collate)) {
+                    column.setCollateExpr(new SQLIdentifierExpr(collate));
+                    setCollate(characterDataType, collate);
+                } else {
+                    column.setCollateExpr(null);
+                    setCollate(characterDataType, null);
+                }
+            }
+        }
+    }
+
+    private void doSpecialConvertDataType(SQLCharacterDataType characterDataType, String srcCharsetName,
+                                          String targetCharsetName) {
+        long nameHashCode = characterDataType.nameHashCode64();
+        if (nameHashCode == FnvHash.Constants.TINYTEXT ||
+            nameHashCode == FnvHash.Constants.TEXT ||
+            nameHashCode == FnvHash.Constants.MEDIUMTEXT) {
+            String oldCharsetName = characterDataType.getCharSetName();
+            if (StringUtils.isBlank(oldCharsetName)) {
+                oldCharsetName = srcCharsetName;
+            }
+            if (StringUtils.isBlank(oldCharsetName)) {
+                oldCharsetName = getCharsetOptions();
+            }
+            CharsetNameForParser oldCharset = CharsetNameForParser.of(SQLUtils.normalize(oldCharsetName));
+            CharsetNameForParser targetCharset = CharsetNameForParser.of(SQLUtils.normalize(targetCharsetName));
+            if (oldCharset.getMaxLen() < targetCharset.getMaxLen()) {
+                if (nameHashCode == FnvHash.Constants.TINYTEXT) {
+                    characterDataType.setName("TEXT");
+                } else if (nameHashCode == FnvHash.Constants.TEXT) {
+                    characterDataType.setName("MEDIUMTEXT");
+                } else {
+                    characterDataType.setName("LONGTEXT");
+                }
+            }
+        }
+    }
+
+    private String getCharsetOptions() {
+        for (SQLAssignItem option : tableOptions) {
+            if (isCharsetLabel(option)) {
+                SQLExpr expr = option.getValue();
+                if (expr instanceof SQLBinaryOpExpr) {
+                    SQLBinaryOpExpr opExpr = (SQLBinaryOpExpr) expr;
+                    return opExpr.getLeft().toString();
+                }
+                return option.getValue().toString();
+            }
+        }
+        return null;
+    }
+
+    private void setCharacterSet(SQLCharacterDataType characterDataType, String charset) {
+        if (characterDataType != null && StringUtils.isNotBlank(characterDataType.getCharSetName())) {
+            characterDataType.setCharSetName(charset);
+        }
+    }
+
+    private void setCollate(SQLCharacterDataType characterDataType, String collate) {
+        if (characterDataType != null && StringUtils.isNotBlank(characterDataType.getCollate())) {
+            characterDataType.setCollate(collate);
+        }
+    }
+
+    private boolean isCanChangeCharset(SQLColumnDefinition column, boolean force) {
+        if (force) {
+            return true;
+        }
+        if (column.getCharsetExpr() != null) {
+            return false;
+        }
+        if (column.getDataType() instanceof SQLCharacterDataType) {
+            SQLCharacterDataType characterDataType = (SQLCharacterDataType) column.getDataType();
+            if (StringUtils.isNotBlank(characterDataType.getCharSetName())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean charsetSensitive(SQLDataType dataType) {
+        String dataTypeName = dataType.getName();
+        // 除了character外， enum 和 set 是为了兼容mysql返回值
+        if (StringUtils.equalsIgnoreCase(dataTypeName, "enum") ||
+            StringUtils.equalsIgnoreCase(dataTypeName, "set")) {
+            return true;
+        }
+        if (!(dataType instanceof SQLCharacterDataType)) {
+            return false;
+        }
+        SQLCharacterDataType characterDataType = (SQLCharacterDataType) dataType;
+        long nameHash = characterDataType.nameHashCode64();
+        return nameHash != FnvHash.Constants.NCHAR && nameHash != FnvHash.Constants.NVARCHAR;
+    }
+
+    private void removeCharsetOptions() {
+        tableOptions.removeIf(this::isCharsetRelLabel);
+    }
+
+    private boolean isCharsetLabel(SQLAssignItem option) {
+        for (String charsetLabel : CHARSET_LABEL) {
+            if (StringUtils.contains(option.getTarget().toString(), charsetLabel)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isCharsetRelLabel(SQLAssignItem option) {
+        for (String charsetLabel : CHARSET_REL_LABEL) {
+            if (StringUtils.contains(option.getTarget().toString(), charsetLabel)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final String[] CHARSET_REL_LABEL = new String[] {"CHARSET", "CHARACTER", "COLLATE"};
+    private static final String[] CHARSET_LABEL = new String[] {"CHARSET", "CHARACTER"};
 
     @Override
     protected boolean alterApply(SQLAlterTableItem item) {
@@ -810,7 +1129,7 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         "KEY_BLOCK_SIZE", "MAX_ROWS", "MIN_ROWS", "PACK_KEYS", "PASSWORD", "ROW_FORMAT", "SECONDARY_ENGINE_ATTRIBUTE",
         "STATS_AUTO_RECALC", "STATS_PERSISTENT", "STATS_SAMPLE_PAGES", "TABLESPACE", "UNION",
         // Extra added.
-        "BLOCK_FORMAT", "STORAGE_TYPE", "STORAGE_POLICY"));
+        "BLOCK_FORMAT", "STORAGE_TYPE", "STORAGE_POLICY", "SECURITY_POLICY"));
 
     public void normalizeTableOptions() {
         final Iterator<SQLAssignItem> iterator = tableOptions.iterator();

@@ -40,10 +40,6 @@ import java.util.List;
 public class FunctionUtils {
 
     public static boolean isNull(Object o) {
-        if (o instanceof com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row.RowValue) {
-            return allElementsNull(
-                ((com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row.RowValue) o).getValues());
-        }
         if (o == null) {
             return true;
         }
@@ -101,7 +97,7 @@ public class FunctionUtils {
         if (condition instanceof Boolean) {
             return (boolean) condition;
         } else if (condition instanceof Number) {
-            return ((BigInteger)DataTypes.ULongType.convertJavaFrom(condition)).compareTo(BigInteger.ZERO) != 0;
+            return ((BigInteger) DataTypes.ULongType.convertJavaFrom(condition)).compareTo(BigInteger.ZERO) != 0;
         } else if (condition == null) {
             return false;
         } else {

@@ -1,0 +1,16 @@
+- sql: |
+    select id from test1 t where  t.id in ('1111112') or t.id in (select id from test3 where 1=0 );
+
+  plan: |
+
+    logicalview(tables="test1[p1]", sql="select `id` from `test1` as `test1` where ((`id` in('1111112')) or (`id` in(?)))")
+    
+    >> individual scalar subquery :
+    logicalview(tables="test3[p1]", sql="select `id` from `test3` as `test3` where (1 = 0)")
+
+- sql: |
+    /*+TDDL:ENABLE_DIRECT_PLAN=false*/select id from test1 t where  t.id in ('1111112') or t.id in (select id from test2 where 1=0 );
+
+  plan: |
+
+    logicalview(tables="test1[p1],test2[p1]", sql="select `id` from (select `id`, `warehousecode`, `code` from `test1` as `test1` where ((`id` in('1111112')) or (`id` = some (select `id` from `test2` as `test2` where (1 = 0))))) as `t1`")

@@ -2,7 +2,6 @@ package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Before;
@@ -14,7 +13,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 @NotThreadSafe
-@FileStoreIgnore
 public class ProcedureCacheTest extends BaseTestCase {
     protected Connection tddlConnection;
     protected Connection checkConnection;

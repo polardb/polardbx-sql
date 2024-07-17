@@ -20,6 +20,7 @@ import com.alibaba.polardbx.optimizer.config.table.charset.CollationHandlers;
 import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
@@ -35,6 +36,7 @@ import com.google.protobuf.CodedInputStream;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.airlift.slice.XxHash64;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -404,7 +406,6 @@ public class MediumIntField extends AbstractNumericField {
         }
     }
 
-
     @Override
     public Slice stringValue(SessionProperties sessionProperties) {
         String numberStr = String.valueOf(longValue());
@@ -465,6 +466,14 @@ public class MediumIntField extends AbstractNumericField {
             CollationHandler collationHandler = getCollationHandler();
             collationHandler.hashcode(packedBinary, length, numbers);
         }
+    }
+
+    @Override
+    public long xxHashCode() {
+        if (isNull()) {
+            return NULL_HASH_CODE;
+        }
+        return XxhashUtils.finalShuffle(longValue());
     }
 
     @Override

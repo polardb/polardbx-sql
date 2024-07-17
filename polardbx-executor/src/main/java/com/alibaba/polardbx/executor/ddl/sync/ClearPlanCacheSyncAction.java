@@ -18,12 +18,13 @@ package com.alibaba.polardbx.executor.ddl.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
+import org.apache.commons.lang.StringUtils;
 
 public class ClearPlanCacheSyncAction implements ISyncAction {
 
     private String schemaName;
+    private String tableName;
 
     public ClearPlanCacheSyncAction() {
     }
@@ -32,9 +33,20 @@ public class ClearPlanCacheSyncAction implements ISyncAction {
         this.schemaName = schemaName;
     }
 
+    public ClearPlanCacheSyncAction(String schemaName, String tableName) {
+        this.schemaName = schemaName;
+        this.tableName = tableName;
+    }
+
     @Override
     public ResultCursor sync() {
-        PlanManager.getInstance().invalidateSchema(schemaName);
+        if (StringUtils.isNotEmpty(tableName)) {
+            // sync with table name meaning seq handler had been fixed, clean baseline+plancache
+            PlanCache.getInstance().invalidateByTable(schemaName, tableName);
+        } else {
+            // sync without table name meaning seq handler hadn't been fixed, only clean plancache by schema
+            PlanCache.getInstance().invalidateBySchema(schemaName);
+        }
         return null;
     }
 

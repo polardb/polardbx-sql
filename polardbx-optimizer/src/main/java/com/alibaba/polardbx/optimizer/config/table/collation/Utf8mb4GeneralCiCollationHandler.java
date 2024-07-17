@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.config.table.collation;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
@@ -23,6 +25,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceInput;
+import io.airlift.slice.Slices;
 import org.yaml.snakeyaml.Yaml;
 
 import java.nio.ByteBuffer;
@@ -129,6 +132,23 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
         return doWildCompare(slice, wildCard) == 0;
     }
 
+    /**
+     * FIXME high overhead implementation
+     */
+    @Override
+    public boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
+        if (wildCard == null || wildCard.length == 0) {
+            // like '%%' always match
+            return true;
+        }
+        byte[] containWildCard = new byte[wildCard.length + 2];
+        containWildCard[0] = WILD_MANY;
+        System.arraycopy(wildCard, 0, containWildCard, 1, wildCard.length);
+        containWildCard[containWildCard.length - 1] = WILD_MANY;
+        Slice wildCardSlice = Slices.wrappedBuffer(containWildCard);
+        return doWildCompare(slice, wildCardSlice) == 0;
+    }
+
     public int doWildCompare(Slice slice, Slice wildCard) {
         int sliceCodePoint, wildCodePoint;
         SliceInput str = slice.getInput();
@@ -147,7 +167,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                     return 1;
                 }
                 // found '%'
-                if (wildCodePoint == '%') {
+                if (wildCodePoint == WILD_MANY) {
                     // found an anchor char
                     break;
                 }
@@ -155,7 +175,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 wildStr.setPosition(wildStrPositions[1]);
 
                 // found '\'
-                if (wildCodePoint == '\\' && wildStr.isReadable()) {
+                if (wildCodePoint == ESCAPE && wildStr.isReadable()) {
                     wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
                     if (wildCodePoint == INVALID_CODE) {
                         return 1;
@@ -171,7 +191,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 str.setPosition(strPositions[1]);
 
                 // found '_'
-                if (!escaped && wildCodePoint == '_') {
+                if (!escaped && wildCodePoint == WILD_ONE) {
                     // found an anchor char
                 } else {
                     int sliceWeight = getWeight(sliceCodePoint);
@@ -188,7 +208,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 }
             }
 
-            if (wildCodePoint == '%') {
+            if (wildCodePoint == WILD_MANY) {
                 // Remove any '%' and '_' from the wild search string
                 while (wildStr.isReadable()) {
                     wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
@@ -197,11 +217,11 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                         return 1;
                     }
 
-                    if (wildCodePoint == '%') {
+                    if (wildCodePoint == WILD_MANY) {
                         wildStr.setPosition(wildStrPositions[1]);
                         continue;
                     }
-                    if (wildCodePoint == '_') {
+                    if (wildCodePoint == WILD_ONE) {
                         wildStr.setPosition(wildStrPositions[1]);
                         sliceCodePoint = codepointOfUTF8(str, strPositions);
                         if (sliceCodePoint == INVALID_CODE) {
@@ -231,7 +251,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 }
                 wildStr.setPosition(wildStrPositions[1]);
 
-                if (wildCodePoint == '\\') {
+                if (wildCodePoint == ESCAPE) {
                     if (wildStr.isReadable()) {
                         wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
                         if (wildCodePoint == INVALID_CODE) {

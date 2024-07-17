@@ -17,9 +17,12 @@
 package com.alibaba.polardbx.executor.vectorized.math;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.MathUtils;
 import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
@@ -35,6 +38,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import java.util.Arrays;
 
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
@@ -45,39 +49,72 @@ import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Var
     priority = ExpressionPriority.SPECIAL
 )
 public class FastBetweenDecimalColLongConstLongConstVectorizedExpression extends AbstractVectorizedExpression {
-    private final boolean operand1IsNull;
-    private final Decimal operand1;
-    private final boolean operand2IsNull;
-    private final Decimal operand2;
 
-    private final long lower;
-    private final long upper;
+    private boolean operand1IsNull;
+    private Decimal operand1;
+    private boolean useOperand1WithScale;
+    private long operand1WithScale;
 
-    public FastBetweenDecimalColLongConstLongConstVectorizedExpression(int outputIndex, VectorizedExpression[] children) {
+    private boolean operand2IsNull;
+    private Decimal operand2;
+    private boolean useOperand2WithScale;
+    private long operand2WithScale;
+
+    public FastBetweenDecimalColLongConstLongConstVectorizedExpression(int outputIndex,
+                                                                       VectorizedExpression[] children) {
         super(DataTypes.LongType, outputIndex, children);
 
         Object operand1Value = ((LiteralVectorizedExpression) children[1]).getConvertedValue();
-        Object operand2Value = ((LiteralVectorizedExpression) children[2]).getConvertedValue();
         if (operand1Value == null) {
             operand1IsNull = true;
             operand1 = Decimal.ZERO;
-            lower = 0;
+            operand1WithScale = 0;
+            useOperand1WithScale = true;
         } else {
             operand1IsNull = false;
             operand1 = DataTypes.DecimalType.convertFrom(operand1Value);
-            lower = DataTypes.LongType.convertFrom(operand1Value);
+            long left = (long) operand1Value;
+            if (left == 0) {
+                operand1WithScale = 0;
+                useOperand1WithScale = true;
+                return;
+            }
+            int scale = children[0].getOutputDataType().getScale();
+            if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
+                operand1WithScale = 0;
+                useOperand1WithScale = false;
+            } else {
+                long power = DecimalTypeBase.POW_10[scale];
+                operand1WithScale = left * power;
+                useOperand1WithScale = !MathUtils.longMultiplyOverflow(left, power, operand1WithScale);
+            }
         }
 
+        Object operand2Value = ((LiteralVectorizedExpression) children[2]).getConvertedValue();
         if (operand2Value == null) {
             operand2IsNull = true;
             operand2 = Decimal.ZERO;
-            upper = 0;
+            operand2WithScale = 0;
+            useOperand2WithScale = true;
         } else {
             operand2IsNull = false;
             operand2 = DataTypes.DecimalType.convertFrom(operand2Value);
-            upper = DataTypes.LongType.convertFrom(operand2Value);
+            long right = (long) operand2Value;
+            if (right == 0) {
+                operand2WithScale = 0;
+                useOperand2WithScale = true;
+                return;
+            }
+            int scale = children[0].getOutputDataType().getScale();
+            if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
+                operand2WithScale = 0;
+                useOperand2WithScale = false;
+            } else {
+                long power = DecimalTypeBase.POW_10[scale];
+                operand2WithScale = right * power;
+                useOperand2WithScale = !MathUtils.longMultiplyOverflow(right, power, operand2WithScale);
+            }
         }
-
     }
 
     @Override
@@ -90,92 +127,58 @@ public class FastBetweenDecimalColLongConstLongConstVectorizedExpression extends
 
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         DecimalBlock leftInputVectorSlot =
-            (DecimalBlock) chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        boolean[] nulls = outputVectorSlot.nulls();
+            chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType())
+                .cast(DecimalBlock.class);
 
-        if (operand1IsNull || operand2IsNull) {
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
+
+        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
+        if (leftInputVectorSlot.isDecimal64() && useOperand1WithScale && useOperand2WithScale) {
+            // do Decimal64 compare
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
                     int j = sel[i];
-                    nulls[j] = true;
+                    long leftVal = leftInputVectorSlot.getLong(j);
+                    output[j] = leftVal >= operand1WithScale && leftVal <= operand2WithScale ? LongBlock.TRUE_VALUE :
+                        LongBlock.FALSE_VALUE;
                 }
             } else {
-                Arrays.fill(nulls, true);
+                for (int i = 0; i < batchSize; i++) {
+                    // fetch left decimal value
+                    long leftVal = leftInputVectorSlot.getLong(i);
+                    output[i] = leftVal >= operand1WithScale && leftVal <= operand2WithScale ? LongBlock.TRUE_VALUE :
+                        LongBlock.FALSE_VALUE;
+                }
             }
             return;
         }
 
-
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
-
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[1].getOutputIndex());
-
-        boolean enableFastVec =
-            ctx.getExecutionContext().getParamManager().getBoolean(ConnectionParams.ENABLE_DECIMAL_FAST_VEC);
-
-        leftInputVectorSlot.collectDecimalInfo();
-        boolean useFastMethod = (leftInputVectorSlot.isSimple() && leftInputVectorSlot.getInt2Pos() == -1);
-
-        if (!useFastMethod || !enableFastVec) {
-            doNormalCompare(batchSize, isSelectionInUse, sel, leftInputVectorSlot, output);
-            return;
-        }
-
-        // a2 <= (a1 + b1 * [-9]) <= a3
-        // =>
-        // (b1 == 0 && a2 <= a1 <= a3)
-        // ||
-        // (b1 != 0 && a2 <= a1 < a3)
-        long a1, b1;
-        long a2 = lower;
-        long a3 = upper;
-        if(isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                a1 = leftInputVectorSlot.fastInt1(j);
-                b1 = leftInputVectorSlot.fastFrac(j);
-
-                boolean equal = (a2 <= a1 && ((b1 == 0 && a1 <= a3) || (b1 != 0 && a1 < a3)));
-                output[j] = equal ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-            }
-        } else {
-            for (int i = 0; i < batchSize; i++) {
-                a1 = leftInputVectorSlot.fastInt1(i);
-                b1 = leftInputVectorSlot.fastFrac(i);
-
-                boolean equal = (a2 <= a1 && ((b1 == 0 && a1 <= a3) || (b1 != 0 && a1 < a3)));
-                output[i] = equal ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-            }
-        }
-    }
-
-    private void doNormalCompare(int batchSize, boolean isSelectionInUse, int[] sel, DecimalBlock leftInputVectorSlot,
-                                 long[] output) {
+        // do normal decimal compare
         DecimalStructure leftDec;
         DecimalStructure operand1Dec = operand1.getDecimalStructure();
         DecimalStructure operand2Dec = operand2.getDecimalStructure();
-
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {
                 int j = sel[i];
 
                 // fetch left decimal value
-                leftDec = new DecimalStructure(leftInputVectorSlot.getRegion(j));
+                leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
 
-                boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) >= 0 && FastDecimalUtils.compare(leftDec, operand2Dec) <= 0;
+                boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) >= 0;
+                boolean b2 = FastDecimalUtils.compare(leftDec, operand2Dec) <= 0;
 
-                output[j] = b1 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+                output[j] = b1 && b2 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
             }
         } else {
             for (int i = 0; i < batchSize; i++) {
 
                 // fetch left decimal value
-                leftDec = new DecimalStructure(leftInputVectorSlot.getRegion(i));
+                leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
 
-                boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) >= 0 && FastDecimalUtils.compare(leftDec, operand2Dec) <= 0;
+                boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) >= 0;
+                boolean b2 = FastDecimalUtils.compare(leftDec, operand2Dec) <= 0;
 
-                output[i] = b1 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+                output[i] = b1 && b2 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
             }
         }
     }

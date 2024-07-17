@@ -1,0 +1,98 @@
+## DISABLE_FAST_SQL_PARSER
+
+set sql_mode='';
+create table multi_partcol_t1(
+`c1` varchar(20) NOT NULL,
+`c2` varchar(20) NOT NULL,
+`c3` char(1) NOT NULL,
+`c4` varchar(8) NOT NULL,
+`c5` bigint not null,
+primary key(`c1`,`c2`,`c3`,`c4`),
+index i_c5 (`c5`)
+);
+
+INSERT INTO `multi_partcol_t1` (
+`c1`,
+`c2`,
+`c3`,
+`c4`,
+`c5`
+) VALUES (
+x'32313131313131313339363835383638',
+x'33303030303033373537373437383438',
+x'3130303637',
+x'30303030',
+100
+);
+
+INSERT INTO `multi_partcol_t1` (
+`c1`,
+`c2`,
+`c3`,
+`c4`,
+`c5`
+) VALUES (
+'32313131313131313339363835383638',
+'33303030303033373537373437383438',
+'3130303637',
+'30303030',
+100
+);
+
+delete from `multi_partcol_t1`
+WHERE
+`c1` = '32313131313131313339363835383638'
+and `c2` = '33303030303033373537373437383438'
+and `c3` = '3130303637'
+and `c4` = '30303030';
+
+delete from `multi_partcol_t1`
+  WHERE
+  `c1` = x'32313131313131313339363835383638'
+  and `c2` = x'33303030303033373537373437383438'
+  and `c3` = x'3130303637'
+  and `c4` = x'30303030';
+
+create table mpc_t1(
+  `c1` varchar(20) NOT NULL,
+  `c2` varchar(20) NOT NULL,
+  `c3` char(1) NOT NULL,
+  `c4` varchar(8) NOT NULL,
+  `c5` bigint not null,
+  primary key(`c1`,`c2`,`c3`,`c4`)
+  )
+  partition by range columns( c1, c2, c3, c4)(
+    partition p1 values less than ('11', '22', '3', '00'),
+    partition p2 values less than ('11', '33', '3', '11'),
+    partition p3 values less than ('11', '44', '3', '22'),
+    partition p4 values less than ('22', '22', '3', '33'),
+    partition p5 values less than ('22', '22', '4', '44'),
+    partition p6 values less than ('22', '22', '4', '55')
+  );
+
+INSERT INTO `mpc_t1` (
+  `c1`,
+  `c2`,
+  `c3`,
+  `c4`,
+  `c5`
+  ) VALUES (
+  '22',
+  '22',
+  '3',
+  '44',
+  100
+  );
+
+create global index g_c5 on mpc_t1(c5) partition by key(c5, c1, c2, c3) partitions 4;
+
+delete from mpc_t1 where
+  c1='22' and c2='22' and c3='333333' and c4='44';
+
+explain select * from mpc_t1 where
+  c1='22' and c2='22' and c3='333333' and c4='44';
+select * from mpc_t1 where
+  c1='22' and c2='22' and c3='333333' and c4='44';
+
+explain select * from mpc_t1 where
+  c1='22' and c2='22' and c3='333333';

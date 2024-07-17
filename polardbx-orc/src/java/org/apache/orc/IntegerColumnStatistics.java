@@ -47,4 +47,8 @@ public interface IntegerColumnStatistics extends ColumnStatistics {
    * @return the sum of the column
    */
   long getSum();
+
+  Long getFirst();
+
+  Long getLatest();
 }

@@ -109,4 +109,14 @@ public class ChangeSetReporter {
 
         return StringUtils.equalsIgnoreCase(record.getMessage(), ChangeSetMetaManager.START_CATCHUP);
     }
+
+    public boolean isFinished(String sourceGroup, String phyTableName) {
+
+        ChangeSetMetaManager.ChangeSetObjectRecord record = changeSetBean.getRecord(
+            sourceGroup,
+            phyTableName
+        );
+
+        return record.getStatus() == ChangeSetMetaManager.ChangeSetStatus.SUCCESS.getValue();
+    }
 }

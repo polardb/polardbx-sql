@@ -19,10 +19,9 @@ package com.alibaba.polardbx.executor.scaleout.fastchecker;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.executor.backfill.Extractor;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
-import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -44,7 +43,7 @@ public class MoveTableFastChecker extends FastChecker {
     public MoveTableFastChecker(String schemaName, String srcLogicalTableName, String dstLogicalTableName,
                                 Map<String, Set<String>> srcPhyDbAndTables, Map<String, Set<String>> dstPhyDbAndTables,
                                 List<String> srcColumns, List<String> dstColumns, List<String> srcPks,
-                                List<String> dstPks, long parallelism, int lockTimeOut,
+                                List<String> dstPks,
                                 PhyTableOperation planSelectHashCheckSrc,
                                 PhyTableOperation planSelectHashCheckWithUpperBoundSrc,
                                 PhyTableOperation planSelectHashCheckWithLowerBoundSrc,
@@ -55,17 +54,17 @@ public class MoveTableFastChecker extends FastChecker {
                                 PhyTableOperation planSelectHashCheckWithLowerUpperBoundDst,
                                 PhyTableOperation planIdleSelectSrc, PhyTableOperation planIdleSelectDst,
                                 PhyTableOperation planSelectSampleSrc, PhyTableOperation planSelectSampleDst) {
-        super(schemaName, schemaName, srcLogicalTableName, dstLogicalTableName, null, srcPhyDbAndTables,
-            dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks, parallelism, lockTimeOut, planSelectHashCheckSrc,
+        super(schemaName, schemaName, srcLogicalTableName, dstLogicalTableName, srcPhyDbAndTables,
+            dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks, planSelectHashCheckSrc,
             planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
             planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
             planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
             planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
     }
 
-    public static FastChecker create(String schemaName, String tableName, Map<String, String> sourceTargetGroup,
+    public static FastChecker create(String schemaName, String tableName,
                                      Map<String, Set<String>> srcPhyDbAndTables,
-                                     Map<String, Set<String>> dstPhyDbAndTables, long parallelism,
+                                     Map<String, Set<String>> dstPhyDbAndTables,
                                      ExecutionContext ec) {
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         final TableMeta tableMeta = sm.getTable(tableName);
@@ -78,18 +77,12 @@ public class MoveTableFastChecker extends FastChecker {
             tableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
 
         // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!!!
-        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMeta, ec);
-
-        if (parallelism <= 0) {
-            parallelism = Math.max(BackFillThreadPool.getInstance().getCorePoolSize() / 2, 1);
-        }
-
-        final int lockTimeOut = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_LOCK_TIMEOUT);
+        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMeta);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         return new MoveTableFastChecker(schemaName, tableName, tableName, srcPhyDbAndTables, dstPhyDbAndTables,
-            allColumns, allColumns, pks, pks, parallelism, lockTimeOut,
+            allColumns, allColumns, pks, pks,
             builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, false, false),
             builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, false, true),
             builder.buildSelectHashCheckForChecker(tableMeta, allColumns, pks, true, false),
@@ -103,7 +96,7 @@ public class MoveTableFastChecker extends FastChecker {
             builder.buildIdleSelectForChecker(tableMeta, allColumns),
             builder.buildIdleSelectForChecker(tableMeta, allColumns),
 
-            builder.buildSqlSelectForSample(tableMeta, pks, pks, false, false),
-            builder.buildSqlSelectForSample(tableMeta, pks, pks, false, false));
+            builder.buildSqlSelectForSample(tableMeta, pks),
+            builder.buildSqlSelectForSample(tableMeta, pks));
     }
 }

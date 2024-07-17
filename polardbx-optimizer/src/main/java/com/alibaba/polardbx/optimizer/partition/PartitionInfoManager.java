@@ -46,6 +46,7 @@ import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -140,7 +141,14 @@ public class PartitionInfoManager extends AbstractLifecycle {
 
     public Set<String> getPartitionTables() {
         Set<String> tableNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        tableNames.addAll(partInfoCtxCache.keySet());
+        Iterator<String> tblNameSetItor = partInfoCtxCache.keySet().iterator();
+        while (tblNameSetItor.hasNext()) {
+            String tbName = tblNameSetItor.next();
+            if (StringUtils.isEmpty(tbName)) {
+                continue;
+            }
+            tableNames.add(tbName);
+        }
         return tableNames;
     }
 
@@ -174,8 +182,7 @@ public class PartitionInfoManager extends AbstractLifecycle {
         if (partInfoCtx == null) {
             return false;
         }
-        return partInfoCtx.getPartInfo().getTableType() == PartitionTableType.PARTITION_TABLE
-            || partInfoCtx.getPartInfo().getTableType() == PartitionTableType.GSI_TABLE;
+        return partInfoCtx.getPartInfo().getTableType().isA(PartitionTableType.PARTITIONED_TABLE);
     }
 
     public boolean isBroadcastTable(String tbName) {

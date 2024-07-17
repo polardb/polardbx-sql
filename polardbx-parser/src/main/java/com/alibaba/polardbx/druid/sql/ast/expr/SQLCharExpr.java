@@ -21,12 +21,16 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCharacterDataType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTOutputVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
+import org.apache.commons.lang.StringUtils;
 
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
 public class SQLCharExpr extends SQLTextLiteralExpr implements SQLValuableExpr, Comparable<SQLCharExpr> {
     public static final SQLDataType DATA_TYPE = new SQLCharacterDataType("char");
+
+    public boolean printIgnoreQuoteChars = false;
 
     public SQLCharExpr() {
 
@@ -34,6 +38,11 @@ public class SQLCharExpr extends SQLTextLiteralExpr implements SQLValuableExpr, 
 
     public SQLCharExpr(String text) {
         this.text = text;
+    }
+
+    public SQLCharExpr(String text, boolean printIgnoreQuoteChars) {
+        this.text = text;
+        this.printIgnoreQuoteChars = printIgnoreQuoteChars;
     }
 
     public SQLCharExpr(String text, SQLObject parent) {
@@ -46,8 +55,23 @@ public class SQLCharExpr extends SQLTextLiteralExpr implements SQLValuableExpr, 
     }
 
     protected void accept0(SQLASTVisitor visitor) {
-        visitor.visit(this);
-        visitor.endVisit(this);
+        if (printIgnoreQuoteChars) {
+            Appendable buf = ((SQLASTOutputVisitor) visitor).getAppender();
+            try {
+                if (StringUtils.isEmpty(text) || !printIgnoreQuoteChars) {
+                    buf.append('\'');
+                    buf.append(text);
+                    buf.append('\'');
+                } else {
+                    buf.append(text);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("print error", e);
+            }
+        } else {
+            visitor.visit(this);
+            visitor.endVisit(this);
+        }
     }
 
     @Override
@@ -60,7 +84,7 @@ public class SQLCharExpr extends SQLTextLiteralExpr implements SQLValuableExpr, 
     }
 
     public SQLCharExpr clone() {
-        return new SQLCharExpr(this.text);
+        return new SQLCharExpr(this.text, printIgnoreQuoteChars);
     }
 
     public SQLDataType computeDataType() {

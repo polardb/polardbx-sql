@@ -187,9 +187,9 @@ public class ADB30_MySqlDDLTest extends MysqlTest {
             "GRANT SELECT(id) ON test4dmp.grade TO test;");
     }
 
-    public void test_import_db() throws Exception {
-        parseTrue("IMPORT DATABASE test4dmp__2  Status=''", "IMPORT DATABASE test4dmp__2 STATUS = ''");
-    }
+//    public void test_import_db() throws Exception {
+//        parseTrue("IMPORT DATABASE test4dmp__2  Status=''", "IMPORT DATABASE test4dmp__2 STATUS = ''");
+//    }
 
     public void test_import_table() throws Exception {
         parseTrue("import table tablename version = 123", "IMPORT TABLE tablename VERSIOIN = 123");

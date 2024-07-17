@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
@@ -25,6 +26,7 @@ import com.alibaba.polardbx.executor.operator.ProducerExecutor;
 import com.alibaba.polardbx.executor.operator.SortMergeExchangeExec;
 import com.alibaba.polardbx.executor.operator.SourceExec;
 import com.alibaba.polardbx.executor.operator.spill.MemoryRevoker;
+import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -165,12 +167,14 @@ public class DriverExec {
                         consumer.buildConsume();
                     } catch (Throwable e) {
                         log.warn("buildConsume consumer:" + consumer, e);
+                        throw GeneralUtil.nestedException(e);
                     }
                 } else if (consumerIsBuffer) {
                     try {
                         consumer.buildConsume();
                     } catch (Throwable e) {
                         log.warn("buildConsume consumer:" + consumer, e);
+                        throw GeneralUtil.nestedException(e);
                     }
                 }
 

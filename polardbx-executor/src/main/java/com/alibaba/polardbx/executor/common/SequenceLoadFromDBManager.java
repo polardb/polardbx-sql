@@ -32,6 +32,7 @@ import com.alibaba.polardbx.executor.sync.InspectGroupSeqMinValueSyncAction;
 import com.alibaba.polardbx.executor.sync.SequenceSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.SeqTypeUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -586,7 +587,8 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
                 long minValueInAllRanges = getMinValueFromAllRanges(seqName);
                 boolean needSync = groupSeq.updateValueRegularly(minValueInAllRanges);
                 if (needSync) {
-                    SyncManagerHelper.sync(new SequenceSyncAction(schemaName, seqName), schemaName);
+                    SyncManagerHelper.sync(new SequenceSyncAction(schemaName, seqName), schemaName,
+                        SyncScope.ALL);
                 }
             }
         } catch (Throwable t) {
@@ -598,7 +600,8 @@ public class SequenceLoadFromDBManager extends AbstractSequenceManager {
         long minValue = DEFAULT_INNER_STEP;
         try {
             List<List<Map<String, Object>>> resultSets =
-                SyncManagerHelper.sync(new InspectGroupSeqMinValueSyncAction(schemaName, seqName), schemaName);
+                SyncManagerHelper.sync(new InspectGroupSeqMinValueSyncAction(schemaName, seqName), schemaName,
+                    SyncScope.ALL);
             if (resultSets != null && resultSets.size() > 0) {
                 for (List<Map<String, Object>> resultSet : resultSets) {
                     if (resultSet != null && resultSet.size() > 0) {

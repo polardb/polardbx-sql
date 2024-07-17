@@ -149,7 +149,7 @@ public class LogicalAlterTableGroupAddTable extends BaseDdlOperation {
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         // TODO(siyun): Redundant preparedData, consider to optimize it
         preparedData(executionContext);
-        if (TableGroupNameUtil.isOssTg(preparedData.getTableGroupName())) {
+        if (TableGroupNameUtil.isFileStorageTg(preparedData.getTableGroupName())) {
             return true;
         }
         String schemaName = preparedData.getSchemaName();

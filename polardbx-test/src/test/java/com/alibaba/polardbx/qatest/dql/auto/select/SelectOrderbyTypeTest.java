@@ -17,14 +17,20 @@
 package com.alibaba.polardbx.qatest.dql.auto.select;
 
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.data.ColumnDataRandomGenerateRule;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import groovy.sql.Sql;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderByNotPrimaryKeyAssert;
@@ -33,18 +39,34 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderByN
  * orderby各种类型的测试
  */
 
-
 public class SelectOrderbyTypeTest extends AutoReadBaseTestCase {
 
     String normaltblOrderTableName;
     String orderListParam;
 
-    @Parameters(name = "{index}:table={0}:orderby:{1}")
-    public static List<String[]> runTable() {
-        return Arrays.asList(ExecuteTableSelect.selectBaseOneTableOrderbyList());
+    @Parameters(name = "{index}:table={0}:orderby:{1}:pushSort={2}")
+    public static List<Object[]> runTable() {
+        String[][] tableNameOrderByList = ExecuteTableSelect.selectBaseOneTableOrderbyList();
+        List<Object[]> paramList =
+            Arrays.stream(tableNameOrderByList)
+                .map(row -> Stream.concat(Arrays.stream(row), Stream.of(true)).toArray(Object[]::new))
+                .collect(Collectors.toList());
+        paramList.addAll(
+            Arrays.stream(tableNameOrderByList)
+                .map(row -> Stream.concat(Arrays.stream(row), Stream.of(false)).toArray(Object[]::new))
+                .collect(Collectors.toList())
+        );
+        return paramList;
     }
 
-    public SelectOrderbyTypeTest(String tableName, String orderList) {
+    String hintValue;
+
+    public SelectOrderbyTypeTest(String tableName, String orderList, boolean pushSort) {
+        if (pushSort) {
+            hintValue = "/*+TDDL:cmd_extra(ENABLE_CBO=true, ENABLE_PUSH_SORT=true)*/";
+        } else {
+            hintValue = "/*+TDDL:cmd_extra(ENABLE_CBO=true, ENABLE_PUSH_SORT=false)*/";
+        }
         normaltblOrderTableName = tableName;
         orderListParam = orderList;
     }
@@ -110,8 +132,6 @@ public class SelectOrderbyTypeTest extends AutoReadBaseTestCase {
         String sql = String.format("select * from %s order by %s asc ,pk", normaltblOrderTableName, orderListParam);
         selectOrderByNotPrimaryKeyAssert(sql, null, mysqlConnection, tddlConnection, orderListParam);
     }
-
-    static final String hintValue = "/*+TDDL:cmd_extra(ENABLE_CBO=true)*/";
 
     @Test
     public void mergeSortTest() throws Exception {
@@ -308,5 +328,47 @@ public class SelectOrderbyTypeTest extends AutoReadBaseTestCase {
             orderListParam,
             orderListParam);
         selectOrderByNotPrimaryKeyAssert(sql, null, mysqlConnection, tddlConnection, orderListParam);
+    }
+
+    public void dropTableIfExists(String tableName, Connection connection) {
+        String sql = "drop table if exists " + tableName;
+        JdbcUtil.executeUpdateSuccess(connection, sql);
+    }
+
+    @Test
+    public void selectOrderByVarbinaryTest() {
+        ColumnDataRandomGenerateRule columnDataRandomGenerateRule = new ColumnDataRandomGenerateRule();
+        String binaryTestTable = "binary_test";
+        dropTableIfExists(binaryTestTable, mysqlConnection);
+        dropTableIfExists(binaryTestTable, tddlConnection);
+        String sql1 = "CREATE TABLE " + SqlIdentifier.surroundWithBacktick(binaryTestTable) + "(\n" +
+            " `a` binary(255), \n" +
+            " `b` varbinary(255) \n" +
+            ") ENGINE = InnoDB DEFAULT CHARSET=utf8;";
+        String sql = "CREATE TABLE " + SqlIdentifier.surroundWithBacktick(binaryTestTable) + "(\n" +
+            " `a` binary(255), \n" +
+            " `b` varbinary(255) \n" +
+            ") ENGINE = InnoDB DEFAULT CHARSET=utf8 ";
+        if (usingNewPartDb()) {
+            sql += " partition BY hash(`a`);";
+        } else {
+            sql += " dbpartition BY hash(`a`);";
+        }
+
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, sql1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        for (int i = 0; i < ColumnDataRandomGenerateRule.charS.length; i++) {
+            sql = "insert into " + SqlIdentifier.surroundWithBacktick(binaryTestTable) + " values('"
+                + columnDataRandomGenerateRule.binary_testRandom() + "','"
+                + columnDataRandomGenerateRule.var_binary_testRandom() + "');";
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+            String querySql1 =
+                hintValue + "SELECT a, b FROM " + SqlIdentifier.surroundWithBacktick(binaryTestTable) + " ORDER BY a";
+            selectOrderAssert(querySql1, null, mysqlConnection, tddlConnection);
+            String querySql2 =
+                hintValue + "SELECT a, b FROM " + SqlIdentifier.surroundWithBacktick(binaryTestTable) + " ORDER BY b";
+            selectOrderAssert(querySql2, null, mysqlConnection, tddlConnection);
+        }
     }
 }

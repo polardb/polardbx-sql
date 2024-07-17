@@ -21,18 +21,8 @@ import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
-import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
-import org.apache.calcite.plan.RelOptUtil;
-import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.sql.SqlExplainFormat;
-import org.apache.calcite.sql.SqlExplainLevel;
 
-import java.text.NumberFormat;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * @author fangwu

@@ -268,7 +268,7 @@ public final class SQLPropertyExpr extends SQLExprImpl implements SQLName, SQLRe
     public long nameHashCode64() {
         if (nameHashCod64 == 0
             && name != null) {
-            nameHashCod64 = FnvHash.hashCode64(name);
+            nameHashCod64 = FnvHash.hashCode64(SQLUtils.normalize(name));
         }
         return nameHashCod64;
     }

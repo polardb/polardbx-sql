@@ -106,7 +106,7 @@ public class AlterJoinGroupValidateTask extends BaseValidateTask {
                     .getTableGroupConfigByName(tableGroupName);
             Set<String> curTables = new TreeSet<>(String::compareToIgnoreCase);
             curTables.addAll(
-                tableGroupConfig.getAllTables().stream().map(o -> o.getTableName()).collect(Collectors.toSet()));
+                tableGroupConfig.getAllTables().stream().collect(Collectors.toSet()));
             if (!originTables.equals(curTables)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
                     String.format(

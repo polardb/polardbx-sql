@@ -11,7 +11,7 @@ import java.sql.ResultSet;
 public class PlanCacheCapacityTest extends ReadBaseTestCase {
 
     private static final String SHOW_CAPACITY_SQL = "select * from information_schema.plan_cache_capacity";
-    private static final String RESIZE_SQL_PATTERN = "resize plancache %d";
+    private static final String RESIZE_SQL_PATTERN = "set global PLAN_CACHE_SIZE=%d";
 
     @Test
     public void testResizePlanCache() {
@@ -23,12 +23,7 @@ public class PlanCacheCapacityTest extends ReadBaseTestCase {
             String resizeSql = String.format(RESIZE_SQL_PATTERN, newCapacity);
             tddlPs = JdbcUtil.preparedStatementSet(resizeSql, null, tddlConnection);
             rs = JdbcUtil.executeQuery(resizeSql, tddlPs);
-            while (rs.next()) {
-                long beforeCnt = rs.getLong("OLD_CNT");
-                long afterCnt = rs.getLong("NEW_CNT");
-                Assert.assertTrue("Copy cache entries unsuccessfully", afterCnt >= beforeCnt);
-                Assert.assertEquals("Old capacity doesn't match", oldCapacity, rs.getLong("OLD_CAPACITY"));
-            }
+            Thread.sleep(2000);
             long newCapacityFromInfoSchema = getCapacity(polardbxOneDB);
             Assert.assertEquals("New capacity doesn't match", newCapacity, newCapacityFromInfoSchema);
         } catch (Exception e) {

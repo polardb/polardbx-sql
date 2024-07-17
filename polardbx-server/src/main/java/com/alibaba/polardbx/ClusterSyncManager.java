@@ -58,19 +58,9 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
     private static final Logger logger = LoggerFactory.getLogger(ClusterSyncManager.class);
 
     @Override
-    public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions) {
-        return doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, null, throwExceptions);
-    }
-
-    @Override
     public List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
                                                 boolean throwExceptions) {
         return doSync(action, schemaName, scope, null, throwExceptions);
-    }
-
-    @Override
-    public void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler, boolean throwExceptions) {
-        doSync(action, schemaName, SyncScope.DEFAULT_SYNC_SCOPE, handler, throwExceptions);
     }
 
     @Override
@@ -96,12 +86,27 @@ public class ClusterSyncManager extends AbstractLifecycle implements ISyncManage
 
         switch (scope) {
         case MASTER_ONLY:
-            if (GmsNodeManager.getInstance().isCurrentNodeMaster()) {
+            if (ConfigDataMode.isMasterMode()) {
                 localResult = ExecUtils.resultSetToList((ResultCursor) action.sync());
             }
             break;
         case SLAVE_ONLY:
-            if (GmsNodeManager.getInstance().isCurrentNodeReadOnly()) {
+            if (!ConfigDataMode.isMasterMode()) {
+                localResult = ExecUtils.resultSetToList((ResultCursor) action.sync());
+            }
+            break;
+        case ROW_SLAVE_ONLY:
+            if (ConfigDataMode.isRowSlaveMode()) {
+                localResult = ExecUtils.resultSetToList((ResultCursor) action.sync());
+            }
+            break;
+        case COLUMNAR_SLAVE_ONLY:
+            if (ConfigDataMode.isColumnarMode()) {
+                localResult = ExecUtils.resultSetToList((ResultCursor) action.sync());
+            }
+            break;
+        case NOT_COLUMNAR_SLAVE:
+            if (!ConfigDataMode.isColumnarMode()) {
                 localResult = ExecUtils.resultSetToList((ResultCursor) action.sync());
             }
             break;

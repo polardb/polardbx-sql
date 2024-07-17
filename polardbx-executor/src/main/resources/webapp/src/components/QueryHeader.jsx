@@ -81,7 +81,7 @@ export class QueryHeader extends React.Component {
     render() {
         const query = this.props.query;
         return (
-            <div>
+            <div className="">
                 <div className="row">
                     <div className="col-xs-6">
                         <h3 className="query-id">

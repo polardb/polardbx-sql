@@ -1,0 +1,227 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `k_bu` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) unsigned DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16;
+
+CREATE TABLE `k_bi` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16;
+
+CREATE TABLE `k_d65` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` decimal(65,0) DEFAULT NULL,
+`order_id` decimal(65,0) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16;
+
+CREATE TABLE `k_vc32` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 16;
+
+CREATE TABLE `k_vc32s4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(SUBSTR(`order_id`, -4))
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_bi_bi` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(`order_id`,user_id)
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_bu_bu` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) unsigned DEFAULT NULL,
+`order_id` bigint(20) unsigned DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(`order_id`,user_id)
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_d65_d65` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` decimal(65,0) DEFAULT NULL,
+`order_id` decimal(65,0) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(`order_id`,user_id)
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_vc32_vc32` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(`order_id`, `user_id`)
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_bis4_bis4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) DEFAULT NULL,
+`order_id` bigint(20) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_bus4_bus4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) unsigned DEFAULT NULL,
+`order_id` bigint(20) unsigned DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_d65s4_d65s4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` decimal(65,0) DEFAULT NULL,
+`order_id` decimal(65,0) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+CREATE TABLE `ch_t1_vc32s4_vc32s4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+select part_hash('','k_bi',0);
+select part_hash('','ch_t1_bi_bi',0,0);
+select part_hash('','k_bi',null);
+select part_hash('','ch_t1_bi_bi',null,null);
+select part_hash('','k_bi',9223372036854775807);
+select part_hash('','ch_t1_bi_bi',9223372036854775807,9223372036854775807);
+select part_hash('','k_bi',-9223372036854775808);
+select part_hash('','ch_t1_bi_bi',-9223372036854775808,-9223372036854775808);
+insert into ch_t1_bi_bi (id, order_id, user_id) values (null, '9223372036854775807', '9223372036854775807');
+select id, order_id, user_id from ch_t1_bi_bi where order_id=9223372036854775807;
+select id, order_id, user_id from ch_t1_bi_bi where user_id='9223372036854775807';
+
+select part_hash('','k_bu',0);
+select part_hash('','ch_t1_bu_bu',0,0);
+select part_hash('','k_bu',null);
+select part_hash('','ch_t1_bu_bu',null,null);
+select part_hash('','k_bu',18446744073709551615);
+select part_hash('','ch_t1_bu_bu',18446744073709551615,18446744073709551615);
+insert into ch_t1_bu_bu (id, order_id, user_id) values (null, '18446744073709551615', '18446744073709551615');
+select id, order_id, user_id from ch_t1_bu_bu where order_id=18446744073709551615;
+select id, order_id, user_id from ch_t1_bu_bu where user_id='18446744073709551615';
+
+select part_hash('','k_d65',0);
+select part_hash('','ch_t1_d65_d65',0,0);
+select part_hash('','k_d65',null);
+select part_hash('','ch_t1_d65_d65',null,null);
+select part_hash('','k_d65',12345678901234567890123456789012345678901234567890123456789012345);
+select part_hash('','ch_t1_d65_d65',12345678901234567890123456789012345678901234567890123456789012345,12345678901234567890123456789012345678901234567890123456789012345);
+select part_hash('','k_d65',99999999999999999999999999999999999999999999999999999999999999999);
+select part_hash('','ch_t1_d65_d65',99999999999999999999999999999999999999999999999999999999999999999,99999999999999999999999999999999999999999999999999999999999999999);
+insert into ch_t1_d65_d65 (id, order_id, user_id) values (null, '12345678901234567890123456789012345678901234567890123456789012345', '12345678901234567890123456789012345678901234567890123456789012345');
+select id, order_id, user_id from ch_t1_d65_d65 where order_id=12345678901234567890123456789012345678901234567890123456789012345;
+select id, order_id, user_id from ch_t1_d65_d65 where user_id='12345678901234567890123456789012345678901234567890123456789012345';
+
+select part_hash('','k_vc32',null);
+select part_hash('','ch_t1_vc32_vc32',null,null);
+select part_hash('','k_vc32','');
+select part_hash('','ch_t1_vc32_vc32','','');
+select part_hash('','k_vc32','12345678901234567890123456789012');
+select part_hash('','ch_t1_vc32_vc32','12345678901234567890123456789012','12345678901234567890123456789012');
+insert into ch_t1_vc32_vc32 (id, order_id, user_id) values (null, '18446744073709551615', '18446744073709551615');
+select id, order_id, user_id from ch_t1_vc32_vc32 where user_id=18446744073709551615;
+select id, order_id, user_id from ch_t1_vc32_vc32 where user_id='18446744073709551615';
+## error_msg: $# not support yet #$
+select id, order_id, user_id from ch_t1_vc32_vc32 where user_id=18446744073709551616;
+
+select part_hash('','ch_t1_bis4_bis4',0,0);
+select part_hash('','ch_t1_bis4_bis4',null,null);
+select part_hash('','ch_t1_bis4_bis4',9223372036854775807,9223372036854775807);
+select part_hash('','ch_t1_bis4_bis4',-9223372036854775808,-9223372036854775808);
+insert into ch_t1_bis4_bis4 (id, order_id, user_id) values (null, '9223372036854775807', '9223372036854775807');
+select id, order_id, user_id from ch_t1_bis4_bis4 where user_id=9223372036854775807;
+select id, order_id, user_id from ch_t1_bis4_bis4 where user_id='9223372036854775807';
+
+select part_hash('','ch_t1_bus4_bus4',0,0);
+select part_hash('','ch_t1_bus4_bus4',null,null);
+select part_hash('','ch_t1_bus4_bus4',18446744073709551615,18446744073709551615);
+insert into ch_t1_bus4_bus4 (id, order_id, user_id) values (null, '18446744073709551615', '18446744073709551615');
+select id, order_id, user_id from ch_t1_bus4_bus4 where user_id=18446744073709551615;
+select id, order_id, user_id from ch_t1_bus4_bus4 where user_id='18446744073709551615';
+
+select part_hash('','ch_t1_d65s4_d65s4',0,0);
+select part_hash('','ch_t1_d65s4_d65s4',null,null);
+select part_hash('','ch_t1_d65s4_d65s4',18446744073709551615,18446744073709551615);
+select part_hash('','ch_t1_d65s4_d65s4',12345678901234567890123456789012345678901234567890123456789012345,12345678901234567890123456789012345678901234567890123456789012345);
+select part_hash('','ch_t1_d65s4_d65s4',99999999999999999999999999999999999999999999999999999999999999999,99999999999999999999999999999999999999999999999999999999999999999);
+insert into ch_t1_d65s4_d65s4 (id, order_id, user_id) values (null, '12345678901234567890123456789012345678901234567890123456789012345', '12345678901234567890123456789012345678901234567890123456789012345');
+select id, order_id, user_id from ch_t1_d65s4_d65s4 where order_id=12345678901234567890123456789012345678901234567890123456789012345;
+select id, order_id, user_id from ch_t1_d65s4_d65s4 where user_id='12345678901234567890123456789012345678901234567890123456789012345';
+
+select part_hash('','k_vc32s4','0');
+select part_hash('','ch_t1_vc32s4_vc32s4','0','0');
+select part_hash('','k_vc32s4',null);
+select part_hash('','ch_t1_vc32s4_vc32s4',null,null);
+select part_hash('','k_vc32s4','');
+select part_hash('','ch_t1_vc32s4_vc32s4','','');
+select part_hash('','k_vc32s4','12345678901234567890123456789032');
+select part_hash('','ch_t1_vc32s4_vc32s4','12345678901234567890123456789032','12345678901234567890123456789032');
+insert into ch_t1_vc32s4_vc32s4 (id, order_id, user_id) values (null, '18446744073709551615', '18446744073709551615');
+select id, order_id, user_id from ch_t1_vc32s4_vc32s4 where user_id='18446744073709551615';
+## error_msg: $# not support yet #$
+select id, order_id, user_id from ch_t1_vc32s4_vc32s4 where order_id=184467440737095516150;

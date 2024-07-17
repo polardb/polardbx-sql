@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
+import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
-import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
 import org.apache.calcite.plan.DeriveMode;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -58,11 +58,13 @@ public class HashJoin extends Join implements PhysicalNode {
 
     private final boolean semiJoinDone;
     private final ImmutableList<RelDataTypeField> systemFieldList;
-    private final RexNode equalCondition;
-    private final RexNode otherCondition;
+    private RexNode equalCondition;
+    private RexNode otherCondition;
     private final boolean runtimeFilterPushedDown;
     private RelOptCost fixedCost;
     private boolean outerBuild;
+
+    private boolean keepPartition = false;
 
     //~ Constructors -----------------------------------------------------------
 
@@ -104,7 +106,7 @@ public class HashJoin extends Join implements PhysicalNode {
             ImmutableSet.<CorrelationId>of(),
             JoinRelType.valueOf(relInput.getString("joinType")),
             null);
-        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE);
+        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE).replace(relInput.getPartitionWise());
         this.equalCondition = relInput.getExpression("equalCondition");
         this.otherCondition = relInput.getExpression("otherCondition");
         if (relInput.get("systemFields") == null) {
@@ -117,6 +119,7 @@ public class HashJoin extends Join implements PhysicalNode {
         if (JoinRelType.LEFT == joinType || JoinRelType.RIGHT == joinType) {
             outerBuild = relInput.getBoolean("driverBuilder", false);
         }
+        this.keepPartition = relInput.getBoolean("keepPartition", false);
     }
 
     public static HashJoin create(RelTraitSet traitSet, RelNode left, RelNode right, RexNode condition,
@@ -138,8 +141,33 @@ public class HashJoin extends Join implements PhysicalNode {
         HashJoin hashJoin = new HashJoin(getCluster(),
             traitSet, left, right, conditionExpr,
             variablesSet, joinType, semiJoinDone, systemFieldList, hints,
+            null, null, runtimeFilterPushedDown, outerBuild);
+        hashJoin.keepPartition = keepPartition;
+        hashJoin.setFixedCost(this.fixedCost);
+
+        // Reset equalCondition and otherCondition
+        CBOUtil.RexNodeHolder equalConditionHolder = new CBOUtil.RexNodeHolder();
+        CBOUtil.RexNodeHolder otherConditionHolder = new CBOUtil.RexNodeHolder();
+        CBOUtil.checkHashJoinCondition(hashJoin, conditionExpr, hashJoin.getLeft().getRowType().getFieldCount(),
+            equalConditionHolder, otherConditionHolder);
+
+        RexNode equalCondition = equalConditionHolder.getRexNode();
+        RexNode otherCondition = otherConditionHolder.getRexNode();
+
+        hashJoin.setEqualCondition(equalCondition);
+        hashJoin.setOtherCondition(otherCondition);
+
+        return hashJoin;
+    }
+
+    public HashJoin copy(RelTraitSet traitSet, RexNode conditionExpr, RexNode equalCondition,
+                         RelNode left, RelNode right, JoinRelType joinType, boolean semiJoinDone) {
+        HashJoin hashJoin = new HashJoin(getCluster(),
+            traitSet, left, right, conditionExpr,
+            variablesSet, joinType, semiJoinDone, systemFieldList, hints,
             equalCondition, otherCondition, runtimeFilterPushedDown, outerBuild);
         hashJoin.setFixedCost(this.fixedCost);
+        hashJoin.keepPartition = keepPartition;
         return hashJoin;
     }
 
@@ -149,8 +177,22 @@ public class HashJoin extends Join implements PhysicalNode {
         HashJoin hashJoin = new HashJoin(getCluster(),
             traitSet, left, right, conditionExpr,
             variablesSet, joinType, semiJoinDone, systemFieldList, hints,
-            equalCondition, otherCondition, runtimeFilterPushedDown, outerBuild);
+            null, null, runtimeFilterPushedDown, outerBuild);
         hashJoin.setFixedCost(this.fixedCost);
+        hashJoin.keepPartition = keepPartition;
+
+        // Reset equalCondition and otherCondition
+        CBOUtil.RexNodeHolder equalConditionHolder = new CBOUtil.RexNodeHolder();
+        CBOUtil.RexNodeHolder otherConditionHolder = new CBOUtil.RexNodeHolder();
+        CBOUtil.checkHashJoinCondition(hashJoin, conditionExpr, hashJoin.getLeft().getRowType().getFieldCount(),
+            equalConditionHolder, otherConditionHolder);
+
+        RexNode equalCondition = equalConditionHolder.getRexNode();
+        RexNode otherCondition = otherConditionHolder.getRexNode();
+
+        hashJoin.setEqualCondition(equalCondition);
+        hashJoin.setOtherCondition(otherCondition);
+
         return hashJoin;
     }
 
@@ -168,7 +210,9 @@ public class HashJoin extends Join implements PhysicalNode {
             .itemIf("otherCondition", otherCondition, otherCondition != null)
             .itemIf("semiJoinDone", semiJoinDone, semiJoinDone)
             .itemIf("runtimeFilterPushedDown", runtimeFilterPushedDown, runtimeFilterPushedDown)
-            .itemIf("driverBuilder", outerBuild, outerBuild);
+            .itemIf("driverBuilder", outerBuild, outerBuild)
+            .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop())
+            .itemIf("keepPartition", keepPartition, keepPartition);
     }
 
     public boolean isRuntimeFilterPushedDown() {
@@ -201,10 +245,12 @@ public class HashJoin extends Join implements PhysicalNode {
                 buildString = "left";
             }
         }
+
         return pw.item("condition", visitor.toSqlString())
             .item("type", joinType.name().toLowerCase())
             .itemIf("systemFields", getSystemFieldList(), !getSystemFieldList().isEmpty())
-            .itemIf("build", buildString, StringUtils.isNotEmpty(buildString));
+            .itemIf("build", buildString, StringUtils.isNotEmpty(buildString))
+            .itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
     }
 
     public void setFixedCost(RelOptCost cost) {
@@ -271,7 +317,6 @@ public class HashJoin extends Join implements PhysicalNode {
             cpu += buildRowCount;
         }
         double memory = MemoryEstimator.estimateRowSizeInHashTable(buildInput.getRowType()) * buildRowCount;
-
         return planner.getCostFactory().makeCost(rowCount, cpu, memory, 0, 0);
     }
 
@@ -294,6 +339,14 @@ public class HashJoin extends Join implements PhysicalNode {
 
     public RelNode getProbeNode() {
         return outerBuild ? getInner() : getOuter();
+    }
+
+    public boolean isKeepPartition() {
+        return keepPartition;
+    }
+
+    public void setKeepPartition(boolean keepPartition) {
+        this.keepPartition = keepPartition;
     }
 
     @Override
@@ -324,7 +377,7 @@ public class HashJoin extends Join implements PhysicalNode {
             RelDistribution childDistribution = childTraits.getDistribution();
             RelCollation childCollation = childTraits.getCollation();
             if (childDistribution == RelDistributions.ANY
-                    || childDistribution == RelDistributions.BROADCAST_DISTRIBUTED) {
+                || childDistribution == RelDistributions.BROADCAST_DISTRIBUTED) {
                 return null;
             }
             if (childId == 0 && right.getTraitSet().getDistribution() == RelDistributions.BROADCAST_DISTRIBUTED) {
@@ -357,5 +410,13 @@ public class HashJoin extends Join implements PhysicalNode {
         }
 
         return DeriveMode.LEFT_FIRST;
+    }
+
+    public void setEqualCondition(RexNode equalCondition) {
+        this.equalCondition = equalCondition;
+    }
+
+    public void setOtherCondition(RexNode otherCondition) {
+        this.otherCondition = otherCondition;
     }
 }

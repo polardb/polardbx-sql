@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.alibaba.polardbx.druid.sql.parser;
 
 import com.alibaba.polardbx.druid.DbType;
@@ -27,8 +28,8 @@ import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExprImpl;
-import com.alibaba.polardbx.druid.sql.ast.SQLIndex;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
+import com.alibaba.polardbx.druid.sql.ast.SQLIndexOptions;
 import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
 import com.alibaba.polardbx.druid.sql.ast.SQLMapDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
@@ -422,6 +423,10 @@ public class SQLExprParser extends SQLParser {
         if (lexer.token == Token.LITERAL_CHARS) {
             accept(Token.LITERAL_CHARS);
         } else {
+            SQLExpr tmp = parseAliasExpr(lexer.stringVal());
+            if (tmp instanceof SQLCharExpr) {
+                charExpr = (SQLCharExpr) tmp;
+            }
             accept(Token.LITERAL_ALIAS);
         }
         return charExpr;
@@ -4558,6 +4563,9 @@ public class SQLExprParser extends SQLParser {
         } else if (lexer.identifierEquals(FnvHash.Constants.CLUSTERED)) {
             indexDefinition.setClustered(true);
             lexer.nextToken();
+        } else if (lexer.identifierEquals(FnvHash.Constants.COLUMNAR)) {
+            indexDefinition.setColumnar(true);
+            lexer.nextToken();
         }
 
         if (lexer.token() == Token.FULLTEXT
@@ -4578,6 +4586,25 @@ public class SQLExprParser extends SQLParser {
             lexer.nextToken();
         } else if (lexer.identifierEquals(FnvHash.Constants.CLUSTERED)) {
             indexDefinition.setClustered(true);
+            lexer.nextToken();
+        } else if (lexer.identifierEquals(FnvHash.Constants.COLUMNAR)) {
+            indexDefinition.setColumnar(true);
+            lexer.nextToken();
+        }
+
+        // [UNIQUE] [CLUSTERED] [GLOBAL/COLUMNAR] INDEX
+        // 或 [UNIQUE] [GLOBAL/COLUMNAR] [CLUSTERED] INDEX
+        if (lexer.identifierEquals(FnvHash.Constants.GLOBAL)) {
+            indexDefinition.setGlobal(true);
+            lexer.nextToken();
+        } else if (lexer.identifierEquals(FnvHash.Constants.LOCAL)) {
+            indexDefinition.setLocal(true);
+            lexer.nextToken();
+        } else if (lexer.identifierEquals(FnvHash.Constants.CLUSTERED)) {
+            indexDefinition.setClustered(true);
+            lexer.nextToken();
+        } else if (lexer.identifierEquals(FnvHash.Constants.COLUMNAR)) {
+            indexDefinition.setColumnar(true);
             lexer.nextToken();
         }
 
@@ -4652,6 +4679,9 @@ public class SQLExprParser extends SQLParser {
                                 lexer.nextToken();
                                 indexDefinition.setWithDicName(name());
                                 continue;
+                            } else if (lexer.identifierEquals(FnvHash.Constants.TABLEGROUP)) {
+                                indexDefinition.setWithImplicitTablegroup(true);
+                                break;
                             }
                         }
                         break;
@@ -4725,12 +4755,48 @@ public class SQLExprParser extends SQLParser {
                         accept(Token.EQ);
                         SQLName tableGroupName = this.name();
                         indexDefinition.setTableGroup(tableGroupName);
+                        if (indexDefinition.isWithImplicitTablegroup()) {
+                            acceptIdentifier("IMPLICIT");
+                        }
                     } else if (lexer.identifierEquals("INVISIBLE") || lexer.identifierEquals("VISIBLE")) {
                         if (lexer.identifierEquals("VISIBLE")) {
                             indexDefinition.setVisible(true);
                         } else {
                             indexDefinition.setVisible(false);
                         }
+                        lexer.nextToken();
+                    } else if (lexer.identifierEquals(FnvHash.Constants.CLUSTERED)) {
+                        lexer.nextToken();
+                        accept(Token.KEY);
+
+                        Lexer.SavePoint markClusteredKey = lexer.mark();
+                        if (lexer.token == Token.LPAREN) {
+                            lexer.nextToken();
+                            for (; ; ) {
+                                SQLName name = this.name();
+                                name.setParent(indexDefinition.getParent());
+                                indexDefinition.getClusteredKeys().add(name);
+                                if (lexer.token() == Token.COMMA) {
+                                    lexer.nextToken();
+                                } else {
+                                    break;
+                                }
+                            }
+                            accept(Token.RPAREN);
+                        } else {
+                            lexer.reset(markClusteredKey);
+                        }
+                    } else if (lexer.identifierEquals(FnvHash.Constants.ENGINE)) {
+                        lexer.nextToken();
+                        if (lexer.token() == Token.EQ) {
+                            lexer.nextToken();
+                        }
+                        final SQLName name = this.name();
+                        indexDefinition.setEngineName(name);
+                    } else if (lexer.identifierEquals(FnvHash.Constants.DICTIONARY_COLUMNS)) {
+                        lexer.nextToken();
+                        accept(Token.EQ);
+                        indexDefinition.getOptions().setDictionaryColumns(lexer.stringVal);
                         lexer.nextToken();
                     } else {
                         break _opts;
@@ -5767,11 +5833,7 @@ public class SQLExprParser extends SQLParser {
         return limit;
     }
 
-    public void parseIndexRest(SQLIndex idx) {
-        parseIndexRest(idx, idx);
-    }
-
-    public void parseIndexRest(SQLIndex idx, SQLObject parent) {
+    public void parseIndexRest(SQLIndexDefinition idx, SQLObject parent) {
         accept(Token.LPAREN);
         for (; ; ) {
             SQLSelectOrderByItem selectOrderByItem = this.parseSelectOrderByItem();

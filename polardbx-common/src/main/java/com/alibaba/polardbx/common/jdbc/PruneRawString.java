@@ -17,13 +17,10 @@
 package com.alibaba.polardbx.common.jdbc;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 
 import java.util.BitSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * @author fangwu
@@ -88,11 +85,16 @@ public class PruneRawString extends RawString {
 
     @Override
     public String display() {
-        String rs = "PruneRaw(" + buildRawString() + ")";
-        if (rs.length() > 4096) {
-            return rs.substring(0, 4096) + "...";
+        StringBuilder stringBuilder = new StringBuilder();
+        if (size() == super.getObjList().size()) {
+            stringBuilder.append("NonPruneRaw(" + buildRawString() + ")");
+        } else {
+            stringBuilder.append("PruneRaw(" + buildRawString() + ")");
         }
-        return rs;
+        if (stringBuilder.length() > 4096) {
+            return stringBuilder.substring(0, 4096) + "...";
+        }
+        return stringBuilder.toString();
     }
 
     @Override
@@ -195,12 +197,16 @@ public class PruneRawString extends RawString {
             if (indexes == null || indexes.isEmpty()) {
                 GeneralUtil.nestedException("RawString init ERROR MUITI_INDEX mode with invalid indexes:" + indexes);
             }
+            return;
         default:
             GeneralUtil.nestedException("RawString init ERROR mode invalid :" + pruneMode);
         }
     }
 
     public void merge(PruneRawString pruneRawString) {
+        if (size() == super.getObjList().size()) {
+            return;
+        }
         if (pruneMode == PRUNE_MODE.RANGE) {
             transformModeToMultiIndex();
         }
@@ -208,6 +214,11 @@ public class PruneRawString extends RawString {
             pruneRawString.transformModeToMultiIndex();
         }
         indexes.or(pruneRawString.indexes);
+        if (indexes.cardinality() == super.getObjList().size()) {
+            pruneMode = PRUNE_MODE.RANGE;
+            startIndex = 0;
+            endIndex = super.getObjList().size();
+        }
     }
 
     private void transformModeToMultiIndex() {
@@ -229,5 +240,30 @@ public class PruneRawString extends RawString {
 
     public enum PRUNE_MODE {
         RANGE, MULTI_INDEX;
+    }
+
+    /**
+     * do the same thing as RawString.pruneStep, but return itself.
+     * WARNING: this method will change this PruneRawString itself.
+     */
+    @Override
+    public PruneRawString pruneStep(int curIndex) {
+        pruneMode = PruneRawString.PRUNE_MODE.RANGE;
+        startIndex = curIndex;
+        endIndex = curIndex + 1;
+        return this;
+    }
+
+    @Override
+    public PruneRawString clone() {
+        if (pruneMode == PRUNE_MODE.RANGE) {
+            return new PruneRawString(super.getObjList(), pruneMode, startIndex, endIndex, null);
+        } else {
+            return new PruneRawString(super.getObjList(), pruneMode, -1, -1, (BitSet) indexes.clone());
+        }
+    }
+
+    public int getSourceSize() {
+        return super.size();
     }
 }

@@ -21,8 +21,8 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.FetchPlanCacheSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaPlanCache;
@@ -30,7 +30,6 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * @author dylan
@@ -48,44 +47,36 @@ public class InformationSchemaPlanCacheHandler extends BaseVirtualViewSubClassHa
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchPlanCacheSyncAction(""),
+            SystemDbHelper.INFO_SCHEMA_DB_NAME, SyncScope.CURRENT_ONLY);
 
-        Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
-        for (String schemaName : schemaNames) {
-
-            if (SystemDbHelper.CDC_DB_NAME.equalsIgnoreCase(schemaName)) {
+        for (List<Map<String, Object>> nodeRows : results) {
+            if (nodeRows == null) {
                 continue;
             }
 
-            List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchPlanCacheSyncAction(schemaName),
-                schemaName);
+            for (Map<String, Object> row : nodeRows) {
 
-            for (List<Map<String, Object>> nodeRows : results) {
-                if (nodeRows == null) {
-                    continue;
-                }
-
-                for (Map<String, Object> row : nodeRows) {
-
-                    final String host = DataTypes.StringType.convertFrom(row.get("COMPUTE_NODE"));
-                    final String tableNames = DataTypes.StringType.convertFrom(row.get("TABLE_NAMES"));
-                    final String id = DataTypes.StringType.convertFrom(row.get("ID"));
-                    final Long hitCount = DataTypes.LongType.convertFrom(row.get("HIT_COUNT"));
-                    final String sql = DataTypes.StringType.convertFrom(row.get("SQL"));
-                    final Long typeDigest = DataTypes.LongType.convertFrom(row.get("TYPE_DIGEST"));
-                    final String plan = DataTypes.StringType.convertFrom(row.get("PLAN"));
-                    String parameter = DataTypes.StringType.convertFrom(row.get("PARAMETER"));
-                    cursor.addRow(new Object[] {
-                        host,
-                        schemaName,
-                        tableNames,
-                        id,
-                        hitCount,
-                        sql,
-                        typeDigest,
-                        plan,
-                        parameter
-                    });
-                }
+                final String host = DataTypes.StringType.convertFrom(row.get("COMPUTE_NODE"));
+                final String schemaName = DataTypes.StringType.convertFrom(row.get("SCHEMA_NAME"));
+                final String tableNames = DataTypes.StringType.convertFrom(row.get("TABLE_NAMES"));
+                final String id = DataTypes.StringType.convertFrom(row.get("ID"));
+                final Long hitCount = DataTypes.LongType.convertFrom(row.get("HIT_COUNT"));
+                final String sql = DataTypes.StringType.convertFrom(row.get("SQL"));
+                final Long typeDigest = DataTypes.LongType.convertFrom(row.get("TYPE_DIGEST"));
+                final String plan = DataTypes.StringType.convertFrom(row.get("PLAN"));
+                String parameter = DataTypes.StringType.convertFrom(row.get("PARAMETER"));
+                cursor.addRow(new Object[] {
+                    host,
+                    schemaName,
+                    tableNames,
+                    id,
+                    hitCount,
+                    sql,
+                    typeDigest,
+                    plan,
+                    parameter
+                });
             }
         }
         return cursor;

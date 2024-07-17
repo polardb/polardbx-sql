@@ -22,9 +22,11 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -80,6 +82,7 @@ import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexLiteralTypeUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
@@ -159,6 +162,8 @@ import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -247,7 +252,6 @@ public class LogicalView extends TableScan {
     private BytesSql bytesSql;
 
     private RelOptCost selfCost;
-    private RelMetadataQuery mqCache;
     private List<String> columnOrigins = Lists.newArrayList();
 
     /**
@@ -283,13 +287,12 @@ public class LogicalView extends TableScan {
             throw new RuntimeException("PLAN EXTERNALIZE TEST error:" + e.getMessage());
         }
         buildApply();
-        mqCache = RelMetadataQuery.instance();
         rebuildOriginColumnNames();
     }
 
     public LogicalView(TableScan scan, LockMode lockMode) {
         super(scan.getCluster(), scan.getTraitSet(), scan.getTable(), scan.getHints(), scan.getIndexNode(),
-            scan.getFlashback(), scan.getPartitions());
+            scan.getFlashback(), scan.getFlashbackOperator(), scan.getPartitions());
         this.dbType = DbType.MYSQL;
         this.tableNames.add(Util.last(table.getQualifiedName()));
         this.schemaName = table.getQualifiedName().size() == 2 ? table.getQualifiedName().get(0) :
@@ -297,7 +300,6 @@ public class LogicalView extends TableScan {
         this.newPartDbTbl = checkIfNewPartDbTbl(this.tableNames);
         this.pushDownOpt = new PushDownOpt(this, dbType, PlannerContext.getPlannerContext(scan).getExecutionContext());
         this.lockMode = lockMode;
-        mqCache = RelMetadataQuery.instance();
     }
 
     public LogicalView(LogicalView newLogicalView) {
@@ -311,6 +313,7 @@ public class LogicalView extends TableScan {
             newLogicalView.getHints(),
             newLogicalView.getIndexNode(),
             newLogicalView.getFlashback(),
+            newLogicalView.getFlashbackOperator(),
             newLogicalView.getPartitions());
         this.dbType = newLogicalView.getDbType();
         this.tableNames.addAll(newLogicalView.getTableNames());
@@ -332,7 +335,6 @@ public class LogicalView extends TableScan {
         } else {
             this.traitSet = traitSet;
         }
-        this.mqCache = RelMetadataQuery.instance();
         this.fromMergeIndex = newLogicalView.fromMergeIndex;
         this.columnOrigins = newLogicalView.columnOrigins;
     }
@@ -356,7 +358,6 @@ public class LogicalView extends TableScan {
         this.pushDownOpt =
             new PushDownOpt(this, rel, this.dbType, PlannerContext.getPlannerContext(rel).getExecutionContext());
         this.lockMode = lockMode;
-        this.mqCache = RelMetadataQuery.instance();
     }
 
     public static LogicalView create(RelNode rel, RelOptTable table) {
@@ -557,8 +558,14 @@ public class LogicalView extends TableScan {
 
     private List<RelNode> getInnerInput(SqlSelect sqlTemplate, UnionOptHelper helper,
                                         ExecutionContext executionContext, boolean forceIgnoreRF) {
-
-        Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
+        Map<String, List<List<String>>> targetTables;
+        Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> pruningMap =
+            OptimizerUtils.pruningInValue(this, executionContext);
+        if (pruningMap == null) {
+            targetTables = getTargetTables(executionContext);
+        } else {
+            targetTables = transformToTargetTables(pruningMap);
+        }
         if (forceIgnoreRF) {
             sqlTemplate = (SqlSelect) sqlTemplate.accept(new SqlShuttle() {
                 @Override
@@ -578,7 +585,9 @@ public class LogicalView extends TableScan {
             this,
             dbType,
             schemaName,
-            tableNames);
+            tableNames,
+            pruningMap
+        );
         phyTableScanbuilder.setUnionOptHelper(helper);
         return phyTableScanbuilder.build(executionContext);
     }
@@ -599,11 +608,33 @@ public class LogicalView extends TableScan {
         }
     }
 
+    protected Map<String, List<List<String>>> transformToTargetTables(
+        Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> prunedParameters) {
+        Map<String, List<List<String>>> targetTables = new HashMap<>();
+        for (com.alibaba.polardbx.common.utils.Pair<String, List<String>> pair : prunedParameters.keySet()) {
+            String group = pair.getKey();
+            List<String> tableNames = pair.getValue();
+            List<List<String>> tablesList = targetTables.get(group);
+            if (tablesList == null) {
+                tablesList = new ArrayList<>();
+                targetTables.put(group, tablesList);
+            }
+            tablesList.add(tableNames);
+        }
+        return targetTables;
+    }
+
     protected Map<String, List<List<String>>> buildTargetTablesForPartitionTb(ExecutionContext executionContext) {
-        List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, executionContext);
-        filterPrunedResultBySelectedPartitions(resultList);
+        final List<PartPrunedResult> resultList = getPartPrunedResults(executionContext);
         Map<String, List<List<String>>> rs = PartitionPrunerUtils.buildTargetTablesByPartPrunedResults(resultList);
         return rs;
+    }
+
+    @NotNull
+    public List<PartPrunedResult> getPartPrunedResults(ExecutionContext executionContext) {
+        List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, executionContext);
+        filterPrunedResultBySelectedPartitions(resultList);
+        return resultList;
     }
 
     private void validateSelectedPartitions(boolean isNewPartDb, PartitionInfo partInfo, boolean isJoin) {
@@ -660,7 +691,8 @@ public class LogicalView extends TableScan {
             for (int i = 0; i < resultList.size(); i++) {
                 PartitionInfo partInfo = resultList.get(i).getPartInfo();
                 if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
-                    || partInfo.getTableType() == PartitionTableType.GSI_TABLE) {
+                    || partInfo.getTableType() == PartitionTableType.GSI_TABLE
+                    || partInfo.getTableType() == PartitionTableType.COLUMNAR_TABLE) {
                     SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
                     Set<Integer> selectedPartPostSet = new HashSet<>();
                     for (SqlNode partNameAst : partNamesAst.getList()) {
@@ -885,6 +917,10 @@ public class LogicalView extends TableScan {
         return TddlRelToSqlConverter.createInstance(dbType);
     }
 
+    public XPlanTemplate getXPlanDirect() {
+        return XPlan;
+    }
+
     public XPlanTemplate getXPlan() {
         // Always generate the XPlan in case of switching connection pool.
         if (lockMode != LockMode.UNDEF) {
@@ -1045,7 +1081,7 @@ public class LogicalView extends TableScan {
         }
         Set<RelOptTable> tables = RelOptUtil.findTables(e.getRel());
         tables.addAll(RelOptUtil.findTables(getPushedRelNode()));
-        return RelUtils.isAllSingleTableInSameSchema(tables);
+        return TableTopologyUtil.isAllSingleTableInSamePhysicalDB(tables);
     }
 
     private RelNode rebuildProject(Map<RexNode, RexNode> replacements, Project project) {
@@ -1227,6 +1263,8 @@ public class LogicalView extends TableScan {
             pw.item("shardCount", shardCount);
         }
 
+        pw.itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
+
         if (isMGetEnabled && join != null) {
             List<LookupEquiJoinKey> joinKeys =
                 EquiJoinUtils.buildLookupEquiJoinKeys(join, join.getOuter(), join.getInner(),
@@ -1266,8 +1304,9 @@ public class LogicalView extends TableScan {
                 pw.item("XPlan", format.printToString(plan));
             }
         }
-
-        pw.itemIf("isDynamicParam", "true", pushDownOpt.couldDynamicPruning());
+        String pruningInfo = pruningInfo(executionContext);
+        boolean couldPruning = pushDownOpt.couldDynamicPruning();
+        pw.itemIf("pruningInfo", pruningInfo, couldPruning && StringUtils.isNotEmpty(pruningInfo));
 
         // FIXME generate correct param for LogicalView
         // StringBuilder builder = new StringBuilder();
@@ -1287,6 +1326,66 @@ public class LogicalView extends TableScan {
         // }
 
         return pw;
+    }
+
+    /**
+     * get pruning info, only for explain
+     */
+    private String pruningInfo(ExecutionContext executionContext) {
+        Set<Integer> indexes = pushDownOpt.getShardRelatedInTypeParamIndexes();
+        if (indexes == null || indexes.size() == 0) {
+            return "";
+        }
+        Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> map =
+            OptimizerUtils.pruningInValue(this, executionContext);
+        if (map == null || map.size() == 0) {
+            return "";
+        }
+        int fullInFullSize = 0;
+        int pruningSize = 0;
+        Parameters allParameters = executionContext.getParams();
+
+        for (Integer index : indexes) {
+            if (allParameters.getCurrentParameter().containsKey(index) &&
+                allParameters.getCurrentParameter().get(index).getValue() instanceof RawString) {
+                RawString rawString = (RawString) allParameters.getCurrentParameter().get(index).getValue();
+                fullInFullSize += rawString.size();
+            }
+        }
+
+        StringBuilder detail = new StringBuilder(", pruning detail:");
+        for (Map.Entry<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> entry : map.entrySet()) {
+
+            detail.append(entry.getKey().toString()).append("->(");
+            Parameters parameters = entry.getValue();
+            int pruningInSize = 0;
+            for (Integer index : indexes) {
+                if (parameters.getCurrentParameter().containsKey(index) &&
+                    parameters.getCurrentParameter().get(index).getValue() instanceof RawString) {
+                    RawString rawString = (RawString) parameters.getCurrentParameter().get(index).getValue();
+                    pruningInSize += rawString.size();
+                    detail.append(rawString.display()).append(",");
+                }
+            }
+            if (detail.charAt(detail.length() - 1) == ',') {
+                detail.deleteCharAt(detail.length() - 1);
+            }
+            detail.append(");");
+            pruningSize += fullInFullSize - pruningInSize;
+        }
+        if (pruningSize == 0) {
+            return "";
+        }
+
+        String info = "all size:" + fullInFullSize + "*" + map.values().size() + "(part), pruning size:" + pruningSize;
+        boolean outputDetail = executionContext.getParamManager().getBoolean(ConnectionParams.EXPLAIN_PRUNING_DETAIL);
+        if (outputDetail) {
+            if (detail.charAt(detail.length() - 1) == ';') {
+                detail.deleteCharAt(detail.length() - 1);
+            }
+            info = info + ", pruning time:" + executionContext.getPruningTime() + "ms" + detail;
+        }
+        return info;
     }
 
     public void setIsMGetEnabled(boolean isMGetEnabled) {
@@ -1474,8 +1573,8 @@ public class LogicalView extends TableScan {
         return pushDownOpt.getPlainRefIndex();
     }
 
-    public int getRefByColumnName(String tableName, String columnName, boolean last) {
-        return pushDownOpt.getRefByColumnName(tableName, columnName, last);
+    public int getRefByColumnName(String tableName, String columnName, boolean last, boolean ignoreDerive) {
+        return pushDownOpt.getRefByColumnName(tableName, columnName, last, ignoreDerive);
     }
 
     /**
@@ -1520,7 +1619,6 @@ public class LogicalView extends TableScan {
             return 1;
         }
 
-        int totalShardCount = 0;
         boolean calActualShardCount =
             PlannerContext.getPlannerContext(this).getParamManager()
                 .getBoolean(ConnectionParams.CALCULATE_ACTUAL_SHARD_COUNT_FOR_COST);
@@ -1563,12 +1661,12 @@ public class LogicalView extends TableScan {
                 // params might be clear, pass
             }
         }
-        totalShardCount += getTotalShardCount();
+        int totalShardCount = getTotalShardCount();
 
         return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(executionContext), totalShardCount);
     }
 
-    protected int getTotalShardCount() {
+    public int getTotalShardCount() {
         TddlRuleManager ruleManager =
             PlannerContext.getPlannerContext(this).getExecutionContext().getSchemaManager(schemaName)
                 .getTddlRuleManager();
@@ -2403,20 +2501,20 @@ public class LogicalView extends TableScan {
     }
 
     public synchronized Double getRowCount(RelMetadataQuery mq) {
-        return mqCache.getRowCount(getOptimizedPushedRelNodeForMetaQuery());
+        return mq.getRowCount(getOptimizedPushedRelNodeForMetaQuery());
     }
 
     public synchronized Set<RelColumnOrigin> getColumnOrigins(RelMetadataQuery mq, int iOutputColumn) {
-        return mqCache.getColumnOrigins(getPushedRelNode(), iOutputColumn);
+        return mq.getColumnOrigins(getPushedRelNode(), iOutputColumn);
     }
 
     public synchronized Double getDistinctRowCount(RelMetadataQuery mq,
                                                    ImmutableBitSet groupKey, RexNode predicate) {
-        return mqCache.getDistinctRowCount(getOptimizedPushedRelNodeForMetaQuery(), groupKey, predicate);
+        return mq.getDistinctRowCount(getOptimizedPushedRelNodeForMetaQuery(), groupKey, predicate);
     }
 
     public synchronized Double getSelectivity(RelMetadataQuery mq, RexNode predicate) {
-        return mqCache.getSelectivity(getOptimizedPushedRelNodeForMetaQuery(), predicate);
+        return mq.getSelectivity(getOptimizedPushedRelNodeForMetaQuery(), predicate);
     }
 
     public synchronized Set<RexTableInputRef.RelTableRef> getTableReferences(RelMetadataQuery mq,
@@ -2424,30 +2522,30 @@ public class LogicalView extends TableScan {
         if (logicalViewLevel) {
             return Sets.newHashSet(RexTableInputRef.RelTableRef.of(getTable(), 0));
         } else {
-            return mqCache.getTableReferences(getPushedRelNode());
+            return mq.getTableReferences(getPushedRelNode());
         }
     }
 
     public synchronized Boolean areColumnsUnique(RelMetadataQuery mq, ImmutableBitSet columns, boolean ignoreNulls) {
-        return mqCache.areColumnsUnique(getPushedRelNode(), columns, ignoreNulls);
+        return mq.areColumnsUnique(getPushedRelNode(), columns, ignoreNulls);
     }
 
     public synchronized List<Set<RelColumnOrigin>> isCoveringIndex(RelMetadataQuery mq, RelOptTable table,
                                                                    String index) {
-        return mqCache.isCoveringIndex(getPushedRelNode(), table, index);
+        return mq.isCoveringIndex(getPushedRelNode(), table, index);
     }
 
     public synchronized RelOptPredicateList getPredicates(RelMetadataQuery mq) {
-        return mqCache.getPulledUpPredicates(getOptimizedPushedRelNodeForMetaQuery());
+        return mq.getPulledUpPredicates(getOptimizedPushedRelNodeForMetaQuery());
     }
 
     public synchronized Double getPopulationSize(RelMetadataQuery mq, ImmutableBitSet groupKey) {
-        return mqCache.getPopulationSize(getOptimizedPushedRelNodeForMetaQuery(), groupKey);
+        return mq.getPopulationSize(getOptimizedPushedRelNodeForMetaQuery(), groupKey);
     }
 
     public Map<ImmutableBitSet, ImmutableBitSet> getFunctionalDependency(RelMetadataQuery mq,
                                                                          ImmutableBitSet iOutputColumns) {
-        return mqCache.getFunctionalDependency(getPushedRelNode(), iOutputColumns);
+        return mq.getFunctionalDependency(getPushedRelNode(), iOutputColumns);
     }
 
     public boolean useSelectPartitions() {
@@ -2466,5 +2564,16 @@ public class LogicalView extends TableScan {
 
     public void setFromMergeIndex(boolean fromMergeIndex) {
         this.fromMergeIndex = fromMergeIndex;
+    }
+
+    /**
+     * 一些特殊情况select 不可直接下推标识：
+     * 1、as of tso [expr], expr包含不确定性表达式, 需上层计算
+     */
+    public boolean unPushDown() {
+        if (getFlashback() != null) {
+            return !RexUtil.isDeterministic(getFlashback());
+        }
+        return false;
     }
 }

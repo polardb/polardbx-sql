@@ -19,6 +19,7 @@ package com.alibaba.polardbx.qatest.transaction;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
+import com.alibaba.polardbx.qatest.NotThreadSafe.DeadlockTest;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.Test;

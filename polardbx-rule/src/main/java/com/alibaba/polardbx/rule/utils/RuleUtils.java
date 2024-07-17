@@ -203,4 +203,19 @@ public class RuleUtils {
             throw new TddlNestableRuntimeException(errMsg);
         }
     }
+
+    public static String mockEmptyRule() {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            + "<!DOCTYPE beans PUBLIC \"-//SPRING//DTD BEAN//EN\" \"http://www.springframework.org/dtd/spring-beans.dtd\">\n"
+            + "<beans>\n"
+            + "  <bean class=\"com.alibaba.polardbx.rule.VirtualTableRoot\" id=\"vtabroot\" init-method=\"init\">\n"
+            + "    <property name=\"dbType\" value=\"MYSQL\" />\n"
+            + "    <property name=\"tableRules\">\n"
+            + "      <map>\n"
+            + "      </map>\n"
+            + "    </property>\n"
+            + "  </bean>\n"
+            + "\n"
+            + "</beans>";
+    }
 }

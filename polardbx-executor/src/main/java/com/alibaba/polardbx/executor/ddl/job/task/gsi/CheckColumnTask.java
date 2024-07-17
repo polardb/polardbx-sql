@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.columns.ColumnChecker;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;

@@ -89,7 +89,8 @@ public class TruncateCutOverTask extends BaseGmsTask {
 
         LOGGER.info(
             String
-                .format("finish write meta during truncate cutover for primary table: %s.%s", schemaName, logicalTableName)
+                .format("finish write meta during truncate cutover for primary table: %s.%s", schemaName,
+                    logicalTableName)
         );
 
         FailPoint.injectException(FP_TRUNCATE_CUTOVER_FAILED);

@@ -91,7 +91,7 @@ public class LogicalCheckGsiHandler extends LogicalCommonDdlHandler {
 
         CheckGsiPrepareData prepareData = ddl.prepareData(ec);
         String prettyTableName = prepareData.prettyTableName();
-        String finalResult;
+        String finalResult = "";
         List<CheckerManager.CheckerReport> checkerReports = Collections.emptyList();
 
         // query result from metadb
@@ -113,7 +113,7 @@ public class LogicalCheckGsiHandler extends LogicalCommonDdlHandler {
             show.show(ec);
             finalResult = show.getFinalResult();
             checkerReports = show.getCheckerReports();
-        } else {
+        } else if (!async) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "unknown checker action");
         }
 

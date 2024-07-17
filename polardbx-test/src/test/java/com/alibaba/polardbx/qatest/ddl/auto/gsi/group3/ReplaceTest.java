@@ -50,6 +50,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     private static final String DML_USE_NEW_DUP_CHECKER = "DML_USE_NEW_DUP_CHECKER=TRUE";
     private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
     private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
+    private static final String DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE = "DML_CHECK_JSON_BY_STRING_COMPARE=FALSE";
 
     private boolean useAffectedRows;
     private Connection oldTddl;
@@ -3631,7 +3632,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
         replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
-        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        String hint =
+            buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
         hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
         JdbcUtil.executeUpdateSuccess(tddlConnection, hint + replace);
@@ -3661,7 +3663,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
         replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
-        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        String hint =
+            buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
         JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
 

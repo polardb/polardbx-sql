@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.mpp.execution.buffer;
 import com.alibaba.polardbx.executor.chunk.BlockEncoding;
 import com.alibaba.polardbx.executor.chunk.BlockEncodingBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import io.airlift.compress.Compressor;
 import io.airlift.compress.Decompressor;
@@ -49,7 +50,18 @@ public class PagesSerde {
                       List<DataType> types) {
         this.compressor = requireNonNull(compressor, "compressor is null");
         this.decompressor = requireNonNull(decompressor, "decompressor is null");
-        this.blockEncodings = BlockEncodingBuilders.create(types);
+        this.blockEncodings = BlockEncodingBuilders.create(types, null);
+        checkArgument(compressor.isPresent() == decompressor.isPresent(),
+            "compressor and decompressor must both be present or both be absent");
+    }
+
+    public PagesSerde(Optional<Compressor> compressor,
+                      Optional<Decompressor> decompressor,
+                      List<DataType> types,
+                      ExecutionContext context) {
+        this.compressor = requireNonNull(compressor, "compressor is null");
+        this.decompressor = requireNonNull(decompressor, "decompressor is null");
+        this.blockEncodings = BlockEncodingBuilders.create(types, context);
         checkArgument(compressor.isPresent() == decompressor.isPresent(),
             "compressor and decompressor must both be present or both be absent");
     }

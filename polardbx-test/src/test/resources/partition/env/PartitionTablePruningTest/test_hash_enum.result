@@ -44,5 +44,5 @@ EXPLAIN SELECT *
 FROM t_ubigint
 WHERE a = 9223372036854775809;
 Logical ExecutionPlan
-LogicalView(tables="t_ubigint[p1]", sql="SELECT `a` FROM `t_ubigint` AS `t_ubigint` WHERE (`a` = ?)")
+PhyTableOperation(tables="t_ubigint[p1]", sql="SELECT `t_ubigint`.`a` FROM ? AS `t_ubigint` WHERE (`t_ubigint`.`a` = ?)", params="9223372036854775809")
 DROP TABLE IF EXISTS hsh_key;

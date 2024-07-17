@@ -23,6 +23,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -46,6 +47,8 @@ import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlCreateTable;
@@ -141,9 +144,10 @@ public abstract class DdlPhyPlanBuilder {
             Engine tableEngine = ((SqlCreateTable) relDdl.sqlNode).getEngine();
             boolean pushDownFk = ((SqlCreateTable) relDdl.sqlNode).getPushDownForeignKeys();
             return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
-                Engine.isFileStore(tableEngine), pushDownFk);
+                Engine.isFileStore(tableEngine), pushDownFk, executionContext);
         } else {
-            return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition);
+            return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
+                executionContext);
         }
     }
 

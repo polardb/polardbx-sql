@@ -95,22 +95,6 @@ public class TablePartRecordInfoContext {
         return allSubPartRecList;
     }
 
-//    public static Map<String, List<TablePartitionRecord>> buildSubPartitionRecMap(List<TablePartitionRecord> allSubPartRecList,
-//                                                                                  List<TablePartitionRecord> allPartRecList) {
-//
-//        Map<String, List<TablePartitionRecord>> partNameSubPartListMap = new TreeMap<>();
-//        Map<Long, List<TablePartitionRecord>> partIdSubPartListMap = new HashMap<>();
-//        for (int i = 0; i < allPartRecList.size(); i++) {
-//            partIdSubPartListMap.putIfAbsent(allPartRecList.get(i).getId(), new ArrayList<>());
-//        }
-//        for (int i = 0; i < allSubPartRecList.size(); i++) {
-//            TablePartitionRecord subPartRec = allSubPartRecList.get(i);
-//            Long parentId =
-//            List<TablePartitionRecord> subPartListOfOnePart = result.get(subPartRec.)
-//        }
-//        return result;
-//    }
-
     public List<TablePartitionRecord> filterPartitions(Predicate<TablePartitionRecord> pred) {
         return this.partitionRecList.stream().filter(pred).collect(Collectors.toList());
     }

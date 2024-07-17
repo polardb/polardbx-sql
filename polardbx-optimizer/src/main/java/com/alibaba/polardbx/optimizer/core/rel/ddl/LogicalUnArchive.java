@@ -94,8 +94,7 @@ public class LogicalUnArchive extends BaseDdlOperation {
                     throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS,
                         "Tablegroup: " + tableGroup + " doesn't exists");
                 }
-                for (TablePartRecordInfoContext table : tableGroupConfig.getAllTables()) {
-                    String targetTable = table.getLogTbRec().getTableName();
+                for (String targetTable : tableGroupConfig.getAllTables()) {
                     tables.put(targetTable, sm.getTable(targetTable).getVersion());
                 }
                 Preconditions.checkArgument(tables.size() > 0,

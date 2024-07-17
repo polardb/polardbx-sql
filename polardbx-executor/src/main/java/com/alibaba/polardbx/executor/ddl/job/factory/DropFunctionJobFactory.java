@@ -23,7 +23,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SqlDataAccess;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.DropFunctionOnAllDnTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.DropFunctionDropMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.DropFunctionOnAllDnTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.DropFunctionSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropFunctionMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
@@ -73,11 +75,12 @@ public class DropFunctionJobFactory extends AbstractFunctionJobFactory {
 
         DdlTask dropMetaTask = new DropFunctionDropMetaTask(schema, null, functionName);
         DdlTask syncTask = new DropFunctionSyncTask(schema, functionName);
+        CdcDropFunctionMarkTask cdcDropFunctionMarkTask = new CdcDropFunctionMarkTask(schema, functionName);
         if (statement.getSqlDataAccess() == SqlDataAccess.NO_SQL) {
             DdlTask dropFuncOnAllDbTask = new DropFunctionOnAllDnTask(schema, functionName);
-            return Lists.newArrayList(dropFuncOnAllDbTask, dropMetaTask, syncTask);
+            return Lists.newArrayList(dropFuncOnAllDbTask, dropMetaTask, cdcDropFunctionMarkTask, syncTask);
         } else {
-            return Lists.newArrayList(dropMetaTask, syncTask);
+            return Lists.newArrayList(dropMetaTask, cdcDropFunctionMarkTask, syncTask);
         }
     }
 

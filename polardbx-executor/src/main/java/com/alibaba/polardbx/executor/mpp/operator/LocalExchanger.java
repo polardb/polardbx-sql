@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -115,6 +115,14 @@ public abstract class LocalExchanger implements ConsumerExecutor {
             for (; start < end; start++) {
                 this.executors.get(start).buildConsume();
             }
+        }
+    }
+
+    protected void forceBuildSynchronize() {
+        int buildCount = status.getBuildCount();
+        // all exchanger reached build point
+        if (buildCount == status.getCurrentParallelism()) {
+            this.executors.stream().forEach(consumerExecutor -> consumerExecutor.buildConsume());
         }
     }
 

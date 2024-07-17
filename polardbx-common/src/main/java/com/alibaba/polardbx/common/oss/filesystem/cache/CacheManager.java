@@ -34,7 +34,6 @@ import io.airlift.slice.Slice;
 
 import javax.annotation.concurrent.ThreadSafe;
 import java.io.Closeable;
-import java.util.Map;
 
 @ThreadSafe
 public interface CacheManager extends Closeable {
@@ -61,8 +60,11 @@ public interface CacheManager extends Closeable {
 
     /**
      * Rebuild the cache
+     *
      * @param configs cache configurations.
      */
-    void rebuildCache(Map<String, Long> configs);
+    void rebuildCache(FileMergeCacheConfig fileMergeCacheConfig);
+
+    CacheQuota getMaxCacheQuota();
 }
 

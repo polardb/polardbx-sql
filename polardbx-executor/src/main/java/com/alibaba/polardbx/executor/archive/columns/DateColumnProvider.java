@@ -17,9 +17,6 @@
 package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.CrcAccumulator;
-import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
-import com.alibaba.polardbx.common.datatype.DecimalConverter;
-import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -27,19 +24,17 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
-import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.orc.ColumnStatistics;
@@ -47,7 +42,6 @@ import org.apache.orc.IntegerColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
-import java.sql.Date;
 import java.sql.Types;
 import java.time.ZoneId;
 import java.util.Map;
@@ -138,6 +132,19 @@ class DateColumnProvider implements ColumnProvider<Long> {
             ((LongColumnVector) columnVector).vector[rowNumber] = l;
             accumulator.ifPresent(a -> a.appendHash(Long.hashCode(l)));
         }
+    }
+
+    @Override
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+            return;
+        }
+
+        byte[] bytes = row.getBytes(columnId);
+        long result = ColumnProvider.convertDateToLong(bytes);
+
+        blockBuilder.writeDatetimeRawLong(result);
     }
 
     @Override

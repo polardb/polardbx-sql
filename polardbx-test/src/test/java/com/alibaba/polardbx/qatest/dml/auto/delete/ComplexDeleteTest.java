@@ -676,4 +676,36 @@ public class ComplexDeleteTest extends AutoCrudBasedLockTestCase {
             tddlConnection);
     }
 
+    @Test
+    public void deleteWithUnion() {
+        // Execute update
+        String sql =
+            String.format("delete a from %s a, "
+                    + "(select 9527 as integer_test, 'hello1234' as varchar_test "
+                    + "union select 27149 , 'safdwe') v "
+                    + "where a.varchar_test = v.varchar_test",
+                baseOneTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Check update result
+        sql = "SELECT bigint_test FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+    }
+
+    @Test
+    public void deleteWithUnion1() {
+        // Execute update
+        String sql =
+            String.format("delete a from %s a, "
+                    + "(select 9527 as integer_test, 'hello1234' as varchar_test "
+                    + "union select 27149 , varchar_test from %s b where b.bigint_test < 15) v "
+                    + "where a.varchar_test = v.varchar_test",
+                baseOneTableName, baseTwoTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Check update result
+        sql = "SELECT bigint_test FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+    }
+
 }

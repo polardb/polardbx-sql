@@ -19,9 +19,6 @@ package com.alibaba.polardbx.executor.sync;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class AlterSystemRefreshStorageSyncAction implements ISyncAction {
 
     private String dnId;

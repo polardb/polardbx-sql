@@ -104,17 +104,27 @@ public class LogUtils {
                 return;
             }
 
+            SchemaConfig droppedSchema = c.getDroppedSchemaConfigIfExists();
             SchemaConfig schema = c.getSchemaConfig();
-            if (schema == null) {
-                return;
-            }
+//            if (schema == null) {
+//                return;
+//            }
+            if (schema != null) {
+                if (schema.getDataSource() == null) {
+                    return;
+                }
 
-            if (schema.getDataSource() == null) {
-                return;
-            }
-
-            if (schema.getDataSource().getConnectionProperties() == null) {
-                return;
+                if (schema.getDataSource().getConnectionProperties() == null) {
+                    return;
+                }
+            } else {
+                if (droppedSchema == null) {
+                    return;
+                } else {
+                    /**
+                     * Found a dropped schema, so need the log sql
+                     */
+                }
             }
 
             if (!DynamicConfig.getInstance().enableRecordSql()) {
@@ -197,7 +207,7 @@ public class LogUtils {
                 .getTriggerService().isWorking();
 
             CclSqlMetric cclSqlMetric = null;
-            if (cclTrigger) {
+            if (cclTrigger && schema != null) {
                 cclSqlMetric = new CclSqlMetric();
                 cclSqlMetric.setSchemaName(schema.getName());
                 cclSqlMetric.setOriginalSql(sqlBytes.toString());
@@ -229,6 +239,8 @@ public class LogUtils {
                         printMetric(sqlInfo, QueryMetricsAttribute.EXEC_SQL_TIMECOST, statMetrics.execSqlTc);
                         printMetric(sqlInfo, QueryMetricsAttribute.FETCH_RS_TIMECOST, statMetrics.fetchRsTc);
                         printMetric(sqlInfo, QueryMetricsAttribute.PHYSICAL_CONN_TIMECOST, statMetrics.phyConnTc);
+                        printMetric(sqlInfo, QueryMetricsAttribute.COLUMNAR_SNAPSHOT_TIMECOST,
+                            statMetrics.columnarSnapshotTc);
                         printMetric(sqlInfo, QueryMetricsAttribute.SPILL_COUNT, statMetrics.spillCnt);
                         printMetric(sqlInfo, QueryMetricsAttribute.MEM_BLOCKED, statMetrics.memBlockedFlag);
 
@@ -248,6 +260,10 @@ public class LogUtils {
                 }
                 if (metrics.errorCode != -1) {
                     sqlInfo.append(QueryMetricsAttribute.ERROR_CODE).append(metrics.errorCode);
+                }
+                if (!StringUtils.isEmpty(metrics.xplanIndex)) {
+                    sqlInfo.append(QueryMetricsAttribute.USING_XPLAN).append(metrics.xplanIndex);
+                    sqlInfo.append(QueryMetricsAttribute.XPLAN_ROWS).append(metrics.examinedRowCount);
                 }
                 sqlInfo.append(QueryMetricsAttribute.SQL_TIMESTAMP).append(sqlBeginTs);
                 sqlInfo.append(QueryMetricsAttribute.MEMORY_REJECT).append(metrics.rejectByMemoryLimit ? "1" : "0");
@@ -304,6 +320,9 @@ public class LogUtils {
             }
 
             if (metrics != null) {
+                if (metrics.useColumnar) {
+                    sqlInfo.append(QueryMetricsAttribute.USING_COLUMNAR).append(1);
+                }
                 sqlInfo.append(QueryMetricsAttribute.USING_RETURNING).append(metrics.optimizedWithReturning ? 1 : 0);
             }
 
@@ -358,11 +377,16 @@ public class LogUtils {
 
         public RuntimeStatistics runTimeStat;
 
+        public boolean useColumnar;
         // The sql template Id
         public String sqlTemplateId;
 
         // error code
         public int errorCode = -1;
+
+        public String xplanIndex = null;
+
+        public long examinedRowCount = 0L;
 
         //metric for ccl
         public CclMetric cclMetric;
@@ -394,6 +418,7 @@ public class LogUtils {
         public static final String EXEC_SQL_TIMECOST = ",pstc=";
         public static final String FETCH_RS_TIMECOST = ",prstc=";
         public static final String PHYSICAL_CONN_TIMECOST = ",pctc=";
+        public static final String COLUMNAR_SNAPSHOT_TIMECOST = ",cstc=";
         public static final String SQL_TEMPLATE_ID = ",tid=";
         public static final String MEMORY_REJECT = ",mr=";
         public static final String WORKLOAD_TYPE = ",wt=";
@@ -408,7 +433,10 @@ public class LogUtils {
         public static final String CCL_WAIT_TIME = ",cclwt=";
         public static final String CCL_STATUS = ",cclst=";
         public static final String CCL_HC = ",cclhc=";
+        public static final String USING_COLUMNAR = ",colr=";
         public static final String USING_RETURNING = ",ur=";
+        public static final String USING_XPLAN = ",xplan=";
+        public static final String XPLAN_ROWS = ",xrows=";
     }
 
     public static void resetMaxSqlLen(int newLen) {

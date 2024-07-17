@@ -16,17 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter;
 
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterUtil;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
 import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
@@ -94,6 +94,9 @@ public class JoinToRuntimeFilterJoinRule extends RelOptRule {
         if (join instanceof HashJoin) {
             buildNode = ((HashJoin) join).getBuildNode();
             probeNode = ((HashJoin) join).getProbeNode();
+        } else if (join instanceof SemiHashJoin) {
+            buildNode = ((SemiHashJoin) join).getBuildNode();
+            probeNode = ((SemiHashJoin) join).getProbeNode();
         }
 
         RelDataType buildType = buildNode.getRowType();
@@ -134,7 +137,7 @@ public class JoinToRuntimeFilterJoinRule extends RelOptRule {
         String forceDisableKeys =
             paramManager.getString(ConnectionParams.FORCE_DISABLE_RUNTIME_FILTER_COLUMNS).toUpperCase();
         boolean forceDisabled = Stream.concat(buildKeys.stream().map(k -> buildType.getFieldNames().get(k)),
-            probeKeys.stream().map(k -> probeType.getFieldNames().get(k)))
+                probeKeys.stream().map(k -> probeType.getFieldNames().get(k)))
             .map(String::toUpperCase)
             .allMatch(forceDisableKeys::contains);
         if (forceDisabled) {

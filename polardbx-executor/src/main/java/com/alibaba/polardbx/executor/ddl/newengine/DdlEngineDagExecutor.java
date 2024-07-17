@@ -55,6 +55,8 @@ import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse.Response;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponseSyncAction;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
+import com.alibaba.polardbx.executor.ddl.sync.JobRequest;
+import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.sync.ddl.RemoteDdlTaskSyncAction;
 import com.alibaba.polardbx.executor.sync.ddl.RemoteDdlTaskSyncAction;
@@ -65,6 +67,7 @@ import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
@@ -92,6 +95,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.SKIP_DDL_RESPONSE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.SKIP_DDL_RESPONSE;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_LEADER_ELECTION_NAME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_LEADER_TTL_IN_MILLIS;
@@ -366,7 +370,7 @@ public class DdlEngineDagExecutor {
 
     private void onRollingBack() {
         if (!allowRollback()) {
-            updateDdlState(DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_PAUSED);
+            updateDdlState(DdlState.ROLLBACK_RUNNING, DdlState.PAUSED);
             return;
         }
         // Load tasks reversely if needed.
@@ -529,6 +533,9 @@ public class DdlEngineDagExecutor {
         // Save the result in memory as the last result.
         saveLastResult(response);
 
+        //clean fastchecker info
+        FastCheckerThreadPool.getInstance().invalidateTaskInfo(ddlContext.getJobId());
+
         // Clean the job up.
         try {
             ddlJobManager.removeJob(ddlContext.getJobId());
@@ -537,7 +544,11 @@ public class DdlEngineDagExecutor {
         }
 
         if (ddlContext.getExtraCmds().containsKey(SKIP_DDL_RESPONSE)) {
-            return;
+            try {
+                TimeUnit.MILLISECONDS.sleep(5000L);
+            } catch (InterruptedException ex) {
+                throw new TddlNestableRuntimeException(ex);
+            }
         }
 
         // Respond to the worker.
@@ -917,7 +928,7 @@ public class DdlEngineDagExecutor {
                     GmsSyncManagerHelper
                         .sync(responseSyncAction, ddlContext.getSchemaName(), ddlContext.getResponseNode());
                 } else {
-                    GmsSyncManagerHelper.sync(responseSyncAction, ddlContext.getSchemaName());
+                    GmsSyncManagerHelper.sync(responseSyncAction, ddlContext.getSchemaName(), SyncScope.ALL);
                 }
             } catch (Throwable t) {
                 StringBuilder errMsg = new StringBuilder();

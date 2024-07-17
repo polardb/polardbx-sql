@@ -53,7 +53,7 @@ public class BenchmarkVectorizedExpression extends AbstractVectorizedExpression 
         }
 
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
+        long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {

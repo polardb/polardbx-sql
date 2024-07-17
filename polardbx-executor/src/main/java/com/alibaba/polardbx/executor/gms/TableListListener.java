@@ -22,7 +22,7 @@ import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
+import com.alibaba.polardbx.gms.metadb.table.TableNamesRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
@@ -37,17 +37,16 @@ public class TableListListener extends GenericObjectListListener {
     }
 
     @Override
-    protected List<SystemTableRecord> fetchRecords() {
-        List<TablesRecord> tablesRecords = fetchVisibleRecords();
+    protected List<SystemTableRecord> fetchTablesName() {
+        List<TableNamesRecord> tablesRecords = fetchVisibleTableNames();
         List<SystemTableRecord> records = new ArrayList<>(tablesRecords.size());
         records.addAll(tablesRecords);
         return records;
     }
 
     @Override
-    protected String getDataId(SystemTableRecord record) {
-        TablesRecord tablesRecord = (TablesRecord) record;
-        return MetaDbDataIdBuilder.getTableDataId(tablesRecord.tableSchema, tablesRecord.tableName);
+    protected String getDataId(String tableSchema, String tableName) {
+        return MetaDbDataIdBuilder.getTableDataId(tableSchema, tableName);
     }
 
     @Override
@@ -56,16 +55,15 @@ public class TableListListener extends GenericObjectListListener {
     }
 
     @Override
-    protected ConfigListener getObjectListener(SystemTableRecord record) {
-        TablesRecord tablesRecord = (TablesRecord) record;
-        return new TableMetaListener(tablesRecord.tableSchema, tablesRecord.tableName);
+    protected ConfigListener getObjectListener(String tableSchema, String tableName) {
+        return new TableMetaListener(tableSchema, tableName);
     }
 
-    private List<TablesRecord> fetchVisibleRecords() {
+    private List<TableNamesRecord> fetchVisibleTableNames() {
         TableInfoManager tableInfoManager = new TableInfoManager();
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             tableInfoManager.setConnection(metaDbConn);
-            return tableInfoManager.queryVisibleTables(schemaName);
+            return tableInfoManager.queryVisibleTableNames(schemaName);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
         } finally {

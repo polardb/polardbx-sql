@@ -22,11 +22,14 @@ import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.PhysicalBackfill;
 import com.alibaba.polardbx.optimizer.core.rel.MoveTableBackfill;
 import lombok.Getter;
+import org.apache.calcite.rel.RelNode;
 
 import java.util.Map;
 import java.util.Set;
@@ -44,7 +47,7 @@ public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExe
     Map<String, Set<String>> sourcePhyTables;
     Map<String, Set<String>> targetPhyTables;
     Map<String, String> sourceTargetGroup;
-
+    boolean broadcast;
     boolean useChangeSet;
 
     @JSONCreator
@@ -53,13 +56,24 @@ public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExe
                                  Map<String, Set<String>> sourcePhyTables,
                                  Map<String, Set<String>> targetPhyTables,
                                  Map<String, String> sourceTargetGroup,
+                                 boolean broadcast,
                                  boolean useChangeSet) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.sourcePhyTables = sourcePhyTables;
         this.targetPhyTables = targetPhyTables;
         this.sourceTargetGroup = sourceTargetGroup;
+        this.broadcast = broadcast;
         this.useChangeSet = useChangeSet;
+        if (useChangeSet) {
+            // onExceptionTryRollback, such as dn ha
+            onExceptionTryRecoveryThenRollback();
+        }
+    }
+
+    @Override
+    protected void beforeTransaction(ExecutionContext executionContext) {
+        executeImpl(executionContext);
     }
 
     @Override
@@ -68,12 +82,13 @@ public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExe
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
         executionContext.setSchemaName(schemaName);
-        MoveTableBackfill backFillPlan =
+
+        FailPoint.injectRandomExceptionFromHint(executionContext);
+        FailPoint.injectRandomSuspendFromHint(executionContext);
+        final MoveTableBackfill backFillPlan =
             MoveTableBackfill
                 .createMoveTableBackfill(schemaName, logicalTableName, executionContext, sourcePhyTables,
                     targetPhyTables, sourceTargetGroup, useChangeSet);
-        FailPoint.injectRandomExceptionFromHint(executionContext);
-        FailPoint.injectRandomSuspendFromHint(executionContext);
         ExecutorHelper.execute(backFillPlan, executionContext);
     }
 

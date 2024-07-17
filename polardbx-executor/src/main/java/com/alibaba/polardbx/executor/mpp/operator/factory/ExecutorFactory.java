@@ -18,13 +18,21 @@ package com.alibaba.polardbx.executor.mpp.operator.factory;
 
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.statistics.RuntimeStatHelper;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.Exchange;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class ExecutorFactory {
 
+    protected Exchange exchange = null;
     protected List<ExecutorFactory> childs = new ArrayList<>();
+
+    public void setExchange(Exchange exchange) {
+        this.exchange = exchange;
+    }
 
     public List<ExecutorFactory> getInputs() {
         return childs;
@@ -51,4 +59,13 @@ public abstract class ExecutorFactory {
         output.append(")");
     }
 
+    protected void registerRuntimeStat(Executor exec, RelNode relNode, ExecutionContext context) {
+        exec.setId(relNode.getRelatedId());
+        if (context.getRuntimeStatistics() != null) {
+            if (exchange != null) {
+                RuntimeStatHelper.registerStatForExec(exchange, exec, context);
+            }
+            RuntimeStatHelper.registerStatForExec(relNode, exec, context);
+        }
+    }
 }

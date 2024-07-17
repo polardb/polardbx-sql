@@ -135,4 +135,37 @@ public class SQLDeclareItem extends SQLObjectImpl implements SQLObjectWithDataTy
     public void setResolvedObject(SQLObject resolvedObject) {
         this.resolvedObject = resolvedObject;
     }
+
+    @Override
+    public SQLObject clone() {
+        SQLDeclareItem x = new SQLDeclareItem();
+        x.type = this.type;
+
+        if (this.name != null) {
+            x.name = this.name.clone();
+            x.name.setParent(x);
+        }
+
+        if (this.dataType != null) {
+            x.dataType = this.dataType.clone();
+            x.dataType.setParent(x);
+        }
+
+        if (this.value != null) {
+            x.value = this.value.clone();
+            x.value.setParent(x);
+        }
+
+        if (this.resolvedObject != null) {
+            x.resolvedObject = this.resolvedObject.clone();
+            x.resolvedObject.setParent(x);
+        }
+
+        for (SQLTableElement element : this.tableElementList) {
+            SQLTableElement newElement = element.clone();
+            x.tableElementList.add(newElement);
+        }
+
+        return x;
+    }
 }

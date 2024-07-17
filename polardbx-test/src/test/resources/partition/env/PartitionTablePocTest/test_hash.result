@@ -22,7 +22,7 @@ FROM tbl_hash
 WHERE a = 99
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl_hash[p5]", sql="SELECT `a` FROM `tbl_hash` AS `tbl_hash` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl_hash[p5]", sql="SELECT `tbl_hash`.`a` FROM ? AS `tbl_hash` WHERE (`tbl_hash`.`a` = ?) ORDER BY `a`", params="99")
 SELECT *
 FROM tbl_hash
 WHERE a = 99

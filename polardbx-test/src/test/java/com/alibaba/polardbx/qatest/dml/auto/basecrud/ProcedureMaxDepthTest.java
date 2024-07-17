@@ -1,7 +1,6 @@
 package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
@@ -10,7 +9,6 @@ import org.junit.Test;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-@FileStoreIgnore
 public class ProcedureMaxDepthTest extends BaseTestCase {
     protected Connection tddlConnection;
     private String BASE_PROCEDURE_NAME = "P1";
@@ -39,19 +37,19 @@ public class ProcedureMaxDepthTest extends BaseTestCase {
         // test set session
         JdbcUtil.executeSuccess(tddlConnection, String.format(SET_MAX_PL_DEPTH, "session", 1));
         JdbcUtil.executeSuccess(tddlConnection, "call p2");
-        JdbcUtil.executeFaied(tddlConnection, "call p3", "reached max");
+        JdbcUtil.executeFailed(tddlConnection, "call p3", "reached max");
 
         // test set global
         JdbcUtil.executeSuccess(tddlConnection, String.format(SET_MAX_PL_DEPTH, "global", 2));
         JdbcUtil.executeSuccess(tddlConnection, "call p3");
-        JdbcUtil.executeFaied(tddlConnection, "call p4", "reached max");
+        JdbcUtil.executeFailed(tddlConnection, "call p4", "reached max");
 
         // wait for sync
         Thread.sleep(2_000);
         // use another connection to test
         Connection checkConn = getPolardbxConnection();
         JdbcUtil.executeSuccess(checkConn, "call p3");
-        JdbcUtil.executeFaied(checkConn, "call p4", "reached max");
+        JdbcUtil.executeFailed(checkConn, "call p4", "reached max");
     }
 
     @After

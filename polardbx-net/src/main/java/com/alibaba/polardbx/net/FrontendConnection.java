@@ -69,8 +69,10 @@ public abstract class FrontendConnection extends AbstractConnection {
     protected int port;
     protected int localPort;
     protected long idleTimeout;
-    protected String charset;
-    protected int charsetIndex;
+    protected String resultSetCharset;
+    protected int resultSetCharsetIndex;
+    protected String connectionCharset;
+    protected int connectionCharsetIndex;
     protected byte[] seed;
     protected String user;
     protected String schema;
@@ -101,11 +103,13 @@ public abstract class FrontendConnection extends AbstractConnection {
     private int bigPackLength;
 
     protected Future executingFuture;
+    protected volatile boolean isBinlogDumpConn = false;
     protected com.alibaba.polardbx.common.exception.code.ErrorCode futureCancelErrorCode;
 
     private PolarAccountInfo matchPolarUserInfo = null;
 
     protected volatile boolean rescheduled;
+    private final boolean isLoopAddress;
     /**
      * 一个Mysql 数据包上限,mysql 版本4.0.8 以上
      */
@@ -139,6 +143,7 @@ public abstract class FrontendConnection extends AbstractConnection {
         super(channel);
         Socket socket = channel.socket();
         this.host = socket.getInetAddress().getHostAddress();
+        this.isLoopAddress = socket.getInetAddress().isLoopbackAddress();
         this.port = socket.getPort();
         this.localPort = socket.getLocalPort();
         this.handler = createFrontendAuthenticator(this);
@@ -229,6 +234,10 @@ public abstract class FrontendConnection extends AbstractConnection {
         this.isAuthenticated = isAuthenticated;
     }
 
+    public boolean isLoopAddress() {
+        return isLoopAddress;
+    }
+
     public boolean isTrustLogin() {
         return trustLogin;
     }
@@ -265,8 +274,8 @@ public abstract class FrontendConnection extends AbstractConnection {
         return seed;
     }
 
-    public int getCharsetIndex() {
-        return charsetIndex;
+    public int getResultSetCharsetIndex() {
+        return resultSetCharsetIndex;
     }
 
     public long getClientFlags() {
@@ -301,27 +310,82 @@ public abstract class FrontendConnection extends AbstractConnection {
         this.isAllowManagerLogin = isAllowManagerLogin;
     }
 
+    public String getResultSetCharset() {
+        return resultSetCharset;
+    }
+
+    public String getConnectionCharset() {
+        return connectionCharset;
+    }
+
+    public synchronized void setIsBinlogDumpConn(boolean b) {
+        this.isBinlogDumpConn = b;
+    }
+
     public boolean setCharsetIndex(int ci) {
         String charset = CharsetUtil.getCharset(ci);
         if (charset != null) {
-            this.charset = charset;
-            this.charsetIndex = ci;
-
+            this.resultSetCharset = charset;
+            this.resultSetCharsetIndex = ci;
+            this.connectionCharset = charset;
+            this.connectionCharsetIndex = ci;
             return true;
         } else {
             return false;
         }
     }
 
-    public String getCharset() {
-        return charset;
+    public boolean setResultSetCharsetIndex(int ci) {
+        String charset = CharsetUtil.getCharset(ci);
+        if (charset != null) {
+            this.resultSetCharset = charset;
+            this.resultSetCharsetIndex = ci;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public boolean setConnectionCharsetIndex(int ci) {
+        String charset = CharsetUtil.getCharset(ci);
+        if (charset != null) {
+            this.connectionCharset = charset;
+            this.connectionCharsetIndex = ci;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     public boolean setCharset(String charset) {
         int ci = CharsetUtil.getIndex(charset);
         if (ci > 0) {
-            this.charset = charset;
-            this.charsetIndex = ci;
+            this.resultSetCharset = charset;
+            this.resultSetCharsetIndex = ci;
+            this.connectionCharset = charset;
+            this.connectionCharsetIndex = ci;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public boolean setResultSetCharset(String charset) {
+        int ci = CharsetUtil.getIndex(charset);
+        if (ci > 0) {
+            this.resultSetCharset = charset;
+            this.resultSetCharsetIndex = ci;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public boolean setConnectionCharset(String charset) {
+        int ci = CharsetUtil.getIndex(charset);
+        if (ci > 0) {
+            this.connectionCharset = charset;
+            this.connectionCharsetIndex = ci;
             return true;
         } else {
             return false;
@@ -356,8 +420,8 @@ public abstract class FrontendConnection extends AbstractConnection {
         ErrorPacket err = new ErrorPacket();
         err.packetId = id;
         err.errno = errno;
-        err.sqlState = encodeString(sqlState, charset);
-        err.message = encodeString(msg, charset);
+        err.sqlState = encodeString(sqlState, resultSetCharset);
+        err.message = encodeString(msg, resultSetCharset);
         err.write(PacketOutputProxyFactory.getInstance().createProxy(this));
     }
 
@@ -410,7 +474,7 @@ public abstract class FrontendConnection extends AbstractConnection {
         MySQLMessage mm = new MySQLMessage(data);
         mm.position(5);
 
-        String javaCharset = CharsetUtil.getJavaCharset(charset);
+        String javaCharset = CharsetUtil.getJavaCharset(connectionCharset);
         Charset cs = null;
         if (Charset.isSupported(javaCharset)) {
             try {
@@ -420,7 +484,7 @@ public abstract class FrontendConnection extends AbstractConnection {
             }
         }
         if (cs == null) {
-            writeErrMessage(ErrorCode.ER_UNKNOWN_CHARACTER_SET, "Unknown charset '" + charset + "'");
+            writeErrMessage(ErrorCode.ER_UNKNOWN_CHARACTER_SET, "Unknown charset '" + connectionCharset + "'");
             return;
         }
         if (mm.position() == mm.length()) {
@@ -552,7 +616,7 @@ public abstract class FrontendConnection extends AbstractConnection {
             if (sslHandler != null) {
                 hs.serverCapabilities |= Capabilities.CLIENT_SSL;
             }
-            hs.serverCharsetIndex = (byte) (charsetIndex & 0xff);
+            hs.serverCharsetIndex = (byte) (resultSetCharsetIndex & 0xff);
             hs.serverStatus = 2;
             hs.restOfScrambleBuff = rand2;
             hs.write(PacketOutputProxyFactory.getInstance().createProxy(this));
@@ -630,11 +694,19 @@ public abstract class FrontendConnection extends AbstractConnection {
             // Ensure futureCancelErrorCode is reset
             this.futureCancelErrorCode = null;
             this.executingFuture = processor.getHandler().submit(this.schema, null, processor.getIndex(), () -> {
+                // 如果当前connection中上一个请求是binlog dump请求，则不要等待以及处理请求，因为binlog dump请求无意外情况不会结束
+                // 如果等待，会造成线程泄漏
                 if (previousFuture != null) {
-                    try {
-                        previousFuture.get();
-                    } catch (Throwable ex) {
-                        logger.warn("error during waiting for previous command", ex);
+                    if (isBinlogDumpConn) {
+                        logger.warn("command type:" + finalData[4]
+                            + ", previous future is binlog dump, will not handle this request!");
+                        return;
+                    } else {
+                        try {
+                            previousFuture.get();
+                        } catch (Throwable ex) {
+                            logger.warn("error during waiting for previous command", ex);
+                        }
                     }
                 }
                 if (rescheduled) {

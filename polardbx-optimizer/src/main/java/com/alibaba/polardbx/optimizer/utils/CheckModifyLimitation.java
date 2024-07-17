@@ -131,7 +131,13 @@ public class CheckModifyLimitation {
                 // global unique indexes
                 indexTableMetas.forEach(tableMeta -> tableMeta.getUniqueIndexes(false)
                     .forEach(indexMeta -> indexMeta.getKeyColumns()
-                        .forEach(columnMeta -> uniqueKeySet.add(columnMeta.getName()))));
+                        .forEach(columnMeta -> {
+                            if (columnMeta.getMappingName() != null && !columnMeta.getMappingName().isEmpty()) {
+                                uniqueKeySet.add(columnMeta.getMappingName());
+                            } else {
+                                uniqueKeySet.add(columnMeta.getName());
+                            }
+                        })));
                 for (String str : uniqueKeySet) {
                     if (!fieldNameSet.contains(str)) {
                         throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_KEY_DEFAULT, str);
@@ -346,7 +352,7 @@ public class CheckModifyLimitation {
             final Map<RelOptTable, Set<String>> tableReferencedColumns = new HashMap<>();
 
             if (isUpdate) {
-                // is update
+                // is update or upsert
                 final List<String> updateColumnList = tableModify.getUpdateColumnList();
 
                 for (Ord<RelOptTable> o : Ord.zip(targetTables)) {
@@ -366,7 +372,7 @@ public class CheckModifyLimitation {
                     }
                 }
             } else {
-                // is delete
+                // is delete or replace
                 for (RelOptTable targetTable : targetTables) {
                     final Set<String> referencedCols = tableReferencedColumns.computeIfAbsent(targetTable, (k) -> {
                         final Map<String, ForeignKeyData> referencedForeignKeys =
@@ -509,7 +515,7 @@ public class CheckModifyLimitation {
 
             // Whether UPDATE modify columns belong to gsi
             final String column = targetColumns.get(o.getKey());
-            return indexMeta.stream().anyMatch(tm -> null != tm.getColumn(column));
+            return indexMeta.stream().anyMatch(tm -> tm.containsColumn(column));
         });
     }
 
@@ -523,7 +529,7 @@ public class CheckModifyLimitation {
         }
 
         // Whether UPDATE modify columns belong to gsi
-        return indexMeta.stream().anyMatch(tm -> targetColumns.stream().anyMatch(c -> null != tm.getColumn(c)));
+        return indexMeta.stream().anyMatch(tm -> targetColumns.stream().anyMatch(tm::containsColumn));
     }
 
     public static boolean checkGsiHasAutoUpdateColumns(List<TableModify.TableInfoNode> srcTables, ExecutionContext ec) {
@@ -543,7 +549,7 @@ public class CheckModifyLimitation {
             final TableMeta tableMeta = ec.getSchemaManager(qn.left).getTable(qn.right);
             final List<String> autoUpdateColumns =
                 tableMeta.getAutoUpdateColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
-            return indexMeta.stream().anyMatch(tm -> autoUpdateColumns.stream().anyMatch(c -> null != tm.getColumn(c)));
+            return indexMeta.stream().anyMatch(tm -> autoUpdateColumns.stream().anyMatch(tm::containsColumn));
         });
     }
 

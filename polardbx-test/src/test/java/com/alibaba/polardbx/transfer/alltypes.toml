@@ -1,0 +1,31 @@
+# datasource name, format: '${user_name}:${password}@tcp(${ip}:${port})/${db_name}'
+dsn = 'polardbx_root:123456@tcp(127.0.0.1:8527)/all_types_test'
+
+test_type = "all-types-test"
+
+# choices: local, docker
+runmode = 'local'
+
+# number of rows (the actual value will be slightly greater)
+row_count = 100
+
+# [Unused] just compatible to the framework
+initial_balance = 1000
+
+# the following suffix will be appended to CREATE TABLE SQL
+create_table_suffix = 'PARTITION BY KEY(id) PARTITIONS 16'
+
+# report statistics interval, in seconds, -1 means no print
+report_interval = 5
+
+# max test time, in seconds
+timeout = 60
+
+# prepare data threads
+threads = 4
+
+big_column = false
+
+[write_only]
+enabled = true
+threads = 2

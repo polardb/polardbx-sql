@@ -28,11 +28,8 @@ import com.google.common.collect.ImmutableMap.Builder;
 import org.apache.calcite.util.Pair;
 import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
-import javax.validation.constraints.AssertTrue;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -52,7 +49,6 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * @author chenmo.cm
  */
-
 public class SelectShardingTest extends ReadBaseTestCase {
 
     String hint = "/*+TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=100)*/";

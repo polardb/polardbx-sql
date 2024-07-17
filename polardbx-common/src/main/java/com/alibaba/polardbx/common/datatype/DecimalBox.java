@@ -30,14 +30,17 @@ public class DecimalBox {
     private int carry;
 
     private boolean isSumZero;
+    private int scale;
 
-    public DecimalBox() {
+    public DecimalBox(int scale) {
         sum = new DecimalStructure();
         intVal1 = 0;
         intVal2 = 0;
         fracVal = 0;
         carry = 0;
         isSumZero = true;
+
+        this.scale = scale;
     }
 
     public void add(int a1, int a2, int b) {
@@ -173,6 +176,9 @@ public class DecimalBox {
     }
 
     private int countFractions(long b) {
+        if (scale > 0) {
+            return scale;
+        }
         if (b == 0) {
             return 0;
         }
@@ -186,5 +192,9 @@ public class DecimalBox {
             return 6;
         }
         return 9;
+    }
+
+    public void setScale(int scale) {
+        this.scale = scale;
     }
 }

@@ -1,0 +1,24 @@
+DROP TABLE IF EXISTS ` engineer`;
+DROP TABLE IF EXISTS `per % cent`;
+CREATE TABLE ` engineer` (
+	id INTEGER NOT NULL,
+	engineer_name VARCHAR(50),
+	PRIMARY KEY (id)
+);
+SHOW CREATE TABLE ` engineer`;
+Table,Create Table
+ engineer,CREATE TABLE ` engineer` (
+	`id` int(11) NOT NULL,
+	`engineer_name` varchar(50) DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+CREATE TABLE `per % cent` (
+	`(3)` INTEGER NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`(3)`)
+) ENGINE = InnoDB;
+SHOW CREATE TABLE `per % cent`;
+Table,Create Table
+per % cent,CREATE TABLE `per % cent` (
+	`(3)` int(11) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`(3)`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

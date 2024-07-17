@@ -17,7 +17,7 @@ single_tbl,CREATE TABLE `single_tbl` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 2 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB AUTO_INCREMENT = 9 DEFAULT CHARSET = utf8mb4
 select * from single_tbl order by id;
 id,name
 1,Tom
@@ -30,7 +30,7 @@ single_t1,CREATE TABLE `single_t1` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 2 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS 3
 select * from single_t1 order by id;
@@ -50,7 +50,7 @@ multi_db_single_tbl,CREATE TABLE `multi_db_single_tbl` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 2 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB AUTO_INCREMENT = 9 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS 3
 select * from multi_db_single_tbl order by id;
@@ -65,7 +65,7 @@ multi_db_single_t1,CREATE TABLE `multi_db_single_t1` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 2 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS 3
 select * from multi_db_single_t1 order by id;
@@ -88,7 +88,7 @@ multi_db_multi_t1,CREATE TABLE `multi_db_multi_t1` (
 	`bid` int(11) DEFAULT NULL,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 2 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS 3
 select * from multi_db_multi_t1 order by id;
@@ -127,7 +127,7 @@ brd_t1,CREATE TABLE `brd_t1` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 9 DEFAULT CHARSET = utf8mb3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb3
 BROADCAST
 select * from brd_t1 order by id;
 id,name
@@ -140,7 +140,7 @@ Table,Create Table
 single_t2,CREATE TABLE `single_t2` (
 	`id` bigint(20) NOT NULL COMMENT 'select key',
 	`name` varchar(30) DEFAULT NULL COMMENT 'select key'
-) ENGINE = InnoDB AUTO_INCREMENT = 100002 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
 PARTITIONS 3
 create table t(bid int not null auto_increment, primary key(bid), global index idx_bid(bid) partition by hash(bid)) partition by hash(id) select * from single_tbl;
@@ -197,3 +197,22 @@ t3,CREATE TABLE `t3` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
 PARTITIONS 3
+CREATE TABLE tv1 SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v;
+select * from tv1 order by column_0;
+column_0,column_1,column_2
+1,3,5
+2,4,6
+CREATE TABLE tv2 SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v(x,y,z);
+select * from tv2 order by x;
+x,y,z
+1,3,5
+2,4,6
+CREATE TABLE tv3 (a INT, b INT, c INT)  SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v(x,y,z);
+select * from tv3 order by x;
+a,b,c,x,y,z
+null,null,null,1,3,5
+null,null,null,2,4,6
+CREATE TABLE tv4 (a INT, b INT, c INT)  SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6) order by column_1 desc limit 1) AS v(x,y,z);
+select * from tv4 order by x;
+a,b,c,x,y,z
+null,null,null,2,4,6

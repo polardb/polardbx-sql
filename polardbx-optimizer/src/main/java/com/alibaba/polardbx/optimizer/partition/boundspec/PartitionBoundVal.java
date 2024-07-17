@@ -30,7 +30,7 @@ public class PartitionBoundVal {
 
     protected static PartitionBoundVal MIN_VAL = createMinValueInner();
     protected static PartitionBoundVal MAX_VAL = createMaxValueInner();
-
+    protected static PartitionBoundVal ANY_VAL = createAnyValueInner();
     protected static PartitionBoundVal DEFAULT_VAL = createDefaultValueInner();
 
     protected static PartitionBoundVal HASH_BOUND_MAX_VAL = createHashBoundMaxValueInner();
@@ -105,6 +105,10 @@ public class PartitionBoundVal {
         return PartitionBoundVal.MAX_VAL;
     }
 
+    public static PartitionBoundVal createAnyValue() {
+        return PartitionBoundVal.ANY_VAL;
+    }
+
     public static PartitionBoundVal createDefaultValue() {
         return PartitionBoundVal.DEFAULT_VAL;
     }
@@ -134,8 +138,11 @@ public class PartitionBoundVal {
     }
 
     protected static PartitionBoundVal createDefaultValueInner() {
-
         return new PartitionBoundVal(null, false, PartitionBoundValueKind.DATUM_DEFAULT_VALUE);
+    }
+
+    protected static PartitionBoundVal createAnyValueInner() {
+        return new PartitionBoundVal(null, false, PartitionBoundValueKind.DATUM_ANY_VALUE);
     }
 
     protected static PartitionBoundVal createHashBoundMaxValueInner() {
@@ -243,8 +250,10 @@ public class PartitionBoundVal {
             sb.append("MAXVALUE");
         } else if (bndVal.getValueKind() == PartitionBoundValueKind.DATUM_MIN_VALUE) {
             sb.append("MINVALUE");
-        } else {
+        } else if (bndVal.getValueKind() == PartitionBoundValueKind.DATUM_DEFAULT_VALUE) {
             sb.append("DEFAULT");
+        } else {
+            sb.append("ANY");
         }
         return sb.toString();
     }
@@ -267,6 +276,10 @@ public class PartitionBoundVal {
 
     public boolean isDefaultValue() {
         return valueKind.equals(PartitionBoundValueKind.DATUM_DEFAULT_VALUE);
+    }
+
+    public boolean isAnyValue() {
+        return valueKind.equals(PartitionBoundValueKind.DATUM_ANY_VALUE);
     }
 
     public void setValueKind(PartitionBoundValueKind valueKind) {

@@ -88,7 +88,7 @@ tbl,CREATE TABLE `tbl` (
 	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
 	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS 4
 /* tablegroup = `tg` */

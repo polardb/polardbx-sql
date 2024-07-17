@@ -210,4 +210,15 @@ public class RawString implements Serializable {
             return getObj(subIndex, skIndex);
         }
     }
+
+    /**
+     * build one PruneRawString with one object(target by curIndex) inside this RawString
+     */
+    public PruneRawString pruneStep(int curIndex) {
+        return new PruneRawString(this.getObjList(), PruneRawString.PRUNE_MODE.RANGE, curIndex, curIndex + 1, null);
+    }
+
+    public RawString clone() {
+        return new RawString(this.getObjList());
+    }
 }

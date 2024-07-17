@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.spill.MemoryRevoker;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
@@ -29,6 +28,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 

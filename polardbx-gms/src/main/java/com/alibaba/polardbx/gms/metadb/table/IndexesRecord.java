@@ -31,6 +31,7 @@ public class IndexesRecord extends IndexesInfoSchemaRecord {
     public static final long GLOBAL_INDEX = 1L;
 
     public static final long FLAG_CLUSTERED = 0x1;
+    public static final long FLAG_COLUMNAR = 0x2;
 
     public long indexColumnType;
     public long indexLocation;
@@ -80,12 +81,29 @@ public class IndexesRecord extends IndexesInfoSchemaRecord {
         return false;
     }
 
+    public boolean isColumnar() {
+        if ((flag & FLAG_COLUMNAR) != 0L) {
+            if (indexLocation != IndexesRecord.GLOBAL_INDEX) {
+                throw GeneralUtil.nestedException("Local index with columnar flag.");
+            }
+            return true;
+        }
+        return false;
+    }
+
     public void setClustered() {
         flag |= FLAG_CLUSTERED;
+    }
+
+    public void setColumnar() {
+        flag |= FLAG_COLUMNAR;
     }
 
     public void clearClustered() {
         flag &= ~FLAG_CLUSTERED;
     }
 
+    public void clearColumnar() {
+        flag &= ~FLAG_COLUMNAR;
+    }
 }

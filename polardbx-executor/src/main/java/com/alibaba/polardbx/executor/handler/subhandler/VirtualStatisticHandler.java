@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.VirtualStatistic;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
+import com.google.common.collect.ImmutableList;
 
 import java.util.Locale;
 import java.util.Map;
@@ -45,7 +46,7 @@ import java.util.stream.Collectors;
  */
 public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
 
-    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
+    private static final Logger logger = LoggerUtil.statisticsLogger;
 
     public VirtualStatisticHandler(VirtualViewHandler virtualViewHandler) {
         super(virtualViewHandler);
@@ -93,7 +94,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                 for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
                     String columnName = columnMeta.getOriginColumnName();
                     columnName = columnName.toLowerCase(Locale.ROOT);
-                    Object[] objects = new Object[11];
+                    Object[] objects = new Object[12];
                     objects[0] = schema;
                     objects[1] = tableName;
                     objects[2] = cacheLine.getRowCount();
@@ -113,6 +114,9 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                     objects[8] = cacheLine.getSampleRate();
                     objects[9] = cacheLine.getLastModifyTime();
                     objects[10] = cacheLine.getLastAccessTime();
+                    objects[11] = StatisticManager.getInstance()
+                        .hotColumns(schema, tableName, ImmutableList.of(columnName), false)
+                        .getBooleanValue();
                     cursor.addRow(objects);
                 }
 
@@ -124,7 +128,7 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                         continue;
                     }
                     String columnsName = StatisticUtils.buildColumnsName(cols);
-                    Object[] objects = new Object[11];
+                    Object[] objects = new Object[12];
                     objects[0] = schema;
                     objects[1] = tableName;
                     objects[2] = cacheLine.getRowCount();
@@ -143,6 +147,9 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                     objects[8] = cacheLine.getSampleRate();
                     objects[9] = cacheLine.getLastModifyTime();
                     objects[10] = cacheLine.getLastAccessTime();
+                    objects[11] =
+                        StatisticManager.getInstance().hotColumns(schema, tableName, cols, false)
+                            .getBooleanValue();
                     cursor.addRow(objects);
                 }
             }

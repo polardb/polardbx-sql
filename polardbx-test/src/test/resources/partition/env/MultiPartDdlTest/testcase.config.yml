@@ -1,0 +1,4 @@
+test_multi_change_column
+test_multi_change_column_default
+test_multi_change_column_rename_index
+test_many_random_multi_ddl

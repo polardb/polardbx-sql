@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.scheduler.SchedulePolicy;
-import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;

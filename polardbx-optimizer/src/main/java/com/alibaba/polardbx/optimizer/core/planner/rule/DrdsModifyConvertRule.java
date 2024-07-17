@@ -19,7 +19,6 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;

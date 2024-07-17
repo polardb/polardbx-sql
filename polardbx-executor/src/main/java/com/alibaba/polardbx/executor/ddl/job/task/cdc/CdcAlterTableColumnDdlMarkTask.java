@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -45,12 +45,15 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 public class CdcAlterTableColumnDdlMarkTask extends BaseDdlTask {
     private final PhysicalPlanData physicalPlanData;
     private final boolean useOMC;
+    private final Long versionId;
 
     @JSONCreator
-    public CdcAlterTableColumnDdlMarkTask(String schemaName, PhysicalPlanData physicalPlanData, boolean useOMC) {
+    public CdcAlterTableColumnDdlMarkTask(String schemaName, PhysicalPlanData physicalPlanData, boolean useOMC,
+                                          long versionId) {
         super(schemaName);
         this.physicalPlanData = physicalPlanData;
         this.useOMC = useOMC;
+        this.versionId = versionId;
     }
 
     @Override
@@ -58,6 +61,7 @@ public class CdcAlterTableColumnDdlMarkTask extends BaseDdlTask {
         if (CBOUtil.isGsi(schemaName, physicalPlanData.getLogicalTableName())) {
             return;
         }
+        prepareExtraCmdsKey(executionContext);
         updateSupportedCommands(true, false, metaDbConnection);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
@@ -74,8 +78,25 @@ public class CdcAlterTableColumnDdlMarkTask extends BaseDdlTask {
         executionContext.getExtraCmds().put(USE_OMC, useOMC);
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
-                ddlContext.getDdlStmt(), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
-                DdlVisibility.Public,
+                getDdlStmt(executionContext), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
+                CdcDdlMarkVisibility.Public,
                 buildExtendParameter(executionContext));
+    }
+
+    private void prepareExtraCmdsKey(ExecutionContext executionContext) {
+        if (CdcMarkUtil.isVersionIdInitialized(versionId)) {
+            CdcMarkUtil.useDdlVersionId(executionContext, versionId);
+        }
+    }
+
+    private String getDdlStmt(ExecutionContext executionContext) {
+        return getDdlStmt(executionContext.getDdlContext().getDdlStmt());
+    }
+
+    private String getDdlStmt(String ddl) {
+        if (CdcMarkUtil.isVersionIdInitialized(versionId)) {
+            return CdcMarkUtil.buildVersionIdHint(versionId) + ddl;
+        }
+        return ddl;
     }
 }

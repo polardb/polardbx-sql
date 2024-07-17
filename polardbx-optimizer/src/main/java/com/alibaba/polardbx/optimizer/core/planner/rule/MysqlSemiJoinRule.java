@@ -16,16 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.core.rel.CheckMysqlIndexNLJoinRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlMaterializedSemiJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiHashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiIndexNLJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiNLJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -35,7 +37,6 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinInfo;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.sql.SqlKind;
 
 import java.util.Comparator;
@@ -79,7 +80,7 @@ public class MysqlSemiJoinRule extends RelOptRule {
                 logicalSemiJoin.isSemiJoinDone(),
                 ImmutableList.copyOf(logicalSemiJoin.getSystemFieldList()),
                 logicalSemiJoin.getHints());
-            RelOptCost mysqlSemiHashJoinCost = RelMetadataQuery.instance().getCumulativeCost(mysqlSemiHashJoin);
+            RelOptCost mysqlSemiHashJoinCost = PlannerUtils.newMetadataQuery().getCumulativeCost(mysqlSemiHashJoin);
 
             if (PlannerContext.getPlannerContext(logicalSemiJoin).getParamManager()
                 .getBoolean(ConnectionParams.ENABLE_MYSQL_SEMI_HASH_JOIN)) {
@@ -97,7 +98,7 @@ public class MysqlSemiJoinRule extends RelOptRule {
                     mysqlSemiIndexNLJoin = pair.getKey();
                     mysqlSemiIndexNLJoinLookupTableScan = pair.getValue();
                     // use new metaquery avoid cost cache
-                    mysqlSemiIndexNLJoinCost = RelMetadataQuery.instance().getCumulativeCost(mysqlSemiIndexNLJoin);
+                    mysqlSemiIndexNLJoinCost = PlannerUtils.newMetadataQuery().getCumulativeCost(mysqlSemiIndexNLJoin);
                     mysqlSemiIndexNLJoinLookupTableScan.setJoin(null);
                     joinPriorityQueue.add(Pair.of(mysqlSemiIndexNLJoin, mysqlSemiIndexNLJoinCost));
                 }
@@ -117,7 +118,7 @@ public class MysqlSemiJoinRule extends RelOptRule {
                     mysqlMaterializedSemiJoinLookupTableScan = pair.getValue();
                     // use new metaquery avoid cost cache
                     mysqlMaterializedSemiJoinCost =
-                        RelMetadataQuery.instance().getCumulativeCost(mysqlMaterializedSemiJoin);
+                        PlannerUtils.newMetadataQuery().getCumulativeCost(mysqlMaterializedSemiJoin);
                     mysqlMaterializedSemiJoinLookupTableScan.setJoin(null);
                     joinPriorityQueue.add(Pair.of(mysqlMaterializedSemiJoin, mysqlMaterializedSemiJoinCost));
                 }

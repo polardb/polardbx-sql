@@ -80,8 +80,8 @@ public class ShowFullDatabases extends ShowDatabases {
         for (String name : schemaSet) {
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
             boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(name);
-            row.add(StringUtil.encode(name, c.getCharset()));
-            row.add(StringUtil.encode(isNewPart ? "auto" : "drds", c.getCharset()));
+            row.add(StringUtil.encode(name, c.getResultSetCharset()));
+            row.add(StringUtil.encode(isNewPart ? "auto" : "drds", c.getResultSetCharset()));
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }

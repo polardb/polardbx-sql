@@ -28,4 +28,4 @@ Logical ExecutionPlan
 Limit(offset=?2, fetch=?3)
   HashAgg(group="item_id")
     Gather(concurrent=true)
-      LogicalView(tables="application_detail[p30,p163,p210,p266,p362]", shardCount=5, sql="SELECT `item_id` FROM `application_detail` AS `application_detail` WHERE ((`seller_id` = ?) AND (`scene_id` IN(?))) GROUP BY `item_id`", isDynamicParam="true")
+      LogicalView(tables="application_detail[p30,p163,p210,p266,p362]", shardCount=5, sql="SELECT `item_id` FROM `application_detail` AS `application_detail` WHERE ((`seller_id` = ?) AND (`scene_id` IN(?))) GROUP BY `item_id`", pruningInfo="all size:5*5(part), pruning size:20")

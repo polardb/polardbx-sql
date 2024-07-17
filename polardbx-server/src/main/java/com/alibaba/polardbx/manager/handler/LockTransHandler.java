@@ -36,22 +36,15 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.transaction.TransactionManager;
-import org.apache.calcite.schema.Schema;
 
 import java.sql.Timestamp;
 import java.util.Date;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.StampedLock;
 
 public class LockTransHandler {
@@ -167,9 +160,9 @@ public class LockTransHandler {
                 String schema = entry.getKey();
                 long lockTime = entry.getValue().date.getTime();
                 RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-                row.add(StringUtil.encode(schema, c.getCharset())); // schema
-                row.add(StringUtil.encode("LOCKED", c.getCharset())); // state
-                row.add(StringUtil.encode(new Timestamp(lockTime).toString(), c.getCharset())); // start_time
+                row.add(StringUtil.encode(schema, c.getResultSetCharset())); // schema
+                row.add(StringUtil.encode("LOCKED", c.getResultSetCharset())); // state
+                row.add(StringUtil.encode(new Timestamp(lockTime).toString(), c.getResultSetCharset())); // start_time
                 row.add(LongUtil.toBytes((System.currentTimeMillis() - lockTime) / 1000)); // duration
                 row.packetId = ++packetId;
                 proxy = row.write(proxy);

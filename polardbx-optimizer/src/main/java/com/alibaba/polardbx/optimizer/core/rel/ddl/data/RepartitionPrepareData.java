@@ -82,4 +82,10 @@ public class RepartitionPrepareData extends DdlPreparedData {
     private Map<String, Set<String>> foreignKeyChildTable = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     private Boolean modifyLocality;
+
+    private Boolean repartitionGsi;
+
+    private List<Pair<String, String>> addCciSql = new ArrayList<>();
+
+    private List<Pair<String, String>> dropCciSql = new ArrayList<>();
 }

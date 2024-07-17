@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SQL_REWRITE_RULE_PHASE;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.PlannerContext;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.hep.HepMatchOrder;
 import org.apache.calcite.plan.hep.HepPlanner;

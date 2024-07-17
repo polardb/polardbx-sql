@@ -50,9 +50,9 @@ public class SchemaInfoCleaner extends AbstractAccessor {
 
     public void removeAll(String schemaName) {
         ddlEngineAccessor.deleteAll(schemaName);
-        ddlEngineAccessor.deleteAllArchive(schemaName);
+        //ddlEngineAccessor.deleteAllArchive(schemaName);
         ddlEngineTaskAccessor.deleteAll(schemaName);
-        ddlEngineTaskAccessor.deleteAllArchive(schemaName);
+        //ddlEngineTaskAccessor.deleteAllArchive(schemaName);
         readWriteLockAccessor.deleteAll(schemaName);
         scheduledJobsAccessor.deleteAll(schemaName);
         firedScheduledJobsAccessor.deleteAll(schemaName);

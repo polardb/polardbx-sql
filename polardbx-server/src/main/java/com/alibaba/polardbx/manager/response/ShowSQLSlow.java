@@ -99,7 +99,7 @@ public final class ShowSQLSlow {
                     SQLRecord[] records = schema.getDataSource().getRecorder().getRecords();
                     for (int i = records.length - 1; i >= 0; i--) {
                         if (records[i] != null) {
-                            RowDataPacket row = getRow(records[i], c.getCharset());
+                            RowDataPacket row = getRow(records[i], c.getResultSetCharset());
                             row.packetId = ++packetId;
                             proxy = row.write(proxy);
                         }

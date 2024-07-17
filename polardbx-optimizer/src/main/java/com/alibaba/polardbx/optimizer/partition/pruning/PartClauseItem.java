@@ -69,6 +69,12 @@ public class PartClauseItem {
         return alwaysTrueItem;
     }
 
+    public static PartClauseItem buildAnyValueItem() {
+        PartClauseItem alwaysTrueItem =
+            new PartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, null, null, null, false, false);
+        return alwaysTrueItem;
+    }
+
     private PartClauseItem(PartPruneStepType type,
                            PartClauseInfo clauseInfo,
                            List<PartClauseItem> itemList,
@@ -139,4 +145,7 @@ public class PartClauseItem {
         return digest;
     }
 
+    public void setItemList(List<PartClauseItem> itemList) {
+        this.itemList = itemList;
+    }
 }

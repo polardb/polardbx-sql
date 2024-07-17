@@ -22,11 +22,14 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -37,6 +40,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
@@ -225,13 +229,13 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
     }
 
     public void setUp(boolean recreateDB, PartitionRuleInfo partitionRuleInfo, boolean withConcurrentDml,
-                      boolean forSubPartTest, boolean useTargetDnInstId) {
+                      boolean forSubPartTest, boolean useTargetDnInstId, boolean createUgsi) {
         if (!usingNewPartDb()) {
             return;
         }
 
         partitionRuleInfo.connection = getTddlConnection1();
-        prepareDdlAndData(recreateDB, partitionRuleInfo, forSubPartTest);
+        prepareDdlAndData(recreateDB, partitionRuleInfo, forSubPartTest, createUgsi);
 
         String targetDnInstId = "";
         if (useTargetDnInstId) {
@@ -244,7 +248,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             dmlWhilePartitionReorg(partitionRuleInfo, command, "t2");
         } else {
             executePartReorg(partitionRuleInfo.tableStatus, partitionRuleInfo.physicalTableBackfillParallel,
-                command);
+                partitionRuleInfo.usePhysicalTableBackfill, command);
         }
     }
 
@@ -253,7 +257,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             return;
         }
         partitionRuleInfo.connection = getTddlConnection1();
-        prepareDdlAndData(recreateDB, partitionRuleInfo, forSubPartTest);
+        prepareDdlAndData(recreateDB, partitionRuleInfo, forSubPartTest, false);
         String targetDnInstId = getTargetDnInstIdForMove(partitionRuleInfo);
         String command = String.format("%s'%s'", partitionRuleInfo.alterTableGroupCommand, targetDnInstId);
         dmlWhilePartitionReorg(partitionRuleInfo, command, "t2");
@@ -292,7 +296,8 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, tddlSql);
     }
 
-    private void prepareDdlAndData(boolean recreateDB, PartitionRuleInfo partitionRuleInfo, boolean forSubPartTest) {
+    private void prepareDdlAndData(boolean recreateDB, PartitionRuleInfo partitionRuleInfo, boolean forSubPartTest,
+                                   boolean createUgsi) {
         if (recreateDB) {
             reCreateDatabase(partitionRuleInfo.connection, this.logicalDatabase);
             if (forSubPartTest) {
@@ -308,17 +313,27 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
         }
     }
 
+    private void createIndexed(String tableName) {
+        String createGsi =
+            String.format("alter table %s add unique global index g1 (id) partition by key(id) partitions 3",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+    }
+
     private void executePartReorg(ComplexTaskMetaManager.ComplexTaskStatus status,
-                                  boolean phyParallelBackfill, String command) {
+                                  boolean phyParallelBackfill, boolean usePhysicalBackfill, String command) {
         String sqlHint = "";
         if (!status.isPublic()) {
             sqlHint = String.format(
-                "/*+TDDL:CMD_EXTRA(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='%s')*/",
+                "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=false, TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='%s')*/",
                 status.name());
         } else if (phyParallelBackfill) {
             sqlHint =
                 "/*+TDDL:CMD_EXTRA(PHYSICAL_TABLE_START_SPLIT_SIZE = 100, PHYSICAL_TABLE_BACKFILL_PARALLELISM = 2, "
-                    + "ENABLE_SLIDE_WINDOW_BACKFILL = true, SLIDE_WINDOW_SPLIT_SIZE = 2, SLIDE_WINDOW_TIME_INTERVAL = 1000)*/";
+                    + "ENABLE_SLIDE_WINDOW_BACKFILL = true, SLIDE_WINDOW_SPLIT_SIZE = 2, SLIDE_WINDOW_TIME_INTERVAL = 1000, PHYSICAL_BACKFILL_ENABLE=false)*/";
+        } else if (usePhysicalBackfill) {
+            sqlHint =
+                "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=true, PHYSICAL_BACKFILL_SPEED_TEST=false)*/";
         }
         String ignoreErr = "Please use SHOW DDL";
         Set<String> ignoreErrs = new HashSet<>();
@@ -398,8 +413,807 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
         IntStream.range(1, rowCount + 1).forEach(i -> executeDml(
             String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
                 tableName, i * 10 + 1, "'abc" + i + "'", "'def" + i + "'",
-                "date_add('2010-01-01 00:00:00', interval " + i + " year)")
+                i == 3 ? "date_add('2008-12-01 00:00:00', interval " + i + " year)" :
+                    "date_add('2010-01-01 00:00:00', interval " + i + " year)")
             , connection));
+        return true;
+    }
+
+    static public boolean initData9(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        * partition by range (year(c_datetime))
+subpartition by list (c_int_32)
+(
+partition p1 values less than (2001)
+(
+subpartition p1sp1 values in (11, 12, 13)
+),
+partition p2 values less than (2012)
+(
+subpartition p2sp1 values in (11, 12, 13),
+subpartition p2sp2 values in (21, 22, 23)
+),
+partition p3 values less than (2023)
+(
+subpartition p3sp1 values in (11, 12, 13),
+subpartition p3sp2 values in (21, 22, 23),
+subpartition p3sp3 values in (31, 32, 33)
+))
+        * */
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1980, 2023);
+            int c_int_32;
+            if (year < 2001) {
+                c_int_32 = RandomUtils.nextInt(11, 14);
+            } else if (year < 2012) {
+                if (RandomUtils.nextBoolean()) {
+                    c_int_32 = RandomUtils.nextInt(11, 14);
+                } else {
+                    c_int_32 = RandomUtils.nextInt(21, 24);
+                }
+            } else {
+                if (RandomUtils.nextBoolean()) {
+                    c_int_32 = RandomUtils.nextInt(11, 14);
+                } else if (RandomUtils.nextBoolean()) {
+                    c_int_32 = RandomUtils.nextInt(21, 24);
+                } else {
+                    c_int_32 = RandomUtils.nextInt(31, 34);
+                }
+            }
+            executeDml(
+                String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+                    tableName, c_int_32, "'abc" + i + "'", "'def" + i + "'", "'" + year + "-12-01 00:00:00'")
+                , connection);
+        });
+        return true;
+    }
+
+    static public boolean initData24(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        * partition by list columns (id,c_varchar)
+subpartition by list (c_int_32)
+(
+partition p1 values in ((10,'abc1'), (11,'abc1'), (12,'abc1'))
+(
+subpartition p1sp1 values in (11, 12, 13)
+),
+partition p2 values in ((20,'abc2'), (21,'abc2'), (22,'abc2'))
+(
+subpartition p2sp1 values in (11, 12, 13),
+subpartition p2sp2 values in (21, 22, 23)
+),
+partition p3 values in ((30,'abc3'), (31,'abc3'), (32,'abc3'))
+(
+subpartition p3sp1 values in (11, 12, 13),
+subpartition p3sp2 values in (21, 22, 23),
+subpartition p3sp3 values in (31, 32, 33)
+))
+        * */
+        executeDml("insert ignore into " + tableName + "(id,c_int_32,c_varchar,c_char,c_datetime) values"
+            + "(10, 11,'abc1', '10' , '2020-01-01 12-11-12'),"
+            + "(11, 12,'abc1', '11' , '2020-01-01 12-11-12'),"
+            + "(12, 13,'abc1', '12' , '2020-01-01 12-11-12'),"
+            + "(20, 11,'abc2', '10' , '2020-01-01 12-11-12'),"
+            + "(21, 21,'abc2', '10' , '2020-01-01 12-11-12'),"
+            + "(22, 23,'abc2', '10' , '2020-01-01 12-11-12'),"
+            + "(30, 31,'abc3', '10' , '2020-01-01 12-11-12'),"
+            + "(31, 21,'abc3', '10' , '2020-01-01 12-11-12'),"
+            + "(32, 13,'abc3', '10' , '2020-01-01 12-11-12')", connection);
+        return true;
+    }
+
+    static public boolean initData12(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        * partition by range columns (c_datetime,c_int_32)
+subpartition by range (year(c_datetime))
+(
+partition p1 values less than ('2001-01-01 00:00:00',11)
+(
+subpartition p1sp1 values less than (2001)
+),
+partition p2 values less than ('2012-01-01 00:00:00',21)
+(
+subpartition p2sp1 values less than (2001),
+subpartition p2sp2 values less than (2012)
+),
+partition p3 values less than ('2023-01-01 00:00:00',31)
+(
+subpartition p3sp1 values less than (2001),
+subpartition p3sp2 values less than (2012),
+subpartition p3sp3 values less than (2023)
+))
+        * */
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1980, 2024);
+            int c_int_32;
+            if (year < 2023) {
+                c_int_32 = RandomUtils.nextInt(0, 100);
+            } else {
+                c_int_32 = RandomUtils.nextInt(0, 31);
+            }
+            executeDml(
+                String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+                    tableName, c_int_32, "'abc" + i + "'", "'def" + i + "'", "'" + year + "-12-01 00:00:00'")
+                , connection);
+        });
+        return true;
+    }
+
+    static public boolean initData16(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+ partition by list (id)
+subpartition by key (c_int_32)
+(
+partition p1 values in (10, 11, 12) subpartitions 1,
+partition p2 values in (20, 21, 22) subpartitions 2,
+partition p3 values in (30, 31, 32) subpartitions 3
+)
+        * */
+        executeDml("insert ignore into " + tableName + "(id,c_int_32,c_varchar,c_char,c_datetime) values"
+                + "(10, 11,'def1', '10' , '2020-01-01 12-11-12'),"
+                + "(11, 12,'def1', '11' , '2020-01-01 12-11-12'),"
+                + "(12, 13,'def1', '12' , '2020-01-01 12-11-12'),"
+
+                + "(20, 11,'def1', '10' , '2020-01-01 12-11-12'),"
+                + "(21, 12,'def1', '11' , '2020-01-01 12-11-12'),"
+                + "(22, 13,'def1', '12' , '2020-01-01 12-11-12'),"
+
+                + "(30, 11,'def1', '10' , '2020-01-01 12-11-12'),"
+                + "(31, 12,'def1', '11' , '2020-01-01 12-11-12'),"
+                + "(32, 13,'def1', '12' , '2020-01-01 12-11-12')"
+
+            , connection);
+        return true;
+    }
+
+    static public boolean initData8(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range (year(c_datetime))
+subpartition by range columns (id,c_datetime)
+(
+partition p1 values less than (2001)
+(
+subpartition p1sp1 values less than (10,'2011-01-01 00:00:00')
+),
+partition p2 values less than (2012)
+(
+subpartition p2sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p2sp2 values less than (20,'2012-01-01 00:00:00')
+),
+partition p3 values less than (2023)
+(
+subpartition p3sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p3sp2 values less than (20,'2012-01-01 00:00:00'),
+subpartition p3sp3 values less than (30,'2013-01-01 00:00:00')
+))
+        * */
+        Set<Integer> set = new HashSet<>();
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1980, 2023);
+            int id;
+            if (year < 2001) {
+                id = RandomUtils.nextInt(0, 10);
+            } else if (year < 2012) {
+                id = RandomUtils.nextInt(10, 20);
+            } else {
+                id = RandomUtils.nextInt(20, 30);
+            }
+            if (!set.contains(id)) {
+                executeDml(
+                    String.format(
+                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        tableName, id, id, "'abc" + i + "'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
+                    , connection);
+                set.add(id);
+            }
+        });
+        return true;
+    }
+
+    static public boolean initData19(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list (id)
+subpartition by list (c_int_32)
+(
+partition p1 values in (10, 11, 12)
+(
+subpartition p1sp1 values in (11, 12, 13)
+),
+partition p2 values in (20, 21, 22)
+(
+subpartition p2sp1 values in (11, 12, 13),
+subpartition p2sp2 values in (21, 22, 23)
+),
+partition p3 values in (30, 31, 32)
+(
+subpartition p3sp1 values in (11, 12, 13),
+subpartition p3sp2 values in (21, 22, 23),
+subpartition p3sp3 values in (31, 32, 33)
+))
+        * */
+
+        executeDml("insert ignore into " + tableName + "(id,c_int_32,c_varchar,c_char,c_datetime) values"
+                + "(10, 11,'def1', '10' , '2020-01-01 12-11-12'),"
+                + "(11, 12,'def1', '11' , '2020-01-01 12-11-12'),"
+                + "(12, 13,'def1', '12' , '2020-01-01 12-11-12'),"
+
+                + "(20, 11,'def1', '10' , '2020-01-01 12-11-12'),"
+                + "(21, 22,'def1', '11' , '2020-01-01 12-11-12'),"
+                + "(22, 13,'def1', '12' , '2020-01-01 12-11-12'),"
+
+                + "(30, 11,'def1', '10' , '2020-01-01 12-11-12'),"
+                + "(31, 22,'def1', '11' , '2020-01-01 12-11-12'),"
+                + "(32, 33,'def1', '12' , '2020-01-01 12-11-12')"
+            , connection);
+        return true;
+    }
+
+    static public boolean initData20(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list (id)
+subpartition by list columns (c_int_32,c_char)
+(
+partition p1 values in (11, 12, 13)
+(
+subpartition p1sp1 values in ((11,'def1'), (12,'def1'), (13,'def1'))
+),
+partition p2 values in (21, 22, 23)
+(
+subpartition p2sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p2sp2 values in ((21,'def2'), (22,'def2'), (23,'def2'))
+),
+partition p3 values in (31, 32, 33)
+(
+subpartition p3sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p3sp2 values in ((21,'def2'), (22,'def2'), (23,'def2')),
+subpartition p3sp3 values in ((31,'def3'), (32,'def3'), (33,'def3'))
+))
+        * */
+        executeDml("insert ignore into " + tableName + "(id,c_int_32,c_varchar,c_char,c_datetime) values"
+                + "(11, 11,'def1', 'def1' , '2020-01-01 12-11-12'),"
+                + "(12, 12,'def1', 'def1' , '2020-01-01 12-11-12'),"
+                + "(13, 13,'def1', 'def1' , '2020-01-01 12-11-12'),"
+
+                + "(21, 21,'def2', 'def2' , '2020-01-01 12-11-12'),"
+                + "(22, 11,'def1', 'def1' , '2020-01-01 12-11-12'),"
+                + "(23, 23,'def2', 'def2' , '2020-01-01 12-11-12'),"
+
+                + "(31, 11,'def1', 'def1' , '2020-01-01 12-11-12'),"
+                + "(32, 22,'def2', 'def2' , '2020-01-01 12-11-12'),"
+                + "(33, 33,'def3', 'def3' , '2020-01-01 12-11-12')"
+
+            , connection);
+        return true;
+    }
+
+    static public boolean initData23(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list columns (id,c_varchar)
+subpartition by range columns (id,c_datetime)
+(
+partition p1 values in ((10,'abc1'), (11,'abc1'), (12,'abc1'))
+(
+subpartition p1sp1 values less than (10,'2011-01-01 00:00:00')
+),
+partition p2 values in ((20,'abc2'), (21,'abc2'), (22,'abc2'))
+(
+subpartition p2sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p2sp2 values less than (20,'2012-01-01 00:00:00')
+),
+partition p3 values in ((30,'abc3'), (31,'abc3'), (32,'abc3'))
+(
+subpartition p3sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p3sp2 values less than (20,'2012-01-01 00:00:00'),
+subpartition p3sp3 values less than (30,'2013-01-01 00:00:00')
+))
+        * */
+        //pass
+
+        return true;
+    }
+
+    static public boolean initData14(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range columns (c_datetime,c_int_32)
+subpartition by list (c_int_32)
+(
+partition p1 values less than ('2001-01-01 00:00:00',11)
+(
+subpartition p1sp1 values in (11, 12, 13)
+),
+partition p2 values less than ('2012-01-01 00:00:00',21)
+(
+subpartition p2sp1 values in (11, 12, 13),
+subpartition p2sp2 values in (21, 22, 23)
+),
+partition p3 values less than ('2023-01-01 00:00:00',31)
+(
+subpartition p3sp1 values in (11, 12, 13),
+subpartition p3sp2 values in (21, 22, 23),
+subpartition p3sp3 values in (31, 32, 33)
+))
+        * */
+
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2024);
+            int c_int_32;
+            if (year < 2002) {
+                c_int_32 = RandomUtils.nextInt(11, 14);
+            } else if (year < 2013) {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) : RandomUtils.nextInt(21, 24);
+            } else {
+                if (year == 2023) {
+                    c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) : RandomUtils.nextInt(21, 24);
+                } else {
+                    c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) :
+                        (RandomUtils.nextBoolean() ? RandomUtils.nextInt(21, 24) : RandomUtils.nextInt(31, 34));
+                }
+            }
+            executeDml(
+                String.format("insert into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(null,%d,%s,%s,%s);",
+                    tableName, c_int_32, "'abc1'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
+                , connection);
+        });
+
+        return true;
+    }
+
+    static public boolean initData17(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list (id)
+subpartition by range (year(c_datetime))
+(
+partition p1 values in (10, 11, 12)
+(
+subpartition p1sp1 values less than (2001)
+),
+partition p2 values in (20, 21, 22)
+(
+subpartition p2sp1 values less than (2001),
+subpartition p2sp2 values less than (2012)
+),
+partition p3 values in (30, 31, 32)
+(
+subpartition p3sp1 values less than (2001),
+subpartition p3sp2 values less than (2012),
+subpartition p3sp3 values less than (2023)
+))
+        * */
+        Set<Integer> set = new HashSet<>();
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int id = RandomUtils.nextInt(1, 4);
+            id = id * 10 + RandomUtils.nextInt(0, 3);
+            String c_varchar = "'abc" + id / 10 + "'";
+            int year;
+            if (id < 20) {
+                year = RandomUtils.nextInt(1900, 2001);
+            } else if (id < 30) {
+                year = RandomUtils.nextInt(1900, 2012);
+            } else {
+                year = RandomUtils.nextInt(1900, 2023);
+            }
+            if (!set.contains(id)) {
+                executeDml(
+                    String.format(
+                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        tableName, id, id, c_varchar, "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
+                    , connection);
+                set.add(id);
+            }
+        });
+
+        return true;
+    }
+
+    static public boolean initData18(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list (id)
+subpartition by range columns (id,c_datetime)
+(
+partition p1 values in (10, 11, 12)
+(
+subpartition p1sp1 values less than (10,'2011-01-01 00:00:00')
+),
+partition p2 values in (20, 21, 22)
+(
+subpartition p2sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p2sp2 values less than (20,'2012-01-01 00:00:00')
+),
+partition p3 values in (30, 31, 32)
+(
+subpartition p3sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p3sp2 values less than (20,'2012-01-01 00:00:00'),
+subpartition p3sp3 values less than (30,'2013-01-01 00:00:00')
+))
+        * */
+
+        //pass
+
+        return true;
+    }
+
+    static public boolean initData22(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list columns (id,c_varchar)
+subpartition by range (year(c_datetime))
+(
+partition p1 values in ((10,'abc1'), (11,'abc1'), (12,'abc1'))
+(
+subpartition p1sp1 values less than (2001)
+),
+partition p2 values in ((20,'abc2'), (21,'abc2'), (22,'abc2'))
+(
+subpartition p2sp1 values less than (2001),
+subpartition p2sp2 values less than (2012)
+),
+partition p3 values in ((30,'abc3'), (31,'abc3'), (32,'abc3'))
+(
+subpartition p3sp1 values less than (2001),
+subpartition p3sp2 values less than (2012),
+subpartition p3sp3 values less than (2023)
+))
+        * */
+        Set<Integer> set = new HashSet<>();
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int id = RandomUtils.nextInt(1, 4);
+            id = id * 10 + RandomUtils.nextInt(0, 3);
+            String c_varchar = "'abc" + id / 10 + "'";
+            int year;
+            if (id < 20) {
+                year = RandomUtils.nextInt(1900, 2001);
+            } else if (id < 30) {
+                year = RandomUtils.nextInt(1900, 2012);
+            } else {
+                year = RandomUtils.nextInt(1900, 2023);
+            }
+            if (!set.contains(id)) {
+                executeDml(
+                    String.format(
+                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        tableName, id, id, c_varchar, "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
+                    , connection);
+                set.add(id);
+            }
+        });
+
+        return true;
+    }
+
+    static public boolean initData13(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range columns (c_datetime,c_int_32)
+subpartition by range columns (id,c_datetime)
+(
+partition p1 values less than ('2001-01-01 00:00:00',11)
+(
+subpartition p1sp1 values less than (10,'2011-01-01 00:00:00')
+),
+partition p2 values less than ('2012-01-01 00:00:00',21)
+(
+subpartition p2sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p2sp2 values less than (20,'2012-01-01 00:00:00')
+),
+partition p3 values less than ('2023-01-01 00:00:00',31)
+(
+subpartition p3sp1 values less than (10,'2011-01-01 00:00:00'),
+subpartition p3sp2 values less than (20,'2012-01-01 00:00:00'),
+subpartition p3sp3 values less than (31,'2013-01-01 00:00:00')
+))
+        * */
+        Set<Integer> set = new HashSet<>();
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2023);
+            int c_int_32 = RandomUtils.nextInt(1, 1000);
+            int id = 0;
+            if (year < 2001) {
+                id = RandomUtils.nextInt(1, 10);
+            } else if (year < 2012) {
+                id = RandomUtils.nextInt(1, 20);
+            } else {
+                id = RandomUtils.nextInt(1, 31);
+            }
+            if (!set.contains(id)) {
+                executeDml(
+                    String.format(
+                        "insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                        tableName, id, c_int_32, "'abc1'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
+                    , connection);
+                set.add(id);
+            }
+        });
+
+        return true;
+    }
+
+    static public boolean initData21(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list columns (id,c_varchar)
+subpartition by key (c_int_32)
+(
+partition p1 values in ((10,'abc1'), (11,'abc1'), (12,'abc1')) subpartitions 1,
+partition p2 values in ((20,'abc2'), (21,'abc2'), (22,'abc2')) subpartitions 2,
+partition p3 values in ((30,'abc3'), (31,'abc3'), (32,'abc3')) subpartitions 3
+)
+        * */
+
+        executeDml("insert ignore into " + tableName + "(id,c_int_32,c_varchar,c_char,c_datetime) values"
+            + "(10, 11,'abc1', '10' , '2020-01-01 12-11-12'),"
+            + "(11, 12,'abc1', '11' , '2020-01-01 12-11-12'),"
+            + "(12, 13,'abc1', '12' , '2020-01-01 12-11-12'),"
+            + "(20, 11,'abc2', '10' , '2020-01-01 12-11-12'),"
+            + "(21, 21,'abc2', '10' , '2020-01-01 12-11-12'),"
+            + "(22, 23,'abc2', '10' , '2020-01-01 12-11-12'),"
+            + "(30, 31,'abc3', '10' , '2020-01-01 12-11-12'),"
+            + "(31, 21,'abc3', '10' , '2020-01-01 12-11-12'),"
+            + "(32, 13,'abc3', '10' , '2020-01-01 12-11-12')", connection);
+
+        return true;
+    }
+
+    static public boolean initData25(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by list columns (id,c_varchar)
+subpartition by list columns (c_int_32,c_char)
+(
+partition p1 values in ((11,'abc1'), (12,'abc1'), (13,'abc1'))
+(
+subpartition p1sp1 values in ((11,'def1'), (12,'def1'), (13,'def1'))
+),
+partition p2 values in ((21,'abc2'), (22,'abc2'), (23,'abc2'))
+(
+subpartition p2sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p2sp2 values in ((21,'def2'), (22,'def2'), (23,'def2'))
+),
+partition p3 values in ((31,'abc3'), (32,'abc3'), (33,'abc3'))
+(
+subpartition p3sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p3sp2 values in ((21,'def2'), (22,'def2'), (23,'def2')),
+subpartition p3sp3 values in ((31,'def3'), (32,'def3'), (33,'def3'))
+))
+        * */
+
+        executeDml("insert ignore into " + tableName + "(id,c_int_32,c_varchar,c_char,c_datetime) values"
+            + "(11, 12,'abc1', 'def1' , '2020-01-01 12-11-12'),"
+            + "(12, 13,'abc1', 'def1' , '2020-01-01 12-11-12'),"
+            + "(13, 11,'abc1', 'def1' , '2020-01-01 12-11-12'),"
+            + "(21, 12,'abc2', 'def1' , '2020-01-01 12-11-12'),"
+            + "(22, 23,'abc2', 'def2' , '2020-01-01 12-11-12'),"
+            + "(23, 11,'abc2', 'def1' , '2020-01-01 12-11-12'),"
+            + "(31, 12,'abc3', 'def1' , '2020-01-01 12-11-12'),"
+            + "(32, 23,'abc3', 'def2' , '2020-01-01 12-11-12'),"
+            + "(33, 31,'abc3', 'def3' , '2020-01-01 12-11-12')", connection);
+
+        return true;
+    }
+
+    static public boolean initData7(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range (year(c_datetime))
+subpartition by range (year(c_datetime))
+(
+partition p1 values less than (2001)
+(
+subpartition p1sp1 values less than (2001)
+),
+partition p2 values less than (2012)
+(
+subpartition p2sp1 values less than (2001),
+subpartition p2sp2 values less than (2012)
+),
+partition p3 values less than (2023)
+(
+subpartition p3sp1 values less than (2001),
+subpartition p3sp2 values less than (2012),
+subpartition p3sp3 values less than (2023)
+))
+        * */
+
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2023);
+            int c_int_32 = RandomUtils.nextInt(1, 1000);
+            int id = 0;
+
+            executeDml(
+                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                    tableName, id, c_int_32, "'abc1'", "'def" + i + "'", "'" + year + "-01-01 00:00:00'")
+                , connection);
+        });
+
+        return true;
+    }
+
+    static public boolean initData10(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range (year(c_datetime))
+subpartition by list columns (c_int_32,c_char)
+(
+partition p1 values less than (2001)
+(
+subpartition p1sp1 values in ((11,'def1'), (12,'def1'), (13,'def1'))
+),
+partition p2 values less than (2012)
+(
+subpartition p2sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p2sp2 values in ((21,'def2'), (22,'def2'), (23,'def2'))
+),
+partition p3 values less than (2023)
+(
+subpartition p3sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p3sp2 values in ((21,'def2'), (22,'def2'), (23,'def2')),
+subpartition p3sp3 values in ((31,'def3'), (32,'def3'), (33,'def3'))
+))
+        * */
+
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2023);
+            int c_int_32;
+            if (year < 2001) {
+                c_int_32 = RandomUtils.nextInt(11, 14);
+            } else if (year < 2012) {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) : RandomUtils.nextInt(21, 24);
+            } else {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) :
+                    RandomUtils.nextBoolean() ? RandomUtils.nextInt(21, 24) : RandomUtils.nextInt(31, 34);
+            }
+            String c_char = "'def" + c_int_32 / 10 + "'";
+            int id = 0;
+
+            executeDml(
+                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                    tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
+                , connection);
+        });
+
+        return true;
+    }
+
+    static public boolean initData15(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range columns (c_datetime,c_int_32)
+subpartition by list columns (c_int_32,c_char)
+(
+partition p1 values less than ('2001-01-01 00:00:00',10)
+(
+subpartition p1sp1 values in ((11,'def1'), (12,'def1'), (13,'def1'))
+),
+partition p2 values less than ('2012-01-01 00:00:00',20)
+(
+subpartition p2sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p2sp2 values in ((21,'def2'), (22,'def2'), (23,'def2'))
+),
+partition p3 values less than ('2023-01-01 00:00:00',30)
+(
+subpartition p3sp1 values in ((11,'def1'), (12,'def1'), (13,'def1')),
+subpartition p3sp2 values in ((21,'def2'), (22,'def2'), (23,'def2')),
+subpartition p3sp3 values in ((31,'def3'), (32,'def3'), (33,'def3'))
+))
+        * */
+
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2023);
+            int c_int_32;
+            if (year < 2001) {
+                c_int_32 = RandomUtils.nextInt(11, 14);
+            } else if (year < 2012) {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) : RandomUtils.nextInt(21, 24);
+            } else {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) :
+                    RandomUtils.nextBoolean() ? RandomUtils.nextInt(21, 24) : RandomUtils.nextInt(31, 34);
+            }
+            String c_char = "'def" + c_int_32 / 10 + "'";
+            int id = 0;
+
+            executeDml(
+                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                    tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
+                , connection);
+        });
+
+        return true;
+    }
+
+    static public boolean initData11(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range columns (c_datetime,c_int_32)
+subpartition by key (c_int_32)
+(
+partition p1 values less than ('2001-01-01 00:00:00',11) subpartitions 1,
+partition p2 values less than ('2012-01-01 00:00:00',21) subpartitions 2,
+partition p3 values less than ('2023-01-01 00:00:00',31) subpartitions 3
+)
+        * */
+
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2023);
+            int c_int_32;
+            if (year < 2001) {
+                c_int_32 = RandomUtils.nextInt(11, 14);
+            } else if (year < 2012) {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) : RandomUtils.nextInt(21, 24);
+            } else {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) :
+                    RandomUtils.nextBoolean() ? RandomUtils.nextInt(21, 24) : RandomUtils.nextInt(31, 34);
+            }
+            String c_char = "'def" + c_int_32 / 10 + "'";
+            int id = 0;
+
+            executeDml(
+                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                    tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
+                , connection);
+        });
+
+        return true;
+    }
+
+    static public boolean initData6(String tableName, int rowCount, Connection connection) {
+        /*
+        *
+        *
+partition by range (year(c_datetime))
+subpartition by key (c_int_32)
+(
+partition p1 values less than (2001) subpartitions 1,
+partition p2 values less than (2012) subpartitions 2,
+partition p3 values less than (2023) subpartitions 3
+)
+        * */
+
+        IntStream.range(1, rowCount + 1).forEach(i -> {
+            int year = RandomUtils.nextInt(1990, 2023);
+            int c_int_32;
+            if (year < 2001) {
+                c_int_32 = RandomUtils.nextInt(11, 14);
+            } else if (year < 2012) {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) : RandomUtils.nextInt(21, 24);
+            } else {
+                c_int_32 = RandomUtils.nextBoolean() ? RandomUtils.nextInt(11, 14) :
+                    RandomUtils.nextBoolean() ? RandomUtils.nextInt(21, 24) : RandomUtils.nextInt(31, 34);
+            }
+            String c_char = "'def" + c_int_32 / 10 + "'";
+            int id = 0;
+
+            executeDml(
+                String.format("insert ignore into %s(id,c_int_32,c_varchar,c_char,c_datetime) values(%d,%d,%s,%s,%s);",
+                    tableName, id, c_int_32, "'abc1'", c_char, "'" + year + "-01-01 00:00:00'")
+                , connection);
+        });
+
         return true;
     }
 
@@ -654,18 +1468,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
     }
 
     protected List<String> getStorageInstIds() {
-        String sql = String.format("show ds where db='%s'", logicalDatabase);
-        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
-        List<String> storageInstIds = new ArrayList<>();
-        try {
-            while (rs.next()) {
-                storageInstIds.add(rs.getString("STORAGE_INST_ID"));
-            }
-        } catch (Exception ex) {
-            String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
-            Assert.fail(errorMs + " \n" + ex);
-        }
-        return storageInstIds;
+        return getStorageInstIds(logicalDatabase);
     }
 
     private static class DMLRunner implements Runnable {
@@ -822,7 +1625,8 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             } catch (InterruptedException e) {
                 // ignore exception
             }
-            executePartReorg(partitionRuleInfo.tableStatus, partitionRuleInfo.physicalTableBackfillParallel, command);
+            executePartReorg(partitionRuleInfo.tableStatus, partitionRuleInfo.physicalTableBackfillParallel,
+                partitionRuleInfo.usePhysicalTableBackfill, command);
             try {
                 TimeUnit.SECONDS.sleep(2);
             } catch (InterruptedException e) {
@@ -847,6 +1651,7 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
         String alterTableGroupCommand;
         ComplexTaskMetaManager.ComplexTaskStatus tableStatus;
         boolean physicalTableBackfillParallel = false;
+        boolean usePhysicalTableBackfill = false;
         boolean needGenDml;
         int dmlType;
         List<String> partCol = new ArrayList<>();
@@ -943,6 +1748,10 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             this.physicalTableBackfillParallel = physicalTableBackfillParallel;
         }
 
+        public void setUsePhysicalTableBackfill(boolean usePhysicalTableBackfill) {
+            this.usePhysicalTableBackfill = usePhysicalTableBackfill;
+        }
+
         public List<String> getLogicalTableNames() {
             return logicalTableNames;
         }
@@ -955,25 +1764,16 @@ public class AlterTableGroupTestBase extends DDLBaseNewDBTestCase {
             if (ignoreInit) {
                 return;
             }
-            switch (initDataType) {
-            case 1:
-                AlterTableGroupTestBase.initData1(tableName, insertRow, connection);
-                break;
-            case 2:
-                AlterTableGroupTestBase.initData2(tableName, insertRow, connection);
-                break;
-            case 3:
-                AlterTableGroupTestBase.initData3(tableName, insertRow, connection);
-                break;
-            case 4:
-                AlterTableGroupTestBase.initData4(tableName, insertRow, connection);
-                break;
-            case 5:
-                AlterTableGroupTestBase.initData5(tableName, insertRow, connection);
-                break;
-            default:
-                Assert.assertTrue(false);
-                break;
+
+            try {
+                String methodName = "initData" + initDataType;
+                // 获取方法对象
+                Method method =
+                    AlterTableGroupTestBase.class.getMethod(methodName, String.class, int.class, Connection.class);
+                // 调用方法
+                method.invoke(null, tableName, insertRow, connection);
+            } catch (Exception ex) {
+                ex.printStackTrace();
             }
             if (needGenDml) {
 

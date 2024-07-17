@@ -31,6 +31,7 @@ import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -109,7 +110,8 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
 
         updateTaskStatus(metaDbConnection);
 
-        long tableGroupId = tableGroupConfig.getTableGroupRecord().id;
+        TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+        long tableGroupId = tableGroupRecord.id;
 
         /**
          * Fetch all pg that are to be deleted from partition_group_delta and
@@ -149,9 +151,8 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
             }
         }
 
-        for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
-            String tableName = infoContext.getLogTbRec().tableName;
-            schemaName = infoContext.getLogTbRec().tableSchema;
+        for (String tableName : tableGroupConfig.getAllTables()) {
+            schemaName = tableGroupRecord.getSchema();
             TableMeta tableMeta =
                 OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
             SQLRecorderLogger.ddlMetaLogger.info(
@@ -271,8 +272,7 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
         SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
-        for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
-            String tableName = infoContext.getLogTbRec().tableName;
+        for (String tableName : tableGroupConfig.getAllTables()) {
             TableMeta tableMeta = schemaManager.getTable(tableName);
             if (tableMeta.isGsi()) {
                 //all the gsi table version change will be behavior by primary table

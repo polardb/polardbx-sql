@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer;
 
-import java.sql.Connection;
-import java.util.*;
-
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.partitionvisualizer.model.PartitionHeatInfo;
 import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxisModel;
@@ -26,14 +23,20 @@ import com.alibaba.polardbx.gms.heatmap.PartitionsHeatmapAccessor;
 import com.alibaba.polardbx.gms.heatmap.PartitionsHeatmapRecord;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-
 import org.apache.commons.collections.CollectionUtils;
+
+import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 原始热度数据的操作
  *
  * @author ximing.yd
- * @date 2021/12/23 下午8:34
  */
 public class VisualModelService {
 
@@ -109,7 +112,6 @@ public class VisualModelService {
         }
     }
 
-
     private Integer convertToCount(List<Map<String, Object>> rs) {
         Integer count = 0;
         try {
@@ -171,7 +173,8 @@ public class VisualModelService {
         resultInfo.setPartitionSeq(oldPartitionHeatInfo.getPartitionSeq());
         resultInfo.setRowsRead(newPartitionHeatInfo.getRowsRead() - oldPartitionHeatInfo.getRowsRead());
         resultInfo.setRowsWritten(newPartitionHeatInfo.getRowsWritten() - oldPartitionHeatInfo.getRowsWritten());
-        resultInfo.setRowsReadWritten(newPartitionHeatInfo.getRowsReadWritten() - oldPartitionHeatInfo.getRowsReadWritten());
+        resultInfo.setRowsReadWritten(
+            newPartitionHeatInfo.getRowsReadWritten() - oldPartitionHeatInfo.getRowsReadWritten());
         return resultInfo;
     }
 

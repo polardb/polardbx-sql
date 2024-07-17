@@ -172,6 +172,10 @@ public interface PartitionField extends Comparable<PartitionField> {
      */
     void hash(long[] numbers);
 
+    default long xxHashCode() {
+        throw new RuntimeException("not implement");
+    }
+
     /**
      * Get the raw representation of the field object.
      */

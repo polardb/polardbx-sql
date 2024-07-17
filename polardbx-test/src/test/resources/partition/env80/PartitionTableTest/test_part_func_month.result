@@ -91,7 +91,7 @@ FROM tbl
 WHERE a = '2000-01-01 00:00:00'
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p1]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="2000-01-01 00:00:00")
 EXPLAIN SELECT *
 FROM tbl
 WHERE (a <= '2019-01-01 00:00:00'
@@ -119,7 +119,7 @@ EXPLAIN SELECT *
 FROM t1
 WHERE dt = '2021-09-12 18:00:01';
 Logical ExecutionPlan
-LogicalView(tables="t1[p1]", sql="SELECT `id`, `dt` FROM `t1` AS `t1` WHERE (`dt` = ?)")
+PhyTableOperation(tables="t1[p1]", sql="SELECT `t1`.`id`, `t1`.`dt` FROM ? AS `t1` WHERE (`t1`.`dt` = ?)", params="2021-09-12 18:00:01")
 SELECT part_route('', 't1', '2021-09-12 18:00:01');
 part_route('', 't1', '2021-09-12 18:00:01')
 p1
@@ -176,22 +176,22 @@ EXPLAIN SELECT *
 FROM m1
 WHERE d = '2022-01-01';
 Logical ExecutionPlan
-LogicalView(tables="m1[p1]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+PhyTableOperation(tables="m1[p1]", sql="SELECT `m1`.`d` FROM ? AS `m1` WHERE (`m1`.`d` = ?)", params="2022-01-01")
 EXPLAIN SELECT *
 FROM m1
 WHERE d = '2020-02-01';
 Logical ExecutionPlan
-LogicalView(tables="m1[p6]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+PhyTableOperation(tables="m1[p6]", sql="SELECT `m1`.`d` FROM ? AS `m1` WHERE (`m1`.`d` = ?)", params="2020-02-01")
 EXPLAIN SELECT *
 FROM m1
 WHERE d = '2021-03-01';
 Logical ExecutionPlan
-LogicalView(tables="m1[p14]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+PhyTableOperation(tables="m1[p14]", sql="SELECT `m1`.`d` FROM ? AS `m1` WHERE (`m1`.`d` = ?)", params="2021-03-01")
 EXPLAIN SELECT *
 FROM m1
 WHERE d = '2024-04-01';
 Logical ExecutionPlan
-LogicalView(tables="m1[p7]", sql="SELECT `d` FROM `m1` AS `m1` WHERE (`d` = ?)")
+PhyTableOperation(tables="m1[p7]", sql="SELECT `m1`.`d` FROM ? AS `m1` WHERE (`m1`.`d` = ?)", params="2024-04-01")
 SELECT *
 FROM m1
 WHERE (d > '2020-02-01'
@@ -296,22 +296,22 @@ EXPLAIN SELECT *
 FROM m2
 WHERE d = '2022-01-01';
 Logical ExecutionPlan
-LogicalView(tables="m2[p0]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+PhyTableOperation(tables="m2[p0]", sql="SELECT `m2`.`d` FROM ? AS `m2` WHERE (`m2`.`d` = ?)", params="2022-01-01")
 EXPLAIN SELECT *
 FROM m2
 WHERE d = '2020-03-01';
 Logical ExecutionPlan
-LogicalView(tables="m2[p1]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+PhyTableOperation(tables="m2[p1]", sql="SELECT `m2`.`d` FROM ? AS `m2` WHERE (`m2`.`d` = ?)", params="2020-03-01")
 EXPLAIN SELECT *
 FROM m2
 WHERE d = '2021-06-01';
 Logical ExecutionPlan
-LogicalView(tables="m2[p2]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+PhyTableOperation(tables="m2[p2]", sql="SELECT `m2`.`d` FROM ? AS `m2` WHERE (`m2`.`d` = ?)", params="2021-06-01")
 EXPLAIN SELECT *
 FROM m2
 WHERE d = '2024-09-01';
 Logical ExecutionPlan
-LogicalView(tables="m2[p3]", sql="SELECT `d` FROM `m2` AS `m2` WHERE (`d` = ?)")
+PhyTableOperation(tables="m2[p3]", sql="SELECT `m2`.`d` FROM ? AS `m2` WHERE (`m2`.`d` = ?)", params="2024-09-01")
 SELECT *
 FROM m2
 WHERE (d > '2020-03-01'
@@ -417,22 +417,22 @@ EXPLAIN SELECT *
 FROM m3
 WHERE d = '2022-01-01';
 Logical ExecutionPlan
-LogicalView(tables="m3[p0]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+PhyTableOperation(tables="m3[p0]", sql="SELECT `m3`.`d` FROM ? AS `m3` WHERE (`m3`.`d` = ?)", params="2022-01-01")
 EXPLAIN SELECT *
 FROM m3
 WHERE d = '2020-04-01';
 Logical ExecutionPlan
-LogicalView(tables="m3[p1]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+PhyTableOperation(tables="m3[p1]", sql="SELECT `m3`.`d` FROM ? AS `m3` WHERE (`m3`.`d` = ?)", params="2020-04-01")
 EXPLAIN SELECT *
 FROM m3
 WHERE d = '2021-07-01';
 Logical ExecutionPlan
-LogicalView(tables="m3[p2]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+PhyTableOperation(tables="m3[p2]", sql="SELECT `m3`.`d` FROM ? AS `m3` WHERE (`m3`.`d` = ?)", params="2021-07-01")
 EXPLAIN SELECT *
 FROM m3
 WHERE d = '2024-12-31';
 Logical ExecutionPlan
-LogicalView(tables="m3[pd]", sql="SELECT `d` FROM `m3` AS `m3` WHERE (`d` = ?)")
+PhyTableOperation(tables="m3[pd]", sql="SELECT `m3`.`d` FROM ? AS `m3` WHERE (`m3`.`d` = ?)", params="2024-12-31")
 SELECT *
 FROM m3
 WHERE (d > '2020-04-01'

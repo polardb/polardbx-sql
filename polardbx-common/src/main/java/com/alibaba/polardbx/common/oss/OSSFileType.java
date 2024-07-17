@@ -23,7 +23,16 @@ public enum OSSFileType {
     TABLE_FORMAT("format", "%s_%s_%s.%s", "/tmp/%s_%s_%s.%s"),
     TABLE_FILE("orc", "%s_%s_%s.%s", "/tmp/%s_%s_%s.%s"),
     TABLE_META("bf", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s"),
-    EXPORT_ORC_FILE("orc", "%s_%s.%s", "../spill/temp/%s");
+    EXPORT_ORC_FILE("orc", "%s_%s.%s", "../spill/temp/%s"),
+
+    /**
+     * Columnar Primary index file:
+     */
+    PK_IDX_LOG("log", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s"),
+    PK_IDX_LOG_META("meta", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s"),
+    PK_IDX_SNAPSHOT("snapshot", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s"),
+    PK_IDX_LOCK("lock", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s"),
+    PK_IDX_SST("sst", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s");
 
     String suffix;
     String remotePathFormat;

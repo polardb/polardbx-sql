@@ -28,6 +28,7 @@ public class AlterGlobalIndexVisibilityPreparedData extends DdlPreparedData {
     private String indexTableName;
 
     private String visibility;
+    private boolean columnar;
 
     public String getPrimaryTableName() {
         return primaryTableName;
@@ -53,4 +54,11 @@ public class AlterGlobalIndexVisibilityPreparedData extends DdlPreparedData {
         this.visibility = visibility;
     }
 
+    public boolean isColumnar() {
+        return columnar;
+    }
+
+    public void setColumnar(boolean columnar) {
+        this.columnar = columnar;
+    }
 }

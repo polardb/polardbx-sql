@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.parse;
 
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
@@ -36,11 +37,14 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfo;
+import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfoUtil;
 import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
 import com.alibaba.polardbx.rpc.result.XMetaUtil;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.collect.ImmutableList;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
+import groovy.sql.Sql;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlCollation;
@@ -54,6 +58,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.StringUtils;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -71,6 +76,8 @@ import java.util.stream.Collectors;
 public class TableMetaParser {
 
     private static final RelDataTypeFactory factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+    private static final String ENCRYPTED = "ENCRYPTION=\"Y\"";
+    private static final String NO_ENCRYPTED = "ENCRYPTION=\"N\"";
 
     /**
      * Parse TableMeta from FastSql's statements.
@@ -127,11 +134,31 @@ public class TableMetaParser {
             Field field = result.getValue().getField();
             RelDataType type = field.getRelType();
 
-            if (spec.getCharSetName() == null && SqlTypeUtil.inCharFamily(type)) {
-                SqlCollation collation = new SqlCollation(tableCharset, sqlCreateTable.getDefaultCollation(),
-                    SqlCollation.Coercibility.IMPLICIT);
-                type = factory.createTypeWithCharsetAndCollation(type, tableCharset, collation);
-                field.setRelDataType(type);
+//            if (spec.getCharSetName() == null && SqlTypeUtil.inCharFamily(type)) {
+//                SqlCollation collation = new SqlCollation(tableCharset, sqlCreateTable.getDefaultCollation(),
+//                    SqlCollation.Coercibility.IMPLICIT);
+//                type = factory.createTypeWithCharsetAndCollation(type, tableCharset, collation);
+//                field.setRelDataType(type);
+//            }
+
+            if (SqlTypeUtil.inCharFamily(type)) {
+                SqlCollation collationOfCol = null;
+                Charset charsetOfCol = null;
+                if (spec.getCharSetName() == null) {
+                    charsetOfCol = tableCharset;
+                    if (spec.getCollationName() == null) {
+                        collationOfCol = new SqlCollation(charsetOfCol, sqlCreateTable.getDefaultCollation(),
+                            SqlCollation.Coercibility.IMPLICIT);
+                    } else {
+                        CollationName collationNameOfColSpec = CollationName.findCollationName(spec.getCollationName());
+                        CharsetName charsetNameOfColSpec = CollationName.getCharsetOf(collationNameOfColSpec);
+                        charsetOfCol = charsetNameOfColSpec.toJavaCharset();
+                        collationOfCol = new SqlCollation(charsetOfCol, collationNameOfColSpec.name(),
+                            SqlCollation.Coercibility.IMPLICIT);
+                    }
+                    type = factory.createTypeWithCharsetAndCollation(type, charsetOfCol, collationOfCol);
+                    field.setRelDataType(type);
+                }
             }
         }
 
@@ -150,9 +177,32 @@ public class TableMetaParser {
             }
             if (probPk != null) {
                 primaryKey = parseIndex(tableName, columnsMap,
-                    new SqlIndexDefinition(SqlParserPos.ZERO, false, null, null, null, null, null, null,
+                    new SqlIndexDefinition(SqlParserPos.ZERO,
+                        false,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
                         ImmutableList.of(new SqlIndexColumnName(SqlParserPos.ZERO, probPk, null, null)),
-                        null, null, null, null, null, null, false, null, true), true, true);
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        false,
+                        null,
+                        null,
+                        null,
+                        false,
+                        true), true, true);
             }
         }
 
@@ -175,6 +225,15 @@ public class TableMetaParser {
                 TableStatus.PUBLIC,
                 0, 0);
         tableMeta.setEngine(sqlCreateTable.getEngine());
+        String encryptInfo = null;
+        if (sqlCreateTable.getEncryption() != null) {
+            if (sqlCreateTable.getEncryption().equalsIgnoreCase("'Y'")) {
+                encryptInfo = ENCRYPTED;
+            } else if (sqlCreateTable.getEncryption().equalsIgnoreCase("'N'")) {
+                encryptInfo = NO_ENCRYPTED;
+            }
+        }
+        tableMeta.setEncryption(parseEncryption(schemaName, encryptInfo));
         return tableMeta;
     }
 
@@ -189,10 +248,24 @@ public class TableMetaParser {
     private static Pair<String, ColumnMeta> parseColumn(String tableName, String columnName, SqlColumnDeclaration def) {
         boolean nullable =
             Optional.ofNullable(def.getNotNull()).map(cn -> SqlColumnDeclaration.ColumnNull.NULL == cn).orElse(true);
-        RelDataType type = def.getDataType().deriveType(factory, nullable);
+
         String defaultStr = Optional.ofNullable(def.getDefaultExpr()).map(Object::toString)
             .orElseGet(() -> Optional.ofNullable(def.getDefaultVal()).map(Object::toString)
                 .filter(d -> !"NULL".equalsIgnoreCase(d)).orElse(null));
+
+        SqlDataTypeSpec sqlDataTypeSpec = def.getDataType();
+
+        boolean unsigned = sqlDataTypeSpec.isUnsigned() || sqlDataTypeSpec.isZerofill();
+        if (unsigned && !sqlDataTypeSpec.isUnsigned()) {
+            sqlDataTypeSpec = new SqlDataTypeSpec(sqlDataTypeSpec.getParserPosition(),
+                sqlDataTypeSpec.getTypeName(), unsigned, sqlDataTypeSpec.isZerofill(),
+                sqlDataTypeSpec.isBinary(),
+                sqlDataTypeSpec.getLength(), sqlDataTypeSpec.getDecimals(), sqlDataTypeSpec.getCharSet(),
+                sqlDataTypeSpec.getCollation(), sqlDataTypeSpec.getCollectionVals(), sqlDataTypeSpec.getFsp(),
+                sqlDataTypeSpec.getNullable());
+        }
+
+        RelDataType type = sqlDataTypeSpec.deriveType(factory, nullable);
 
         if (def.isGeneratedAlwaysLogical()) {
             defaultStr = def.getGeneratedAlwaysExpr().toString();
@@ -211,7 +284,7 @@ public class TableMetaParser {
         ColumnMeta columnMeta;
         if (def.isGeneratedAlwaysLogical()) {
             columnMeta = new ColumnMeta(tableName, columnName, null, field, ColumnStatus.PUBLIC,
-                ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN);
+                ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN, null);
         } else {
             columnMeta = new ColumnMeta(tableName, columnName, null, field);
         }
@@ -284,4 +357,22 @@ public class TableMetaParser {
         }
     }
 
+    public static boolean parseEncryption(String tableSchema, String createOptions) {
+        String encryped = "ENCRYPTION=\"Y\"";
+        String noEncryped = "ENCRYPTION=\"N\"";
+        DbInfoRecord dbInfo = DbInfoManager.getInstance().getDbInfo(tableSchema);
+        boolean dbEncryped = dbInfo == null ? false : Optional.ofNullable(dbInfo.isEncryption()).orElse(false);
+        if (createOptions != null) {
+            if (dbEncryped) {
+                if (createOptions.toUpperCase().indexOf(noEncryped) != -1) {
+                    return false;
+                }
+            } else {
+                if (createOptions.toUpperCase().indexOf(encryped) != -1) {
+                    return true;
+                }
+            }
+        }
+        return dbEncryped;
+    }
 }

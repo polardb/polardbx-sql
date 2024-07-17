@@ -21,6 +21,7 @@ import java.io.EOFException;
 import java.io.IOException;
 
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
+import org.apache.orc.customized.ORCProfile;
 
 /**
  * A reader that reads a sequence of bytes. A control byte is read before
@@ -35,8 +36,18 @@ public class RunLengthByteReader {
   private int used = 0;
   private boolean repeat = false;
 
+  private ORCProfile memoryCounter;
+
   public RunLengthByteReader(InStream input) {
     this.input = input;
+  }
+
+  public void setMemoryCounter(ORCProfile memoryCounter) {
+    this.memoryCounter = memoryCounter;
+    // basic memory overhead
+    if (memoryCounter != null) {
+      memoryCounter.update(literals.length);
+    }
   }
 
   public void setInStream(InStream input) {

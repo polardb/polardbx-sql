@@ -23,6 +23,8 @@ import groovy.sql.Sql;
 import org.apache.calcite.avatica.util.DateTimeUtils;
 import org.apache.calcite.avatica.util.Spaces;
 import org.apache.calcite.linq4j.Ord;
+import org.apache.calcite.plan.volcano.VolcanoPlanner;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.runtime.CalciteException;
 import org.apache.calcite.sql.SqlAggFunction;

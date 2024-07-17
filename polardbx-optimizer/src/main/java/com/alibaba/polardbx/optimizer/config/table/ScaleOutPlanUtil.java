@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
-import com.alibaba.polardbx.common.ddl.newengine.DdlState;
-import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -62,7 +60,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * @author chenghui.lch
@@ -289,7 +286,7 @@ public class ScaleOutPlanUtil {
                 final String sourceInstId = DbTopologyManager
                     .getStorageInstIdByGroupName(InstIdUtil.getInstId(), schemaName,
                         sourceGroupKey);
-                final String targetGroupKey = GroupInfoUtil.buildScaloutGroupName(sourceGroupKey);
+                final String targetGroupKey = GroupInfoUtil.buildScaleOutGroupName(sourceGroupKey);
                 if (entry.getKey().equalsIgnoreCase(sourceInstId)) {
                     /*SQLRecorderLogger.scaleOutTaskLogger.info(MessageFormat.format(
                         "move database [{0}] to [{1}] is skip due to it is already in [{2}], ts={3} ", sourceGroupKey,

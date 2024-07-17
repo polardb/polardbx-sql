@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
@@ -71,11 +72,22 @@ public class InformationSchemaStatistics extends VirtualView {
         return i == getTableSchemaIndex() || i == getTableNameIndex();
     }
 
-    public int getTableSchemaIndex() {
+    private static final List<Integer> INDEXABLE_COLUMNS;
+
+    static {
+        INDEXABLE_COLUMNS = Lists.newArrayList(getTableSchemaIndex(), getTableNameIndex());
+    }
+
+    @Override
+    List<Integer> indexableColumnList() {
+        return INDEXABLE_COLUMNS;
+    }
+
+    static public int getTableSchemaIndex() {
         return 1;
     }
 
-    public int getTableNameIndex() {
+    static public int getTableNameIndex() {
         return 2;
     }
 }

@@ -17,48 +17,41 @@
 package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.ddl.job.factory.ConvertAllSequencesJobFactory;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalCommonDdlHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.executor.sync.ClearSeqCacheSyncAction;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
-import com.alibaba.polardbx.gms.util.SeqTypeUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import org.apache.calcite.sql.SqlConvertAllSequences;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 
-public class ConvertAllSequencesHandler extends AbstractDalHandler {
+public class ConvertAllSequencesHandler extends LogicalCommonDdlHandler {
 
     public ConvertAllSequencesHandler(IRepository repo) {
         super(repo);
     }
 
     @Override
-    Cursor doHandle(LogicalDal logicalPlan, ExecutionContext executionContext) {
-        SqlConvertAllSequences stmt = (SqlConvertAllSequences) logicalPlan.getNativeSqlNode();
+    protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        SqlConvertAllSequences stmt = (SqlConvertAllSequences) logicalDdlPlan.getNativeSqlNode();
 
         Type fromType = stmt.getFromType();
         Type toType = stmt.getToType();
         String schemaName = stmt.getSchemaName();
         boolean allSchemata = stmt.isAllSchemata();
-
-        ArrayResultCursor resultCursor = new ArrayResultCursor("CONVERT_ALL_SEQUENCES");
-        resultCursor.addColumn("SCHEMA_NAME", DataTypes.StringType);
-        resultCursor.addColumn("NUM_OF_CONVERTED_SEQUENCES", DataTypes.StringType);
-        resultCursor.addColumn("REMARK", DataTypes.StringType);
-        resultCursor.initMeta();
 
         final Set<String> userSchemata = new HashSet<>();
         List<SchemataRecord> schemataRecords = SchemataAccessor.getAllSchemata();
@@ -66,13 +59,12 @@ public class ConvertAllSequencesHandler extends AbstractDalHandler {
             .filter(s -> !SystemDbHelper.isDBBuildIn(s.schemaName))
             .forEach(s -> userSchemata.add(s.schemaName.toLowerCase()));
 
+        final Set<String> schemaToBeConvert = new TreeSet<>(String::compareToIgnoreCase);
         if (allSchemata) {
-            for (String schema : userSchemata) {
-                convert(schema, fromType, toType, resultCursor);
-            }
+            schemaToBeConvert.addAll(userSchemata);
         } else if (TStringUtil.isNotBlank(schemaName)) {
             if (userSchemata.contains(schemaName)) {
-                convert(schemaName, fromType, toType, resultCursor);
+                schemaToBeConvert.add(schemaName);
             } else {
                 throw new SequenceException("Invalid schema name '" + schemaName + "'");
             }
@@ -80,24 +72,15 @@ public class ConvertAllSequencesHandler extends AbstractDalHandler {
             throw new SequenceException("Schema name should not be empty");
         }
 
-        return resultCursor;
-    }
+        DdlJobFactory convertAllSequencesJobFactory = new ConvertAllSequencesJobFactory(
+            new ArrayList<>(schemaToBeConvert),
+            fromType,
+            toType,
+            !allSchemata,
+            executionContext
+        );
 
-    private void convert(String schemaName, Type fromType, Type toType, ArrayResultCursor resultCursor) {
-        int numSequencesConverted = 0;
-        String remark = "";
-
-        boolean newSeqNotInvolved = fromType != Type.NEW && toType != Type.NEW;
-        if (SeqTypeUtil.isNewSeqSupported(schemaName) || newSeqNotInvolved) {
-            try {
-                numSequencesConverted = SequencesAccessor.change(schemaName, fromType, toType);
-                SyncManagerHelper.sync(new ClearSeqCacheSyncAction(schemaName, null, true, false));
-            } catch (Exception e) {
-                remark = "Failed due to " + e.getMessage();
-            }
-        }
-
-        resultCursor.addRow(new Object[] {schemaName, numSequencesConverted, remark});
+        return convertAllSequencesJobFactory.create();
     }
 
 }

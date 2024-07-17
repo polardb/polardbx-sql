@@ -128,11 +128,10 @@ public abstract class AbstractPl {
             memoryPool.destroy();
         }
         // make sure all cursor has been closed
-        blockStmtToCursors.values().stream().map(t -> t.values().stream().map(cur -> {
+        blockStmtToCursors.values().forEach(t -> t.values().forEach(cur -> {
             if (cur != null) {
-                return cur.close(new ArrayList<>());
+                cur.close(new ArrayList<>());
             }
-            return null;
         }));
     }
 

@@ -69,7 +69,7 @@ public class SampleResponse {
 
         // rows
         RowDataPacket row = new RowDataPacket(header.fieldCount);
-        row.add(encode("HelloWorld!", c.getCharset()));
+        row.add(encode("HelloWorld!", c.getResultSetCharset()));
         row.packetId = ++packetId;
         proxy = row.write(proxy);
 

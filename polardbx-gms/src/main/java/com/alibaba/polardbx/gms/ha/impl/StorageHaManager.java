@@ -217,7 +217,7 @@ public class StorageHaManager extends AbstractLifecycle {
             ServerInstIdManager.getInstance().loadAllInstIdAndStorageIdSet();
             ServerInstIdManager.getInstance().loadAllHtapInstIds();
             StorageHaManager.getInstance().updateStorageInstHaContext(instId);
-            if (ServerInstIdManager.getInstance().isMasterInst()) {
+            if (ConfigDataMode.isMasterMode()) {
                 StorageHaManager.getInstance().updateGroupConfigVersion();
             }
         }
@@ -260,13 +260,15 @@ public class StorageHaManager extends AbstractLifecycle {
             ExecutorUtil.createBufferedExecutor("CheckDnRoleTaskExecutor", checkDnRoleTaskExecutorPoolSize,
                 checkDnRoleTaskExecutorQueueSize);
 
-        registerStorageInfoConfigListener(InstIdUtil.getInstId());
-
-        if (!ServerInstIdManager.getInstance().isMasterInst()) {
-            String serverMasterInstId = ServerInstIdManager.getInstance().getMasterInstId();
-            registerStorageInfoConfigListener(serverMasterInstId);
-        } else {
+        if (ConfigDataMode.isMasterMode()) {
+            registerStorageInfoConfigListener(InstIdUtil.getInstId());
             registerLearnerStorageInstId();
+        } else {
+            if (ConfigDataMode.needDNResource()) {
+                registerStorageInfoConfigListener(InstIdUtil.getInstId());
+                String serverMasterInstId = ServerInstIdManager.getInstance().getMasterInstId();
+                registerStorageInfoConfigListener(serverMasterInstId);
+            }
         }
 
         if (ConfigDataMode.isMasterMode()) {
@@ -365,7 +367,7 @@ public class StorageHaManager extends AbstractLifecycle {
             groupDetailInfoAccessor.setConnection(metaDbConn);
             List<GroupDetailInfoRecord> groupDetailInfoRecords =
                 groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndDbName(currInstId, dbName);
-            if (!ServerInstIdManager.getInstance().isMasterInst()) {
+            if (ConfigDataMode.isRowSlaveMode()) {
                 String masterInstId = ServerInstIdManager.getInstance().getMasterInstId();
                 List<GroupDetailInfoRecord> groupDetailInfoRecordsOfMasterInstId =
                     groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndDbName(masterInstId, dbName);
@@ -394,6 +396,11 @@ public class StorageHaManager extends AbstractLifecycle {
 
     public static int getAndCheckXport(String addr, boolean isVip, StorageInstHaContext haCtx,
                                        StorageNodeHaInfo haInfo) {
+
+        if (UNAVAILABLE_ACCESS_FOR_LEARNER.equalsIgnoreCase(addr)) {
+            MetaDbLogUtil.META_DB_LOG.info("this is unavailable_access_for_learner, so the Xport not available.");
+            return -1;
+        }
         if (isVip) {
             if (XConfig.VIP_WITH_X_PROTOCOL) {
                 Pair<String, Integer> nodeIpPort = AddressUtils.getIpPortPairByAddrStr(addr);
@@ -531,7 +538,7 @@ public class StorageHaManager extends AbstractLifecycle {
 
         String phyDbName = null;
         try {
-            phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
+            phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKeyFromMetaDb(dbName, groupName);
         } catch (Throwable ex) {
             throw ex;
         }
@@ -834,7 +841,7 @@ public class StorageHaManager extends AbstractLifecycle {
 
     public final Map<String, StorageInstHaContext> refreshAndGetStorageInstHaContextCache() {
         MetaDbConfigManager.getInstance().sync(MetaDbDataIdBuilder.getStorageInfoDataId(InstIdUtil.getInstId()));
-        if (!ServerInstIdManager.getInstance().isMasterInst()) {
+        if (!ConfigDataMode.isMasterMode()) {
             MetaDbConfigManager.getInstance().sync(ServerInstIdManager.getInstance().getMasterInstId());
         }
         return storageHaCtxCache;
@@ -945,47 +952,6 @@ public class StorageHaManager extends AbstractLifecycle {
 
     protected void loadStorageHaContext() {
 
-//        Map<String, StorageInstHaContext> newStorageHaCtxCache = new ConcurrentHashMap<>();
-//        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
-//
-//            StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
-//            storageInfoAccessor.setConnection(metaDbConn);
-//
-//            List<StorageInfoRecord> storageInfoRecords = new ArrayList<>();
-//
-//            // Get storage all nodes of one polardbx inst, current instId maybe a master/read-only inst
-//            loadAllStorageInfoForCurrentInst(storageInfoAccessor, InstIdUtil.getInstId(), storageInfoRecords);
-//
-//            // group storage node by storageInstId
-//            Map<String, List<StorageInfoRecord>> storageInstNodeInfoMap = new HashMap<>();
-//            for (int i = 0; i < storageInfoRecords.size(); i++) {
-//                StorageInfoRecord storageInfo = storageInfoRecords.get(i);
-//                String storageInstId = storageInfo.storageInstId;
-//                List<StorageInfoRecord> storageNodeList = storageInstNodeInfoMap.get(storageInstId);
-//                if (storageNodeList == null) {
-//                    storageNodeList = new ArrayList<>();
-//                    storageInstNodeInfoMap.put(storageInstId, storageNodeList);
-//                }
-//                storageNodeList.add(storageInfo);
-//            }
-//
-//            // init StorageInst HA context for each x-cluster group of storage nodes
-//            for (Map.Entry<String, List<StorageInfoRecord>> storageInstNodesItem : storageInstNodeInfoMap.entrySet()) {
-//                String storageInstId = storageInstNodesItem.getKey();
-//                List<StorageInfoRecord> storageInstNodes = storageInstNodesItem.getValue();
-//                StorageInstHaContext storageInstHaContext = buildStorageInstHaContext(storageInstNodes);
-//                newStorageHaCtxCache.put(storageInstId, storageInstHaContext);
-//                if (storageInstHaContext.storageKind == StorageInfoRecord.INST_KIND_META_DB) {
-//                    this.metaDbStorageHaCtx = storageInstHaContext;
-//                }
-//            }
-//            this.storageHaCtxCache = newStorageHaCtxCache;
-//        } catch (Throwable ex) {
-//            MetaDbLogUtil.META_DB_LOG.info(ex);
-//            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
-//                "Failed to init storage HA context from metaDb，err is " + ex.getMessage());
-//        }
-
         Map<String, StorageInstHaContext> newStorageHaCtxCache = loadStorageHaContextFromMetaDb();
         for (Map.Entry<String, StorageInstHaContext> haCtxItem : newStorageHaCtxCache.entrySet()) {
             StorageInstHaContext haContext = haCtxItem.getValue();
@@ -1032,17 +998,24 @@ public class StorageHaManager extends AbstractLifecycle {
 
         // load storage infos for current inst, but should contain learner storages for master.
         List<StorageInfoRecord> storageInfoRecordsOfCurrInstId = null;
-        if (ServerInstIdManager.getInstance().isMasterInst()) {
+        if (ConfigDataMode.isMasterMode()) {
             storageInfoRecordsOfCurrInstId =
                 storageInfoAccessor.getAliveStorageInfos();
             storageInfoRecords.addAll(storageInfoRecordsOfCurrInstId);
-        } else {
+        } else if (ConfigDataMode.isRowSlaveMode()) {
             storageInfoRecordsOfCurrInstId =
                 storageInfoAccessor.getAliveStorageInfosByInstId(currInstId);
             storageInfoRecords.addAll(storageInfoRecordsOfCurrInstId);
             List<StorageInfoRecord> storageInfoRecordsOfServerMasterInstId =
-                storageInfoAccessor.getAliveStorageInfosByInstId(ServerInstIdManager.getInstance().getMasterInstId());
+                storageInfoAccessor.getAliveStorageInfosByInstId(
+                    ServerInstIdManager.getInstance().getMasterInstId());
             storageInfoRecords.addAll(storageInfoRecordsOfServerMasterInstId);
+        } else if (ConfigDataMode.isColumnarMode()) {
+            //fetch the StorageInfoRecord about GMS
+            List<StorageInfoRecord> storageList =
+                storageInfoAccessor.getStorageInfosByInstIdAndKind(ServerInstIdManager.getInstance().getMasterInstId(),
+                    StorageInfoRecord.INST_KIND_META_DB);
+            storageInfoRecords.addAll(storageList);
         }
     }
 
@@ -1153,7 +1126,7 @@ public class StorageHaManager extends AbstractLifecycle {
             this.storageInstId = storageInstId;
             this.dbName = dbName;
             this.groupName = groupName;
-            this.phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
+            this.phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKeyFromMetaDb(dbName, groupName);
         }
 
         @Override
@@ -1417,7 +1390,7 @@ public class StorageHaManager extends AbstractLifecycle {
                 }
             }
 
-            if (ServerInstIdManager.getInstance().isMasterInst() &&
+            if (ConfigDataMode.isMasterMode() &&
                 storageInstKind == StorageInfoRecord.INST_KIND_SLAVE) {
                 if (haSwitchParams.instId != null &&
                     !ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet().contains(haSwitchParams.instId)) {
@@ -1616,6 +1589,10 @@ public class StorageHaManager extends AbstractLifecycle {
     public List<StorageInstHaContext> getMasterStorageList() {
         return storageHaCtxCache.values().stream().filter(StorageInstHaContext::isDNMaster)
             .collect(Collectors.toList());
+    }
+
+    public StorageInstHaContext getMetaDbStorageHaCtx() {
+        return metaDbStorageHaCtx;
     }
 
     private List<StorageInstHaContext> getStorageNodesAndMetaDB() {

@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.base.Preconditions;
+import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
@@ -81,6 +83,15 @@ public class BooleanBlock extends AbstractBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxhashUtils.finalShuffle(values[pos + arrayOffset] ? 1L : 0L);
+        }
+    }
+
+    @Override
     public int[] hashCodeVector() {
         if (mayHaveNull()) {
             return super.hashCodeVector();
@@ -91,6 +102,18 @@ public class BooleanBlock extends AbstractBlock {
             hashes[position] = Boolean.hashCode(values[position + arrayOffset]);
         }
         return hashes;
+    }
+
+    @Override
+    public void hashCodeVector(int[] results, int positionCount) {
+        if (mayHaveNull()) {
+            super.hashCodeVector(results, positionCount);
+            return;
+        }
+
+        for (int position = 0; position < positionCount; position++) {
+            results[position] = Boolean.hashCode(values[position + arrayOffset]);
+        }
     }
 
     @Override
@@ -112,7 +135,7 @@ public class BooleanBlock extends AbstractBlock {
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof BooleanBlock) {
-            BooleanBlock outputVector = (BooleanBlock) output;
+            BooleanBlock outputVector = output.cast(BooleanBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -133,7 +156,7 @@ public class BooleanBlock extends AbstractBlock {
         if (!(another instanceof BooleanBlock)) {
             GeneralUtil.nestedException("Cannot shallow copy to " + another);
         }
-        BooleanBlock vectorSlot = (BooleanBlock) another;
+        BooleanBlock vectorSlot = another.cast(BooleanBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }

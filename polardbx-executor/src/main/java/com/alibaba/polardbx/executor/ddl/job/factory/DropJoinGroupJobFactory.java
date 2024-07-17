@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropEmptyJoinGroupTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropJoinGroupMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -61,6 +62,11 @@ public class DropJoinGroupJobFactory extends DdlJobFactory {
             new DropEmptyJoinGroupTask(preparedData.getSchemaName(), preparedData.getJoinGroupName(),
                 preparedData.isIfExists());
         executableDdlJob.addTask(dropEmptyJoinGroupTask);
+
+        CdcDropJoinGroupMarkTask cdcDropJoinGroupMarkTask =
+            new CdcDropJoinGroupMarkTask(preparedData.getSchemaName(), preparedData.getJoinGroupName());
+        executableDdlJob.addTask(cdcDropJoinGroupMarkTask);
+        executableDdlJob.addTaskRelationship(dropEmptyJoinGroupTask, cdcDropJoinGroupMarkTask);
         return executableDdlJob;
     }
 

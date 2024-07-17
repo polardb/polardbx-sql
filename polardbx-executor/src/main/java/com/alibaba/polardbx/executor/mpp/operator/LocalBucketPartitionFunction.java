@@ -29,6 +29,7 @@
  */
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.common.utils.MathUtils;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 
@@ -54,12 +55,7 @@ public class LocalBucketPartitionFunction implements PartitionFunction {
         for (int bucket = 0; bucket < bucketNum; bucket++) {
             bucketToPartition[bucket * partCount + partId] = bucket;
         }
-        this.isPowerOfTwo = ExecUtils.isPowerOfTwo(totalBucketNum);
-    }
-
-    @Override
-    public int getPartitionCount() {
-        return bucketNum;
+        this.isPowerOfTwo = MathUtils.isPowerOfTwo(totalBucketNum);
     }
 
     @Override

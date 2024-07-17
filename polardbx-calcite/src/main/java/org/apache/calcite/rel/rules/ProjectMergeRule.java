@@ -45,12 +45,16 @@ public class ProjectMergeRule extends RelOptRule {
     public static final ProjectMergeRule INSTANCE =
         new ProjectMergeRule(true, RelFactories.LOGICAL_BUILDER);
 
+    public static final ProjectMergeRule INSTANCE_WONT_IGNORE_REX_SUBQUERY =
+        new ProjectMergeRule(true, false, RelFactories.LOGICAL_BUILDER);
+
     //~ Instance fields --------------------------------------------------------
 
     /**
      * Whether to always merge projects.
      */
     private final boolean force;
+    private boolean ignoreProjectSubquery = true;
 
     //~ Constructors -----------------------------------------------------------
 
@@ -66,6 +70,16 @@ public class ProjectMergeRule extends RelOptRule {
             relBuilderFactory,
             "ProjectMergeRule" + (force ? ":force_mode" : ""));
         this.force = force;
+    }
+
+    public ProjectMergeRule(boolean force, boolean ignoreProjectSubquery, RelBuilderFactory relBuilderFactory) {
+        super(
+            operand(Project.class,
+                operand(Project.class, any())),
+            relBuilderFactory,
+            "ProjectMergeRule" + (force ? ":force_mode" : ""));
+        this.force = force;
+        this.ignoreProjectSubquery = ignoreProjectSubquery;
     }
 
     @Deprecated // to be removed before 2.0
@@ -128,6 +142,14 @@ public class ProjectMergeRule extends RelOptRule {
             }
         }
 
+        if (!ignoreProjectSubquery) {
+            for (RexNode rexNode : topProject.getProjects()) {
+                if (RexUtil.hasSubQuery(rexNode)) {
+                    return;
+                }
+            }
+        }
+
         Set<CorrelationId> corList = Sets.newHashSet();
         if (topProject.getVariablesSet() != null) {
             corList.addAll(topProject.getVariablesSet());
@@ -139,6 +161,7 @@ public class ProjectMergeRule extends RelOptRule {
         if (corList.size() > 1) {
             return;
         }
+
         // replace the two projects with a combined projection
         relBuilder.push(bottomProject.getInput());
         relBuilder.project(newProjects, topProject.getRowType().getFieldNames(), corList);

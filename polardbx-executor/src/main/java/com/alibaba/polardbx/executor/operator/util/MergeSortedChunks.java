@@ -27,8 +27,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.BiPredicate;
 
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.alibaba.polardbx.executor.mpp.operator.WorkProcessor.mergeSorted;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
 public class MergeSortedChunks {

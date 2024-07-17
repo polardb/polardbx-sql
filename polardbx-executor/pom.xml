@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.18-SNAPSHOT</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -14,12 +14,11 @@
 
     <properties>
         <dep.airlift.version>206</dep.airlift.version>
-        <hadoop.version>3.2.2</hadoop.version>
         <orc.version>1.6.9</orc.version>
         <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
-        <hadoop-aliyun.version>3.2.2</hadoop-aliyun.version>
         <jna.version>5.9.0</jna.version>
         <ojalgo.version>43.0</ojalgo.version>
+        <google.diffutils.version>4.12</google.diffutils.version>
     </properties>
     <dependencies>
         <dependency>
@@ -51,7 +50,6 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>polardbx-calcite</artifactId>
-            <version>${project.version}</version>
             <exclusions>
                 <exclusion>
                     <artifactId>commons-logging</artifactId>
@@ -81,8 +79,15 @@
         </dependency>
 
         <dependency>
+            <groupId>nl.jqno.equalsverifier</groupId>
+            <artifactId>equalsverifier</artifactId>
+            <version>${equalsverifier.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
+            <artifactId>mockito-inline</artifactId>
             <version>${mockito.verison}</version>
             <scope>test</scope>
         </dependency>
@@ -108,6 +113,15 @@
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>polardbx-optimizer</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+            <type>test-jar</type>
+        </dependency>
+
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>bootstrap</artifactId>
@@ -151,15 +165,20 @@
         </dependency>
 
         <dependency>
+            <groupId>io.github.java-diff-utils</groupId>
+            <artifactId>java-diff-utils</artifactId>
+            <version>${google.diffutils.version}</version>
+        </dependency>
+        <dependency>
             <groupId>javax.inject</groupId>
             <artifactId>javax.inject</artifactId>
             <version>${javax.inject.version}</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>io.airlift</groupId>-->
-<!--            <artifactId>joda-to-java-time-bridge</artifactId>-->
-<!--            <version>${joda-to-java-time-bridge.version}</version>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>io.airlift</groupId>-->
+        <!--            <artifactId>joda-to-java-time-bridge</artifactId>-->
+        <!--            <version>${joda-to-java-time-bridge.version}</version>-->
+        <!--        </dependency>-->
 
 
         <dependency>
@@ -290,6 +309,21 @@
             <artifactId>cron-utils</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-vector</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.dropwizard.metrics</groupId>
+            <artifactId>metrics-core</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -300,7 +334,9 @@
                     <execution> <!-- copy all templates/data in the same location to compile them at once -->
                         <id>copy-fmpp-resources</id>
                         <phase>initialize</phase>
-                        <goals><goal>copy-resources</goal></goals>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
                         <configuration>
                             <outputDirectory>${project.build.directory}/codegen</outputDirectory>
                             <resources>
@@ -321,7 +357,9 @@
                     <execution>
                         <id>generate-fmpp</id>
                         <phase>${codegen.phase}</phase>
-                        <goals><goal>generate</goal></goals>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
                         <configuration>
                             <config>${project.build.directory}/codegen/config.fmpp</config>
                             <output>${project.build.directory}/generated-sources</output>

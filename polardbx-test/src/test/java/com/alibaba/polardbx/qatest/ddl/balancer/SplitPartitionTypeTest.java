@@ -85,7 +85,7 @@ public class SplitPartitionTypeTest extends BalancerTestBase {
             ),
             new TestParameter(
                 "(id1 bigint, id2 bigint, k int)",
-                " partition by range columns(id1, id2) (partition p0 values less than (100000, 1000000) )",
+                " partition by range columns(id1, id2) (partition p0 values less than (500000, 1000000) )",
                 new DataIngestForThreeColumns()
             ),
 
@@ -143,10 +143,9 @@ public class SplitPartitionTypeTest extends BalancerTestBase {
 
         final String partitionBy = this.parameter.partitionBy;
         final String columns = this.parameter.columns;
-        final String autoSplit = " AUTO_SPLIT='ON'";
-        final String createTableSql = "create table " + currentTableName + columns + partitionBy + autoSplit;
+        final String createTableSql = "create table " + currentTableName + columns + partitionBy;
         final String analyzeTableSql = "analyze table " + currentTableName;
-        final int dataRows = 2000;
+        final int dataRows = 2000_00;
 
         // ingest bulk of data
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTableSql);

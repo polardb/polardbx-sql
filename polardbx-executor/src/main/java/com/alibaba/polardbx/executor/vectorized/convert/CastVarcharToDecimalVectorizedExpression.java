@@ -33,9 +33,11 @@ import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMOR
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
 @SuppressWarnings("unused")
-@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Varchar"}, argumentKinds = {Variable})
+@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Varchar"},
+    argumentKinds = {Variable})
 public class CastVarcharToDecimalVectorizedExpression extends AbstractVectorizedExpression {
-    public CastVarcharToDecimalVectorizedExpression(DataType<?> outputDataType, int outputIndex, VectorizedExpression[] children) {
+    public CastVarcharToDecimalVectorizedExpression(DataType<?> outputDataType, int outputIndex,
+                                                    VectorizedExpression[] children) {
         super(outputDataType, outputIndex, children);
     }
 
@@ -51,7 +53,7 @@ public class CastVarcharToDecimalVectorizedExpression extends AbstractVectorized
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        Slice output = ((DecimalBlock) outputVectorSlot).getMemorySegments();
+        Slice output = (outputVectorSlot.cast(DecimalBlock.class)).getMemorySegments();
 
         DecimalStructure tmpDecimal = new DecimalStructure();
         int precision = outputDataType.getPrecision();
@@ -98,5 +100,6 @@ public class CastVarcharToDecimalVectorizedExpression extends AbstractVectorized
                 DecimalConverter.rescale(tmpDecimal, toValue, precision, scale, isUnsigned);
             }
         }
+        outputVectorSlot.cast(DecimalBlock.class).setFullState();
     }
 }

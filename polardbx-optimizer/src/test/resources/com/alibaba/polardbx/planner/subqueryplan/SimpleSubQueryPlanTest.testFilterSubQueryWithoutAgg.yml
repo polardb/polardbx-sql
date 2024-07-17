@@ -23,7 +23,7 @@
 
   plan: |
     hashagg(count(id)="count()")
-      semihashjoin(condition="name = name", type="semi")
+      semihashjoin(condition="name = name", type="semi", build="inner")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
         gather(concurrent=true)
@@ -55,10 +55,9 @@
 
   plan: |
 
-    HashAgg(count(DISTINCT id)="COUNT(id)")
-      HashAgg(group="id")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`)))")
+    hashagg(count(distinct id)="sum(count(distinct id))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select count(distinct `id`) as `count(distinct id)` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where (`test_hash_tb`.`id` = `id`)))")
 
 - sql: |
     # 测试EXIST的简单相关子查询下推,
@@ -79,11 +78,10 @@
 
   plan: |
 
-    Project(count(DISTINCT id)="count(DISTINCT id)")
-      HashAgg(group="create_time", count(DISTINCT id)="COUNT(id)")
-        HashAgg(group="create_time,id")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `create_time`, `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`test_hash_tb`.`id` = `id`)))")
+    project(count(distinct id)="count(distinct id)")
+      hashagg(group="create_time", count(distinct id)="sum(count(distinct id))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `create_time`, count(distinct `id`) as `count(distinct id)` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where (`test_hash_tb`.`id` = `id`))) group by `create_time`")
 
 - sql: |
     # 测试EXIST的简单相关子查询下推,
@@ -105,14 +103,14 @@
 
   plan: |
 
-    Project(count(DISTINCT id)="count(DISTINCT id)")
-      HashAgg(group="create_time", count(DISTINCT id)="COUNT(id)")
-        Project(create_time="create_time", id="id")
-          SemiHashJoin(condition="name = name", type="semi")
-            Gather(concurrent=true)
-              LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
-            Gather(concurrent=true)
-              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `name` FROM `test_hash_tb2` AS `test_hash_tb2`")
+    project(count(distinct id)="count(distinct id)")
+      hashagg(group="create_time", count(distinct id)="count(id)")
+        project(create_time="create_time", id="id")
+          semihashjoin(condition="name = name", type="semi", build="inner")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `name` from `test_hash_tb2` as `test_hash_tb2`")
 
 - sql: |
     # 测试EXIST的简单相关子查询下推,

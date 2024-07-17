@@ -142,7 +142,7 @@ public class AlterTableGroupMergePartitionPreparedData extends AlterTableGroupBa
     }
 
     @Override
-    public void prepareInvisiblePartitionGroup() {
+    public void prepareInvisiblePartitionGroup(Boolean isSubPartition) {
         if (!mergeSubPartition && hasSubPartition) {
             List<PartitionGroupRecord> inVisiblePartitionGroups = new ArrayList<>();
             TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()

@@ -173,6 +173,16 @@ public enum VirtualViewType {
 
     GLOBAL_INDEXES,
 
+    /**
+     * 物理空间占用
+     */
+    COLUMNAR_INDEX_STATUS,
+
+    /**
+     * 列存索引有效数据统计
+     */
+    COLUMNAR_STATUS,
+
     METADATA_LOCK,
 
     STORAGE,
@@ -212,6 +222,7 @@ public enum VirtualViewType {
     // DRDS virtual table
     VIRTUAL_STATISTIC,
     STATISTICS,
+    STATISTICS_DATA,
     COLUMN_STATISTICS,
 
     /**
@@ -276,5 +287,10 @@ public enum VirtualViewType {
 
     PREPARED_TRX_BRANCH,
 
-    REPLICA_STAT
+    REPLICA_STAT,
+
+    REBALANCE_PROGRESS,
+
+    SHOW_HELP
+
 }

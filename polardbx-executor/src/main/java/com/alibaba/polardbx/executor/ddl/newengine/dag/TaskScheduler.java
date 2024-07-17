@@ -16,12 +16,9 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.dag;
 
-import com.alibaba.polardbx.executor.ddl.job.task.backfill.AlterTableGroupBackFillTask;
-import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
-import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
-import com.google.common.base.Joiner;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.google.common.base.Joiner;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;

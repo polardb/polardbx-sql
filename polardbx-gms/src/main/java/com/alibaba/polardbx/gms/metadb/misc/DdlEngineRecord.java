@@ -166,6 +166,10 @@ public class DdlEngineRecord implements SystemTableRecord {
         supportedCommands &= FLAG_SKIP_SUBJOB;
     }
 
+    public long getJobId() {
+        return jobId;
+    }
+
     @Override
     public boolean equals(final Object o) {
         if (this == o) {

@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryMana
 import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LocalBufferExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.PipelineFactory;
+import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
 import com.alibaba.polardbx.executor.mpp.util.MoreExecutors;
 import com.alibaba.polardbx.executor.operator.spill.MemorySpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -38,6 +39,7 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
 import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.List;
@@ -61,32 +63,38 @@ public class PlanUtils {
 
         int parallelism = ExecUtils.getParallelismForLocal(context);
 
+        StringBuilder builder = new StringBuilder();
+        builder.append("ExecutorMode: ").append(type).append(" ").append("\n");
+        outputLocalFragment(context, parallelism, relNode, builder);
+        return builder.toString();
+    }
+
+    private static void outputLocalFragment(ExecutionContext context, int parallelism, RelNode relNode,
+                                            StringBuilder builder) {
         boolean isSpill =
             MemorySetting.ENABLE_SPILL && context.getParamManager().getBoolean(ConnectionParams.ENABLE_SPILL);
         LocalExecutionPlanner planner =
             new LocalExecutionPlanner(context, null, parallelism, parallelism, 1,
                 context.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS), MoreExecutors.directExecutor(),
-                isSpill ? new MemorySpillerFactory() : null, null, null, type == ExecutorMode.MPP);
+                isSpill ? new MemorySpillerFactory() : null, null, null, false,
+                -1, -1, ImmutableMap.of(), new SplitManagerImpl());
         List<DataType> columns = CalciteUtils.getTypes(relNode.getRowType());
         OutputBufferMemoryManager localBufferManager = planner.createLocalMemoryManager();
         LocalBufferExecutorFactory factory = new LocalBufferExecutorFactory(localBufferManager, columns, 1);
         List<PipelineFactory> pipelineFactories = planner.plan(relNode, factory, localBufferManager,
             context.getTraceId());
 
-        StringBuilder builder = new StringBuilder();
-        builder.append("ExecutorMode: ").append(type).append(" ").append("\n");
         for (PipelineFactory pipelineFactory : pipelineFactories) {
             builder.append(formatPipelineFragment(context, pipelineFactory, context.getParams().getCurrentParameter()));
         }
-        return builder.toString();
     }
 
-    private static String formatPipelineFragment(ExecutionContext executionContext,
-                                                 PipelineFactory pipelineFactory,
-                                                 Map<Integer, ParameterContext> params) {
+    public static String formatPipelineFragment(ExecutionContext executionContext,
+                                                PipelineFactory pipelineFactory,
+                                                Map<Integer, ParameterContext> params) {
         PipelineFragment fragment = pipelineFactory.getFragment();
         StringBuilder builder = new StringBuilder();
-        builder.append(format("Fragment %s dependency: [%s] parallelism: %s", fragment.getPipelineId(),
+        builder.append(format("Pipeline %s dependency: [%s] parallelism: %s", fragment.getPipelineId(),
             Joiner.on(", ").join(fragment.getDependency()), fragment.getParallelism()));
         if (fragment.getPrefetchLists().size() > 0) {
             builder.append(format(" prefetch: %s \n ", fragment.getPrefetchLists()));
@@ -107,6 +115,14 @@ public class PlanUtils {
         for (PlanFragment fragment : plan.getKey().getAllFragments()) {
             builder.append(formatFragment(
                 executionContext, fragment, session.getClientContext().getParams().getCurrentParameter()));
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.SHOW_PIPELINE_INFO_UNDER_MPP)) {
+                int mppNodeSize = executionContext.getParamManager().getInt(ConnectionParams.MPP_NODE_SIZE);
+                if (mppNodeSize <= 0) {
+                    mppNodeSize = ExecUtils.getActiveNodeCount();
+                }
+                int parallelism = fragment.getPartitioning().getPartitionCount() / mppNodeSize;
+                outputLocalFragment(executionContext, Math.max(1, parallelism), fragment.getRootNode(), builder);
+            }
         }
         return builder.toString();
     }
@@ -117,13 +133,6 @@ public class PlanUtils {
         builder.append(format("Fragment %s \n", fragment.getId()));
 
         PartitioningScheme partitioningScheme = fragment.getPartitioningScheme();
-        builder.append(indentString(1))
-            .append(format("Shuffle Output layout: [%s]", Joiner.on(", ").join(
-                SerializeDataType.convertToDataType(fragment.getOutputTypes()).stream().map(
-                    c -> c.getStringSqlType()).toArray()
-            ))).append(format(" Output layout: [%s]\n", Joiner.on(", ").join(
-                fragment.getTypes().stream().map(c -> c.getStringSqlType()).toArray()
-            )));
         builder.append(indentString(1));
         builder.append(format("Output partitioning: %s [%s] ",
             partitioningScheme.getPartitionMode(), Joiner.on(", ").join(partitioningScheme.getPartChannels())));

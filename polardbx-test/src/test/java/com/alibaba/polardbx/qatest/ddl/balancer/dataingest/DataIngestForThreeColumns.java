@@ -44,19 +44,21 @@ public class DataIngestForThreeColumns extends DataIngest {
     @Override
     protected void prepareK(PreparedStatement ps, int k) throws SQLException {
         this.kSum += k;
+        this.kSum = this.kSum % MOD_DIVISOR;
         ps.setInt(3, k);
     }
 
     @Override
     public void generatePk(int dataRows, PreparedStatement ps, int i) throws SQLException {
         this.idSum += i;
+        this.idSum = this.idSum % MOD_DIVISOR;
         ps.setLong(1, i);
         ps.setLong(2, i);
     }
 
     @Override
     public void checkId() {
-        String checkIdSum = "select sum(id1)  from " + this.table;
+        String checkIdSum = String.format("select mod(sum(id1), %d)    from %s", MOD_DIVISOR, this.table);
         String result = JdbcUtil.executeQueryAndGetFirstStringResult(checkIdSum, connection);
         Assert.assertEquals(String.valueOf(this.idSum), result);
     }

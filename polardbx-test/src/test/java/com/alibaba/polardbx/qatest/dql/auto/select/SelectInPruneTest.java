@@ -477,7 +477,7 @@ public class SelectInPruneTest extends BaseTestCase {
     @Test
     public void testIfPruneWork() {
         int count = 0;
-        String rex = "[\\s\\S]*isDynamicParam[\\s\\S]*";
+        String rex = "[\\s\\S]*pruningInfo[\\s\\S]*";
         for (String[] row : dynamicInSqlTest) {
             System.out.println(count++);
             if (row[1].equalsIgnoreCase("true")) {

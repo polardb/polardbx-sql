@@ -16,14 +16,17 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -34,6 +37,8 @@ public class SortAggExec extends AbstractExecutor {
     private final Executor input;
 
     private final List<Aggregator> aggregators;
+
+    private AggCallsHolder aggCallsHolder;
 
     private final List<DataType> outputColumnMeta;
 
@@ -48,8 +53,6 @@ public class SortAggExec extends AbstractExecutor {
     private boolean finished;
     private ListenableFuture<?> blocked;
 
-    private boolean hasAddToResult = false;
-
     public SortAggExec(Executor input, int[] groups, List<Aggregator> aggregators, List<DataType> outputColumnMeta,
                        ExecutionContext context) {
         super(context);
@@ -62,9 +65,11 @@ public class SortAggExec extends AbstractExecutor {
 
     @Override
     void doOpen() {
+        if (groups.length == 0) {
+            // we need a initial one when no group by
+            aggCallsHolder = new AggCallsHolder(aggregators);
+        }
         input.open();
-        aggregators.forEach(t -> t.open(1));
-        aggregators.forEach(Aggregator::appendInitValue);
         createBlockBuilders();
     }
 
@@ -78,28 +83,24 @@ public class SortAggExec extends AbstractExecutor {
                 if (!finished) {
                     return null;
                 }
-                if (!hasAddToResult) {
-                    if (currentKey != null) {
-                        buildRow();
-                    }
-                    hasAddToResult = true;
+                if (aggCallsHolder != null) { // there is a group need to return
+                    buildRow(aggCallsHolder);
+                    aggCallsHolder = null;
                 }
                 break;
             }
 
-            // first row, new a group
-            if (currentKey == null) {
-                aggregators.forEach(t -> t.accumulate(0, currentInputChunk, row.getPosition()));
+            if (currentKey == null) { // first row, new a group
+                aggCallsHolder = createAggCallsHolder();
+                aggCallsHolder.aggregate(row);
                 currentKey = row;
-                // no group by or key equal in the same group
-            } else if (groups.length == 0 || checkKeyEqual(currentKey, row)) {
-                aggregators.forEach(t -> t.accumulate(0, currentInputChunk, row.getPosition()));
-                // key not equal, new a group
-            } else {
-                buildRow();
-                aggregators.forEach(t -> t.resetToInitValue(0));
-                aggregators.forEach(t -> t.accumulate(0, currentInputChunk, row.getPosition()));
-                hasAddToResult = false;
+            } else if (groups.length == 0 || checkKeyEqual(currentKey,
+                row)) { // no group by or key equal in the same group
+                aggCallsHolder.aggregate(row);
+            } else { // key not equal, new a group
+                buildRow(aggCallsHolder);
+                aggCallsHolder = createAggCallsHolder();
+                aggCallsHolder.aggregate(row);
                 currentKey = row;
             }
         }
@@ -111,7 +112,7 @@ public class SortAggExec extends AbstractExecutor {
         }
     }
 
-    private void buildRow() {
+    private void buildRow(AggCallsHolder aggCallsHolder) {
         int col = 0;
         Chunk.ChunkRow chunkRow = currentKey;
         for (int i = 0; i < groups.length; i++, col++) {
@@ -119,7 +120,8 @@ public class SortAggExec extends AbstractExecutor {
         }
 
         for (int i = 0; i < aggregators.size(); i++, col++) {
-            aggregators.get(i).writeResultTo(0, blockBuilders[col]);
+            Object result = aggCallsHolder.getValue(i);
+            blockBuilders[col].writeObject(DataTypeUtils.convert(outputColumnMeta.get(col), result));
         }
     }
 
@@ -155,7 +157,33 @@ public class SortAggExec extends AbstractExecutor {
     @Override
     void doClose() {
         input.close();
-        hasAddToResult = true;
+        aggCallsHolder = null;
+    }
+
+    private AggCallsHolder createAggCallsHolder() {
+        return new AggCallsHolder(aggregators);
+    }
+
+    private static class AggCallsHolder {
+
+        private final List<Aggregator> aggCalls;
+
+        AggCallsHolder(List<Aggregator> aggCalls) {
+            this.aggCalls = new ArrayList<>(aggCalls.size());
+            for (Aggregator aggCall : aggCalls) {
+                this.aggCalls.add(aggCall.getNew());
+            }
+        }
+
+        void aggregate(Row row) {
+            for (Aggregator aggCall : aggCalls) {
+                aggCall.aggregate(row);
+            }
+        }
+
+        Object getValue(int index) {
+            return aggCalls.get(index).value();
+        }
     }
 
     @Override

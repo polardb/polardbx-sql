@@ -18,7 +18,7 @@
   <parent>
     <groupId>com.alibaba.polardbx</groupId>
     <artifactId>polardbx</artifactId>
-    <version>5.4.18-SNAPSHOT</version>
+    <version>${revision}</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
 
@@ -37,9 +37,7 @@
     <test.tmp.dir>${project.build.directory}/testing-tmp</test.tmp.dir>
     <example.dir>${project.basedir}/../../examples</example.dir>
 
-    <min.hadoop.version>2.2.0</min.hadoop.version>
     <hadoop.version>2.7.3</hadoop.version>
-    <storage-api.version>2.7.1</storage-api.version>
     <zookeeper.version>3.4.6</zookeeper.version>
     <maven.version>3.6.3</maven.version>
     <protoc.artifact>com.google.protobuf:protoc:3.17.3</protoc.artifact>
@@ -307,6 +305,20 @@
       <version>1.0</version>
       <scope>test</scope>
     </dependency>
+
+    <dependency>
+      <groupId>org.apache.arrow</groupId>
+      <artifactId>arrow-vector</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.arrow</groupId>
+      <artifactId>arrow-memory-netty</artifactId>
+    </dependency>
+      <dependency>
+          <groupId>org.roaringbitmap</groupId>
+          <artifactId>RoaringBitmap</artifactId>
+      </dependency>
+
   </dependencies>
 
   <build>

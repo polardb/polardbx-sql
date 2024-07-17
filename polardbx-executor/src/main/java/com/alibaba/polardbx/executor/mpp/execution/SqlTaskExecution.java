@@ -16,15 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBuffer;
@@ -35,8 +29,18 @@ import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
 import com.alibaba.polardbx.executor.mpp.operator.PipelineDepTree;
 import com.alibaba.polardbx.executor.mpp.operator.factory.PipelineFactory;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
+import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
+import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.SetThreadName;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -143,7 +147,6 @@ public class SqlTaskExecution {
         this.notificationExecutor = requireNonNull(notificationExecutor, "notificationExecutor is null");
         this.bloomFilterExpression = bloomFilterExpressionMap;
 
-        RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
         List<PipelineFactory> pipelineFactories = planner.plan(
             fragment, outputBuffer, session);
         taskContext.setPipelineDepTree(new PipelineDepTree(pipelineFactories));
@@ -354,6 +357,7 @@ public class SqlTaskExecution {
         }
         if (newSplits.size() > 0) {
 
+            // bka join
             if (source.isExpand()) {
                 int start = ThreadLocalRandom.current().nextInt(updateTaskSources.size());
                 List<ScheduledSplit> shuffleLists = zigzagSplitsByMysqlInst(new ArrayList<>(newSplits));
@@ -367,13 +371,39 @@ public class SqlTaskExecution {
                     }
                 }
             } else {
-                int start = ThreadLocalRandom.current().nextInt(updateTaskSources.size());
-                //排序的目的是为了保证同一个实例的splits被打散
-                List<ScheduledSplit> shuffleLists = zigzagSplitsByMysqlInst(new ArrayList<>(newSplits));
-                for (ScheduledSplit scheduledSplit : shuffleLists) {
-                    updateTaskSources.get(start++).addSplit(scheduledSplit);
-                    if (start >= updateTaskSources.size()) {
-                        start = 0;
+                boolean containsJdbcSplit = containsJdbcSplit(newSplits);
+                if (containsJdbcSplit) {
+                    // normal case, such as innodb or innodb with oss(not columnar)
+                    int start = ThreadLocalRandom.current().nextInt(updateTaskSources.size());
+                    //排序的目的是为了保证同一个实例的splits被打散
+                    List<ScheduledSplit> shuffleLists = zigzagSplitsByMysqlInst(new ArrayList<>(newSplits));
+                    for (ScheduledSplit scheduledSplit : shuffleLists) {
+                        updateTaskSources.get(start++).addSplit(scheduledSplit);
+                        if (start >= updateTaskSources.size()) {
+                            start = 0;
+                        }
+                    }
+                } else {
+                    int start = ThreadLocalRandom.current().nextInt(updateTaskSources.size());
+                    Map<Integer, Integer> partCounter = new HashMap<>();
+                    for (ScheduledSplit scheduledSplit : newSplits) {
+                        if (scheduledSplit.getSplit().getConnectorSplit() instanceof OssSplit
+                            && ((OssSplit) scheduledSplit.getSplit().getConnectorSplit()).isLocalPairWise()
+                            && !taskContext.getContext().getParamManager()
+                            .getBoolean(ConnectionParams.LOCAL_PAIRWISE_PROBE_SEPARATE)) {
+                            OssSplit ossSplit = (OssSplit) scheduledSplit.getSplit().getConnectorSplit();
+                            int partIndex = ossSplit.getPartIndex();
+                            int count = partCounter.getOrDefault(partIndex, 0);
+                            partCounter.put(partIndex, count + 1);
+                            int selectSeq = ExecUtils.assignPartitionToExecutor(count,
+                                ossSplit.getNodePartCount(), ossSplit.getPartIndex(), updateTaskSources.size());
+                            updateTaskSources.get(selectSeq).addSplit(scheduledSplit);
+                        } else {
+                            updateTaskSources.get(start++).addSplit(scheduledSplit);
+                            if (start >= updateTaskSources.size()) {
+                                start = 0;
+                            }
+                        }
                     }
                 }
             }
@@ -382,6 +412,15 @@ public class SqlTaskExecution {
         for (int i = 0; i < updateTaskSources.size(); i++) {
             matchDrivers.get(i).updateSource(updateTaskSources.get(i));
         }
+    }
+
+    private boolean containsJdbcSplit(Set<ScheduledSplit> newSplits) {
+        for (ScheduledSplit scheduledSplit : newSplits) {
+            if (scheduledSplit.getSplit().getConnectorSplit() instanceof JdbcSplit) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<ScheduledSplit> zigzagSplitsByMysqlInst(List<ScheduledSplit> splits) {

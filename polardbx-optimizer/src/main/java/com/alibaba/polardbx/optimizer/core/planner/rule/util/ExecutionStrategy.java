@@ -32,10 +32,12 @@ import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.util.Pair;
 
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -133,6 +135,17 @@ public enum ExecutionStrategy {
         final boolean ukContainsPartitionKey =
             GlobalIndexMeta.isEveryUkContainsAllPartitionKey(targetTable, schema, true, ec);
 
+        List<String> autoIncColumns = primaryTableMeta.getAutoIncrementColumns();
+        Collection<ColumnMeta> pk = primaryTableMeta.getPrimaryKey();
+        boolean skipCheckingPk = false;
+        if (pk.size() == 1 && autoIncColumns.size() == 1) {
+            skipCheckingPk = ec.getParamManager().getBoolean(ConnectionParams.DML_SKIP_DUPLICATE_CHECK_FOR_PK)
+                && StringUtils.equalsIgnoreCase(pk.iterator().next().getName(), autoIncColumns.get(0));
+        }
+        final boolean ukContainsAllSkAndGsiContainsAllUk = skipCheckingPk ?
+            GlobalIndexMeta.isEveryUkContainsAllPartitionKey(targetTable, schema, false, ec) :
+            ukContainsPartitionKey;
+
         // Statement detail
         final boolean canPushDuplicateCheck =
             withoutPkAndUk || (ukContainsPartitionKey && allGsiPublished
@@ -173,10 +186,14 @@ public enum ExecutionStrategy {
 
             canPush = (pushDuplicateCheck || canPushDuplicateCheck) && !modifyPartitionKey && !updateGsi
                 && !containUnpushableFunction;
+            canPush = canPush && (!foreignKeyChecks || !CheckModifyLimitation.checkModifyFkReferenced(insert,
+                context.getExecutionContext()));
         } else if (insert.isReplace()) {
             // For REPLACE, do DELETE when DELETE_ONLY, do REPLACE when WRITE_ONLY
             multiWriteForReplication = replicateCanWrite;
             canPush = pushDuplicateCheck || canPushDuplicateCheck;
+            canPush = canPush && (!foreignKeyChecks || !CheckModifyLimitation.checkModifyFkReferenced(insert,
+                context.getExecutionContext()));
         } else if (insert.isInsertIgnore()) {
             // For INSERT IGNORE, DO NOT push down it even for DELETE_ONLY, because the table meta could change when reload
             multiWriteForReplication = replicateCanWrite;
@@ -198,6 +215,7 @@ public enum ExecutionStrategy {
         result.doMultiWrite = doMultiWrite;
         result.pushablePrimaryKeyCheck = pushablePrimaryKeyCheck;
         result.pushableForeignConstraintCheck = pushableFkCheck;
+        result.ukContainsAllSkAndGsiContainsAllUk = ukContainsAllSkAndGsiContainsAllUk;
 
         // Pushdown dml on single/partition table without replica for performance
         if (!doMultiWrite && canPush) {

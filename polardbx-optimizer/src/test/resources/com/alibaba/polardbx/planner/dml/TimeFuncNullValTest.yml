@@ -2,44 +2,44 @@
     select * from week_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.week_tbl_0", sql="select `id`, `k`, `c` from `week_tbl` as `week_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[week_tbl_0]", sql="select `week_tbl`.`id`, `week_tbl`.`k`, `week_tbl`.`c` from ? as `week_tbl` where ((`week_tbl`.`k` = 2) and (`week_tbl`.`c` is null))")
 
 - sql: |
 
     select * from mm_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.mm_tbl_00", sql="select `id`, `k`, `c` from `mm_tbl` as `mm_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[mm_tbl_00]", sql="select `mm_tbl`.`id`, `mm_tbl`.`k`, `mm_tbl`.`c` from ? as `mm_tbl` where ((`mm_tbl`.`k` = 2) and (`mm_tbl`.`c` is null))")
 
 - sql: |
     select * from dd_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.dd_tbl_00", sql="select `id`, `k`, `c` from `dd_tbl` as `dd_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[dd_tbl_00]", sql="select `dd_tbl`.`id`, `dd_tbl`.`k`, `dd_tbl`.`c` from ? as `dd_tbl` where ((`dd_tbl`.`k` = 2) and (`dd_tbl`.`c` is null))")
 
 - sql: |
     select * from mmdd_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.mmdd_tbl_000", sql="select `id`, `k`, `c` from `mmdd_tbl` as `mmdd_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[mmdd_tbl_000]", sql="select `mmdd_tbl`.`id`, `mmdd_tbl`.`k`, `mmdd_tbl`.`c` from ? as `mmdd_tbl` where ((`mmdd_tbl`.`k` = 2) and (`mmdd_tbl`.`c` is null))")
 
 - sql: |
     select * from yyyydd_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.yyyydd_tbl_0", sql="select `id`, `k`, `c` from `yyyydd_tbl` as `yyyydd_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[yyyydd_tbl_0]", sql="select `yyyydd_tbl`.`id`, `yyyydd_tbl`.`k`, `yyyydd_tbl`.`c` from ? as `yyyydd_tbl` where ((`yyyydd_tbl`.`k` = 2) and (`yyyydd_tbl`.`c` is null))")
 
 - sql: |
    select * from yyyyweek_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.yyyyweek_tbl_0", sql="select `id`, `k`, `c` from `yyyyweek_tbl` as `yyyyweek_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[yyyyweek_tbl_0]", sql="select `yyyyweek_tbl`.`id`, `yyyyweek_tbl`.`k`, `yyyyweek_tbl`.`c` from ? as `yyyyweek_tbl` where ((`yyyyweek_tbl`.`k` = 2) and (`yyyyweek_tbl`.`c` is null))")
 
 - sql: |
    select * from yyyymm_tbl where k=2 and c is null;
 
   plan: |
-    logicalview(tables="optest_0002.yyyymm_tbl_0", sql="select `id`, `k`, `c` from `yyyymm_tbl` as `yyyymm_tbl` where ((`c` is null) and (`k` = 2))")
+    phytableoperation(tables="optest_0002.[yyyymm_tbl_0]", sql="select `yyyymm_tbl`.`id`, `yyyymm_tbl`.`k`, `yyyymm_tbl`.`c` from ? as `yyyymm_tbl` where ((`yyyymm_tbl`.`k` = 2) and (`yyyymm_tbl`.`c` is null))")
   
 
 

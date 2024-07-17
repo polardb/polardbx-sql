@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptTable;

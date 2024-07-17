@@ -74,7 +74,7 @@ public final class ShowVariables {
         // write rows
         byte packetId = eof.packetId;
         for (Map.Entry<String, String> e : variables.entrySet()) {
-            RowDataPacket row = getRow(e.getKey(), e.getValue(), c.getCharset());
+            RowDataPacket row = getRow(e.getKey(), e.getValue(), c.getResultSetCharset());
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

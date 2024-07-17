@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.cursor.impl;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
@@ -39,7 +40,7 @@ public class GatherCursor extends AbstractCursor {
     private int currentIndex = 0;
 
     public GatherCursor(List<Cursor> cursors, ExecutionContext executionContext) {
-        super(false);
+        super(ExecUtils.isOperatorMetricEnabled(executionContext));
         this.executionContext = executionContext;
         this.cursors = cursors;
         this.returnColumns = cursors.get(0).getReturnColumns();
@@ -82,5 +83,9 @@ public class GatherCursor extends AbstractCursor {
         currentCursor.close(exceptionsWhenCloseSubCursor);
         currentIndex++;
         currentCursor = null;
+    }
+
+    public List<Cursor> getCursors() {
+        return cursors;
     }
 }

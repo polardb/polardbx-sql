@@ -16,14 +16,13 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer.model;
 
+import lombok.Data;
+
 import java.io.Serializable;
 import java.util.List;
 
-import lombok.Data;
-
 /**
  * @author ximing.yd
- * @date 2021/12/20 上午11:13
  */
 @Data
 public class VisualLayer implements Serializable {
@@ -43,6 +42,5 @@ public class VisualLayer implements Serializable {
     private Integer ratio;
 
     private VisualLayer next;
-
 
 }

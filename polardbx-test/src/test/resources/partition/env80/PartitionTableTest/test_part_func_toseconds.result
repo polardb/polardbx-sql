@@ -17,7 +17,7 @@ Table,Create Table
 tbl,CREATE TABLE `tbl` (
 	`a` datetime NOT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE(TO_SECONDS(`a`))
 (PARTITION p0 VALUES LESS THAN (62798371200) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (63113904001) ENGINE = InnoDB,
@@ -67,7 +67,7 @@ FROM tbl
 WHERE a = '2000-01-01 00:00:00'
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p1]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="2000-01-01 00:00:00")
 EXPLAIN SELECT *
 FROM tbl
 WHERE (a < '2019-01-02 00:00:00'
@@ -77,4 +77,3 @@ ORDER BY a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
   LogicalView(tables="tbl[p0,p2,p3]", shardCount=3, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (((`a` < ?) AND (`a` >= ?)) OR (`a` BETWEEN ? AND ?)) ORDER BY `a`")
-

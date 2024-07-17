@@ -19,24 +19,31 @@ public class SetServerIdTest extends DirectConnectionBaseTestCase {
 
     @Test
     public void testSetServerId() throws SQLException, InterruptedException {
-        long originServerId = getServerId(false, tddlConnection);
-        long originGmsServerId = getServerId(false, getMetaConnection());
-        long newServerId = RandomUtils.getLongBetween(originServerId + 1, originServerId + 1000);
 
-        JdbcUtil.executeQueryFaied(tddlConnection, "set server_id = 5678",
-            "Variable 'server_id' is a GLOBAL variable and should be set with SET GLOBAL");
-        JdbcUtil.executeQueryFaied(tddlConnection, "set global server_id = abc",
-            "Incorrect argument type to variable 'server_id'");
-        JdbcUtil.executeSuccess(tddlConnection, "set global server_id = " + newServerId);
+        try {
+            JdbcUtil.executeQuery("set global ENABLE_SET_GLOBAL_SERVER_ID=true", tddlConnection);
 
-        Assert.assertEquals(newServerId, getServerId(false, tddlConnection));
-        Assert.assertEquals(newServerId, getServerId(true, tddlConnection));
-        Assert.assertEquals(newServerId, getServerIdWithoutLike(false, tddlConnection));
-        Assert.assertEquals(newServerId, getServerIdWithoutLike(true, tddlConnection));
-        Assert.assertEquals(newServerId, selectServerIdGlobal(tddlConnection));
-        Assert.assertEquals(originGmsServerId, getServerId(false, getMetaConnection()));
-        Assert.assertEquals(originGmsServerId, getServerId(true, getMetaConnection()));
-        Assert.assertNotEquals(newServerId, originGmsServerId);
+            long originServerId = getServerId(false, tddlConnection);
+            long originGmsServerId = getServerId(false, getMetaConnection());
+            long newServerId = RandomUtils.getLongBetween(originServerId + 1, originServerId + 1000);
+
+            JdbcUtil.executeQueryFaied(tddlConnection, "set server_id = 5678",
+                "Variable 'server_id' is a GLOBAL variable and should be set with SET GLOBAL");
+            JdbcUtil.executeQueryFaied(tddlConnection, "set global server_id = abc",
+                "Incorrect argument type to variable 'server_id'");
+            JdbcUtil.executeSuccess(tddlConnection, "set global server_id = " + newServerId);
+
+            Assert.assertEquals(newServerId, getServerId(false, tddlConnection));
+            Assert.assertEquals(newServerId, getServerId(true, tddlConnection));
+            Assert.assertEquals(newServerId, getServerIdWithoutLike(false, tddlConnection));
+            Assert.assertEquals(newServerId, getServerIdWithoutLike(true, tddlConnection));
+            Assert.assertEquals(newServerId, selectServerIdGlobal(tddlConnection));
+            Assert.assertEquals(originGmsServerId, getServerId(false, getMetaConnection()));
+            Assert.assertEquals(originGmsServerId, getServerId(true, getMetaConnection()));
+            Assert.assertNotEquals(newServerId, originGmsServerId);
+        } finally {
+            JdbcUtil.executeQuery("set global ENABLE_SET_GLOBAL_SERVER_ID=false", tddlConnection);
+        }
     }
 
     private long getServerId(boolean withGlobal, Connection connection) throws SQLException {

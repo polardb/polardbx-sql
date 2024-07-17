@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.operator.util.bloomfilter;
 
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.operator.util.minmaxfilter.MinMaxFilter;
 import com.google.common.util.concurrent.SettableFuture;
 
@@ -64,7 +64,8 @@ public class BloomFilterConsume {
             if (filterInfo.getData() != null) {
                 BloomFilter bloomFilter = filterInfo.toBloomFilter();
                 this.bloomFilter = bloomFilter;
-                this.minMaxFilterList = filterInfo.getMinMaxFilterInfoList().stream().map(x -> MinMaxFilter.from(x)).collect(Collectors.toList());
+                this.minMaxFilterList = filterInfo.getMinMaxFilterInfoList().stream().map(x -> MinMaxFilter.from(x))
+                    .collect(Collectors.toList());
                 this.future.set(filterInfo);
             } else {
                 this.future.set(null);

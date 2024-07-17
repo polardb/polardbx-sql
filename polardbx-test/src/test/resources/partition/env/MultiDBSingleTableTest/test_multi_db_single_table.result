@@ -67,7 +67,7 @@ HashJoin(condition="a3 = a3", type="inner")
   LogicalView(tables="DRDS_SINGLE_T5_000000_GROUP.single_t5_s1", sql="SELECT `a3`, `b3` FROM `single_t5_s1` AS `single_t5_s1`")
 explain LOGIC select * from single_t1.single_t1_s1 as t1 inner join drds_single_t5.single_t5_s1 t2 on t1.a1=t2.a3;
 Logical ExecutionPlan
-HashJoin(condition="a3 = a1", type="inner")
+HashJoin(condition="a1 = a3", type="inner")
   LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1`, `b1` FROM `single_t1_s1` AS `single_t1_s1`")
   LogicalView(tables="DRDS_SINGLE_T5_000000_GROUP.single_t5_s1", sql="SELECT `a3`, `b3` FROM `single_t5_s1` AS `single_t5_s1`")
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s2 t2 on t1.a1=t2.x2;
@@ -125,7 +125,7 @@ LogicalView(tables=[single_t2.single_t2_s1, single_t3.single_t3_s1], sql="")
 use single_t3;
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t2.single_t2_s1 as t1 inner join single_t3.single_t3_s2 t2 on t1.a2=t2.a3;
 Logical ExecutionPlan
-HashJoin(condition="a3 = a2", type="inner")
+HashJoin(condition="a2 = a3", type="inner")
   LogicalView(tables="single_t2_s1[p1]", sql="SELECT `a2`, `b2` FROM `single_t2_s1` AS `single_t2_s1`")
   Gather(concurrent=true)
     LogicalView(tables="single_t3_s2", shardCount=0, sql="SELECT `a3`, `b3` FROM `single_t3_s2` AS `single_t3_s2`")

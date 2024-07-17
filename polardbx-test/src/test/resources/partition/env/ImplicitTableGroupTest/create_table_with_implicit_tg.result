@@ -1,0 +1,15 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $#failed with state PAUSED#$
+/*+TDDL:cmd_extra(SIM_CDC_FAILED=true)*/create table t_i1(a int, b int, c int) partition by key(a) partitions 4 with tablegroup = 'tg_i1' implicit;
+failed with state PAUSED
+create table t_i1(a int, b int, c int) partition by key(a) partitions 4 with tablegroup = 'tg_i1' implicit;
+show create table t_i1;
+Table,Create Table
+t_i1,CREATE TABLE `t_i1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4

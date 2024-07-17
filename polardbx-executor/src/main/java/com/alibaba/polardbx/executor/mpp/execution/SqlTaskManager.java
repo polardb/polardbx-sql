@@ -16,17 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.base.Preconditions;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.cache.RemovalListener;
-import com.google.common.cache.RemovalNotification;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
@@ -36,7 +29,14 @@ import com.alibaba.polardbx.executor.mpp.operator.ExchangeClientSupplier;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.web.ForWorkerInfo;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.google.common.base.Preconditions;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.http.client.HttpClient;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.DataSize;

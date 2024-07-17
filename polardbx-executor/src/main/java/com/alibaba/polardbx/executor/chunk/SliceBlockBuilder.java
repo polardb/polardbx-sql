@@ -17,7 +17,10 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
+import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMapping;
+import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMappingImpl;
+import com.alibaba.polardbx.executor.operator.scan.impl.LocalBlockDictionary;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
@@ -28,15 +31,21 @@ import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 
+import java.util.List;
+
 import static com.alibaba.polardbx.common.charset.MySQLUnicodeUtils.LATIN1_TO_UTF8_BYTES;
 
 public class SliceBlockBuilder extends AbstractBlockBuilder {
     private static final int EXPECTED_STRING_SIZE_IN_BYTES = 64;
-    SliceOutput sliceOutput;
-    ExecutionContext context;
     final IntArrayList offsets; // records where the bytes end at
     final SliceType dataType;
     final boolean compatible;
+    final IntArrayList values;
+    SliceOutput sliceOutput;
+    ExecutionContext context;
+    // for dictionary
+    BlockDictionary blockDictionary;
+    DictionaryMapping mapping = null;
 
     public SliceBlockBuilder(DataType dataType, int initialCapacity, ExecutionContext context, boolean compatible) {
         super(initialCapacity);
@@ -46,6 +55,7 @@ public class SliceBlockBuilder extends AbstractBlockBuilder {
         this.context = context;
         this.sliceOutput = new DynamicSliceOutput(EXPECTED_STRING_SIZE_IN_BYTES * initialCapacity);
         this.compatible = compatible;
+        this.values = new IntArrayList(4);
     }
 
     @Override
@@ -55,18 +65,68 @@ public class SliceBlockBuilder extends AbstractBlockBuilder {
         sliceOutput.ensureCapacity(capacity * EXPECTED_STRING_SIZE_IN_BYTES);
     }
 
+    public void setDictionary(BlockDictionary dictionary) {
+        if (dictionary != null && this.blockDictionary != null) {
+            boolean notSame = dictionary.size() != this.blockDictionary.size();
+            notSame &= dictionary.hashCode() != this.blockDictionary.hashCode();
+            if (notSame) {
+                throw new IllegalArgumentException("Setting a new different dictionary in SliceBlockBuilder");
+            }
+        }
+        if (this.blockDictionary == null && !valueIsNull.isEmpty()) {
+            // lazy append nulls in dictIds
+            for (int i = 0; i < valueIsNull.size(); i++) {
+                if (valueIsNull.getBoolean(i)) {
+                    values.add(-1);
+                } else {
+                    throw new UnsupportedOperationException(
+                        "Do not support setting a new dictionary to builder with values");
+                }
+            }
+        }
+        this.blockDictionary = dictionary;
+    }
+
+    public boolean isEmpty() {
+        return valueIsNull.isEmpty();
+    }
+
     @Override
     public Block build() {
-        // prevent from memory leak
-        Slice slice = sliceOutput.slice();
-        Slice data = Slices.copyOf(slice);
+        if (blockDictionary == null) {
+            Slice data = sliceOutput.slice();
 
-        return new SliceBlock(dataType,
-            0,
-            getPositionCount(),
-            mayHaveNull() ? valueIsNull.elements() : null,
-            offsets.elements(),
-            data, compatible);
+            return new SliceBlock(dataType,
+                0,
+                getPositionCount(),
+                mayHaveNull() ? valueIsNull.elements() : null,
+                offsets.elements(),
+                data, compatible);
+        } else {
+            if (mapping == null) {
+                return new SliceBlock(dataType, 0, getPositionCount(),
+                    mayHaveNull() ? valueIsNull.elements() : null,
+                    blockDictionary, values.elements(), compatible
+                );
+            } else {
+                List<Slice> mergedDict = ((DictionaryMappingImpl) mapping).getMergedDict();
+                BlockDictionary blockDictionary1 = new LocalBlockDictionary(mergedDict.toArray(new Slice[0]));
+
+                return new SliceBlock(dataType, 0, getPositionCount(),
+                    mayHaveNull() ? valueIsNull.elements() : null,
+                    blockDictionary1, values.elements(), compatible
+                );
+            }
+
+        }
+    }
+
+    public SliceOutput getSliceOutput() {
+        return sliceOutput;
+    }
+
+    public IntArrayList getOffsets() {
+        return offsets;
     }
 
     @Override
@@ -132,6 +192,9 @@ public class SliceBlockBuilder extends AbstractBlockBuilder {
     public void appendNull() {
         appendNullInternal();
         offsets.add(sliceOutput.size());
+        if (blockDictionary != null) {
+            values.add(-1);
+        }
     }
 
     @Override
@@ -144,6 +207,35 @@ public class SliceBlockBuilder extends AbstractBlockBuilder {
         return isNull(position) ? null : copySlice(position);
     }
 
+    public int[] mergeDictionary(BlockDictionary newDict) {
+        if (this.mapping == null) {
+            this.mapping = new DictionaryMappingImpl();
+            this.mapping.merge(blockDictionary);
+        }
+        return this.mapping.merge(newDict);
+    }
+
+    public int[] mergeValue(Slice newValue) {
+        if (this.mapping == null) {
+            this.mapping = new DictionaryMappingImpl();
+            this.mapping.merge(blockDictionary);
+        }
+        BlockDictionary tmpDict = new LocalBlockDictionary(new Slice[] {newValue});
+        return this.mapping.merge(tmpDict);
+    }
+
+    /**
+     * bad performance
+     */
+    public int[] mergeValues(Slice[] newValues) {
+        if (this.mapping == null) {
+            this.mapping = new DictionaryMappingImpl();
+            this.mapping.merge(blockDictionary);
+        }
+        BlockDictionary tmpDict = new LocalBlockDictionary(newValues);
+        return this.mapping.merge(tmpDict);
+    }
+
     private Slice copySlice(int position) {
         checkReadablePosition(position);
 
@@ -153,11 +245,11 @@ public class SliceBlockBuilder extends AbstractBlockBuilder {
         return Slices.copyOf(slice, beginOffset, endOffset - beginOffset);
     }
 
-    int beginOffset(int position) {
+    public int beginOffset(int position) {
         return position > 0 ? offsets.getInt(position - 1) : 0;
     }
 
-    int endOffset(int position) {
+    public int endOffset(int position) {
         return offsets.getInt(position);
     }
 

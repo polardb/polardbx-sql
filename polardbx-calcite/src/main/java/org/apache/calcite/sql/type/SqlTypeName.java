@@ -17,6 +17,7 @@
 package org.apache.calcite.sql.type;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -72,8 +73,6 @@ public enum SqlTypeName {
     REAL(PrecScale.NO_NO, false, Types.REAL, SqlTypeFamily.NUMERIC),
     DOUBLE(PrecScale.NO_NO, false, Types.DOUBLE, SqlTypeFamily.NUMERIC),
 
-    // TODO: remove UNSIGNED/SIGNED
-    // add by xiaoying
     UNSIGNED(PrecScale.NO_NO, false, Types.BIGINT, SqlTypeFamily.NUMERIC),
     SIGNED(PrecScale.NO_NO, false, Types.BIGINT, SqlTypeFamily.NUMERIC),
 
@@ -169,7 +168,16 @@ public enum SqlTypeName {
     public static final int MAX_TIME_FRACTIONAL_SECOND_SCALE = 6;
 
     // Cached map of enum values
-    private static final Map<String, SqlTypeName> VALUES_MAP = Util.enumConstants(SqlTypeName.class);
+    private static final Map<String, SqlTypeName> VALUES_MAP = ImmutableMap.<String, SqlTypeName>builder()
+        .putAll(Util.enumConstants(SqlTypeName.class))
+        // For Alias in MySQL https://dev.mysql.com/doc/refman/5.7/en/cast-functions.html#function_cast
+        // SIGNED [INTEGER]
+        // Produces a signed BIGINT value.
+        // UNSIGNED [INTEGER]
+        // Produces an unsigned BIGINT value.
+        .put("SIGNED INTEGER", SIGNED)
+        .put("UNSIGNED INTEGER", UNSIGNED)
+        .build();
 
     // categorizations used by SqlTypeFamily definitions
 
@@ -396,15 +404,6 @@ public enum SqlTypeName {
      * @return Type name, or null if not found
      */
     public static SqlTypeName get(String name) {
-        if (false) {
-            // The following code works OK, but the spurious exceptions are
-            // annoying.
-            try {
-                return SqlTypeName.valueOf(name);
-            } catch (IllegalArgumentException e) {
-                return null;
-            }
-        }
         return VALUES_MAP.get(name);
     }
 
@@ -477,7 +476,7 @@ public enum SqlTypeName {
     public int getDefaultScale() {
         switch (this) {
         case DECIMAL:
-            return 0;
+            return DecimalTypeBase.DEFAULT_SCALE;
         case INTERVAL_YEAR:
         case INTERVAL_YEAR_MONTH:
         case INTERVAL_MONTH:

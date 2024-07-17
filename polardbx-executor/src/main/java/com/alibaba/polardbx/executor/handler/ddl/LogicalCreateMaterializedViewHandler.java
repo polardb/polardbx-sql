@@ -16,12 +16,13 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateViewStatement;
 import com.alibaba.polardbx.executor.ExecutorHelper;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.CreateViewSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
@@ -44,7 +46,6 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.Blob;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
@@ -69,12 +70,14 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.TDDLSqlSelect;
 
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 import static com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx.BLOCK_SIZE;
 
 public class LogicalCreateMaterializedViewHandler extends LogicalCreateTableHandler {
@@ -154,9 +157,9 @@ public class LogicalCreateMaterializedViewHandler extends LogicalCreateTableHand
             } else {
                 logicalCreateeRelNode.prepareData(executionContext);
                 if (!isNewPartDb) {
-                    ddlJob = buildCreateTableJob(logicalCreateeRelNode, executionContext);
+                    ddlJob = buildCreateTableJob(logicalCreateeRelNode, executionContext, null);
                 } else {
-                    ddlJob = buildCreatePartitionTableJob(logicalCreateeRelNode, executionContext);
+                    ddlJob = buildCreatePartitionTableJob(logicalCreateeRelNode, executionContext, null);
                 }
             }
 
@@ -171,6 +174,9 @@ public class LogicalCreateMaterializedViewHandler extends LogicalCreateTableHand
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
+
+        markDdlForCdc(executionContext, schemaName, tableName, executionContext.getOriginSql());
+
         if (!logicalCreateTable.bRefresh) {
             syncView(logicalCreateTable, executionContext, columnNameList);
         }
@@ -369,6 +375,20 @@ public class LogicalCreateMaterializedViewHandler extends LogicalCreateTableHand
                     + "write");
 
         }
-        SyncManagerHelper.sync(new CreateViewSyncAction(schemaName, viewName), schemaName);
+        SyncManagerHelper.sync(new CreateViewSyncAction(schemaName, viewName), schemaName, SyncScope.CURRENT_ONLY);
+    }
+
+    //TODO cdc@shengyu
+    private void markDdlForCdc(ExecutionContext executionContext, String schemaName, String viewName, String ddlSql) {
+        CdcManagerHelper.getInstance().notifyDdlNew(
+            schemaName,
+            viewName,
+            SqlKind.CREATE_MATERIALIZED_VIEW.name(),
+            ddlSql,
+            DdlType.UNSUPPORTED,
+            null,
+            null,
+            CdcDdlMarkVisibility.Protected,
+            buildExtendParameter(executionContext));
     }
 }

@@ -21,11 +21,11 @@ import com.alibaba.polardbx.executor.chunk.Block;
 
 /**
  * @author chenzilin
- * @date 2021/12/14 17:45
  */
 public class DoubleMinMaxFilter extends MinMaxFilter {
     Double min;
     Double max;
+
     public DoubleMinMaxFilter() {
 
     }
@@ -67,9 +67,9 @@ public class DoubleMinMaxFilter extends MinMaxFilter {
     @Override
     public MinMaxFilterInfo toMinMaxFilterInfo() {
         return new MinMaxFilterInfo(
-                MinMaxFilterInfo.TYPE.DOUBLE,
-                 null, null, null, null, min == null ? null : min.doubleValue(),
-                max == null ? null : max.doubleValue(), null, null);
+            MinMaxFilterInfo.TYPE.DOUBLE,
+            null, null, null, null, min == null ? null : min.doubleValue(),
+            max == null ? null : max.doubleValue(), null, null);
     }
 
     @Override

@@ -27,9 +27,9 @@ import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.LongType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.sql.SqlKind;
@@ -52,7 +52,8 @@ class IntegerColumnProvider implements ColumnProvider<Integer> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex,
+                          SessionProperties sessionProperties) {
         long[] array = ((LongColumnVector) vector).vector;
         for (int i = startIndex; i < endIndex; i++) {
             int idx = i;
@@ -68,7 +69,8 @@ class IntegerColumnProvider implements ColumnProvider<Integer> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize,
+                          SessionProperties sessionProperties) {
         long[] array = ((LongColumnVector) vector).vector;
         for (int i = 0; i < selSize; i++) {
             int idx = selection[i];
@@ -100,10 +102,12 @@ class IntegerColumnProvider implements ColumnProvider<Integer> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType,
+                       ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
+                    accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -122,7 +126,19 @@ class IntegerColumnProvider implements ColumnProvider<Integer> {
     }
 
     @Override
-    public PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics, Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+        } else {
+            byte[] bytes = row.getBytes(columnId);
+            int intVal = ColumnProvider.intFromByte(bytes, bytes.length);
+            blockBuilder.writeInt(intVal);
+        }
+    }
+
+    @Override
+    public PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics,
+                               Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
         return OssOrcFilePruner.pruneLong(predicateLeaf, columnStatistics, stripeColumnMetaMap);
     }
 
@@ -133,7 +149,8 @@ class IntegerColumnProvider implements ColumnProvider<Integer> {
     }
 
     @Override
-    public void fetchStatistics(ColumnStatistics columnStatistics, SqlKind aggKind, BlockBuilder blockBuilder, DataType dataType, SessionProperties sessionProperties) {
+    public void fetchStatistics(ColumnStatistics columnStatistics, SqlKind aggKind, BlockBuilder blockBuilder,
+                                DataType dataType, SessionProperties sessionProperties) {
         IntegerColumnStatistics integerColumnStatistics = (IntegerColumnStatistics) columnStatistics;
         if (integerColumnStatistics.getNumberOfValues() == 0) {
             blockBuilder.appendNull();

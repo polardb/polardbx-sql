@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.BufferInputBatchQueue;
@@ -29,6 +25,8 @@ import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
+import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.List;

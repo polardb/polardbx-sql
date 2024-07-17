@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.spill.LocalSpillMonitor;
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.calcite.sql.OutFileParams;
 
 import java.util.List;

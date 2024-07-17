@@ -4,3 +4,4 @@
 #test_in_subquery
 #test_varbinary_test
 test_single_insert
+test_utf8mb3_route

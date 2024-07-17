@@ -35,8 +35,6 @@ import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
-import org.apache.calcite.tools.RelBuilder;
-import org.apache.calcite.tools.RelBuilderFactory;
 import org.apache.calcite.util.Pair;
 
 import java.util.ArrayList;
@@ -79,7 +77,6 @@ public class JoinFilterTransposeRule extends RelOptRule {
                 operand(LogicalFilter.class, any())),
             "JoinFilterTransposeRule(Other-Filter)");
 
-
     /**
      * Creates a JoinFilterTransposeRule with default factory.
      */
@@ -119,7 +116,7 @@ public class JoinFilterTransposeRule extends RelOptRule {
             right = new Pair<>(null, joinRel.getRight());
         }
 
-        if(left.getKey() == null && right.getKey() == null) {
+        if (left.getKey() == null && right.getKey() == null) {
             return;
         }
         //can't deal with correlation or subQuery

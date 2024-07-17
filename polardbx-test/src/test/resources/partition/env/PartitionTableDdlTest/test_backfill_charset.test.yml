@@ -1,0 +1,33 @@
+drop table if exists tb1;
+
+create table if not exists tb1 (
+  id int,
+  a char(30) CHARACTER SET gbk,
+  b varchar(30) CHARACTER SET gbk,
+  c char(30) CHARACTER SET utf32,
+  d varchar(30) CHARACTER SET utf32,
+  e char(30) CHARACTER SET latin1,
+  f varchar(30) CHARACTER SET latin1,
+  g varchar(30),
+  t longtext CHARACTER SET gbk,
+  bin1 binary(10),
+  bin2 blob
+);
+
+insert into tb1 values(1, "支付","支付","支付","支付","a","a","支付","支付","支付","支付");
+
+insert into tb1 values(2, 0xE694AFE4BB98,0xE694AFE4BB98,0x0000652F00004ED8,0x0000652F00004ED8,0x61,0x61,0xE694AFE4BB98,0xE694AFE4BB98,0xE694AFE4BB98,0xE694AFE4BB98);
+
+insert into tb1 values(3, null,null,null,null,null,null,null,null,null,null);
+
+insert into tb1 values(4, '','','','','','','','','','');
+
+select hex(a),hex(b),hex(c),hex(d),hex(e),hex(f),hex(g),hex(t),hex(bin1),hex(bin2) from tb1 order by id;
+
+alter table tb1 partition by hash(id);
+
+select hex(a),hex(b),hex(c),hex(d),hex(e),hex(f),hex(g),hex(t),hex(bin1),hex(bin2) from tb1 order by id;
+
+
+
+

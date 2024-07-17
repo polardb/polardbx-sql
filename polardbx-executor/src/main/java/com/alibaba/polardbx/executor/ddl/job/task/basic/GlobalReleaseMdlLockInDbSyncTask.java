@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.GlobalReleaseMdlLockInDbSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -46,7 +47,7 @@ public class GlobalReleaseMdlLockInDbSyncTask extends BaseSyncTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         try {
-            SyncManagerHelper.sync(new GlobalReleaseMdlLockInDbSyncAction(schemaNames));
+            SyncManagerHelper.sync(new GlobalReleaseMdlLockInDbSyncAction(schemaNames), SyncScope.ALL);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while sync table meta, schemaName:%s", schemaNames));

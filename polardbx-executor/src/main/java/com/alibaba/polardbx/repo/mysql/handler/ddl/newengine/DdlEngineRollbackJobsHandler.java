@@ -16,13 +16,11 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
-import com.alibaba.polardbx.common.ddl.newengine.DdlPlanState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.partitionmanagement.rebalance.RebalanceDdlPlanManager;
+import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import org.apache.calcite.sql.SqlRollbackDdlJob;
@@ -42,7 +40,20 @@ public class DdlEngineRollbackJobsHandler extends DdlEngineCancelJobsHandler {
     @Override
     public Cursor doHandle(final LogicalDal logicalPlan, ExecutionContext executionContext) {
         SqlRollbackDdlJob command = (SqlRollbackDdlJob) logicalPlan.getNativeSqlNode();
-        return doCancel(command.isAll(), command.getJobIds(), executionContext);
+
+        if (command.isAll()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        if (command.getJobIds() == null || command.getJobIds().isEmpty()) {
+            return new AffectRowCursor(0);
+        }
+
+        if (command.getJobIds().size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        return doCancel(command.getJobIds().get(0), executionContext);
     }
 
 }

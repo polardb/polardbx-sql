@@ -32,26 +32,22 @@ package com.alibaba.polardbx.optimizer.spill;
 public abstract class SpillSpaceMonitor implements SpillMonitor {
 
     protected long currentBytes;
-    protected double querySpillSpaceThreshold;
-    protected double totalSpillSpaceThreshold;
-    protected long maxSpillBytes;
+
+    protected boolean isSpillManager = false;
 
     @Override
     public synchronized void updateBytes(long bytes) {
         if (bytes > 0) {
             long theMaxBytes = getCurrentMaxSpillBytes();
             if ((currentBytes + bytes) >= theMaxBytes) {
-                throw new RuntimeException(String.format("Query exceeded the spill limit of %s", theMaxBytes));
+                throw new RuntimeException(
+                    String.format("%s exceeded the spill limit of %s bytes, when trying to get %s bytes",
+                        isSpillManager ? "Spill Manager" : "Query", theMaxBytes, bytes));
             }
             currentBytes += bytes;
         } else {
             currentBytes -= bytes;
         }
-    }
-
-    @Override
-    public void close() {
-
     }
 
     public abstract long getCurrentMaxSpillBytes();

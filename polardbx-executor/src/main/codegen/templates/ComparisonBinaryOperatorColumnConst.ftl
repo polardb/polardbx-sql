@@ -33,28 +33,28 @@ public class ${className} extends AbstractVectorizedExpression {
 
     @Override
     public void eval(EvaluationContext ctx) {
-        children[0].eval(ctx);
+		children[0].eval(ctx);
 
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
+		long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         <#if operator.classHeader != 'SEQ'>
-        if (rightIsNull) {
-            boolean[] outputNulls = outputVectorSlot.nulls();
-            if (isSelectionInUse) {
-                for (int i = 0; i < batchSize; i++) {
-                    int j = sel[i];
-                    outputNulls[j] = true;
-                }
-            } else {
+			if (rightIsNull) {
+			boolean[] outputNulls = outputVectorSlot.nulls();
+			if (isSelectionInUse) {
+			for (int i = 0; i < batchSize; i++) {
+			int j = sel[i];
+			outputNulls[j] = true;
+			}
+			} else {
                 for (int i = 0; i < batchSize; i++) {
                     outputNulls[i] = true;
                 }

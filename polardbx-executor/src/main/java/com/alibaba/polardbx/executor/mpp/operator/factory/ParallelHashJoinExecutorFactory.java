@@ -17,27 +17,36 @@
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItem;
+import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItemKey;
+import com.alibaba.polardbx.executor.mpp.planner.PipelineFragment;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.ParallelHashJoinExec;
+import com.alibaba.polardbx.executor.operator.Synchronizer;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinUtils;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
-
     private boolean driverBuilder;
+
+    private PipelineFragment pipelineFragment;
+
     private Join join;
     private List<Executor> executors = new ArrayList<>();
     private RexNode otherCond;
@@ -48,9 +57,17 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
     private int numPartitions;
     private boolean streamJoin;
 
-    public ParallelHashJoinExecutorFactory(Join join, RexNode otherCond, RexNode equalCond, boolean maxOneRow,
+    int localPartitionCount;
+
+    boolean keepPartition;
+
+    public ParallelHashJoinExecutorFactory(PipelineFragment pipelineFragment,
+                                           Join join, RexNode otherCond, RexNode equalCond, boolean maxOneRow,
                                            List<RexNode> operands, ExecutorFactory build, ExecutorFactory probe,
-                                           int probeParallelism, int numPartitions, boolean driverBuilder) {
+                                           int probeParallelism, int numPartitions, boolean driverBuilder,
+                                           int localPartitionCount, boolean keepPartition) {
+        this.pipelineFragment = pipelineFragment;
+
         this.join = join;
         this.otherCond = otherCond;
         this.equalCond = equalCond;
@@ -61,6 +78,8 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
         addInput(build);
         addInput(probe);
         this.driverBuilder = driverBuilder;
+        this.localPartitionCount = localPartitionCount;
+        this.keepPartition = keepPartition;
     }
 
     @Override
@@ -76,14 +95,129 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
 
     private synchronized List<Executor> createAllExecutor(ExecutionContext context) {
         if (executors.isEmpty()) {
-            boolean alreadyUseRuntimeFilter = false;
-            if (join instanceof HashJoin) {
-                alreadyUseRuntimeFilter = ((HashJoin) join).isRuntimeFilterPushedDown();
+
+            // Parse the item keys from the RelNode of the join.
+            List<FragmentRFItemKey> rfItemKeys = FragmentRFItemKey.buildItemKeys(join);
+
+            boolean alreadyUseRuntimeFilter = join instanceof HashJoin && ((HashJoin) join).isRuntimeFilterPushedDown();
+            List<Synchronizer> synchronizers = new ArrayList<>();
+            List<Integer> assignResult = null;
+
+            List<EquiJoinKey> joinKeys = EquiJoinUtils
+                .buildEquiJoinKeys(join, join.getOuter(), join.getInner(), (RexCall) equalCond, join.getJoinType());
+            IExpression otherCondition = convertExpression(otherCond, context);
+
+            boolean useBloomFilter =
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_HASH_TABLE_BLOOM_FILTER);
+            int chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
+
+            if (localPartitionCount > 0) {
+                Map<Integer, Integer> partitionParallelism = new HashMap<>();
+                // local partition wise mode
+                assignResult = ExecUtils.assignPartitionToExecutor(localPartitionCount, probeParallelism);
+                for (Integer i : assignResult) {
+                    partitionParallelism.merge(i, 1, Integer::sum);
+                }
+                int hashTableNum = Math.min(localPartitionCount, probeParallelism);
+
+                int[] partitionsOfEachBucket = ExecUtils.partitionsOfEachBucket(localPartitionCount, probeParallelism);
+                for (int hashTableIndex = 0; hashTableIndex < hashTableNum; hashTableIndex++) {
+
+                    // how many degrees of parallelism in this synchronizer instance.
+                    int numberOfExec = localPartitionCount >= probeParallelism
+                        ? 1 : partitionParallelism.get(hashTableIndex);
+
+                    // how many data partitions in this synchronizer instance.
+                    int numberOfPartition = partitionsOfEachBucket[hashTableIndex];
+
+                    Synchronizer synchronizer =
+                        new Synchronizer(join.getJoinType(), driverBuilder, numberOfExec, alreadyUseRuntimeFilter,
+                            useBloomFilter, chunkLimit, numberOfExec, numberOfPartition, false);
+
+                    synchronizers.add(synchronizer);
+                }
+
+                // If using fragment-level runtime filter in this join operator, register the
+                // synchronizer into RF-manager.
+                if (pipelineFragment.getFragmentRFManager() != null) {
+
+                    for (int itemKeyIndex = 0; itemKeyIndex < rfItemKeys.size(); itemKeyIndex++) {
+                        FragmentRFItemKey itemKey = rfItemKeys.get(itemKeyIndex);
+
+                        // Find the ordinal in the build side.
+                        int ordinal;
+                        for (ordinal = 0; ordinal < joinKeys.size(); ordinal++) {
+                            // Consider two cases:
+                            // 1. join input side is not reversed
+                            // 2. join input side is reversed
+                            if ((!driverBuilder && joinKeys.get(ordinal).getInnerIndex() == itemKey.getBuildIndex())
+                                || (driverBuilder
+                                && joinKeys.get(ordinal).getOuterIndex() == itemKey.getBuildIndex())) {
+
+                                // Find the items from pipeline fragment that matching the given item key.
+                                Map<FragmentRFItemKey, FragmentRFItem> allItems =
+                                    pipelineFragment.getFragmentRFManager().getAllItems();
+                                FragmentRFItem rfItem;
+                                if ((rfItem = allItems.get(itemKey)) != null) {
+                                    // The channel for build side in join operator is the ordinal of the item key.
+                                    rfItem.setBuildSideChannel(ordinal);
+
+                                    // register multiple synchronizer and share the rf item.
+                                    rfItem.registerBuilder(
+                                        ordinal, probeParallelism, synchronizers.toArray(new Synchronizer[0]));
+                                }
+                            }
+                        }
+
+                    }
+                }
+
+            } else {
+                Synchronizer synchronizer =
+                    new Synchronizer(join.getJoinType(), driverBuilder, numPartitions,
+                        alreadyUseRuntimeFilter,
+                        useBloomFilter, chunkLimit, probeParallelism, -1, true);
+
+                synchronizers.add(synchronizer);
+
+                // If using fragment-level runtime filter in this join operator, register the
+                // synchronizer into RF-manager.
+                if (pipelineFragment.getFragmentRFManager() != null) {
+
+                    for (int itemKeyIndex = 0; itemKeyIndex < rfItemKeys.size(); itemKeyIndex++) {
+                        FragmentRFItemKey itemKey = rfItemKeys.get(itemKeyIndex);
+
+                        // Find the ordinal in the build side.
+                        int ordinal;
+                        for (ordinal = 0; ordinal < joinKeys.size(); ordinal++) {
+
+                            // Consider two cases:
+                            // 1. join input side is not reversed
+                            // 2. join input side is reversed
+                            if ((!driverBuilder && joinKeys.get(ordinal).getInnerIndex() == itemKey.getBuildIndex())
+                                || (driverBuilder
+                                && joinKeys.get(ordinal).getOuterIndex() == itemKey.getBuildIndex())) {
+
+                                // Find the items from pipeline fragment that matching the given item key.
+                                Map<FragmentRFItemKey, FragmentRFItem> allItems =
+                                    pipelineFragment.getFragmentRFManager().getAllItems();
+                                FragmentRFItem rfItem;
+                                if ((rfItem = allItems.get(itemKey)) != null) {
+                                    // The channel for build side in join operator is the ordinal of the item key.
+                                    rfItem.setBuildSideChannel(ordinal);
+
+                                    // register multiple synchronizer and share the rf item.
+                                    rfItem.registerBuilder(ordinal, probeParallelism, synchronizer);
+                                }
+                            }
+                        }
+                    }
+
+                }
+
             }
-            ParallelHashJoinExec.Synchronizer synchronizer =
-                new ParallelHashJoinExec.Synchronizer(numPartitions, alreadyUseRuntimeFilter,
-                    context.getParamManager().getBoolean(
-                    ConnectionParams.ENABLE_HASH_TABLE_BLOOM_FILTER));
+
+            Map<Integer, Integer> partitionOperatorIdx = new HashMap<>();
             for (int i = 0; i < probeParallelism; i++) {
                 Executor inner;
                 Executor outerInput;
@@ -94,23 +228,28 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
                     inner = getInputs().get(0).createExecutor(context, i);
                     outerInput = getInputs().get(1).createExecutor(context, i);
                 }
-                IExpression otherCondition = convertExpression(otherCond, context);
 
-                List<EquiJoinKey> joinKeys = EquiJoinUtils
-                    .buildEquiJoinKeys(join, join.getOuter(), join.getInner(), (RexCall) equalCond, join.getJoinType());
                 List<IExpression> antiJoinOperands = null;
-                if (operands != null && join.getJoinType() == JoinRelType.ANTI && !operands.isEmpty()) {
+                if (containAntiJoinOperands(operands, join)) {
                     antiJoinOperands =
                         operands.stream().map(ele -> convertExpression(ele, context)).collect(Collectors.toList());
                 }
-                ParallelHashJoinExec exec =
-                    new ParallelHashJoinExec(synchronizer, outerInput, inner, join.getJoinType(), maxOneRow,
-                        joinKeys, otherCondition, antiJoinOperands, driverBuilder, context, i);
-                exec.setStreamJoin(streamJoin);
-                exec.setId(join.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(join, exec, context);
+
+                int operatorIdx = i;
+                if (localPartitionCount > 0) {
+                    int partition = assignResult.get(i);
+                    operatorIdx = partitionOperatorIdx.getOrDefault(partition, 0);
+                    partitionOperatorIdx.put(partition, operatorIdx + 1);
                 }
+
+                ParallelHashJoinExec exec =
+                    new ParallelHashJoinExec(
+                        localPartitionCount > 0 ? synchronizers.get(assignResult.get(i)) : synchronizers.get(0),
+                        outerInput, inner, join.getJoinType(), maxOneRow,
+                        joinKeys, otherCondition, antiJoinOperands, driverBuilder, context, operatorIdx,
+                        probeParallelism, keepPartition);
+                exec.setStreamJoin(streamJoin);
+                registerRuntimeStat(exec, join, context);
                 executors.add(exec);
             }
         }
@@ -123,5 +262,9 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
 
     public void enableStreamJoin(boolean streamJoin) {
         this.streamJoin = streamJoin;
+    }
+
+    public static boolean containAntiJoinOperands(List<RexNode> operands, Join join) {
+        return operands != null && join.getJoinType() == JoinRelType.ANTI && !operands.isEmpty();
     }
 }

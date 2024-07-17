@@ -22,17 +22,10 @@ import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
-import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.RelShuttleImpl;
-import org.apache.calcite.rel.core.RecursiveCTE;
-import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.rel.logical.LogicalOutFile;
-import org.apache.calcite.rel.RelShuttleImpl;
-import org.apache.calcite.rel.core.RecursiveCTE;
-import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.sql.SqlKind;
 
 import java.util.Arrays;
@@ -47,7 +40,12 @@ public class MppPlanCheckers {
 
     public static final MppPlanChecker TRANSACTION_CHECKER =
         input -> Optional.ofNullable(input.getPlannerContext().getExecutionContext())
-            .map(c -> mppSupportTransaction(c))
+            .map(MppPlanCheckers::mppSupportTransaction)
+            .orElse(true);
+
+    public static final MppPlanChecker COLUMNAR_TRANSACTION_CHECKER =
+        input -> Optional.ofNullable(input.getPlannerContext().getExecutionContext())
+            .map(MppPlanCheckers::columnarSupportTransaction)
             .orElse(true);
 
     public static final MppPlanChecker UPDATE_CHECKER =
@@ -76,12 +74,27 @@ public class MppPlanCheckers {
             .map(c -> !ExplainResult.isExplainExecute(c.getExplain()))
             .orElse(true);
 
+    public static final MppPlanChecker EXPLAIN_STATISTICS_CHECKER =
+        input -> Optional.ofNullable(input.getPlannerContext().getExecutionContext())
+            .map(c -> !ExplainResult.isExplainStatistics(c.getExplain()))
+            .orElse(true);
+
     public static final MppPlanChecker SELECT_INTO_OUT_STATISTICS_CHECKER =
         input -> !(input.getOriginalPlan() instanceof LogicalOutFile);
 
+    public static final MppPlanChecker SAMPLE_HINT_CHECKER =
+        input -> !(input.getPlannerContext().getParamManager()
+            .getFloat(ConnectionParams.SAMPLE_PERCENTAGE) >= 0F
+            && input.getPlannerContext().getParamManager()
+            .getFloat(ConnectionParams.SAMPLE_PERCENTAGE) <= 100F);
+
+    public static final MppPlanChecker ENABLE_COLUMNAR_CHECKER = input -> input.getPlannerContext()
+        .getParamManager()
+        .getBoolean(ConnectionParams.ENABLE_COLUMNAR_OPTIMIZER);
+
     public static final MppPlanChecker BASIC_CHECKERS =
         input -> Lists.newArrayList(MPP_ENABLED_CHECKER, SUBQUERY_CHECKER, QUERY_CHECKER, INTERNAL_SYSTEM_SQL_CHECKER,
-                EXPLAIN_EXECUTE_CHECKER, CTE_CHECKER, SELECT_INTO_OUT_STATISTICS_CHECKER)
+                EXPLAIN_EXECUTE_CHECKER, CTE_CHECKER, SELECT_INTO_OUT_STATISTICS_CHECKER, EXPLAIN_STATISTICS_CHECKER)
             .stream()
             .allMatch(c -> c.supportsMpp(input));
 
@@ -106,5 +119,18 @@ public class MppPlanCheckers {
             }
             return !mppNotSupportTransaction;
         }
+    }
+
+    public static boolean columnarSupportTransaction(ExecutionContext context) {
+
+        // 目前只允许 AUTO_COMMIT
+        boolean mppNotSupportTransaction = false;
+        if (context.getTransaction() != null &&
+            context.getTransaction().getTransactionClass().isA(EXPLICIT_TRANSACTION)) {
+            mppNotSupportTransaction = true;
+        } else if (!context.isAutoCommit()) {
+            mppNotSupportTransaction = true;
+        }
+        return !mppNotSupportTransaction;
     }
 }

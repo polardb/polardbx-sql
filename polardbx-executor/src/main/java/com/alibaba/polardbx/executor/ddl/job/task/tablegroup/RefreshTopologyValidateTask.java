@@ -23,23 +23,14 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
-import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 @Getter
 @TaskName(name = "RefreshTopologyValidateTask")

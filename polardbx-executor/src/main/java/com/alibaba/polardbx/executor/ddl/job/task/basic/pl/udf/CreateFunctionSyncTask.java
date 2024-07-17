@@ -18,18 +18,16 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLBlockStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
-import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.pl.UdfUtils;
 import com.alibaba.polardbx.executor.sync.CreateStoredFunctionSyncAction;
 import com.alibaba.polardbx.executor.sync.DropStoredFunctionSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import lombok.Getter;
 
 @Getter
@@ -47,7 +45,7 @@ public class CreateFunctionSyncTask extends BaseDdlTask {
         this.functionName = functionName;
         this.createFunctionContent = createFunctionContent;
         this.canPush = canPush;
-        onExceptionTryRecoveryThenPause();
+        onExceptionTryRecoveryThenRollback();
     }
 
     @Override
@@ -55,16 +53,11 @@ public class CreateFunctionSyncTask extends BaseDdlTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
-        String tempCreateFunction = rewriteFuncContent(createFunctionContent);
+        updateTaskStateInNewTxn(DdlTaskState.DIRTY);
+
+        String tempCreateFunction = UdfUtils.removeFuncBody(createFunctionContent);
         SyncManagerHelper.sync(new CreateStoredFunctionSyncAction(functionName, tempCreateFunction, canPush),
             TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
-    }
-
-    private String rewriteFuncContent(String createFunctionContent) {
-        SQLCreateFunctionStatement
-            statement = (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunctionContent).get(0);
-        statement.setBlock(new SQLBlockStatement());
-        return statement.toString(VisitorFeature.OutputPlOnlyDefinition);
     }
 
     @Override

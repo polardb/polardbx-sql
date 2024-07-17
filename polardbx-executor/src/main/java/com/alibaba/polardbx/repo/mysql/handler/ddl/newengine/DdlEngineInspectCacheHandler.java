@@ -29,6 +29,7 @@ import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import org.apache.calcite.sql.SqlInspectDdlJobCache;
@@ -48,34 +49,36 @@ public class DdlEngineInspectCacheHandler extends DdlEngineJobsHandler {
 
     @Override
     public Cursor doHandle(final LogicalDal logicalPlan, ExecutionContext executionContext) {
-        SqlNode sqlNode = logicalPlan.getNativeSqlNode();
-
-        if (!(sqlNode instanceof SqlInspectDdlJobCache)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNEXPECTED, "Unknown SQL Node: "
-                + sqlNode.getKind().name());
-        }
-
-        String schemaName = executionContext.getSchemaName();
-        ArrayResultCursor resultCursor = DdlCacheCollectionSyncAction.buildResultCursor();
-
-        IGmsSyncAction syncAction = new DdlCacheCollectionSyncAction(schemaName);
-        GmsSyncManagerHelper.sync(syncAction, schemaName, results -> {
-            if (results != null) {
-                for (Pair<GmsNode, List<Map<String, Object>>> result : results) {
-                    if (result != null && result.getValue() != null) {
-                        for (Map<String, Object> row : result.getValue()) {
-                            if (row != null) {
-                                resultCursor.addRow(buildRow(row));
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        //legacy engine
+        throw new UnsupportedOperationException();
+//        SqlNode sqlNode = logicalPlan.getNativeSqlNode();
+//
+//        if (!(sqlNode instanceof SqlInspectDdlJobCache)) {
+//            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNEXPECTED, "Unknown SQL Node: "
+//                + sqlNode.getKind().name());
+//        }
+//
+//        String schemaName = executionContext.getSchemaName();
+//        ArrayResultCursor resultCursor = DdlCacheCollectionSyncAction.buildResultCursor();
+//
+//        IGmsSyncAction syncAction = new DdlCacheCollectionSyncAction(schemaName);
+//        GmsSyncManagerHelper.sync(syncAction, schemaName, SyncScope.ALL, results -> {
+//            if (results != null) {
+//                for (Pair<GmsNode, List<Map<String, Object>>> result : results) {
+//                    if (result != null && result.getValue() != null) {
+//                        for (Map<String, Object> row : result.getValue()) {
+//                            if (row != null) {
+//                                resultCursor.addRow(buildRow(row));
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        });
+//
+//        //legacy engine
 //        List<List<Map<String, Object>>> results =
-//            SyncManagerHelper.sync(new CacheCollectionSyncAction(executionContext.getSchemaName()), schemaName);
+//            SyncManagerHelper.sync(new CacheCollectionSyncAction(executionContext.getSchemaName()), schemaName,
+//                SyncScope.MASTER_ONLY);
 //        if (results != null) {
 //            for (List<Map<String, Object>> result : results) {
 //                if (result != null) {
@@ -87,19 +90,19 @@ public class DdlEngineInspectCacheHandler extends DdlEngineJobsHandler {
 //                }
 //            }
 //        }
-
-        resultCursor.addRow(new Object[] {
-            ENGINE_TYPE_DAG,
-            LeaseRecord.getLeaseHolder(),
-            "",
-            "",
-            "leader:" + DdlHelper.hasDdlLeadership(),
-            "",
-            "",
-            ""
-        });
-
-        return resultCursor;
+//
+//        resultCursor.addRow(new Object[] {
+//            ENGINE_TYPE_DAG,
+//            LeaseRecord.getLeaseHolder(),
+//            "",
+//            "",
+//            "leader:" + DdlHelper.hasDdlLeadership(),
+//            "",
+//            "",
+//            ""
+//        });
+//
+//        return resultCursor;
     }
 
     private Object[] buildRow(Map<String, Object> row) {

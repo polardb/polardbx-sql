@@ -30,7 +30,6 @@ import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import io.airlift.slice.Slice;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
@@ -56,7 +55,7 @@ public class CastDecimalToUnsignedVectorizedExpression extends AbstractVectorize
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((ULongBlock) outputVectorSlot).longArray();
+        long[] output = outputVectorSlot.cast(ULongBlock.class).longArray();
 
         DecimalStructure tmpDecimal = new DecimalStructure();
 
@@ -69,7 +68,8 @@ public class CastDecimalToUnsignedVectorizedExpression extends AbstractVectorize
                 int fromIndex = j * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(j));
+                DecimalStructure fromValue =
+                    new DecimalStructure((inputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
 
                 tmpDecimal.reset();
                 FastDecimalUtils.round(fromValue, tmpDecimal, 0, DecimalRoundMod.HALF_UP);
@@ -81,7 +81,8 @@ public class CastDecimalToUnsignedVectorizedExpression extends AbstractVectorize
                 int fromIndex = i * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(i));
+                DecimalStructure fromValue =
+                    new DecimalStructure((inputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
 
                 tmpDecimal.reset();
                 FastDecimalUtils.round(fromValue, tmpDecimal, 0, DecimalRoundMod.HALF_UP);

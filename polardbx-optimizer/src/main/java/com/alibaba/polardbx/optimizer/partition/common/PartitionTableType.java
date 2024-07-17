@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.optimizer.partition.common;
 
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.EnumSet;
 
 /**
  * @author chenghui.lch
@@ -28,7 +31,8 @@ public enum PartitionTableType {
     BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_BROADCAST_TABLE),
     GSI_BROADCAST_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_BROADCAST_TABLE),
     GSI_SINGLE_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE),
-    OSS_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_OSS_TABLE);
+    OSS_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_OSS_TABLE),
+    COLUMNAR_TABLE(TablePartitionRecord.PARTITION_TABLE_TYPE_COLUMNAR_TABLE);
 
     private int tblTypeVal;
     private String tableTypeName;
@@ -53,6 +57,8 @@ public enum PartitionTableType {
             return GSI_BROADCAST_TABLE;
         } else if (tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_OSS_TABLE) {
             return OSS_TABLE;
+        } else if (tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_COLUMNAR_TABLE) {
+            return COLUMNAR_TABLE;
         }
         return null;
     }
@@ -72,6 +78,8 @@ public enum PartitionTableType {
             tableTypeName = "GSI_SINGLE_TABLE";
         } else if (this.tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_OSS_TABLE) {
             tableTypeName = "OSS_TABLE";
+        } else if (this.tblTypeVal == TablePartitionRecord.PARTITION_TABLE_TYPE_COLUMNAR_TABLE) {
+            tableTypeName = "COLUMNAR_TABLE";
         }
     }
 
@@ -89,5 +97,14 @@ public enum PartitionTableType {
             return true;
         }
         return false;
+    }
+
+    public static final EnumSet<PartitionTableType> PARTITIONED_TABLE = EnumSet.of(
+        PARTITION_TABLE,
+        GSI_TABLE,
+        COLUMNAR_TABLE);
+
+    public boolean isA(@NotNull EnumSet<PartitionTableType> set) {
+        return set.contains(this);
     }
 }

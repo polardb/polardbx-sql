@@ -23,6 +23,8 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.sync.ReloadSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.ReloadUtils;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
@@ -74,7 +76,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.DATASOURCES, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.DATASOURCES, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -84,7 +87,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.SCHEMA, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.SCHEMA, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -94,7 +98,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.USERS, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.USERS, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -104,7 +109,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.PROCEDURES, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.PROCEDURES, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -114,7 +120,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.FUNCTIONS, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.FUNCTIONS, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -124,7 +131,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.JAVA_FUNCTIONS, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.JAVA_FUNCTIONS, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -143,7 +151,8 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.FILESTORAGE, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.FILESTORAGE, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }
@@ -153,7 +162,19 @@ public class ReloadHandler {
             m = r.matcher(stmt);
             if (m.matches()) {
                 SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.STATISTICS, c.getSchema()), c.getSchema());
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.STATISTICS, SystemDbHelper.DEFAULT_DB_NAME),
+                        SyncScope.ALL);
+                PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                return true;
+            }
+
+            pattern = "RELOAD[\\s]+COLUMNARMANAGER";
+            r = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
+            m = r.matcher(stmt);
+            if (m.matches()) {
+                SyncManagerHelper
+                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.COLUMNARMANAGER, c.getSchema()), c.getSchema(),
+                        SyncScope.ALL);
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
                 return true;
             }

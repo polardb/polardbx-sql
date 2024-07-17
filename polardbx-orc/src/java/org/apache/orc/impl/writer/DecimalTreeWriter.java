@@ -19,9 +19,11 @@
 package org.apache.orc.impl.writer;
 
 import org.apache.hadoop.hive.common.type.HiveDecimal;
+import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.Decimal64ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.DecimalColumnVector;
+import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.util.JavaDataModel;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.orc.OrcProto;
@@ -156,12 +158,12 @@ public class DecimalTreeWriter extends TreeWriterBase {
   @Override
   public void writeBatch(ColumnVector vector, int offset,
                          int length) throws IOException {
-    super.writeBatch(vector, offset, length);
-    if (vector instanceof Decimal64ColumnVector) {
-      writeBatch((Decimal64ColumnVector) vector, offset, length);
-    } else {
-      writeBatch((DecimalColumnVector) vector, offset, length);
-    }
+      super.writeBatch(vector, offset, length);
+      if (vector instanceof DecimalColumnVector) {
+        writeBatch((DecimalColumnVector) vector, offset, length);
+      } else {
+        throw new UnsupportedOperationException("Not support: " + vector.getClass().getName());
+      }
   }
 
   @Override

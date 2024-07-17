@@ -1,0 +1,135 @@
+- SQL: |
+    SELECT a.ID, ( SELECT mail FROM t_contacts_person WHERE main_user_id = a.MAIN_USER_ID AND company_id = a.id AND delete_tag = 0 AND IS_PRIMARY = 1 LIMIT 1 ) MAIL, ( SELECT count( 1 ) FROM t_contacts_person b WHERE b.main_user_id = a.MAIN_USER_ID AND b.company_id = a.id AND b.delete_tag = 0 ) PERSON_COUNT  FROM t_contacts_company a WHERE a.delete_tag =  0 AND a.user_id IN ( '1f3fbfeabe924a6399c904ffee27fa59' ) AND a.MAIN_USER_ID = '1f3fbfeabe924a6399c904ffee27fa59' AND a.IS_OPEN = 0 ORDER BY a.SORT_TIME DESC LIMIT 0,10
+  PLAN: |
+    PhysicalProject
+      TopN
+        MppExchange
+          TopN
+            PhysicalProject
+              HashJoin
+                MppExchange
+                  LogicalCorrelate
+                    PhysicalProject
+                      BKAJoin
+                        LogicalIndexScan(tableNames=[[USER_ID1_$c810]])
+                        LogicalView(tableNames=[[t_contacts_company]])
+                    Limit
+                      PhysicalProject
+                        PhysicalFilter
+                          PhysicalProject
+                            BKAJoin
+                              LogicalIndexScan(tableNames=[[idx_CREATESOURCE_DELETETAG_USERID_CREATETIME_MAINUSERID_$1bce]])
+                              LogicalView(tableNames=[[t_contacts_person]])
+                PhysicalProject
+                  HashAgg
+                    PhysicalProject
+                      MppExchange
+                        BKAJoin
+                          LogicalIndexScan(tableNames=[[MAIN_USER_ID_$ca99]])
+                          LogicalView(tableNames=[[t_contacts_person]])
+  CATALOG: |
+    set global AUTO_PARTITION_PARTITIONS = '16';
+    CREATE DATABASE IF NOT EXISTS `scrm` CHARACTER SET `utf8mb4` COLLATE `utf8mb4_general_ci` MODE 'auto' MODE = 'auto';
+    use scrm;
+    CREATE TABLE IF NOT EXISTS `t_contacts_person` (  `ID` varchar(36) NOT NULL,  `USER_ID` varchar(36) NOT NULL,  `AVATAR` text,  `FIRST_NAME` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,  `LAST_NAME` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,  `NAME` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,  `LEVEL` tinyint(4) NOT NULL DEFAULT '0',  `COMPANY_ID` varchar(36) DEFAULT NULL,  `company_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,  `DEPARTMENT` varchar(50) DEFAULT NULL,  `position` varchar(500) DEFAULT NULL,  `remark` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,  `TELEPHONE` varchar(1000) DEFAULT NULL,  `MAIL` varchar(100) DEFAULT NULL,  `WHATSAPP` varchar(100) DEFAULT NULL,  `SKYPE` varchar(100) DEFAULT NULL,  `WECHAT` varchar(100) DEFAULT NULL,  `ADDRESS` varchar(1000) DEFAULT NULL,  `TYPE` varchar(50) DEFAULT NULL,  `STAGE` varchar(50) DEFAULT NULL,  `SOURCE` varchar(50) DEFAULT '',  `IS_MAJOR` tinyint(4) DEFAULT '0',  `LAST_READ_TIME` timestamp NULL DEFAULT NULL,  `MESSAGE_ID` bigint(20) NOT NULL DEFAULT '0',  `LAST_ACTION` varchar(500) DEFAULT NULL,  `LAST_ACTION_TIME` timestamp NULL DEFAULT NULL,  `LATEST_ACTION_TIME` timestamp NULL DEFAULT NULL,  `LATEST_ACTION_ID` bigint(20) DEFAULT NULL,  `READ_FLAG` tinyint(4) NOT NULL DEFAULT '1',  `IGNORE_FLAG` tinyint(4) DEFAULT NULL,  `MESSAGE_IS_MAJOR` tinyint(4) NOT NULL DEFAULT '0',  `MESSAGE_IS_READ` tinyint(4) NOT NULL DEFAULT '0',  `LAST_CONTACT_TIME` timestamp NULL DEFAULT NULL,  `score` int(5) DEFAULT '0',  `CREATE_SOURCE` varchar(50) NOT NULL,  `CREATE_TIME` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',  `UPDATE_TIME` timestamp NULL DEFAULT NULL,  `DELETE_TAG` tinyint(4) NOT NULL DEFAULT '0',  `KEYWORDS` varchar(200) DEFAULT NULL,  `REGION` varchar(20) DEFAULT NULL,  `COUNTRY_ID` varchar(50) DEFAULT NULL,  `FIRST_READ_TIME` datetime DEFAULT NULL,  `CONTACT_COUNT` int(11) NOT NULL DEFAULT '0',  `NICE_NAME` varchar(50) DEFAULT NULL,  `BIRTHDAY` datetime DEFAULT NULL,  `COMPLETION_STATUS` tinyint(4) DEFAULT '0',  `IM` varchar(50) DEFAULT NULL,  `DESCRPTION` varchar(2000) DEFAULT NULL,  `OTHER_FB_URL` varchar(100) DEFAULT NULL,  `OTHER_FB_DESCR` varchar(150) DEFAULT NULL,  `OTHER_TW_URL` varchar(100) DEFAULT NULL,  `OTHER_TW_DESCR` varchar(150) DEFAULT NULL,  `OTHER_LINKED_URL` varchar(100) DEFAULT NULL,  `OTHER_LINKED_DESCR` varchar(500) DEFAULT NULL,  `WEBSITE` varchar(100) DEFAULT NULL,  `BUYER_ID` varchar(36) DEFAULT NULL,  `PARENT_USER_ID` varchar(36) DEFAULT NULL,  `SCORE_SECOND` int(5) DEFAULT '0',  `SCORE_FIRST` int(5) DEFAULT '0',  `IS_OPEN` tinyint(1) DEFAULT '0',  `DROP_STATUS` tinyint(4) DEFAULT '0',  `DROP_TIME` datetime DEFAULT NULL,  `LAST_FOLLOW_USER_ID` varchar(36) DEFAULT NULL,  `LAST_FOLLOW_TIME` timestamp NULL DEFAULT NULL,  `LAST_FOLLOW_ACTION` tinyint(4) DEFAULT NULL,  `MAIN_USER_ID` varchar(100) DEFAULT NULL,  `SEX` tinyint(1) DEFAULT NULL,  `LEVEL1_GROUP_ID` int(11) DEFAULT '0',  `LEVEL2_GROUP_ID` int(11) DEFAULT '0',  `LEVEL3_GROUP_ID` int(11) DEFAULT '0',  `TIME_FOR_NOTIFY` datetime DEFAULT NULL,  `RECORD_ID` bigint(20) DEFAULT NULL,  `IS_PRIMARY` bit(1) DEFAULT 0x00,  `LAST_FOLLOW_TYPE` varchar(20) DEFAULT NULL,  `SOURCE_ID` varchar(255) DEFAULT NULL,  `MAIL_MARKETING_COUNT` int(11) NOT NULL DEFAULT '0',  `MAIL_COUNT` int(11) DEFAULT '0',  `MAIL_TAG` tinyint(4) NOT NULL DEFAULT '0',  `CREATED_USER_ID` varchar(50) DEFAULT NULL,  `SYS_UPDATED_TIME` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  `WILL_DROP_TIME` datetime DEFAULT NULL,  `LAST_FOLLOW_LOG_TIME` datetime DEFAULT NULL,  `SORT_TIME` datetime DEFAULT NULL,  `SHARE_TAG` int(5) DEFAULT '0',  PRIMARY KEY (`ID`),  INDEX `idx_COMPANYID`(`COMPANY_ID`),  INDEX `idx_COMPANYID_USERID_MAINUSERID_DELETETAG_ISOPEN_MAIL`(`COMPANY_ID`, `USER_ID`, `MAIN_USER_ID`, `DELETE_TAG`, `IS_OPEN`, `MAIL`),  INDEX `idx_createSource_createTime`(`CREATE_SOURCE`, `CREATE_TIME`),  INDEX `idx_CREATESOURCE_DELETETAG_USERID_CREATETIME_MAINUSERID`(`CREATE_SOURCE`, `DELETE_TAG`, `USER_ID`, `CREATE_TIME`, `MAIN_USER_ID`),  INDEX `idx_group`(`LEVEL1_GROUP_ID`, `LEVEL2_GROUP_ID`, `LEVEL3_GROUP_ID`),  INDEX `idx_mail`(`MAIL`),  INDEX `idx_mainUserId_companyId`(`MAIN_USER_ID`, `COMPANY_ID`),  INDEX `idx_mainUserId_level`(`MAIN_USER_ID`, `LEVEL`),  INDEX `idx_mainUserId_sourceId`(`MAIN_USER_ID`, `SOURCE_ID`),  INDEX `idx_main_user_willdroptime`(`MAIN_USER_ID`, `WILL_DROP_TIME`),  INDEX `idx_userId_level`(`USER_ID`, `LEVEL`),  INDEX `MAIN_USER_ID`(`MAIN_USER_ID`),  INDEX `USER_ID`(`USER_ID`),  LOCAL KEY `idx_createTime` (`CREATE_TIME`),  LOCAL KEY `idx_CREATETIME_COMPANYID_USERID_MAINUSERID_DELETETAG_ISOPEN_MAIL` (`CREATE_TIME`, `COMPANY_ID`, `USER_ID`, `MAIN_USER_ID`, `DELETE_TAG`, `IS_OPEN`, `MAIL`),  LOCAL KEY `idx_updateTime` (`UPDATE_TIME`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC;
+    CREATE TABLE IF NOT EXISTS `t_contacts_company` (  `ID` varchar(36) NOT NULL,  `USER_ID` varchar(36) NOT NULL,  `AVATAR` varchar(500) DEFAULT NULL,  `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,  `URL` varchar(500) DEFAULT NULL,  `TELEPHONE` varchar(1000) DEFAULT NULL,  `MAIL` varchar(100) DEFAULT NULL,  `ADDRESS` varchar(1400) DEFAULT NULL,  `TYPE` varchar(50) DEFAULT NULL,  `STAGE` varchar(50) DEFAULT NULL,  `SOURCE` varchar(50) DEFAULT '',  `INCOME` varchar(100) DEFAULT NULL,  `INCOME_CURRENCY` varchar(50) DEFAULT NULL,  `COMPANY_SIZE` varchar(50) DEFAULT NULL,  `LEVEL` tinyint(4) NOT NULL DEFAULT '0',  `remark` text CHARACTER SET utf8mb4,  `IS_MAJOR` tinyint(4) DEFAULT '0',  `LAST_READ_TIME` timestamp NULL DEFAULT NULL,  `MESSAGE_ID` bigint(20) NOT NULL DEFAULT '0',  `LAST_ACTION` varchar(500) DEFAULT NULL,  `LAST_ACTION_TIME` timestamp NULL DEFAULT NULL,  `MESSAGE_IS_MAJOR` tinyint(4) NOT NULL DEFAULT '0',  `MESSAGE_IS_READ` tinyint(4) NOT NULL DEFAULT '0',  `LAST_CONTACT_TIME` timestamp NULL DEFAULT NULL,  `SCORE` varchar(50) DEFAULT '0',  `CREATE_SOURCE` varchar(50) NOT NULL,  `CREATE_TIME` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',  `UPDATE_TIME` timestamp NULL DEFAULT NULL,  `DELETE_TAG` tinyint(4) NOT NULL DEFAULT '0',  `INDUSTRY` varchar(255) DEFAULT NULL,  `KEYWORDS` varchar(200) DEFAULT NULL,  `synopsis` text CHARACTER SET utf8mb4,  `parent_company` varchar(255) DEFAULT NULL,  `son_company_count` int(11) DEFAULT NULL,  `time_zone` varchar(100) DEFAULT NULL,  `main_product` text,  `company_domain` varchar(255) DEFAULT NULL,  `company_type` varchar(255) DEFAULT NULL,  `company_create_time` date DEFAULT NULL,  `COMPLETION_STATUS` tinyint(4) DEFAULT '0',  `COUNTRY_ID` varchar(50) DEFAULT NULL,  `contact_time` tinyint(4) DEFAULT '0',  `PARENT_USER_ID` varchar(36) DEFAULT '0',  `SCORE_FIRST` varchar(20) DEFAULT '0',  `SCORE_SECOND` varchar(20) DEFAULT '0',  `PERSON_COUNT` int(11) DEFAULT '0',  `ORDER_COUNT` int(11) DEFAULT '0',  `OFFER_ORDER_COUNT` int(11) DEFAULT '0',  `LEVEL1_GROUP_ID` int(11) DEFAULT '0',  `LEVEL2_GROUP_ID` int(11) DEFAULT '0',  `LEVEL3_GROUP_ID` int(11) DEFAULT '0',  `MAIN_USER_ID` varchar(36) DEFAULT NULL,  `IS_OPEN` tinyint(4) DEFAULT '0',  `LAST_FOLLOW_TIME` timestamp NULL DEFAULT NULL,  `RECORD_ID` bigint(20) DEFAULT NULL,  `DUNS` varchar(50) DEFAULT NULL,  `DUNS_STATUS` int(5) DEFAULT '0',  `INDUSTRY_CODE` varchar(50) DEFAULT NULL,  `LAST_FOLLOW_USER_ID` varchar(50) DEFAULT NULL,  `DROP_STATUS` int(5) DEFAULT '0',  `DROP_TIME` datetime DEFAULT NULL,  `LAST_FOLLOW_TYPE` varchar(20) DEFAULT NULL,  `SOURCE_ID` varchar(255) DEFAULT NULL,  `CENTRA_ID` varchar(255) DEFAULT NULL,  `CUSTOMS_DATA_MARK` int(11) NOT NULL DEFAULT '0',  `CUSTOMS_DATA_MARK_DATE` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,  `MAIL_TAG` tinyint(4) NOT NULL DEFAULT '0',  `CREATED_USER_ID` varchar(50) DEFAULT NULL,  `SYS_UPDATED_TIME` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,  `WILL_DROP_TIME` datetime DEFAULT NULL,  `LAST_FOLLOW_LOG_TIME` datetime DEFAULT NULL,  `SORT_TIME` datetime DEFAULT NULL,  `SHARE_TAG` int(5) DEFAULT '0',  PRIMARY KEY (`ID`),  INDEX `idx_CREATESOURCE_CREATETIME_USERID_PARENTUSERID1`(`CREATE_SOURCE`, `CREATE_TIME`, `USER_ID`, `PARENT_USER_ID`),  INDEX `idx_group1`(`LEVEL1_GROUP_ID`, `LEVEL2_GROUP_ID`, `LEVEL3_GROUP_ID`),  INDEX `idx_mainUserId_centraId1`(`MAIN_USER_ID`, `CENTRA_ID`),  INDEX `idx_mainUserId_level1`(`MAIN_USER_ID`, `LEVEL`),  INDEX `idx_mainUserId_name_pre1`(`MAIN_USER_ID`, `name`),  INDEX `idx_mainUserId_sourceId1`(`MAIN_USER_ID`, `SOURCE_ID`),  INDEX `idx_main_user_id1`(`MAIN_USER_ID`),  INDEX `idx_userId_level1`(`USER_ID`, `LEVEL`),  INDEX `USER_ID1`(`USER_ID`),  LOCAL KEY `create_time1` (`CREATE_TIME`),  LOCAL KEY `idx_updateTime1` (`UPDATE_TIME`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC;
+    DELETE FROM metadb.table_statistics WHERE `SCHEMA_NAME` = 'scrm' AND `TABLE_NAME` in ('t_contacts_person','t_contacts_company');
+    INSERT INTO metadb.table_statistics (`SCHEMA_NAME`, `TABLE_NAME`, `ROW_COUNT`) VALUES ('scrm','t_contacts_company',14453287),('scrm','t_contacts_person',58532238);
+    DELETE FROM metadb.column_statistics WHERE `SCHEMA_NAME` = 'scrm' AND `TABLE_NAME` in ('t_contacts_person','t_contacts_company');
+    DELETE FROM metadb.ndv_sketch_statistics WHERE `SCHEMA_NAME` = 'scrm' AND `TABLE_NAME` in ('t_contacts_person','t_contacts_company');
+    reload statistics;
+    set session ENABLE_BKA_JOIN = 'true';
+    set session ENABLE_SPM = 'TRUE';
+    set session ENABLE_AUTO_USE_COLUMNS_PARTITION = 'true';
+    set session CONN_POOL_XPROTO_PURE_ASYNC_MPP = 'true';
+    set session RECORD_SQL = 'TRUE';
+    set session CONN_POOL_XPROTO_CHUNK_RESULT = 'true';
+    set session ENABLE_SCALE_OUT_FEATURE = 'true';
+    set session MAX_PHYSICAL_PARTITION_COUNT = '8192';
+    set session FORBID_EXECUTE_DML_ALL = 'FALSE';
+    set session AUTO_PARTITION_PARTITIONS = '16';
+    set session GROUP_SEQ_CHECK_INTERVAL = '5';
+    set session CONN_POOL_XPROTO_SLOW_THRESH = '1000';
+    set session GROUP_PARALLELISM = '8';
+    set session MPP_RPC_LOCAL_ENABLED = 'false';
+    set session MAINTENANCE_TIME_END = '19:53';
+    set session CONN_POOL_MAX_POOL_SIZE = '60';
+    set session SQL_DELAY_CUTOFF = '2';
+    set session PARTITIONS_HEATMAP_COLLECTION_MAX_SINGLE_LOGIC_SCHEMA_COUNT = '500';
+    set session CONN_POOL_XPROTO_MAX_PACKET_SIZE = '67108864';
+    set session CONN_POOL_XPROTO_DIRECT_WRITE = 'false';
+    set session CONN_POOL_XPROTO_MAX_SESSION_PER_CLIENT = '1024';
+    set session STATISTIC_COLLECTOR_FROM_RULE = 'true';
+    set session ALLOW_MOVING_BALANCED_SINGLE_TABLE = 'false';
+    set session CONN_POOL_BLOCK_TIMEOUT = '5000';
+    set session MPP_TABLESCAN_CONNECTION_STRATEGY = '0';
+    set session CONN_POOL_IDLE_TIMEOUT = '60';
+    set session CONN_POOL_XPROTO_XPLAN_EXPEND_STAR = 'true';
+    set session CONN_POOL_XPROTO_STORAGE_DB_PORT = '0';
+    set session MAX_PARTITION_COLUMN_COUNT = '5';
+    set session PROCESS_AUTO_INCREMENT_BY_SEQUENCE = 'true';
+    set session ALLOW_SIMPLE_SEQUENCE = 'false';
+    set session PURGE_TRANS_BEFORE = '604801';
+    set session PER_QUERY_MEMORY_LIMIT = '2147483648';
+    set session SHOW_TABLE_GROUP_NAME = 'false';
+    set session ENABLE_CONST_EXPR_EVAL_CACHE = 'true';
+    set session SOCKET_TIMEOUT = '900000';
+    set session ENABLE_INTERVAL_ENUMERATION_IN_PRUNING = 'true';
+    set session CONN_POOL_XPROTO_META_DB_PORT = '0';
+    set session CONN_POOL_MIN_POOL_SIZE = '5';
+    set session ENABLE_ALTER_DDL = 'true';
+    set session CONN_POOL_XPROTO_PLAN_CACHE = 'true';
+    set session MAX_ENUMERABLE_INTERVAL_LENGTH = '32';
+    set session CONN_POOL_XPROTO_MAX_CLIENT_PER_INST = '32';
+    set session ENABLE_SELF_CROSS_JOIN = 'true';
+    set session CONN_POOL_XPROTO_FLAG = '0';
+    set session SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE = 'false';
+    set session FORCE_APPLY_CACHE = 'TRUE';
+    set session CONN_POOL_XPROTO_XPLAN_TABLE_SCAN = 'false';
+    set session ENABLE_MPP = 'true';
+    set session CONN_POOL_MAX_WAIT_THREAD_COUNT = '0';
+    set session CONN_POOL_XPROTO_CONFIG = '';
+    set session CONN_POOL_XPROTO_MAX_POOLED_SESSION_PER_INST = '512';
+    set session CONN_POOL_XPROTO_SESSION_AGING_TIME = '600000';
+    set session DATABASE_DEFAULT_SINGLE = 'false';
+    set session CONN_POOL_XPROTO_MIN_POOLED_SESSION_PER_INST = '32';
+    set session SQL_SIMPLE_MAX_LENGTH = '1005';
+    set session ENABLE_CDC_META_BUILD_SNAPSHOT = 'true';
+    set session CHOOSE_STREAMING = 'true';
+    set session ENABLE_AUTO_MERGE_INTERVALS_IN_PRUNING = 'true';
+    set session MAX_IN_SUBQUERY_PRUNING_SIZE = '8192';
+    set session CONN_POOL_XPROTO_QUERY_TOKEN = '10000';
+    set session HINT_PARSER_FLAG = 'TRUE';
+    set session ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX = 'false';
+    set session GET_TSO_TIMEOUT = '5000';
+    set session LOGICAL_DB_TIME_ZONE = '+08:00';
+    set session STORAGE_SUPPORTS_BLOOM_FILTER = 'true';
+    set session INIT_CONCURRENT_POOL_EVERY_CONNECTION = 'false';
+    set session COLLATION_SERVER = 'utf8mb4_general_ci';
+    set session SINGLE_GROUP_STORAGE_INST_LIST = 'polardbx-storage-0-master';
+    set session CONN_POOL_XPROTO_CHECKER = 'true';
+    set session ENABLE_RUNTIME_FILTER_XXHASH = 'true';
+    set session USE_FAST_SINGLE_POINT_INTERVAL_MERGING = 'false';
+    set session CONN_POOL_XPROTO_AUTH = 'true';
+    set session ENABLE_LOWER_CASE_TABLE_NAMES = 'false';
+    set session ENABLE_DDL = 'TRUE';
+    set session DEFAULT_PARTITION_MODE = 'drds';
+    set session CONN_POOL_XPROTO_PIPE_BUFFER_SIZE = '268435456';
+    set session PURGE_TRANS_INTERVAL = '86401';
+    set session CONN_POOL_XPROTO_FEEDBACK = 'true';
+    set session CONN_POOL_XPROTO_MESSAGE_TIMESTAMP = 'true';
+    set session PARALLELISM = '-1';
+    set session PARTITION_PRUNING_STEP_COUNT_LIMIT = '1024';
+    set session ENABLE_FORBID_PUSH_DML_WITH_HINT = 'FALSE';
+    set session ENABLE_MASTER_MPP = 'true';
+    set session MAINTENANCE_TIME_START = '18:48';
+    set session SHARD_DB_COUNT_EACH_STORAGE_INST = '2';
+    set session PLAN_EXTERNALIZE_TEST = 'TRUE';
+    set session NET_WRITE_TIMEOUT = '28800';
+    set session CONN_POOL_XPROTO_XPLAN = 'true';
+    set session CDC_STARTUP_MODE = '1';
+    set session CONN_POOL_XPROTO_TRX_LEAK_CHECK = 'false';
+    set session RETRY_ERROR_SQL_ON_OLD_SERVER = 'true';
+    set session MAX_LOGICAL_DB_COUNT = '2048';
+    set session CONN_POOL_XPROTO_AUTO_COMMIT_OPTIMIZE = 'true';
+    set session SHOW_HASH_PARTITIONS_BY_RANGE = 'false';

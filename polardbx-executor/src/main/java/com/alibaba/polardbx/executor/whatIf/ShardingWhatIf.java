@@ -32,6 +32,7 @@ import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.sharding.advisor.ShardResultForOutput;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -131,7 +132,7 @@ public class ShardingWhatIf {
             ec.setSchemaManagers(oldSchemaManagers);
             ExecutionPlan planOld = Planner.getInstance().doBuildPlan(sql, ec);
 
-            RelOptCost costOld = RelMetadataQuery.instance().getCumulativeCost(planOld.getPlan());
+            RelOptCost costOld = PlannerUtils.newMetadataQuery().getCumulativeCost(planOld.getPlan());
             RelDrdsWriter relWriter =
                 new RelDrdsWriter(null, SqlExplainLevel.ALL_ATTRIBUTES, false, para.getCurrentParameter(), null, null);
             relWriter.setExecutionContext(ec);
@@ -145,7 +146,7 @@ public class ShardingWhatIf {
             ec.setSchemaManagers(whatIfSchemaManagers);
             ExecutionPlan planNew = Planner.getInstance().doBuildPlan(sql, ec);
 
-            RelOptCost costNew = RelMetadataQuery.instance().getCumulativeCost(planNew.getPlan());
+            RelOptCost costNew = PlannerUtils.newMetadataQuery().getCumulativeCost(planNew.getPlan());
             relWriter =
                 new RelDrdsWriter(null, SqlExplainLevel.ALL_ATTRIBUTES, false, para.getCurrentParameter(), null, null);
             relWriter.setExecutionContext(ec);

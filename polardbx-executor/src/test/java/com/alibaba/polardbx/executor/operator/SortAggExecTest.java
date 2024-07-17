@@ -24,10 +24,10 @@ import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Avg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.AvgV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import org.junit.Test;
 
 import java.math.BigDecimal;
@@ -48,7 +48,7 @@ public class SortAggExecTest extends BaseExecTest {
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
         int[] targetIndex = {1};
-        aggregators.add(new Count(targetIndex, false, -1));
+        aggregators.add(new CountV2(targetIndex, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.LongType);
@@ -79,7 +79,7 @@ public class SortAggExecTest extends BaseExecTest {
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
         int[] targetIndex = {1};
-        aggregators.add(new Count(targetIndex, false, -1));
+        aggregators.add(new CountV2(targetIndex, false, context.getMemoryPool().getMemoryAllocatorCtx() ,-1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);
@@ -110,7 +110,7 @@ public class SortAggExecTest extends BaseExecTest {
         int[] groups = {0};
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.DecimalType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);
@@ -161,7 +161,7 @@ public class SortAggExecTest extends BaseExecTest {
         int[] groups = {0};
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.DecimalType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);
@@ -199,7 +199,7 @@ public class SortAggExecTest extends BaseExecTest {
         int[] groups = {0};
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Avg(1, false, DataTypes.DecimalType, -1));
+        aggregators.add(new AvgV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);
@@ -235,7 +235,7 @@ public class SortAggExecTest extends BaseExecTest {
         int[] groups = {0};
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Avg(1, false, DataTypes.DoubleType, -1));
+        aggregators.add(new AvgV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);
@@ -265,7 +265,7 @@ public class SortAggExecTest extends BaseExecTest {
         int[] groups = {0};
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.DecimalType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);
@@ -296,7 +296,7 @@ public class SortAggExecTest extends BaseExecTest {
         /** aggregators */
         List<Aggregator> aggregators = new ArrayList<>();
         int[] targetIndex = {1};
-        aggregators.add(new Count(targetIndex, false, -1));
+        aggregators.add(new CountV2(targetIndex, false, context.getMemoryPool().getMemoryAllocatorCtx(),-1));
         /** outputColumnMeta */
         List<DataType> outputColumn = new ArrayList<>();
         outputColumn.add(DataTypes.IntegerType);

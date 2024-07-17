@@ -17,9 +17,11 @@
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * ndv sketch inf
@@ -28,12 +30,14 @@ public interface NDVSketchService {
     /**
      * 重建全部分片的 ndv sketch 信息
      */
-    void reBuildShardParts(String schema, String tableName, String columnName) throws SQLException;
+    void reBuildShardParts(String schema, String tableName, String columnName, ExecutionContext ec,
+                           ThreadPoolExecutor sketchHllExecutor) throws SQLException;
 
     /**
      * 更新所有分片的 ndv sketch 信息,如果不存在重建.如果已存在则判断是否需要更新
      */
-    void updateAllShardParts(String schema, String tableName, String columnName) throws SQLException;
+    void updateAllShardParts(String schema, String tableName, String columnName, ExecutionContext ec,
+                             ThreadPoolExecutor sketchHllExecutor) throws SQLException;
 
     /**
      * 加载组装 meta db 中的数据
@@ -63,4 +67,6 @@ public interface NDVSketchService {
     boolean sampleColumns(String schema, String logicalTableName);
 
     long modifyTime(String schema, String tableName, String columnNames);
+
+    void cleanCache();
 }

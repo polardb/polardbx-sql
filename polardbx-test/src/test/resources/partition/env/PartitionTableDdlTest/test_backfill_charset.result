@@ -1,0 +1,56 @@
+DROP TABLE IF EXISTS tb1;
+CREATE TABLE IF NOT EXISTS tb1 (
+	id int,
+	a char(30) CHARACTER SET gbk,
+	b varchar(30) CHARACTER SET gbk,
+	c char(30) CHARACTER SET utf32,
+	d varchar(30) CHARACTER SET utf32,
+	e char(30) CHARACTER SET latin1,
+	f varchar(30) CHARACTER SET latin1,
+	g varchar(30),
+	t longtext CHARACTER SET gbk,
+	bin1 binary(10),
+	bin2 blob
+);
+INSERT INTO tb1
+VALUES (1, '支付', '支付', '支付', '支付'
+	, 'a', 'a', '支付', '支付', '支付'
+	, '支付');
+INSERT INTO tb1
+VALUES (2, 0xE694AFE4BB98, 0xE694AFE4BB98, 0x0000652F00004ED8, 0x0000652F00004ED8
+	, 0x61, 0x61, 0xE694AFE4BB98, 0xE694AFE4BB98, 0xE694AFE4BB98
+	, 0xE694AFE4BB98);
+INSERT INTO tb1
+VALUES (3, NULL, NULL, NULL, NULL
+	, NULL, NULL, NULL, NULL, NULL
+	, NULL);
+INSERT INTO tb1
+VALUES (4, '', '', '', ''
+	, '', '', '', '', ''
+	, '');
+SELECT hex(a), hex(b)
+	, hex(c), hex(d)
+	, hex(e), hex(f)
+	, hex(g), hex(t)
+	, hex(bin1), hex(bin2)
+FROM tb1
+ORDER BY id;
+hex(a),hex(b),hex(c),hex(d),hex(e),hex(f),hex(g),hex(t),hex(bin1),hex(bin2)
+D6A7B8B6,D6A7B8B6,0000652F00004ED8,0000652F00004ED8,61,61,E694AFE4BB98,D6A7B8B6,E694AFE4BB9800000000,E694AFE4BB98
+E694AFE4BB98,E694AFE4BB98,0000652F00004ED8,0000652F00004ED8,61,61,E694AFE4BB98,E694AFE4BB98,E694AFE4BB9800000000,E694AFE4BB98
+null,null,null,null,null,null,null,null,null,null
+,,,,,,,,00000000000000000000,
+ALTER TABLE tb1
+PARTITION BY HASH (id);
+SELECT hex(a), hex(b)
+	, hex(c), hex(d)
+	, hex(e), hex(f)
+	, hex(g), hex(t)
+	, hex(bin1), hex(bin2)
+FROM tb1
+ORDER BY id;
+hex(a),hex(b),hex(c),hex(d),hex(e),hex(f),hex(g),hex(t),hex(bin1),hex(bin2)
+D6A7B8B6,D6A7B8B6,0000652F00004ED8,0000652F00004ED8,61,61,E694AFE4BB98,D6A7B8B6,E694AFE4BB9800000000,E694AFE4BB98
+E694AFE4BB98,E694AFE4BB98,0000652F00004ED8,0000652F00004ED8,61,61,E694AFE4BB98,E694AFE4BB98,E694AFE4BB9800000000,E694AFE4BB98
+null,null,null,null,null,null,null,null,null,null
+,,,,,,,,00000000000000000000,

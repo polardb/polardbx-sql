@@ -7,6 +7,8 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -29,6 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.decode;
+import static com.alibaba.polardbx.common.utils.GeneralUtil.removeIdxSuffix;
 
 /**
  * Cost model test framework contains two phase test:
@@ -53,6 +56,20 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
 
     public StatisticCostModelTest(CheckStruct checkStruct) {
         this.checkStruct = checkStruct;
+    }
+
+    @Before
+    public void commonBefore() throws SQLException {
+        try (Connection c = getPolardbxConnection()) {
+            c.createStatement().execute("set global ENABLE_CACHELINE_COMPENSATION = false");
+        }
+    }
+
+    @After
+    public void commonAfter() throws SQLException {
+        try (Connection c = getPolardbxConnection()) {
+            c.createStatement().execute("set global ENABLE_CACHELINE_COMPENSATION = true");
+        }
     }
 
     @Test
@@ -84,43 +101,74 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
             }
 
             // check statistic trace
-            ResultSet rs = c.createStatement()
-                .executeQuery("explain cost_trace /*TDDL:ENABLE_DIRECT_PLAN=FALSE*/ " + checkStruct.sql);
-            Map<String, String> checkStatistic = null;
-            while (rs.next()) {
-                String statisticTraceInfo = rs.getString(1);
-                if (statisticTraceInfo.startsWith("STATISTIC TRACE INFO")) {
-                    checkStatistic = decode(statisticTraceInfo);
-                }
-            }
-            rs.close();
-            if (checkStatistic == null) {
-                throw new RuntimeException("explain cost trace return no statistic trace info");
-            }
-
-            Assert.assertTrue(checkStatistic.equals(checkStruct.statisticTraceMap),
-                "statistic trace info mismatch:\n" + diff(checkStruct.statisticTraceMap, checkStatistic));
-            trs.statisticsTraceMap.putAll(checkStruct.statisticTraceMap);
-            trs.statisticTraceCount.addAndGet(checkStruct.statisticTraceMap.size());
+            checkTrace(c);
             // check plan
-            rs = c.createStatement().executeQuery("explain simple " + checkStruct.sql);
+            ResultSet rs = c.createStatement().executeQuery("explain simple " + checkStruct.sql);
             String plan = getAllResultAsString(rs);
             // TODO check normalized plan
+            String checkPlan = normalizePlan(checkStruct.plan);
+            String realPlan = normalizePlan(plan);
             Assert.assertTrue(
-                checkStruct.plan.replaceAll(" ", "").trim().equals(plan.replaceAll(" ", "").trim()),
+                checkPlan.equals(realPlan),
                 "plan mismatch:\n" + plan + "\n" + checkStruct.plan);
             trs.planCount.incrementAndGet();
         } finally {
+            // clean
+            try (Connection c = getPolardbxConnection()) {
+                for (String cleanCommand : checkStruct.cleanCommands) {
+                    if (StringUtils.isNotEmpty(cleanCommand)) {
+                        c.createStatement().execute(cleanCommand);
+                    }
+                }
+            }
             log.info("env file test result sum:" + trs);
         }
+    }
+
+    private String normalizePlan(String plan) {
+        plan = plan.replaceAll(" ", "").trim();
+        while (plan.contains("_$")) {
+            plan = removeIdxSuffix(plan);
+        }
+        return plan;
+    }
+
+    protected void checkTrace(Connection c) throws SQLException, IOException {
+        ResultSet rs = c.createStatement()
+            .executeQuery("explain cost_trace /*TDDL:ENABLE_DIRECT_PLAN=FALSE*/ " + checkStruct.sql);
+        Map<String, String> checkStatistic = null;
+        while (rs.next()) {
+            String statisticTraceInfo = rs.getString(1);
+            if (statisticTraceInfo.startsWith("STATISTIC TRACE INFO")) {
+                checkStatistic = decode(statisticTraceInfo);
+            }
+        }
+        rs.close();
+        if (checkStatistic == null) {
+            throw new RuntimeException("explain cost trace return no statistic trace info");
+        }
+
+        Assert.assertTrue(checkStatistic.equals(checkStruct.statisticTraceMap),
+            "statistic trace info mismatch:\n" + diff(checkStruct.statisticTraceMap, checkStatistic));
+        trs.statisticsTraceMap.putAll(checkStruct.statisticTraceMap);
+        trs.statisticTraceCount.addAndGet(checkStruct.statisticTraceMap.size());
     }
 
     protected String diff(Map<String, String> checkStatistic, Map<String, String> statisticTraceMap) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> entry : checkStatistic.entrySet()) {
             if (!entry.getValue().equalsIgnoreCase(statisticTraceMap.get(entry.getKey()))) {
-                sb.append("check:" + entry.getKey() + "=" + entry.getValue())
-                    .append(" ;real:" + statisticTraceMap.get(entry.getKey())).append("\n");
+                sb.append("check:" + entry.getKey())
+                    .append("\nexpected=" + entry.getValue())
+                    .append("\nreal=" + statisticTraceMap.get(entry.getKey())).append("\n\n");
+            }
+        }
+
+        for (Map.Entry<String, String> entry : statisticTraceMap.entrySet()) {
+            if (!entry.getValue().equalsIgnoreCase(checkStatistic.get(entry.getKey()))) {
+                sb.append("check:" + entry.getKey())
+                    .append("\nreal=" + entry.getValue())
+                    .append("\nexpected=" + checkStatistic.get(entry.getKey())).append("\n\n");
             }
         }
         return sb.toString();
@@ -175,8 +223,18 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
         String shrinkContent = replaceBlank(content);
         for (Map<String, String> m : yamlList) {
             String catalog = m.get("CATALOG");
+            String cleanCommands = m.get("CLEAN");
+            if (cleanCommands == null) {
+                cleanCommands = "";
+            }
             CheckStruct struct =
-                new CheckStruct(m.get("SQL"), m.get("PLAN"), m.get("STATISTIC_TRACE"), catalog);
+                new CheckStruct(
+                    m.get("SQL"),
+                    m.get("PLAN"),
+                    m.get("DETAIL_PLAN"),
+                    m.get("STATISTIC_TRACE"),
+                    catalog,
+                    cleanCommands.split("\n"));
             struct.setFileName(filePath.substring(filePath.lastIndexOf("/") + 1));
             struct.setCaseIndex(i++);
             struct.setLineIndex(getNum(shrinkContent, replaceBlank(m.get("SQL"))));
@@ -185,7 +243,7 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
         return rs;
     }
 
-    private static String replaceBlank(String str) {
+    protected static String replaceBlank(String str) {
         String dest = null;
         if (str == null) {
             return dest;
@@ -248,13 +306,18 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
         String plan;
         String[] envSetCommands;
         String[] catalogBuildCommands;
+        String detailPlan;
+        String[] cleanCommands;
 
-        public CheckStruct(String sql, String plan, String statisticTraceInfo, String catalog)
+        public CheckStruct(String sql, String plan, String detailPlan, String statisticTraceInfo, String catalog,
+                           String[] cleanCommands)
             throws IOException {
             this.sql = sql;
             this.plan = plan;
             this.statisticTraceMap = decode(statisticTraceInfo);
             this.schemaList = Lists.newArrayList();
+            this.detailPlan = detailPlan;
+            this.cleanCommands = cleanCommands;
             decodeCatalog(catalog);
         }
 

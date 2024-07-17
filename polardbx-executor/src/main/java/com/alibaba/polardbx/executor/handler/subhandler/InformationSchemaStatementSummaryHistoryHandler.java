@@ -26,6 +26,7 @@ import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaStatementSummaryHistory;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
+
 import static com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHandler.buildFinalResultFromSync;
 
 /**

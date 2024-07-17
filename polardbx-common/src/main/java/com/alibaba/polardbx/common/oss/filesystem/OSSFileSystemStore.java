@@ -23,6 +23,8 @@ import com.aliyun.oss.OSSException;
 import com.aliyun.oss.common.auth.CredentialsProvider;
 import com.aliyun.oss.common.comm.Protocol;
 import com.aliyun.oss.model.AbortMultipartUploadRequest;
+import com.aliyun.oss.model.AppendObjectRequest;
+import com.aliyun.oss.model.AppendObjectResult;
 import com.aliyun.oss.model.CannedAccessControlList;
 import com.aliyun.oss.model.CompleteMultipartUploadRequest;
 import com.aliyun.oss.model.CompleteMultipartUploadResult;
@@ -43,6 +45,7 @@ import com.aliyun.oss.model.UploadPartCopyRequest;
 import com.aliyun.oss.model.UploadPartCopyResult;
 import com.aliyun.oss.model.UploadPartRequest;
 import com.aliyun.oss.model.UploadPartResult;
+import lombok.Getter;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
@@ -71,7 +74,32 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
 
-import static com.alibaba.polardbx.common.oss.filesystem.Constants.*;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.CANNED_ACL_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.CANNED_ACL_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.ENDPOINT_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.ESTABLISH_TIMEOUT_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.ESTABLISH_TIMEOUT_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAXIMUM_CONNECTIONS_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAXIMUM_CONNECTIONS_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAX_ERROR_RETRIES_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAX_ERROR_RETRIES_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAX_PAGING_KEYS_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAX_PAGING_KEYS_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MULTIPART_UPLOAD_PART_SIZE_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MULTIPART_UPLOAD_PART_SIZE_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_DOMAIN_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_HOST_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_PASSWORD_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_PORT_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_USERNAME_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.PROXY_WORKSTATION_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.SECURE_CONNECTIONS_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.SECURE_CONNECTIONS_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.SERVER_SIDE_ENCRYPTION_ALGORITHM_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.SOCKET_TIMEOUT_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.SOCKET_TIMEOUT_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.USER_AGENT_PREFIX;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.USER_AGENT_PREFIX_DEFAULT;
 
 /**
  * Core implementation of OSS Filesystem for Hadoop.
@@ -82,11 +110,17 @@ public class OSSFileSystemStore {
         LoggerFactory.getLogger(OSSFileSystemStore.class);
     private String username;
     private FileSystem.Statistics statistics;
+    @Getter
     private OSSClient ossClient;
+    @Getter
     private String bucketName;
     private long uploadPartSize;
     private int maxKeys;
     private String serverSideEncryptionAlgorithm;
+
+    public FileSystem.Statistics getStatistics() {
+        return statistics;
+    }
 
     public void initialize(URI uri, Configuration conf, String user,
                            FileSystem.Statistics stat) throws IOException {
@@ -194,7 +228,7 @@ public class OSSFileSystemStore {
         int retry = 10;
         int tries = 0;
         List<String> deleteFailed = keysToDelete;
-        while(CollectionUtils.isNotEmpty(deleteFailed)) {
+        while (CollectionUtils.isNotEmpty(deleteFailed)) {
             DeleteObjectsRequest deleteRequest = new DeleteObjectsRequest(bucketName);
             deleteRequest.setKeys(deleteFailed);
             // There are two modes to do batch delete:
@@ -413,6 +447,28 @@ public class OSSFileSystemStore {
     }
 
     /**
+     * Upload a file as an OSS object, using single upload.
+     *
+     * @param key object key.
+     * @param inputStream inputStream to upload.
+     * @throws IOException if failed to upload object.
+     */
+    public void uploadObject(String key, InputStream inputStream) throws IOException {
+        ObjectMetadata meta = new ObjectMetadata();
+        meta.setContentLength(inputStream.available());
+        if (StringUtils.isNotEmpty(serverSideEncryptionAlgorithm)) {
+            meta.setServerSideEncryption(serverSideEncryptionAlgorithm);
+        }
+        try {
+            PutObjectResult result = ossClient.putObject(bucketName, key, inputStream, meta);
+            LOG.debug(result.getETag());
+            statistics.incrementWriteOps(1);
+        } finally {
+            inputStream.close();
+        }
+    }
+
+    /**
      * list objects.
      *
      * @param prefix prefix.
@@ -484,7 +540,7 @@ public class OSSFileSystemStore {
                 statistics.incrementWriteOps(1);
             }
 
-            for (String dir: objects.getCommonPrefixes()) {
+            for (String dir : objects.getCommonPrefixes()) {
                 deleteDirs(dir);
             }
         } catch (OSSException | ClientException e) {
@@ -496,6 +552,7 @@ public class OSSFileSystemStore {
         final FileStatus fileStatus, final BlockLocation[] locations) {
         return new RemoteIterator<LocatedFileStatus>() {
             private boolean hasNext = true;
+
             @Override
             public boolean hasNext() throws IOException {
                 return fileStatus != null && hasNext;
@@ -610,7 +667,7 @@ public class OSSFileSystemStore {
                 statistics.incrementWriteOps(1);
                 return uploadResult.getPartETag();
             } catch (Exception e) {
-                LOG.debug("Failed to upload "+ file.getPath() +", " +
+                LOG.debug("Failed to upload " + file.getPath() + ", " +
                     "try again.", e);
                 caught = e;
             } finally {
@@ -657,6 +714,77 @@ public class OSSFileSystemStore {
         AbortMultipartUploadRequest request = new AbortMultipartUploadRequest(
             bucketName, key, uploadId);
         ossClient.abortMultipartUpload(request);
+    }
+
+    /**
+     * append file to oss file
+     *
+     * @param key object key.
+     * @param file local file
+     * @return next position
+     * @throws IOException if failed
+     */
+    public Long appendObject(String key, File file) throws IOException {
+        return appendObject(key, file, getOssFileLength(key));
+    }
+
+    public Long appendObject(String key, InputStream inputStream) throws IOException {
+        return appendObject(key, inputStream, getOssFileLength(key));
+    }
+
+    /**
+     * append file to oss file
+     *
+     * @param key object key.
+     * @param file local file
+     * @param position write position
+     * @return next position
+     * @throws IOException If the file length and position are not equal, throw PositionNotEqualToLength
+     */
+    public Long appendObject(String key, File file, Long position) throws IOException {
+        File object = file.getAbsoluteFile();
+        FileInputStream fis = new FileInputStream(object);
+        return appendObject(key, fis, position);
+    }
+
+    /**
+     * append file to oss file
+     *
+     * @param key object key.
+     * @param inputStream input stream
+     * @param position write position
+     * @return next position
+     * @throws IOException If the file length and position are not equal, throw PositionNotEqualToLength
+     */
+    public Long appendObject(String key, InputStream inputStream, Long position) throws IOException {
+        ObjectMetadata meta = new ObjectMetadata();
+        if (StringUtils.isNotEmpty(serverSideEncryptionAlgorithm)) {
+            meta.setServerSideEncryption(serverSideEncryptionAlgorithm);
+        }
+        AppendObjectRequest appendObjectRequest = new AppendObjectRequest(bucketName, key, inputStream, meta);
+        appendObjectRequest.setPosition(position);
+        AppendObjectResult appendObjectResult;
+        try {
+            appendObjectResult = ossClient.appendObject(appendObjectRequest);
+            statistics.incrementWriteOps(1);
+        } finally {
+            inputStream.close();
+        }
+        return appendObjectResult.getNextPosition();
+    }
+
+    /**
+     * get oss file length
+     *
+     * @param key object name
+     * @return return file length. If the file does not exist, return 0L
+     */
+    public long getOssFileLength(String key) {
+        ObjectMetadata objectMetadata = getObjectMetadata(key);
+        if (objectMetadata != null) {
+            return objectMetadata.getContentLength();
+        }
+        return 0L;
     }
 
     private static class PartNumberAscendComparator

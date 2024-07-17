@@ -31,9 +31,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 

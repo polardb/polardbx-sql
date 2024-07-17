@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.storagepool;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.factory.storagepool.StoragePoolUtils;
@@ -25,6 +24,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.AlterStoragePoolSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoExtraFieldJSON;
@@ -41,10 +42,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.gms.topology.StorageInfoRecord.STORAGE_STATUS_NOT_READY;
+import static com.alibaba.polardbx.gms.topology.StorageInfoRecord.STORAGE_STATUS_REMOVED;
+
 @Getter
 @TaskName(name = "DrainStorageInfoTask")
-// here is add meta to complex_task_outline table, no need to update tableVersion,
-// so no need to extends from BaseGmsTask
 public class DrainStorageInfoTask extends BaseDdlTask {
 
     String schemaName;
@@ -80,19 +82,43 @@ public class DrainStorageInfoTask extends BaseDdlTask {
                 String.format("storage pool '%s' doesn't contains all of storage inst: '%s'", storagePoolName,
                     StringUtils.join(dnIds, ",")));
         }
+        Boolean notifyStorageInfo = true;
+        if (storagePoolName.equalsIgnoreCase(StoragePoolManager.RECYCLE_STORAGE_POOL_NAME)) {
+            String dnIdStr = StringUtils.join(this.dnIds, ",");
+//            Maybe There is no need.
+            // but for add node to _recycle, this is neccessary.
+            List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
+            List<StorageInfoRecord> originalStorageInfoRecords =
+                storageInfoRecords.stream().filter(o -> dnIds.contains(o.storageInstId)).collect(Collectors.toList());
+            for (StorageInfoRecord record : originalStorageInfoRecords) {
+                StorageInfoExtraFieldJSON extras =
+                    Optional.ofNullable(record.extras).orElse(new StorageInfoExtraFieldJSON());
+                extras.setStoragePoolName("");
+                storageInfoAccessor.updateStoragePoolName(record.storageInstId, extras);
+            }
+            for (String dnId : dnIds) {
+                storageInfoAccessor.updateStorageStatus(dnId, STORAGE_STATUS_REMOVED);
+            }
+            storagePoolManager.shrinkStoragePoolSimply(storagePoolName, dnIdStr);
+        } else {
+            List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
+            List<StorageInfoRecord> originalStorageInfoRecords =
+                storageInfoRecords.stream().filter(o -> dnIds.contains(o.storageInstId)).collect(Collectors.toList());
+            for (StorageInfoRecord record : originalStorageInfoRecords) {
+                StorageInfoExtraFieldJSON extras =
+                    Optional.ofNullable(record.extras).orElse(new StorageInfoExtraFieldJSON());
+                extras.setStoragePoolName(StoragePoolUtils.RECYCLE_STORAGE_POOL);
+                storageInfoAccessor.updateStoragePoolName(record.storageInstId, extras);
+            }
 
-        List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
-        List<StorageInfoRecord> originalStorageInfoRecords =
-            storageInfoRecords.stream().filter(o -> dnIds.contains(o.storageInstId)).collect(Collectors.toList());
-        for (StorageInfoRecord record : originalStorageInfoRecords) {
-            StorageInfoExtraFieldJSON extras =
-                Optional.ofNullable(record.extras).orElse(new StorageInfoExtraFieldJSON());
-            extras.setStoragePoolName(StoragePoolUtils.RECYCLE_STORAGE_POOL);
-            storageInfoAccessor.updateStoragePoolName(record.storageInstId, extras);
+            String dnIdStr = StringUtils.join(this.dnIds, ",");
+            storagePoolManager.shrinkStoragePool(storagePoolName, dnIdStr, undeletableDnId);
         }
-
-        String dnIdStr = StringUtils.join(this.dnIds, ",");
-        storagePoolManager.shrinkStoragePool(storagePoolName, dnIdStr, undeletableDnId);
+        if (notifyStorageInfo) {
+            // update op-version
+            MetaDbConfigManager.getInstance()
+                .notify(MetaDbDataIdBuilder.getStorageInfoDataId(instId), metaDbConnection);
+        }
 
     }
 
@@ -127,12 +153,12 @@ public class DrainStorageInfoTask extends BaseDdlTask {
 
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
 }

@@ -22,7 +22,6 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.calcite.util.Pair;
 import org.junit.Assert;
 import org.junit.Ignore;
-import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -32,7 +31,6 @@ import java.util.List;
 /**
  * 事务控制指令测试
  */
-
 public class TransactionCommandTest extends CrudBasedLockTestCase {
 
     public TransactionCommandTest() {

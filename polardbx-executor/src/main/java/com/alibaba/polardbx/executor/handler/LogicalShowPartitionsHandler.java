@@ -19,14 +19,10 @@ package com.alibaba.polardbx.executor.handler;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.ExecutorCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPartitionsMetaHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -34,21 +30,14 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
-import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlShowPartitions;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**

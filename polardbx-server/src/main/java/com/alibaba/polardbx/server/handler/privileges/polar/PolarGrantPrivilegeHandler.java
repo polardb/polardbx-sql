@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.PrivilegeKind;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -94,5 +95,10 @@ public class PolarGrantPrivilegeHandler extends AbstractPrivilegeCommandHandler 
 
         PolarPrivManager.getInstance().grantPrivileges(granter, c.getActiveRoles(), grantees);
         polarAudit(getServerConn().getConnectionInfo(), getSql().toString(), AuditAction.GRANT);
+    }
+
+    @Override
+    protected SqlKind getSqlKind() {
+        return SqlKind.GRANT_PRIVILEGE;
     }
 }

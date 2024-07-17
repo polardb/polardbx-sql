@@ -120,6 +120,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
     private int pushJoinHitCount = 0;
     private Set<String> tablesInLV;
 
+    private boolean gsiPrune = false;
+
     /**
      * If true, this plan can be optimize by adding FORCE INDEX PRIMARY for TSO trx, (but we do not optimize it.)
      * Set after building plan.
@@ -133,7 +135,6 @@ public class PlannerContext implements Context, PlannerContextWithParam {
     private boolean addForcePrimary = false;
 
     private boolean hasRecursiveCte = false;
-
     /**
      * statistic trace
      */
@@ -147,6 +148,12 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     private Map<String, Set<String>> viewMap = null;
     private Set<Integer> constantParamIndex = null;
+
+    private int columnarMaxShardCnt = 20;
+
+    private boolean useColumnar = false;
+
+    private boolean inExprToLookupJoin = false;
 
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
@@ -199,7 +206,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
                              SqlKind sqlkind,
                              boolean isInSubquery,
                              boolean shouldUseHeuOrder,
-                             WorkloadType workloadType) {
+                             WorkloadType workloadType,
+                             boolean useColumnar) {
         this.executionContext = executionContext;
         this.schemaName = executionContext.getSchemaName();
         this.extraCmds = extraCmds;
@@ -211,6 +219,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.isInSubquery = isInSubquery;
         this.shouldUseHeuOrder = shouldUseHeuOrder;
         this.workloadType = workloadType;
+        this.useColumnar = useColumnar;
     }
 
     public PlannerContext copyWithInSubquery() {
@@ -221,7 +230,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
             sqlKind,
             isInSubquery,
             shouldUseHeuOrder,
-            workloadType);
+            workloadType,
+            useColumnar);
         ret.isInSubquery = true;
         ret.joinCount = joinCount;
         return ret;
@@ -509,6 +519,14 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         return true;
     }
 
+    public boolean isGsiPrune() {
+        return gsiPrune;
+    }
+
+    public void setGsiPrune(boolean gsiPrune) {
+        this.gsiPrune = gsiPrune;
+    }
+
     public boolean isCanOptByForcePrimary() {
         return canOptByForcePrimary;
     }
@@ -606,11 +624,37 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.hasRecursiveCte = hasRecursiveCte;
     }
 
+    public int getColumnarMaxShardCnt() {
+        return columnarMaxShardCnt;
+    }
+
+    public void setColumnarMaxShardCnt(int columnarMaxShardCnt) {
+        if (columnarMaxShardCnt > 0) {
+            this.columnarMaxShardCnt = columnarMaxShardCnt;
+        }
+    }
+
+    public boolean isUseColumnar() {
+        return useColumnar;
+    }
+
+    public void setUseColumnar(boolean useColumnar) {
+        this.useColumnar = useColumnar;
+    }
+
     public Set<Integer> getConstantParamIndex() {
         return constantParamIndex;
     }
 
     public void setConstantParamIndex(Set<Integer> constantParamIndex) {
         this.constantParamIndex = constantParamIndex;
+    }
+
+    public boolean isInExprToLookupJoin() {
+        return inExprToLookupJoin;
+    }
+
+    public void setInExprToLookupJoin(boolean inExprToLookupJoin) {
+        this.inExprToLookupJoin = inExprToLookupJoin;
     }
 }

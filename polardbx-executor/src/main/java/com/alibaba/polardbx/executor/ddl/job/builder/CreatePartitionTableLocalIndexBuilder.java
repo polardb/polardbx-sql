@@ -16,19 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
-import com.alibaba.polardbx.executor.ddl.job.builder.gsi.IndexBuilderHelper;
-import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlCreateIndex;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.parser.SqlParserPos;
 
 public class CreatePartitionTableLocalIndexBuilder extends CreateLocalIndexBuilder {
 

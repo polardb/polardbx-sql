@@ -228,14 +228,14 @@ public final class Slice
     }
 
     void resetSlice(@Nullable Object base, long address, int size, int retainedSize, @Nullable Object reference) {
-        checkArgument(this != Slices.EMPTY_SLICE, "EmptySlice shouldn't resetSlice");
+        checkArgument(this != Slices.EMPTY_SLICE);
         if (address <= 0) {
             throw new IllegalArgumentException(format("Invalid address: %s", address));
         }
         if (size <= 0) {
             throw new IllegalArgumentException(format("Invalid size: %s", size));
         }
-        checkArgument((address + size) >= size, "Address + size is greater than 64 bits");
+        checkArgument((address + size) >= size);
 
         this.reference = reference;
         this.base = base;

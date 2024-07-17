@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.atom.CacheVariables;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.pl.ProcedureManager;
@@ -32,6 +31,8 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTabl
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.core.expression.JavaFunctionManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
+
+import java.util.Optional;
 
 public class ReloadSyncAction implements ISyncAction {
 
@@ -66,8 +67,6 @@ public class ReloadSyncAction implements ISyncAction {
                 CacheVariables.invalidateAll();
                 break;
             case USERS:
-                // 触发一次刷新
-                ConfigDataMode.setRefreshConfigTimestamp(System.currentTimeMillis() + 5 * 1000);
                 break;
             case FILESTORAGE:
                 // reset rate-limiter of oss file system
@@ -84,6 +83,12 @@ public class ReloadSyncAction implements ISyncAction {
                 break;
             case STATISTICS:
                 StatisticManager.getInstance().clearAndReloadData();
+                break;
+
+            case COLUMNARMANAGER:
+                Optional
+                    .ofNullable(ExecutorContext.getContext(schemaName))
+                    .ifPresent(ExecutorContext::reloadColumnarManager);
                 break;
             default:
                 break;

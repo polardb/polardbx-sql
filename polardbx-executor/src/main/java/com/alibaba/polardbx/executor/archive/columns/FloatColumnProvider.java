@@ -17,9 +17,6 @@
 package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.CrcAccumulator;
-import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
@@ -27,9 +24,7 @@ import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
-import com.alibaba.polardbx.executor.chunk.DecimalBlockBuilder;
-import com.alibaba.polardbx.executor.chunk.DoubleBlockBuilder;
-import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
@@ -53,7 +48,8 @@ class FloatColumnProvider implements ColumnProvider<Float> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex,
+                          SessionProperties sessionProperties) {
         double[] array = ((DoubleColumnVector) vector).vector;
         for (int i = startIndex; i < endIndex; i++) {
             int idx = i;
@@ -69,7 +65,8 @@ class FloatColumnProvider implements ColumnProvider<Float> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize,
+                          SessionProperties sessionProperties) {
         double[] array = ((DoubleColumnVector) vector).vector;
         for (int i = 0; i < selSize; i++) {
             int idx = selection[i];
@@ -101,10 +98,12 @@ class FloatColumnProvider implements ColumnProvider<Float> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType,
+                       ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
+                    accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -123,7 +122,24 @@ class FloatColumnProvider implements ColumnProvider<Float> {
     }
 
     @Override
-    public PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics, Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+            return;
+        }
+
+        byte[] bytes = row.getBytes(columnId);
+        blockBuilder.writeFloat(convertFromBinaryToFloat(dataType, bytes));
+    }
+
+    private float convertFromBinaryToFloat(DataType dataType, byte[] bytes) {
+        int result = ColumnProvider.intFromByte(bytes, bytes.length);
+        return Float.intBitsToFloat(result);
+    }
+
+    @Override
+    public PruningResult prune(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics,
+                               Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
         return OssOrcFilePruner.pruneDouble(predicateLeaf, columnStatistics, stripeColumnMetaMap);
     }
 
@@ -134,7 +150,8 @@ class FloatColumnProvider implements ColumnProvider<Float> {
     }
 
     @Override
-    public void fetchStatistics(ColumnStatistics columnStatistics, SqlKind aggKind, BlockBuilder blockBuilder, DataType dataType, SessionProperties sessionProperties) {
+    public void fetchStatistics(ColumnStatistics columnStatistics, SqlKind aggKind, BlockBuilder blockBuilder,
+                                DataType dataType, SessionProperties sessionProperties) {
         DoubleColumnStatistics doubleColumnStatistics = (DoubleColumnStatistics) columnStatistics;
         if (doubleColumnStatistics.getNumberOfValues() == 0) {
             blockBuilder.appendNull();

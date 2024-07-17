@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -25,6 +26,7 @@ import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKin
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.util.Rex2ExprStringVisitor;
 
+import java.net.ConnectException;
 import java.util.BitSet;
 import java.util.List;
 
@@ -396,6 +398,8 @@ public class PartitionPruneStepOp implements PartitionPruneStep {
                     constExprBuilder.append("min");
                 } else if (clauseInfoExec.getValueKind() == PartitionBoundValueKind.DATUM_MAX_VALUE) {
                     constExprBuilder.append("max");
+                } else if (clauseInfoExec.getValueKind() == PartitionBoundValueKind.DATUM_ANY_VALUE) {
+                    constExprBuilder.append("any");
                 }
             }
             inputExprBuilder.append(")");

@@ -84,18 +84,23 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.NlsString;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.builder.ToStringBuilder;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 一个table的描述，包含主键信息/字段信息/索引信息等，暂时不考虑外键/约束键，目前没意义
@@ -163,6 +168,13 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
     private final List<ColumnMeta> allColumnsOrderByDefined = new ArrayList<>();
 
+    // cache
+    private volatile List<ColumnMeta> readColumnsCache = null;
+    private volatile List<ColumnMeta> writeColumnsCache = null;
+    private Boolean hasLogicalGeneratedColumnCache = null;
+    private Boolean hasDefaultExprColumnCache = null;
+    private Boolean hasGeneratedColumnCache = null;
+
     private boolean hasPrimaryKey = true;
 
     private TableColumnMeta tableColumnMeta = null;
@@ -170,6 +182,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private List<ColumnMeta> autoUpdateColumns = null;
     private GsiMetaManager.GsiTableMetaBean gsiTableMetaBean = null;
     private Map<String, GsiIndexMetaBean> gsiPublished = null;
+    private Map<String, GsiIndexMetaBean> columnarIndexPublished = null;
+    private Map<String, GsiIndexMetaBean> columnarIndexChecking = null;
 
     private ComplexTaskOutlineRecord complexTaskOutlineRecord = null;
     private ComplexTaskMetaManager.ComplexTaskTableMetaBean complexTaskTableMetaBean = null;
@@ -188,6 +202,9 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private Map<String, Map<String, List<FileMeta>>> fileMetaSet = null;
     private Map<String, List<FileMeta>> flatFileMetas = null;
 
+    // for columnar column mapping
+    private List<Long> columnarFieldIdList = null;
+
     private volatile LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
 
     private volatile TableFilesMeta tableFilesMeta = null;
@@ -195,6 +212,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private String defaultCharset;
 
     private String defaultCollation;
+
+    private boolean encryption;
 
     public TableMeta(String schemaName, String tableName, List<ColumnMeta> allColumnsOrderByDefined,
                      IndexMeta primaryIndex,
@@ -261,6 +280,10 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public boolean requireLogicalColumnOrder() {
         return (flag & TablesRecord.FLAG_LOGICAL_COLUMN_ORDER) != 0L;
+    }
+
+    public boolean rebuildingTable() {
+        return (flag & TablesRecord.FLAG_REBUILDING_TABLE) != 0L;
     }
 
     public String getSchemaName() {
@@ -363,24 +386,34 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return allColumnsOrderByDefined;
     }
 
-    public List<ColumnMeta> getAllColumns() {   //兼容以前
-        return allColumnsOrderByDefined.stream().filter(column -> column.getStatus() == ColumnStatus.PUBLIC
-            || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE).collect(Collectors.toList());
+    public List<ColumnMeta> getAllColumns() {   //兼容以前 可读的columns
+        if (readColumnsCache == null) {
+            synchronized (this) {
+                if (readColumnsCache == null) {
+                    readColumnsCache = allColumnsOrderByDefined.stream()
+                        .filter(column -> column.getStatus() == ColumnStatus.PUBLIC
+                            || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE)
+                        .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
+                }
+            }
+        }
+        return readColumnsCache;
     }
 
     public List<ColumnMeta> getWriteColumns() {  //可写的columns
-        return allColumnsOrderByDefined.stream()
-            .filter(column -> column.getStatus() == ColumnStatus.PUBLIC
-                || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE
-                || column.getStatus() == ColumnStatus.WRITE_ONLY || column.getStatus() == ColumnStatus.WRITE_REORG)
-            .collect(Collectors.toList());
-    }
-
-    public List<ColumnMeta> getReadColumns() {   //可读的columns
-        return allColumnsOrderByDefined.stream()
-            .filter(column -> column.getStatus() == ColumnStatus.PUBLIC
-                || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE)
-            .collect(Collectors.toList());
+        if (writeColumnsCache == null) {
+            synchronized (this) {
+                if (writeColumnsCache == null) {
+                    writeColumnsCache = allColumnsOrderByDefined.stream()
+                        .filter(column -> column.getStatus() == ColumnStatus.PUBLIC
+                            || column.getStatus() == ColumnStatus.MULTI_WRITE_SOURCE
+                            || column.getStatus() == ColumnStatus.WRITE_ONLY
+                            || column.getStatus() == ColumnStatus.WRITE_REORG)
+                        .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
+                }
+            }
+        }
+        return writeColumnsCache;
     }
 
     public ColumnMeta getColumnMultiWriteSourceColumnMeta() {
@@ -498,6 +531,15 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             }
         }
         return null;
+    }
+
+    /**
+     * 判断列是否存在，建议DML中判断都用这个
+     */
+    public boolean containsColumn(String columnName) {
+        return null != getColumnIgnoreCase(columnName) || (getTableColumnMeta() != null
+            && getTableColumnMeta().isGsiModifying()
+            && getTableColumnMeta().getColumnMultiWriteMapping().containsKey(columnName.toLowerCase()));
     }
 
     @Override
@@ -662,7 +704,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     public List<String> getPublicLogicalGeneratedColumnNames() {
         List<String> generatedColumns = new ArrayList<>();
         // Get all public generated columns
-        for (ColumnMeta meta : getReadColumns()) {
+        for (ColumnMeta meta : getAllColumns()) {
             if (meta.isLogicalGeneratedColumn()) {
                 generatedColumns.add(meta.getName());
             }
@@ -671,15 +713,25 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public boolean hasLogicalGeneratedColumn() {
-        return allColumns.values().stream().anyMatch(ColumnMeta::isLogicalGeneratedColumn);
+        if (hasLogicalGeneratedColumnCache == null) {
+            hasLogicalGeneratedColumnCache =
+                allColumns.values().stream().anyMatch(ColumnMeta::isLogicalGeneratedColumn);
+        }
+        return hasLogicalGeneratedColumnCache;
     }
 
     public boolean hasDefaultExprColumn() {
-        return allColumns.values().stream().anyMatch(ColumnMeta::isDefaultExpr);
+        if (hasDefaultExprColumnCache == null) {
+            hasDefaultExprColumnCache = allColumns.values().stream().anyMatch(ColumnMeta::isDefaultExpr);
+        }
+        return hasDefaultExprColumnCache;
     }
 
     public boolean hasGeneratedColumn() {
-        return allColumns.values().stream().anyMatch(ColumnMeta::isGeneratedColumn);
+        if (hasGeneratedColumnCache == null) {
+            hasGeneratedColumnCache = allColumns.values().stream().anyMatch(ColumnMeta::isGeneratedColumn);
+        }
+        return hasGeneratedColumnCache;
     }
 
     public boolean hasUnpublishedLogicalGeneratedColumn() {
@@ -709,13 +761,35 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return gsiPublished;
     }
 
+    public Map<String, GsiIndexMetaBean> getColumnarIndexPublished() {
+        return columnarIndexPublished;
+    }
+
+    public Map<String, GsiIndexMetaBean> getColumnarIndexChecking() {
+        return columnarIndexChecking;
+    }
+
     public void setGsiTableMetaBean(GsiMetaManager.GsiTableMetaBean gsiTableMetaBean) {
         this.gsiTableMetaBean = gsiTableMetaBean;
         if (null != gsiTableMetaBean && gsiTableMetaBean.tableType.isPrimary()) {
-            this.gsiPublished = gsiTableMetaBean.indexMap.entrySet()
-                .stream()
-                .filter(e -> e.getValue().indexStatus.isPublished())
-                .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+            this.gsiPublished = new HashMap<>();
+            this.columnarIndexPublished = new HashMap<>();
+            this.columnarIndexChecking = new HashMap<>();
+            for (Entry<String, GsiIndexMetaBean> indexMetaBeanEntry : gsiTableMetaBean.indexMap.entrySet()) {
+                if (indexMetaBeanEntry.getValue().indexStatus.isWriteReorg()
+                    && indexMetaBeanEntry.getValue().columnarIndex) {
+                    // CCI is in checking state.
+                    this.columnarIndexChecking.put(indexMetaBeanEntry.getKey(), indexMetaBeanEntry.getValue());
+                }
+                if (!indexMetaBeanEntry.getValue().indexStatus.isPublished()) {
+                    continue;
+                }
+                if (indexMetaBeanEntry.getValue().columnarIndex) {
+                    this.columnarIndexPublished.put(indexMetaBeanEntry.getKey(), indexMetaBeanEntry.getValue());
+                } else {
+                    this.gsiPublished.put(indexMetaBeanEntry.getKey(), indexMetaBeanEntry.getValue());
+                }
+            }
         }
     }
 
@@ -724,16 +798,43 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
     }
 
-    public boolean hasGsi(String indexName) {
-        List<String> gsiNames = new ArrayList<>();
-        getGsiTableMetaBean().indexMap.forEach((key, value) -> {
-            gsiNames.add(TddlSqlToRelConverter.unwrapGsiName(key));
-        });
-        return gsiNames.contains(indexName);
+    public boolean withGsi(String indexName) {
+        return withGsi() && hasGsiIgnoreCase(indexName);
     }
 
-    public boolean withGsi(String indexName) {
-        return withGsi() && hasGsi(indexName);
+    public boolean withCci() {
+        return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.COLUMNAR
+            && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap) && getGsiTableMetaBean().indexMap.values()
+            .stream().anyMatch(index -> index.columnarIndex);
+    }
+
+    public boolean hasCci(String indexName) {
+        Set<String> cciNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        getGsiTableMetaBean().indexMap.forEach((key, value) -> {
+            if (value.columnarIndex) {
+                cciNames.add(TddlSqlToRelConverter.unwrapGsiName(key));
+            }
+        });
+        return cciNames.contains(indexName);
+    }
+
+    public boolean withCci(String indexName) {
+        return withCci() && hasCci(indexName);
+    }
+
+    public Stream<String> gsiNameStream() {
+        return withGsi() ? getGsiTableMetaBean().indexMap.keySet().stream() : Stream.empty();
+    }
+
+    public Stream<String> gsiNameStream(Predicate<GsiIndexMetaBean> filter) {
+        return withGsi() ?
+            getGsiTableMetaBean()
+                .indexMap
+                .values()
+                .stream()
+                .filter(filter)
+                .map(imb -> imb.indexName)
+            : Stream.empty();
     }
 
     public boolean hasGsiIgnoreCase(String indexName) {
@@ -761,6 +862,28 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             return true;
         }
         return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType == GsiMetaManager.TableType.GSI;
+    }
+
+    public boolean isColumnar() {
+        if (partitionInfo != null && partitionInfo.isColumnar()) {
+            return true;
+        }
+        return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType == GsiMetaManager.TableType.COLUMNAR;
+    }
+
+    public boolean withColumnar() {
+        return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.COLUMNAR
+            && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
+    }
+
+    public String columnarOriginTable() {
+        if (getGsiTableMetaBean() == null) {
+            return null;
+        }
+        if (getGsiTableMetaBean().gsiMetaBean == null) {
+            return null;
+        }
+        return getGsiTableMetaBean().gsiMetaBean.tableName.toLowerCase();
     }
 
     public boolean isClustered() {
@@ -983,13 +1106,32 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     /**
-     * get the field id of a column
+     * get the field id of a column for OSS table
      *
      * @param column column name
      * @return the same colum name if the table is an old file storage table
      */
     public String getColumnFieldId(String column) {
         return tableFilesMeta.columnMapping.get(column.toLowerCase());
+    }
+
+    @Nullable
+    public List<Long> getColumnarFieldIdList() {
+        return columnarFieldIdList;
+    }
+
+    public void setColumnarFieldIdList(List<Long> columnarFieldIdList) {
+        this.columnarFieldIdList = columnarFieldIdList;
+    }
+
+    /**
+     * get the field id of a column for CCI
+     *
+     * @param columnIndex column index
+     * @return corresponding field id of the column
+     */
+    public long getColumnarFieldId(int columnIndex) {
+        return columnarFieldIdList.get(columnIndex);
     }
 
     public void setFileMetaSet(Map<String, Map<String, List<FileMeta>>> fileMetaSet) {
@@ -1026,5 +1168,13 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         } else {
             return OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName).getActualTopology();
         }
+    }
+
+    public boolean isEncryption() {
+        return encryption;
+    }
+
+    public void setEncryption(boolean encryption) {
+        this.encryption = encryption;
     }
 }

@@ -60,6 +60,10 @@ public interface ITransactionManager extends Lifecycle, ITransactionManagerUtil 
         return false;
     }
 
+    long getMinSnapshotSeq();
+
+    long getColumnarMinSnapshotSeq();
+
     default boolean support2pcOpt() {
         return false;
     }

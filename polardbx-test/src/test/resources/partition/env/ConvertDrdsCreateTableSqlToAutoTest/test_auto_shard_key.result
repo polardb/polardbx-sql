@@ -1,0 +1,43 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+create database if not exists `testConvertDrdsDb` mode = drds;
+use testConvertDrdsDb;
+## shouldn't remove auto_shard_key
+create table tb0(
+a int,
+b int,
+c int,
+d int,
+local index `auto_shard_key_not_rm1`(c, d),
+local index `auto_shard_key_not_rm2`(a, b),
+local index `auto_shard_key_not_rm3`(c, d),
+local index `auto_shard_key_not_rm4`(d)
+) dbpartition by hash(a) tbpartition by right_shift(`c`, 4) tbpartitions 4;
+create database testConvertDbAuto like testConvertDrdsDb mode=auto dry_run=true;
+TABLE,CREATE_TABLE_DRDS,CREATE_TABLE_AUTO
+tb0,CREATE TABLE `tb0` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_not_rm1` (`c`, `d`),
+	KEY `auto_shard_key_not_rm2` (`a`, `b`),
+	KEY `auto_shard_key_not_rm3` (`c`, `d`),
+	KEY `auto_shard_key_not_rm4` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`a`) tbpartition by RIGHT_SHIFT(`c`, 4) tbpartitions 4,CREATE TABLE `tb0` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	KEY `auto_shard_key_not_rm1` (`c`, `d`),
+	KEY `auto_shard_key_not_rm2` (`a`, `b`),
+	KEY `auto_shard_key_not_rm3` (`c`, `d`),
+	KEY `auto_shard_key_not_rm4` (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`) PARTITIONS 16
+SUBPARTITION BY KEY (`c`) SUBPARTITIONS 4
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;

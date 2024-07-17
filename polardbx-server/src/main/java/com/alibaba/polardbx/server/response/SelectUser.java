@@ -83,7 +83,7 @@ public class SelectUser {
     private static byte[] getUser(ServerConnection c) {
         StringBuilder sb = new StringBuilder();
         sb.append(c.getUser()).append('@').append(c.getHost());
-        return StringUtil.encode(sb.toString(), c.getCharset());
+        return StringUtil.encode(sb.toString(), c.getResultSetCharset());
     }
 
 }

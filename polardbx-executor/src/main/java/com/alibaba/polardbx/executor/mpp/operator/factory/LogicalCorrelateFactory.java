@@ -40,12 +40,14 @@ public class LogicalCorrelateFactory extends ExecutorFactory {
         DataType dateType = correlate.getJoinType() == SemiJoinType.LEFT ?
             CalciteUtils.getType(correlate.getRowType().getFieldList().get(fieldCount)) :
             DataTypes.LongType;
-        return new CorrelateExec(inner, correlate.getRight(), dateType, correlate.getLeft().getRowType(),
+        CorrelateExec exec = new CorrelateExec(inner, correlate.getRight(), dateType, correlate.getLeft().getRowType(),
             correlate.getCorrelationId(),
             correlate.getLeftConditions(),
             correlate.getOpKind(),
             correlate.getJoinType(),
             context);
+        registerRuntimeStat(exec, correlate, context);
+        return exec;
     }
 
 }

@@ -29,6 +29,8 @@ public class SQLAlterTableSetOption extends SQLObjectImpl implements SQLAlterTab
     boolean isAlterTableGroup = false;
     boolean force = false;
 
+    boolean implicit = false;
+
     public SQLAlterTableSetOption() {
 
     }
@@ -56,6 +58,14 @@ public class SQLAlterTableSetOption extends SQLObjectImpl implements SQLAlterTab
 
     public void setForce(boolean force) {
         this.force = force;
+    }
+
+    public boolean isImplicit() {
+        return implicit;
+    }
+
+    public void setImplicit(boolean implicit) {
+        this.implicit = implicit;
     }
 
     @Override

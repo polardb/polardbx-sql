@@ -140,3 +140,46 @@
     Project(b="b", c="c", avg(a)="$f2 / $f3", grouping(b)="0")
       LogicalAgg(group="b,c", $f2="SUM(a)", $f3="COUNT(a)")
         LogicalView(tables="optest_0000.single_test_tb", sql="SELECT `b`, `c`, `a` FROM `single_test_tb` AS `single_test_tb`")
+
+- sql: |
+    select COUNT(distinct a) as c from test_tb group by grouping sets(a, (), ())
+
+  plan: |
+
+    project(c="c")
+      logicalagg(group="a,$e", c="count(a_0)")
+        logicalagg(group="a,$e,a_0")
+          expand(projects="{a=a, $e=0, a_0=a}, {a=null, $e=1, a_0=a}")
+            logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a` from `test_tb` as `test_tb`")
+
+- sql: |
+    select COUNT(distinct a, b) as c from test_tb group by grouping sets(a, b)
+
+  plan: |
+    project(c="c")
+      logicalagg(group="a,b,$e", c="count(a_0, b_0)")
+        logicalagg(group="a,b,$e,a_0,b_0")
+          expand(projects="{a=a, b=null, $e=1, a_0=a, b_0=b}, {a=null, b=b, $e=2, a_0=a, b_0=b}")
+            logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tb` as `test_tb`")
+
+- sql: |
+    select COUNT(distinct a), COUNT(distinct a, b) as c from test_tb group by grouping sets(a, b)
+
+  plan: |
+    project(count(distinct a)="count(distinct a)", c="c")
+      logicalagg(group="a,b,$e", count(distinct a)="count(a_1) filter $6", c="count(a_1, b_0) filter $5")
+        project(a="a", b="b", $e="$e", a_1="a_1", b_0="b_0", $g_0="case(=($5, 0), 0, 1) = 0", $g_1="case(=($5, 0), 0, 1) = 1")
+          logicalagg(group="a,b,$e,a_1,b_0,$e_0")
+            expand(projects="{a=a, b=b, $e=$e, a_0=a_0, a_1=a_1, b_0=b_0, $e_0=0}, {a=a, b=b, $e=$e, a_0=a_0, a_1=a_1, b_0=null, $e_0=1}")
+              expand(projects="{a=a, b=null, $e=1, a_0=a, a_1=a, b_0=b}, {a=null, b=b, $e=2, a_0=a, a_1=a, b_0=b}")
+                logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tb` as `test_tb`")
+
+- sql: |
+    select COUNT(distinct a, b) as c from test_tb group by grouping sets(a, b)
+
+  plan: |
+    project(c="c")
+      logicalagg(group="a,b,$e", c="count(a_0, b_0)")
+        logicalagg(group="a,b,$e,a_0,b_0")
+          expand(projects="{a=a, b=null, $e=1, a_0=a, b_0=b}, {a=null, b=b, $e=2, a_0=a, b_0=b}")
+            logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tb` as `test_tb`")

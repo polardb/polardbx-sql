@@ -75,7 +75,7 @@ public class FullTypeTestUtil {
         "\t`c_text_medium` mediumtext,\n" +
         "\t`c_text_long` longtext,\n" +
         "\t`c_enum` enum('a', 'b', 'c') DEFAULT NULL,\n" +
-//        "\t`c_set` set('a', 'b', 'c') DEFAULT NULL,\n" +
+        "\t`c_set` set('a', 'b', 'c') DEFAULT NULL,\n" +
         "\t`c_json` json DEFAULT NULL,\n" +
         "\t`c_geometory` geometry DEFAULT NULL,\n" +
         "\t`c_point` point DEFAULT NULL,\n" +
@@ -449,12 +449,12 @@ public class FullTypeTestUtil {
             ImmutableList.of("insert into " + primaryTableName + "(id,c_enum) values(null,'a');\n",
                 "insert into " + primaryTableName + "(id,c_enum) values(null,'b');\n",
                 "insert into " + primaryTableName + "(id,c_enum) values(null,NULL);\n"));
-//        builder.put(C_SET,
-//                ImmutableList.of("insert into " + primaryTableName + "(id,c_set) values(null,'a');\n",
-//                        "insert into " + primaryTableName + "(id,c_set) values(null,'b,a');\n",
-//                        "insert into " + primaryTableName + "(id,c_set) values(null,'b,c,a');\n",
-//                        "insert into " + primaryTableName + "(id,c_set) values(null,'d');\n",
-//                        "insert into " + primaryTableName + "(id,c_set) values(null,NULL);\n"));
+        builder.put(C_SET,
+            ImmutableList.of("insert into " + primaryTableName + "(id,c_set) values(null,'a');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,'b,a');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,'b,c,a');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,'d');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,NULL);\n"));
         builder.put(C_JSON,
             ImmutableList.of(
                 "insert into " + primaryTableName + "(id,c_json) values(null,'{\"k1\": \"v1\", \"k2\": 10}');\n",

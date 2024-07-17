@@ -16,28 +16,32 @@
 /** ======================== **/
 
 body {
-    padding-top: 20px;
+    /*padding-top: 20px;*/
     padding-bottom: 20px;
+    background-color: #e3e5e8;
 }
 
 h2 {
-    color: #fff;
+    color: #000000;
 }
 
 h3 {
-    color: #dadada;
+    color: #000000;
 }
 
 h1 small, h2 small, h3 small, h4 small, h5 small, h6 small {
-    color: #888;
+    color: #000000;
 }
 
 pre {
     margin: 0;
-    padding: 5px;
-    color: #999;
-    background-color: #2C2F38;
+    padding: 5px 10px 5px 10px;
+    color: #000000;
     border: none;
+}
+
+a {
+    color: #1890ff;
 }
 
 /** Boostrap overrides **/
@@ -46,7 +50,7 @@ pre {
 .container {
     min-width: 960px;
     width: auto !important;
-    max-width: 1200px;
+    background-color: #e8eaee;
 }
 
 .modal-lg {
@@ -79,9 +83,18 @@ pre {
     margin: 0;
 }
 
+.row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
 /* To make the table striping less stark */
+.table .table  {
+    background-color: #ffffff;
+}
+
 .table-striped > tbody > tr:nth-of-type(odd) {
-    background-color: #353944;
+    background-color: #f8f8f8;
 }
 
 .table > tbody > tr {
@@ -130,6 +143,10 @@ pre {
     color: #fff;
 }
 
+.font-black {
+    color: #000;
+}
+
 .font-light {
     color: #d6f3fb;
 }
@@ -165,12 +182,11 @@ pre {
 /** ====== **/
 
 .navbar {
-    padding: 0 5px 0 5px;
-    border-bottom: 1px solid #1EDCFF;
+    background-color: #ffffff;
 }
 
 .navbar-brand {
-    color: #fff;
+    color: #000000;
     text-transform: uppercase;
     font-size: 24px;
     padding-left: 30px;
@@ -193,8 +209,8 @@ pre {
 }
 
 .navbar-cluster-info .text {
-    color: #fff;
-    font-size: 16px;
+    color: #000000;
+    font-size: 18px;
 }
 
 #page-subtitle {
@@ -270,6 +286,10 @@ pre {
     margin-top: 20px;
 }
 
+.card-container {
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
 /** ===================== **/
 /** Cluster Overview Page **/
 /** ===================== **/
@@ -277,23 +297,26 @@ pre {
 /** HUD **/
 /** === **/
 
+.content-container {
+    margin: 24px 24px 0;
+    padding: inherit;
+}
+
 .hud-container {
     background-size: 5px 5px;
-    background-image: linear-gradient(to right, #2d2d2d 1px, transparent 1px), linear-gradient(to bottom, #2d2d2d 1px, transparent 1px);
-    margin: -15px 0 0 0;
-    padding: 15px 0 0 0;
-    height: 375px;
+    padding: 20px;
+    background-color: #ffffff;
 }
+
 
 .stat-line-end {
     padding-top: 3px;
-    margin-bottom: 20px;
+    margin-bottom: 40px;
 }
 
 .stat {
-    color: #fff;
+    color: #111111;
     border-bottom: 1px #424242 solid;
-    border-left: 1px #424242 solid;
     margin: 0;
     font-size: 72px;
     height: 81px;
@@ -318,8 +341,7 @@ pre {
 
 .stat-title > .text {
     padding: 5px;
-    background-color: #3e3e3e;
-    color: #ccc;
+    color: #000000;
 }
 
 .sparkline {
@@ -347,21 +369,23 @@ pre {
 
 /** Query list **/
 /** ========== **/
+.query-list-container {
+    padding: 20px;
+    background-color: #ffffff;
+    margin-top: 40px;
+}
 
-#query-list-title {
+.container-title {
     font-size: 22px;
-    background-color: #696E77;
-    padding: 3px 3px 3px 7px;
-    text-transform: uppercase;
-    color: #fff;
-    border-top: 1px solid #9DA4AF;
+    font-weight: bold;
+    background-color: #ffffff;
+    padding: 3px 0 20px 0;
+    color: #000000;
+    margin-bottom: 10px;
 }
 
 #query-list {
-    padding: 5px 0 0 15px;
-    border-bottom: 1px #424242 solid;
-    border-left: 1px #424242 solid;
-    border-right: 1px #424242 solid;
+    /*padding: 5px 15px 0 15px;*/
 }
 
 .error-message {
@@ -370,10 +394,8 @@ pre {
 }
 
 .query {
-    border-bottom: 1px #424242 solid;
-    margin-bottom: 0px;
-    margin-left: -15px;
-    padding-left: 15px;
+    margin: 20px 15px 30px 0;
+    border: 1px solid rgba(5, 5, 5, 0.06);
 }
 
 .query-snippet {
@@ -387,8 +409,9 @@ pre {
 
 .progress {
     margin: 0;
-    background-color: #808286;
     height: 28px;
+    padding-left: 10px;
+    padding-right: 10px;
 }
 
 .progress-bar {
@@ -398,6 +421,7 @@ pre {
 
 .tinystat-row {
     padding-right: 0;
+    padding-top: 10px
 }
 
 .tinystat {
@@ -406,39 +430,46 @@ pre {
 }
 
 .stat-row {
-    padding: 2px 0 1px 0;
+    padding: 5px 0 0px 10px;
+}
+
+.query-header-container {
+    background-size: 5px 5px;
+    padding: 20px;
+    background-color: #ffffff;
 }
 
 .query-header {
     padding: 4px 0 4px 0;
-    background-color: #1b1b1b;
+    background-color: #f5f5f5;
     margin: 0;
 }
 
 .query-header-queryid {
-    margin-left: -15px;
-    margin-right: -35px;
-    padding: 8px 0 8px 0;
+    /*margin-left: -15px;*/
+    /*margin-right: -35px;*/
+    /*margin-bottom: 10px;*/
+    padding: 8px 0 8px 10px;
 }
 
 .query-header-timestamp {
     text-align: right;
     color: #b1b1b1;
+    padding-right: 10px
 }
 
 .query-progress-container {
-    padding: 0;
 }
 
 /** Query List Toolbar **/
 /** ================== **/
 
 .toolbar-row {
+    /*padding-left: 15px;*/
     padding-right: 15px;
 }
 
 .toolbar-col {
-    background-color: #454a58;
     margin-top: -5px;
     padding: 5px;
 }
@@ -449,18 +480,18 @@ pre {
 
 .toolbar-row .input-group-btn .btn:focus {
     outline: none;
-    background-color: #5bc0de;
+    background-color: #2db7f5;
     border: 1px #529eb5 solid;
 }
 
 .toolbar-row .input-group-btn .active:focus {
     outline: none;
-    background-color: #277F98;
+    background-color: #108ee9;
     border: 1px #529eb5 solid;
 }
 
 .toolbar-row .input-group-btn .active {
-    background-color: #277F98;
+    background-color: #108ee9;
     border: 1px #529eb5 solid;
 }
 
@@ -475,8 +506,8 @@ pre {
     color: #000;
     background-color: #fff;
     border: none;
-    border-top: 2px solid #454A58;
-    border-bottom: 3px solid #454A58;
+    border-top: 2px solid #f5f5f5;
+    border-bottom: 3px solid #f5f5f5;
 }
 
 .toolbar-row .input-group .form-control {
@@ -528,7 +559,7 @@ pre {
 /** ================== **/
 
 #query-detail {
-    color: #cecece;
+    color: #000000;
     font-size: 16px;
 }
 
@@ -544,6 +575,19 @@ pre {
 /** Summary Section **/
 /** =============== **/
 
+.info-container-top {
+    background-size: 5px 5px;
+    padding: 20px;
+    background-color: #ffffff;
+}
+
+.info-container-next {
+    background-size: 5px 5px;
+    padding: 20px;
+    background-color: #ffffff;
+    margin-top: 40px;
+}
+
 .info-title {
     width: 170px;
     font-weight: 500;
@@ -551,7 +595,7 @@ pre {
 }
 
 .info-text {
-    color: #fff;
+    color: #000;
 }
 
 .table > tbody > tr > .info-sparkline-text {
@@ -661,7 +705,7 @@ pre {
 
 .expand-charts-button {
     padding: 45px 3px 45px 4px;
-    background-color: #3A3F4C;
+    background-color: #eeeeee;
 }
 
 .expanded-chart-title {
@@ -679,7 +723,7 @@ pre {
 
 .graph-container {
     padding: 15px;
-    background-color: #1b1b1b;
+    background-color: #ffffff;
     height: 1000px;
     overflow: scroll;
     width: 100%;
@@ -748,6 +792,23 @@ text {
 }
 
 .plan-arrowhead {
+    fill: #dadada;
+    stroke-width: 0;
+}
+
+.v-pipeline-edge {
+    stroke: transparent;
+    fill: transparent;
+    stroke-width: 0;
+}
+
+.pipeline-edge {
+    stroke: #dadada;
+    fill: transparent;
+    stroke-width: 3;
+}
+
+.pipeline-arrowhead {
     fill: #dadada;
     stroke-width: 0;
 }

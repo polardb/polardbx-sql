@@ -40,7 +40,7 @@ public class CclRuleRecord implements SystemTableRecord {
     public static final int DEFAULT_WAIT_TIMEOUT = 600;
     public static final int DEFAULT_FAST_MATCH = 1;
     public static final int DEFAULT_TRIGGER_PRIORITY = -1;
-    public static final int DEFAULT_LIGHT_WAIT = 1;
+    public static final int DEFAULT_LIGHT_WAIT = 0;
 
     public static final int THREAD_WAIT = 0;
     public static final int NO_THREAD_WAIT = 1;

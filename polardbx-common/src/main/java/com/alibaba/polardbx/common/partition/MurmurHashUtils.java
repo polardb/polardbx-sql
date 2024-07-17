@@ -33,20 +33,33 @@ public class MurmurHashUtils {
         return longVal;
     }
 
-    private static final HashFunction zeroSeedMurmur3hashFunc = Hashing.murmur3_128(0);
+    private static int murmurHash3_32(byte[] data) {
+        HashCode hashCode = zeroSeedMurmur3hashFunc32.hashBytes(data);
+        int intVal = hashCode.asInt();
+        return intVal;
+    }
+
+    private static final HashFunction zeroSeedMurmur3hashFunc32 = Hashing.murmur3_32(0);
+
+    private static final HashFunction zeroSeedMurmur3hashFunc128 = Hashing.murmur3_128(0);
 
     private static long murmurHash3_128(long data) {
-        HashCode hashCode = zeroSeedMurmur3hashFunc.hashLong(data);
+        HashCode hashCode = zeroSeedMurmur3hashFunc128.hashLong(data);
         long longVal = hashCode.asLong();
         return longVal;
     }
 
-    public static long murmurHashWithZeroSeed(byte[] data) {
+    public static long murmurHash128WithZeroSeed(long data) {
+        return murmurHash3_128(data);
+    }
+
+    public static long murmurHash128WithZeroSeed(byte[] data) {
         return murmurHash3_128(data, 0);
     }
 
-    public static long murmurHashWithZeroSeed(long data) {
-        return murmurHash3_128(data);
+    public static int murmurHash32WithZeroSeed(byte[] data) {
+        return murmurHash3_32(data);
     }
+
 }
 

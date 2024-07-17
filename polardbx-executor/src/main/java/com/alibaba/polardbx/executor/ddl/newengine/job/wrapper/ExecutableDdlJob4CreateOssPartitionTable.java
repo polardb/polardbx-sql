@@ -16,15 +16,15 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.BindingArchiveTableMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableAddTablesMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableFormatTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableGenerateDataTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesPartitionInfoMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.BindingArchiveTableMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableAddTablesMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableFormatTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CreateOssTableGenerateDataTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import lombok.Data;
 

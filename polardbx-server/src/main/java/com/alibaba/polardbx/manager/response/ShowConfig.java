@@ -80,8 +80,8 @@ public final class ShowConfig {
         SystemConfig config = CobarServer.getInstance().getConfig().getSystem();
         for (Map.Entry<String, String> entry : config.toMapValues().entrySet()) {
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-            row.add(StringUtil.encode(entry.getKey(), c.getCharset()));
-            row.add(StringUtil.encode(entry.getValue(), c.getCharset()));
+            row.add(StringUtil.encode(entry.getKey(), c.getResultSetCharset()));
+            row.add(StringUtil.encode(entry.getValue(), c.getResultSetCharset()));
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

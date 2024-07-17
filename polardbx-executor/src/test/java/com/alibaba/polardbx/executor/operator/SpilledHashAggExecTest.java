@@ -16,22 +16,23 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
-import com.google.common.collect.ImmutableList;
-import com.google.common.io.MoreFiles;
-import com.google.common.io.RecursiveDeleteOption;
-import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleStreamSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.GenericSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SyncFileCleaner;
+import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
+import com.google.common.collect.ImmutableList;
+import com.google.common.io.MoreFiles;
+import com.google.common.io.RecursiveDeleteOption;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -52,8 +53,6 @@ public class SpilledHashAggExecTest extends BaseExecTest {
 
     @BeforeClass
     public static void beforeClass() {
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().add(tempPath);
         AsyncFileSingleStreamSpillerFactory singleStreamSpillerFactory =
             new AsyncFileSingleStreamSpillerFactory(new SyncFileCleaner(), ImmutableList.of(tempPath), 2);
         spillerFactory = new GenericSpillerFactory(singleStreamSpillerFactory);
@@ -72,7 +71,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         MockExec input = rowChunksBuilder.buildExec();
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Count(new int[] {1}, false, -1));
+        aggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         List<DataType> columns = ImmutableList.of(DataTypes.IntegerType, DataTypes.LongType);
         List<Chunk> expects = RowChunksBuilder.rowChunksBuilder(DataTypes.IntegerType, DataTypes.IntegerType)
             .row(null, 1).row(1, 1).row(2, 1).row(3, 1).build();
@@ -101,7 +100,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
             .build();
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Count(new int[] {1}, false, -1));
+        aggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         List<DataType> columns = ImmutableList.of(DataTypes.IntegerType, DataTypes.LongType);
         HashAggExec hashAggExec = new HashAggExec(input.getDataTypes(), new int[] {0}, aggregators, columns,
             AggregateUtils.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
@@ -133,7 +132,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         List<Chunk> expects = resultChunksBuilder.build();
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Count(new int[] {1}, false, -1));
+        aggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx() ,-1));
         List<DataType> columns = ImmutableList.of(DataTypes.IntegerType, DataTypes.LongType);
         HashAggExec hashAggExec = new HashAggExec(input.getDataTypes(), new int[] {0}, aggregators, columns,
             AggregateUtils.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
@@ -164,7 +163,7 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         List<Chunk> expects = resultChunksBuilder.build();
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Count(new int[] {1}, false, -1));
+        aggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         List<DataType> columns = ImmutableList.of(DataTypes.StringType, DataTypes.LongType);
         HashAggExec hashAggExec = new HashAggExec(input.getDataTypes(), new int[] {0}, aggregators, columns,
             AggregateUtils.collectDataTypes(columns, 1, 2), 100, spillerFactory, context);
@@ -191,16 +190,16 @@ public class SpilledHashAggExecTest extends BaseExecTest {
         List<DataType> columns = ImmutableList.of(DataTypes.StringType, DataTypes.LongType);
         DataType[] aggValueType = AggregateUtils.collectDataTypes(columns, 1, 2);
         //count
-        aggregators.add(new Count(new int[] {1}, false, -1));
-        copiedAggregators.add(new Count(new int[] {1}, false, -1));
+        aggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        copiedAggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 3, false);
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 3, true);
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 10, true);
         //sum
         aggregators.clear();
         copiedAggregators.clear();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        copiedAggregators.add(new Sum(1, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        copiedAggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 3, false);
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 3, true);
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 10, true);
@@ -211,10 +210,10 @@ public class SpilledHashAggExecTest extends BaseExecTest {
             DataTypes.LongType, DataTypes.LongType
         };
         columns = ImmutableList.of(DataTypes.StringType, DataTypes.LongType, DataTypes.LongType);
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Count(new int[] {1}, false, -1));
-        copiedAggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        copiedAggregators.add(new Count(new int[] {1}, false, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        copiedAggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        copiedAggregators.add(new CountV2(new int[] {1}, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 3, false);
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 3, true);
         baseTest(aggregators, copiedAggregators, columns, aggValueType, inputBuilder, 10, true);

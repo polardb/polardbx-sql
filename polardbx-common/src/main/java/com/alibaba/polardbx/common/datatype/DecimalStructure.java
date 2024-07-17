@@ -22,14 +22,19 @@ import io.airlift.slice.Slices;
 
 import java.io.Serializable;
 
+import static com.alibaba.polardbx.common.datatype.DecimalRoundMod.HALF_UP;
 
 public class DecimalStructure extends DecimalTypeBase implements Serializable {
 
     private Slice decimalMemorySegment;
 
+    public static Slice allocateDecimalSlice() {
+        return Slices.allocate(DECIMAL_MEMORY_SIZE);
+    }
+
     public DecimalStructure() {
 
-        decimalMemorySegment = Slices.allocate(DECIMAL_MEMORY_SIZE);
+        decimalMemorySegment = allocateDecimalSlice();
     }
 
     public DecimalStructure(Slice decimalMemorySegment) {
@@ -247,5 +252,15 @@ public class DecimalStructure extends DecimalTypeBase implements Serializable {
 
     public Slice getDecimalMemorySegment() {
         return decimalMemorySegment;
+    }
+
+    public void setLongWithScale(long longVal, int scale) {
+        this.reset();
+        // parse long & set scale.
+        DecimalConverter.longToDecimal(longVal, this);
+        // shift by scale value.
+        FastDecimalUtils.shift(this, this, -scale);
+
+        FastDecimalUtils.round(this, this, scale, HALF_UP);
     }
 }

@@ -20,12 +20,8 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
-import org.apache.calcite.rel.ddl.CreateDatabase;
-
-import java.sql.Connection;
 
 /**
  * Created by zhuqiwei.

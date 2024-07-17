@@ -37,6 +37,7 @@ public class CheckGsiPrepareData extends DdlPreparedData {
     long speedLimit;
     long parallelism;
     long earlyFailNumber;
+    boolean useBinary;
 
     public String prettyTableName() {
         return "`" + indexName + '`'

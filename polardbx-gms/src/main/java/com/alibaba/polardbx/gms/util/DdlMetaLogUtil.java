@@ -44,6 +44,15 @@ public class DdlMetaLogUtil {
         ddlTables.add(GmsSystemTables.VIEWS);
         ddlTables.add(GmsSystemTables.FILES);
         ddlTables.add(GmsSystemTables.COLUMN_METAS);
+        ddlTables.add(GmsSystemTables.COLUMNAR_APPENDED_FILES);
+        ddlTables.add(GmsSystemTables.COLUMNAR_CHECKPOINTS);
+        ddlTables.add(GmsSystemTables.COLUMNAR_FILE_MAPPING);
+        ddlTables.add(GmsSystemTables.COLUMNAR_FILE_ID_INFO);
+        ddlTables.add(GmsSystemTables.COLUMNAR_TABLE_MAPPING);
+        ddlTables.add(GmsSystemTables.COLUMNAR_TABLE_EVOLUTION);
+        ddlTables.add(GmsSystemTables.COLUMNAR_COLUMN_EVOLUTION);
+        ddlTables.add(GmsSystemTables.COLUMNAR_CONFIG);
+        ddlTables.add(GmsSystemTables.COLUMNAR_LEASE);
         ddlTables.add(GmsSystemTables.COLUMNS);
         ddlTables.add(GmsSystemTables.INDEXES);
         ddlTables.add(GmsSystemTables.KEY_COLUMN_USAGE);

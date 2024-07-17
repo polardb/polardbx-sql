@@ -2,13 +2,11 @@ package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.BaseTestCase;
-import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import javax.validation.constraints.AssertTrue;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -16,7 +14,6 @@ import java.sql.Statement;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
-@FileStoreIgnore
 public class FunctionPushDownTest extends BaseTestCase {
     protected Connection tddlConnection;
     protected Connection mysqlConnection;

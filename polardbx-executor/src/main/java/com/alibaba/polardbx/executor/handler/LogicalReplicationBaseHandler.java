@@ -16,9 +16,14 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.rpc.cdc.RplCommandResponse;
+import io.grpc.Channel;
+import io.grpc.ManagedChannel;
 import org.apache.calcite.rel.RelNode;
 
 /**

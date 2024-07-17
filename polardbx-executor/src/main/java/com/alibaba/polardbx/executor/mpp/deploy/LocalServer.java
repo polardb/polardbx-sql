@@ -60,6 +60,7 @@ public class LocalServer extends Server {
         bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_HTTP_PORT, String.valueOf(this.mppPort));
         bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_NODE_ENV, MPP_POLARDBX);
         bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_HTTP_SERVER_LOG_ENABLED, "false");
+        bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_HTTP_SERVER_ADMIN_ENABLED, "false");
         bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_HTTP_SERVER_MAX_THREADS,
             String.valueOf(MppConfig.getInstance().getHttpServerMaxThreads()));
         bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_HTTP_SERVER_MIN_THREADS,

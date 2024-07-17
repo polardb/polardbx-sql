@@ -16,9 +16,8 @@
 
 package com.alibaba.polardbx.executor.statistic.ndv;
 
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
+import io.airlift.slice.XxHash64;
 
 import java.util.BitSet;
 
@@ -26,16 +25,39 @@ public class HyperLogLogUtil {
 
     public static int HLL_REGISTERS = 16384;
     public static int HLL_REGBYTES = HLL_REGISTERS * 6 / 8;
+    public static int HLL_REGBYTES_DE = HLL_REGBYTES + 1;
     public static int HLL_BITS = 6;
     public static int HLL_REGISTER_MAX = ((1 << HLL_BITS) - 1);
+    public static int HLL_P_MASK = HLL_REGISTERS - 1;
     public static int HLL_P = 14;
     public static int HLL_Q = 64 - HLL_P;
     public static double HLL_ALPHA_INF = 0.721347520444481703680;/* constant for 0.5/ln(2) */
 
+    public static void hllSet(byte[] r, long ele) {
+        // hllPatLen
+        long hash = XxHash64.hash(ele);
+        int index = (int) (hash & HLL_P_MASK);
+
+        hash = hash >>> HLL_P;
+        hash = hash | (1L << HLL_Q);
+        int count = 1;
+        long bit = 1;
+        while ((hash & bit) == 0) {
+            count++;
+            bit <<= 1;
+        }
+
+        int oldCount = get(r, index);
+        if (oldCount < count) {
+            set(r, index, count);
+        }
+    }
+
     public static void merge(byte[] r, byte[] tmp) {
+        BitSet bitSet = BitSet.valueOf(tmp);
         for (int i = 0; i < HLL_REGISTERS; i++) {
             int rValue = get(r, i);
-            int tmpValue = get(tmp, i);
+            int tmpValue = bitToInt(bitSet, i * 6);
             if (rValue < tmpValue) {
                 set(r, i, tmpValue);
             }
@@ -45,10 +67,7 @@ public class HyperLogLogUtil {
     private static int get(byte[] a, int pos) {
         int bytePos = pos * HLL_BITS / 8;
         int bitRemine = (pos * HLL_BITS) & 7;
-        if (bytePos + 1 == a.length) {
-            return (a[bytePos] >> bitRemine) & HLL_REGISTER_MAX;
-        }
-        return ((a[bytePos] >> bitRemine) | (a[bytePos + 1] << (8 - bitRemine))) & HLL_REGISTER_MAX;
+        return (((a[bytePos] & 0xFF) >>> bitRemine) | (a[bytePos + 1] << (8 - bitRemine))) & HLL_REGISTER_MAX;
     }
 
     private static void set(byte[] a, int pos, int val) {
@@ -56,9 +75,6 @@ public class HyperLogLogUtil {
         int bitRemine = (pos * HLL_BITS) & 7;
         a[bytePos] &= ~(HLL_REGISTER_MAX << bitRemine);
         a[bytePos] |= (val << bitRemine);
-        if (bytePos + 1 == a.length) {
-            return;
-        }
         a[bytePos + 1] &= ~(HLL_REGISTER_MAX >> (8 - bitRemine));
         a[bytePos + 1] |= (val >> (8 - bitRemine));
     }
@@ -140,6 +156,19 @@ public class HyperLogLogUtil {
 
     public static String buildSketchKey(String schemaName, String tableName, String columnNames) {
         return (schemaName + ":" + tableName + ":" + columnNames).toLowerCase();
+    }
+
+    public static long getCardinality(byte[] bytes) {
+        if (bytes == null) {
+            return 0;
+        }
+        int[] registers = new int[HLL_REGISTERS];
+        BitSet bitSet = BitSet.valueOf(bytes);
+        for (int i = 0; i * 6 < HLL_REGBYTES * 8; i++) {// cal the reciprocal
+            int v = bitToInt(bitSet, i * 6);
+            registers[i] = v;
+        }
+        return reckon(buildReghisto(registers));
     }
 
     public static long estimate(byte[][] bytes) {

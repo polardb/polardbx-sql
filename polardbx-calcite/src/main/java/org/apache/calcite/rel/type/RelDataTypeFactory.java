@@ -266,11 +266,16 @@ public interface RelDataTypeFactory {
       SqlTypeName typeName,
       List<String> values);
 
+  RelDataType createSetSqlType(
+      SqlTypeName typeName,
+      int precision,
+      List<String> setValues);
+
   /**
    * Creates a SQL interval type.
    *
    * @param intervalQualifier contains information if it is a year-month or a
-   *                          day-time interval along with precision information
+   * day-time interval along with precision information
    * @return canonical type descriptor
    */
   RelDataType createSqlIntervalType(

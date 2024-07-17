@@ -79,7 +79,7 @@ public abstract class BasePlanRewriterTest extends BasePlannerTest {
         return removeSubqueryHashCode(planStr, executionPlan.getPlan(), null);
     }
 
-    private static class RewriterPlanner extends Planner {
+    protected static class RewriterPlanner extends Planner {
         @Override
         public RelNode optimize(RelNode input, PlannerContext plannerContext) {
             return optimizeBySqlWriter(input, plannerContext);

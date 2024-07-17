@@ -90,8 +90,8 @@ public class LogicalAlterTableSetTableGroupHandler extends LogicalCommonDdlHandl
         }
         AlterTableSetTableGroupPreparedData preparedData = logicalAlterTableSetTableGroup.getPreparedData();
         String tableGroup = ((AlterTableSetTableGroup) (logicalDdlPlan.relDdl)).getTableGroupName();
-        if (StringUtils.isNotEmpty(tableGroup)) {
-            TableGroupValidator.validateTableGroupInfo(preparedData.getSchemaName(), tableGroup, true,
+        if (StringUtils.isNotEmpty(tableGroup) && !preparedData.isImplicit()) {
+            TableGroupValidator.validateTableGroupInfo(logicalDdlPlan.getSchemaName(), tableGroup, true,
                 executionContext.getParamManager());
             TableGroupConfig tableGroupConfig =
                 OptimizerContext.getContext(logicalDdlPlan.getSchemaName()).getTableGroupInfoManager()

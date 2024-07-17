@@ -29,7 +29,6 @@ import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
-import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -43,8 +42,6 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -64,6 +61,8 @@ import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.persistRowCo
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sumRowCount;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.isFileStore;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.getFileStoreStatistic;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.isFileStore;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.sumRowCount;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
 import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;

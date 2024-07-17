@@ -71,7 +71,8 @@ public class RefreshTopologyBuilder extends AlterTableGroupBaseBuilder {
         }
         alterTableGroupItemPreparedData
             .setTableVersion(
-                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName).getVersion());
+                executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName)
+                    .getVersion());
 
         return alterTableGroupItemPreparedData;
     }

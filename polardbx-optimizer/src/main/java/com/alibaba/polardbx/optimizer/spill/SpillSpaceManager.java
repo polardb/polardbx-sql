@@ -29,7 +29,7 @@
  */
 package com.alibaba.polardbx.optimizer.spill;
 
-import com.alibaba.polardbx.common.properties.MppConfig;
+import com.alibaba.polardbx.common.properties.FileConfig;
 
 public class SpillSpaceManager extends SpillSpaceMonitor {
 
@@ -40,17 +40,12 @@ public class SpillSpaceManager extends SpillSpaceMonitor {
     private static final SpillSpaceMonitor INSTANCE = new SpillSpaceManager();
 
     private SpillSpaceManager() {
+        this.isSpillManager = true;
     }
 
     @Override
-    public synchronized long getCurrentMaxSpillBytes() {
-        if (MppConfig.getInstance().getMaxSpillSpaceThreshold() != totalSpillSpaceThreshold) {
-            long totalSpaceBytes = getTotalSpillSpace();
-            this.totalSpillSpaceThreshold = MppConfig.getInstance().getMaxSpillSpaceThreshold();
-            maxSpillBytes =
-                Double.valueOf(totalSpaceBytes * totalSpillSpaceThreshold).longValue();
-        }
-        return maxSpillBytes;
+    public long getCurrentMaxSpillBytes() {
+        return FileConfig.getInstance().getSpillConfig().getMaxSpillSpaceThreshold().toBytes();
     }
 
     @Override

@@ -1,0 +1,10 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `text_tbl` (
+  `c1` bigint,
+  `c2` longtext
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by key(`c1`)
+partitions 4;
+## error_msg: $# not allowed #$
+create GLOBAL index gsi_c2 on text_tbl(c2) PARTITION BY KEY(c2) PARTITIONS 4;
+not allowed

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
 import com.alibaba.polardbx.executor.chunk.Converters;
@@ -91,7 +91,7 @@ public class HashWindowExec extends AbstractExecutor implements ConsumerExecutor
         memoryAllocator = new OperatorMemoryAllocatorCtx(memoryPool, false);
         hashTable =
             new HashWindowOpenHashMap(groupKeyType, aggregators, aggValueType, inputType, expectedGroups, chunkLimit,
-                context);
+                context, memoryAllocator);
     }
 
     @Override
@@ -113,7 +113,7 @@ public class HashWindowExec extends AbstractExecutor implements ConsumerExecutor
         // TODO should be optimized
         Chunk inputKeyChunk = groups.length == 0 ? inputChunk : inputKeyChunkGetter.apply(inputChunk);
         long beforeEstimateSize = hashTable.estimateSize();
-        hashTable.putChunk(inputKeyChunk, inputChunk);
+        hashTable.putChunk(inputKeyChunk, inputChunk, null);
         long afterEstimateSize = hashTable.estimateSize();
         // inputChunk will be cached in HashWindowAggMap
         long cachedChunkMemory = inputChunk.estimateSize();

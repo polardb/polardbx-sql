@@ -51,7 +51,7 @@ public class AlterTableGroupSubPartitionTest extends AlterTableGroupBaseTestExt 
     @Before
     public void setUpTables() {
         if (firstIn) {
-            setUp(true, partitionRuleInfo, false, true, false);
+            setUp(true, partitionRuleInfo, false, true, false, true);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

@@ -21,7 +21,9 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Maps;
+import org.apache.calcite.util.JsonBuilder;
 import org.apache.calcite.util.Pair;
 
 import java.util.ArrayList;
@@ -29,6 +31,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class MockStatisticDatasource implements StatisticDataSource {
     /**
@@ -146,6 +149,13 @@ public class MockStatisticDatasource implements StatisticDataSource {
                                 .setSampleRate(((Number) columnInfo.getValue()).floatValue());
                         }
                     }
+                    columnList = map.get("extend_field");
+                    if (columnList != null) {
+                        for (Pair<String, Object> columnInfo : columnList) {
+                            getRow(tableRows, schema, tableName, columnInfo.getKey(), sinceTime)
+                                .setExtendField(new JsonBuilder().toJsonString(columnInfo.getValue()));
+                        }
+                    }
                     columnList = map.get("TOPN");
                     if (columnList != null) {
                         for (Pair<String, Object> columnInfo : columnList) {
@@ -224,12 +234,14 @@ public class MockStatisticDatasource implements StatisticDataSource {
     }
 
     @Override
-    public void updateColumnCardinality(String schema, String tableName, String columnName) {
+    public void updateColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
+                                        ThreadPoolExecutor sketchHllExecutor) {
 
     }
 
     @Override
-    public void rebuildColumnCardinality(String schema, String tableName, String columnName) {
+    public void rebuildColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
+                                         ThreadPoolExecutor sketchHllExecutor) {
 
     }
 
@@ -256,5 +268,9 @@ public class MockStatisticDatasource implements StatisticDataSource {
     @Override
     public long ndvModifyTime(String schema, String tableName, String columnNames) {
         return 0;
+    }
+
+    @Override
+    public void clearCache() {
     }
 }

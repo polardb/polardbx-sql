@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.optimizeralert;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.gms.module.Module;
@@ -30,8 +29,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.rpc.result.XResult;
-import org.eclipse.jetty.util.StringUtil;
+import com.alibaba.polardbx.optimizer.statis.XplanStat;
 
 import java.util.List;
 import java.util.Locale;
@@ -74,12 +72,12 @@ public class OptimizerAlertUtil {
         }
     }
 
-    public static void xplanAlert(ExecutionContext ec, XResult xResult) {
+    public static void xplanAlert(ExecutionContext ec, double executeTimeMs, long lastAffectedRows) {
         if (!DynamicConfig.getInstance().optimizerAlert()) {
             return;
         }
         try {
-            if (xplanShouldAlert(ec, xResult)) {
+            if (xplanShouldAlert(ec, executeTimeMs, lastAffectedRows)) {
                 OptimizerAlertManager.getInstance().log(OptimizerAlertType.XPLAN_SLOW, ec);
             }
         } catch (Exception e) {
@@ -87,12 +85,12 @@ public class OptimizerAlertUtil {
         }
     }
 
-    public static void plancacheAlert(ExecutionContext ec, long currentCapacity) {
+    public static void plancacheAlert(ExecutionContext ec) {
         if (!DynamicConfig.getInstance().optimizerAlert()) {
             return;
         }
         try {
-            if (plancacheShouldAlert(ec, currentCapacity)) {
+            if (planCacheShouldAlert(ec)) {
                 OptimizerAlertManager.getInstance().log(OptimizerAlertType.PLAN_CACHE_FULL, ec);
             }
         } catch (Exception e) {
@@ -146,9 +144,27 @@ public class OptimizerAlertUtil {
         }
     }
 
+    /**
+     * statistic job interrupted by error
+     */
+    public static void statisticErrorAlert() {
+        OptimizerAlertManager.getInstance().log(OptimizerAlertType.STATISTIC_JOB_INTERRUPT, null);
+    }
+
+    /**
+     * Inconsistent statistical information data among nodes/metadb.
+     */
+    public static void statisticInconsistentAlert() {
+        //OptimizerAlertManager.getInstance().log(OptimizerAlertType.STATISTIC_INCONSISTENT, null);
+    }
+
     private static boolean bkaShouldAlert(ExecutionContext ec, LogicalView logicalView, long phySqlCount) {
-        if (ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST)) {
-            return true;
+        // if ENABLE_ALERT_TEST_DEFAULT is false, only alert according to ENABLE_ALERT_TEST
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST_DEFAULT)) {
+            return ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST);
+        }
+        if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
+            return false;
         }
         if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
             return false;
@@ -174,9 +190,23 @@ public class OptimizerAlertUtil {
         if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
             return false;
         }
-        // alert in test mode
-        if (ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST)) {
-            return true;
+
+        if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
+            return false;
+        }
+
+        // don't alert with node hint or direct plan
+        if ((ec.getFinalPlan() != null) && (!ec.getFinalPlan().isCheckTpSlow())) {
+            return false;
+        }
+
+        // if ENABLE_ALERT_TEST_DEFAULT is false, only alert according to ENABLE_ALERT_TEST
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST_DEFAULT)) {
+            return ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST);
+        }
+
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_TP_SLOW_ALERT)) {
+            return false;
         }
         // fast path to avoid check
         if (executeTimeMs < TP_ALERT_THRESHOLD) {
@@ -189,44 +219,46 @@ public class OptimizerAlertUtil {
         return false;
     }
 
-    private static boolean xplanShouldAlert(ExecutionContext ec, XResult xResult) {
-        if (xResult == null) {
+    private static boolean xplanShouldAlert(ExecutionContext ec, double executeTimeMs, long lastAffectedRows) {
+        XplanStat xplanStat = ec.getXplanStat();
+        if (xplanStat == null) {
             return false;
         }
-        // make sure the sql is xplan
-        if (xResult.getRequestType() != XResult.RequestType.PLAN_QUERY) {
+        if (XplanStat.getXplanIndex(xplanStat) == null) {
             return false;
         }
         if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
             return false;
         }
-        // alert if alert_test enabled
-        if (ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST)) {
-            return true;
+        if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
+            return false;
         }
-        // time in millisecond
-        long time = xResult.getFinishNanos() / 1000000;
+        // if ENABLE_ALERT_TEST_DEFAULT is false, only alert according to ENABLE_ALERT_TEST
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST_DEFAULT)) {
+            return ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST);
+        }
+
         // fast pass to avoid alert
-        if (time <= XPLAN_ALERT_THRESHOLD) {
+        if (executeTimeMs <= XPLAN_ALERT_THRESHOLD) {
             return false;
         }
 
-        long threshold = ec.getPhysicalRecorder().getSlowSqlTime();
-        // Use slow sql time of db level first
-        if (ec.getExtraCmds().containsKey(ConnectionProperties.SLOW_SQL_TIME)) {
-            threshold = ec.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
+        // don't alert if failed to execute
+        if (lastAffectedRows < 0) {
+            return false;
         }
-        if (time > threshold &&
-            (xResult.getExaminedRowCount() > xResult.getRowsAffected() * 100)) {
+        long threshold = ec.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
+        if (executeTimeMs > threshold &&
+            (XplanStat.getExaminedRowCount(xplanStat) > lastAffectedRows * 100)) {
             return true;
         }
         return false;
     }
 
-    private static boolean plancacheShouldAlert(ExecutionContext ec, long currentCapacity) {
-        // alert if alert_test enabled
-        if (ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST)) {
-            return true;
+    private static boolean planCacheShouldAlert(ExecutionContext ec) {
+        // if ENABLE_ALERT_TEST_DEFAULT is false, only alert according to ENABLE_ALERT_TEST
+        if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST_DEFAULT)) {
+            return ec.getParamManager().getBoolean(ConnectionParams.ENABLE_ALERT_TEST);
         }
         if (SystemDbHelper.isDBBuildIn(ec.getSchemaName())) {
             return false;
@@ -235,7 +267,7 @@ public class OptimizerAlertUtil {
             return false;
         }
 
-        if (PlanCache.getInstance().getCache().size() >= currentCapacity - 20) {
+        if (PlanCache.getInstance().getCache().size() >= PlanCache.getInstance().getCurrentCapacity() - 20) {
             return true;
         }
         return false;

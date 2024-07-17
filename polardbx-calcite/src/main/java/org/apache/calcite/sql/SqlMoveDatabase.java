@@ -57,7 +57,7 @@ public class SqlMoveDatabase extends SqlCreate {
         this.isCleanUpCommand = isCleanUpCommand;
         if (!isCleanUpCommand) {
             this.currentSourceGroupKey = firstGroup;
-            this.currentTargetGroupKey = GroupInfoUtil.buildScaloutGroupName(firstGroup);
+            this.currentTargetGroupKey = GroupInfoUtil.buildScaleOutGroupName(firstGroup);
         }
     }
 
@@ -75,7 +75,7 @@ public class SqlMoveDatabase extends SqlCreate {
 
     public void setCleanUpGroups(String groupName) {
         Map<String, List<String>> toBeCleanGroups = new HashMap<>();
-        toBeCleanGroups.put(VIRTUAL_STORAGE_ID, ImmutableList.of(GroupInfoUtil.buildScaloutGroupName(groupName)));
+        toBeCleanGroups.put(VIRTUAL_STORAGE_ID, ImmutableList.of(GroupInfoUtil.buildScaleOutGroupName(groupName)));
         this.storageGroups = toBeCleanGroups;
     }
 

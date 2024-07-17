@@ -16,33 +16,37 @@
 
 package com.alibaba.polardbx.executor.accumulator;
 
+import com.alibaba.polardbx.common.IOrderInvariantHash;
 import com.alibaba.polardbx.common.OrderInvariantHasher;
 import com.alibaba.polardbx.executor.accumulator.state.NullableCheckSumGroupState;
-import com.alibaba.polardbx.executor.calc.AbstractAggregator;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+
 import java.util.zip.CRC32;
 
-import java.util.List;
+public class CheckSumAccumulator implements Accumulator {
+    private final DataType[] inputTypes;
 
-public class CheckSumAccumulator extends AbstractAggregator {
-    private final List<DataType> inputTypes;
-
-    private NullableCheckSumGroupState groupState;
+    private final NullableCheckSumGroupState groupState;
 
     private final static byte SEPARATOR_TAG = (byte) 255;
     private final static byte NULL_TAG = (byte) 254;
 
-    public CheckSumAccumulator(int[] aggTargetIndexes, DataType outType, int filterArg, List<DataType> inputTypes) {
-        super(aggTargetIndexes, false, new DataType[] {outType}, outType, filterArg);
-        this.inputTypes = inputTypes;
+    public CheckSumAccumulator(Aggregator aggregator, DataType[] rowInputType, int capacity) {
+        int[] inputColumnIndexes = aggregator.getInputColumnIndexes();
+        this.inputTypes = new DataType[inputColumnIndexes.length];
+        for (int i = 0; i < inputTypes.length; i++) {
+            inputTypes[i] = rowInputType[inputColumnIndexes[i]];
+        }
+        this.groupState = new NullableCheckSumGroupState(capacity, OrderInvariantHasher.class);
     }
 
     @Override
-    public void open(int capacity) {
-        groupState = new NullableCheckSumGroupState(capacity);
+    public DataType[] getInputTypes() {
+        return inputTypes;
     }
 
     @Override
@@ -55,8 +59,8 @@ public class CheckSumAccumulator extends AbstractAggregator {
         // get crc result
         CRC32 crc = new CRC32();
 
-        for (int i = 0; i < aggIndexInChunk.length; i++) {
-            Block inputBlock = inputChunk.getBlock(aggIndexInChunk[i]);
+        for (int i = 0; i < inputChunk.getBlockCount(); i++) {
+            Block inputBlock = inputChunk.getBlock(i);
             if (inputBlock.isNull(position)) {
                 crc.update(NULL_TAG);
             } else {
@@ -74,7 +78,7 @@ public class CheckSumAccumulator extends AbstractAggregator {
             orderInvariantHasher.add(crcResult);
             groupState.set(groupId, orderInvariantHasher);
         } else {
-            OrderInvariantHasher orderInvariantHasher = groupState.getHasher(groupId);
+            IOrderInvariantHash orderInvariantHasher = groupState.getHasher(groupId);
             orderInvariantHasher.add(crcResult);
         }
     }
@@ -86,11 +90,6 @@ public class CheckSumAccumulator extends AbstractAggregator {
         } else {
             bb.writeLong(groupState.get(groupId));
         }
-    }
-
-    @Override
-    public void resetToInitValue(int groupId) {
-        this.groupState.set(groupId, null);
     }
 
     @Override

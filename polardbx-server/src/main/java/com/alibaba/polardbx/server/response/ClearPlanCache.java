@@ -19,6 +19,7 @@ package com.alibaba.polardbx.server.response;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.server.ServerConnection;
@@ -57,7 +58,7 @@ public final class ClearPlanCache {
         }
 
         OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
-        SyncManagerHelper.sync(new ClearPlanCacheSyncAction(db), c.getSchema());
+        SyncManagerHelper.sync(new ClearPlanCacheSyncAction(db), c.getSchema(), SyncScope.CURRENT_ONLY);
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
         return true;

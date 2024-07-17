@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterStoragePoolPrepareData;
+import com.alibaba.polardbx.optimizer.locality.StoragePoolInfo;
 import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
@@ -50,26 +51,41 @@ public class AlterStoragePoolDrainNodeJobFactory extends DdlJobFactory {
         List<String> dnIds = prepareData.getDnIds();
         String instId = InstIdUtil.getMasterInstId();
         //validate dnId not occupied.
-        StoragePoolValidator.validateStoragePoolReady(instId, dnIds);
+        if (!prepareData.getStoragePoolName().equalsIgnoreCase(StoragePoolManager.RECYCLE_STORAGE_POOL_NAME)) {
+            StoragePoolValidator.validateStoragePoolReady(instId, dnIds);
+        }
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        ExecutableDdlJob ddlJob = new ExecutableDdlJob();
         String instId = InstIdUtil.getMasterInstId();
         //validate again.
         StoragePoolManager storagePoolManager = StoragePoolManager.getInstance();
-        List<String> originalDnList =
-            storagePoolManager.getStoragePoolInfo(prepareData.getStoragePoolName()).getDnLists();
+        StoragePoolInfo storagePoolInfo = storagePoolManager.getStoragePoolInfo(prepareData.getStoragePoolName());
+        if (storagePoolInfo == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                "The storage pool doesn't exsit: " + prepareData.getStoragePoolName());
+        }
+        List<String> originalDnList = storagePoolInfo.getDnLists();
         if (!originalDnList.containsAll(prepareData.getDnIds())) {
             String errMsg = String.format("storage pool %s doesn't contains all of storage inst %s",
                 prepareData.getStoragePoolName(),
                 prepareData.getDnIds());
             throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, errMsg);
         }
+        if (prepareData.getDnIds().contains(storagePoolInfo.getUndeletableDnId())) {
+            String errMsg = String.format("The storage inst '%s' is undeletable dn id in storage pool '%s'",
+                storagePoolInfo.getUndeletableDnId(),
+                prepareData.getDnIds());
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, errMsg);
+        }
         StorageInstValidateTask
             storageInstValidateTask = new StorageInstValidateTask(prepareData.getSchemaName(), instId,
             prepareData.getDnIds(), false, false);
+        if (prepareData.getStoragePoolName().equalsIgnoreCase(StoragePoolManager.RECYCLE_STORAGE_POOL_NAME)) {
+            storageInstValidateTask = new StorageInstValidateTask(prepareData.getSchemaName(), instId,
+                prepareData.getDnIds(), false, false, false);
+        }
         StoragePoolValidateTask
             storagePoolValidateTask = new StoragePoolValidateTask(prepareData.getSchemaName(), instId,
             prepareData.getStoragePoolName(),
@@ -81,14 +97,26 @@ public class AlterStoragePoolDrainNodeJobFactory extends DdlJobFactory {
             String.format("SCHEDULE REBALANCE TENANT %s DRAIN_NODE='%s'", prepareData.getStoragePoolName(),
                 StringUtils.join(prepareData.getDnIds(), ","));
         DdlTask rebalanceStoragePoolTask = new BackgroupRebalanceTask("polardbx", rebalanceSql);
-        ddlJob.addSequentialTasks(Lists.newArrayList(
-            //TODO:
+        ExecutableDdlJob ddlJob = new ExecutableDdlJob();
+        if (prepareData.getStoragePoolName().equalsIgnoreCase(StoragePoolManager.RECYCLE_STORAGE_POOL_NAME)) {
+            ddlJob.addSequentialTasks(Lists.newArrayList(
+                //TODO:
+                storageInstValidateTask,
+                storagePoolValidateTask,
+                drainStorageInfoTask,
+                rebalanceStoragePoolTask
+            ));
+
+        } else {
+            ddlJob.addSequentialTasks(Lists.newArrayList(
+                //TODO:
 //            validateTableVersionTask,
-            storageInstValidateTask,
-            storagePoolValidateTask,
-            drainStorageInfoTask,
-            rebalanceStoragePoolTask
-        ));
+                storageInstValidateTask,
+                storagePoolValidateTask,
+                drainStorageInfoTask,
+                rebalanceStoragePoolTask
+            ));
+        }
 //        ddlJob.appendTask(syncTask);
         return ddlJob;
     }

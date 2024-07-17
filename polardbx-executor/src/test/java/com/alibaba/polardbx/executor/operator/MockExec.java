@@ -99,7 +99,7 @@ public class MockExec implements Executor {
         return ProducerExecutor.NOT_BLOCKED;
     }
 
-    static class MockExecBuilder {
+    public static class MockExecBuilder {
 
         private List<DataType> columnTypes;
         private List<Chunk> chunks = new ArrayList<>();

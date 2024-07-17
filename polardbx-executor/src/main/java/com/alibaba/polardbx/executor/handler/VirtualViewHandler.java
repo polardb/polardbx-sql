@@ -29,6 +29,8 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclTrig
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCheckRoutinesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsCharsetHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnarIndexStatusHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnarStatusHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCreateDatabaseAsBackFillHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCreateDatabaseHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlPlanHandler;
@@ -76,6 +78,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPushedF
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaQueryInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaReactorPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRebalanceBackFillHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRebalanceProgressHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaReplicaStatHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRoutinesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSPMHandler;
@@ -84,8 +87,11 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSchemaP
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSchemataHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSequencesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSessionPerfHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaShowHelpHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHistoryHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatisticsDataHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatisticsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStorageHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStoragePoolInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStoragePropertiesHandler;
@@ -137,6 +143,9 @@ public class VirtualViewHandler extends HandlerCommon {
         super(repo);
         subHandler = new ArrayList<>();
         subHandler.add(new VirtualStatisticHandler(this));
+        subHandler.add(new InformationSchemaStatisticsDataHandler(this));
+        subHandler.add(new InformationSchemaStatisticsHandler(this));
+        subHandler.add(new InformationSchemaSchemataHandler(this));
         subHandler.add(new InformationSchemaTablesHandler(this));
         subHandler.add(new InformationSchemaSchemataHandler(this));
         subHandler.add(new InformationSchemaInformationSchemaTablesHandler(this));
@@ -150,6 +159,8 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaWorkloadHandler(this));
         subHandler.add(new InformationSchemaQueryInfoHandler(this));
         subHandler.add(new InformationSchemaGlobalIndexesHandler(this));
+        subHandler.add(new InformationSchemaColumnarIndexStatusHandler(this));
+        subHandler.add(new InformationSchemaColumnarStatusHandler(this));
         subHandler.add(new InformationSchemaMetadataLockHandler(this));
         subHandler.add(new InformationSchemaModuleHandler(this));
         subHandler.add(new InformationSchemaModuleEventHandler(this));
@@ -218,6 +229,8 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaTraceHandler(this));
         subHandler.add(new InformationSchemaReplicaStatHandler(this));
         subHandler.add(new InformationSchemaOptimizerAlertHandler(this));
+        subHandler.add(new InformationSchemaRebalanceProgressHandler(this));
+        subHandler.add(new InformationSchemaShowHelpHandler(this));
     }
 
     @Override

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.common.properties;
 
-import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import org.slf4j.Logger;
@@ -29,7 +28,6 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_ALLOCATOR_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_AP_PRIORITY;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_AVAILABLE_SPILL_SPACE_THRESHOLD;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_CLUSTER_NAME;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_CPU_CFS_MAX_QUOTA;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_CPU_CFS_MIN_QUOTA;
@@ -55,10 +53,6 @@ import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_LE
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_LOW_PRIORITY_ENABLED;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_QUERY_EXPIRED_RESERVETION_TIME;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_QUERY_HISTORY;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_QUERY_SPILL_SPACE_THRESHOLD;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_SPILL_FD_THRESHOLD;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_SPILL_SPACE_THRESHOLD;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_SPILL_THREADS;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MAX_WORKER_THREAD_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MEMORY_REVOKING_TARGET;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_MEMORY_REVOKING_THRESHOLD;
@@ -268,9 +262,6 @@ public class MppConfig {
                 httpClientMaxConnectionsPerServer =
                     parseValue(value, Integer.class, DEFAULT_MPP_HTTP_CLIENT_MAX_CONNECTIONS_PER_SERVER);
                 break;
-            case MPP_MAX_SPILL_THREADS:
-                maxSpillThreads = parseValue(value, Integer.class, DEFAULT_MAX_SPILL_THREADS);
-                break;
             case MPP_GLOBAL_MEMORY_LIMIT_RATIO:
                 globalMemoryLimitRatio = parseValue(value, Double.class, DEFAULT_MPP_GLOBAL_MEMORY_LIMIT_RATIO);
                 break;
@@ -283,18 +274,7 @@ public class MppConfig {
             case MPP_CLUSTER_NAME:
                 defaultCluster = parseValue(value, String.class, DEFAULT_MPP_CLUSTER_NAME);
                 break;
-            case MPP_MAX_SPILL_FD_THRESHOLD:
-                maxSpillFdThreshold = parseValue(value, Integer.class, DEFAULT_MAX_SPILL_FD_THRESHOLD);
-                break;
-            case MPP_MAX_SPILL_SPACE_THRESHOLD:
-                maxSpillSpaceThreshold = parseValue(value, Double.class, DEFAULT_MAX_SPILL_SPACE_THRESHOLD);
-                break;
-            case MPP_AVAILABLE_SPILL_SPACE_THRESHOLD:
-                maxAvaliableSpaceThreshold = parseValue(value, Double.class, DEFAULT_AVALIABLE_SPACE_THRESHOLD);
-                break;
-            case MPP_MAX_QUERY_SPILL_SPACE_THRESHOLD:
-                maxQuerySpillSpaceThreshold = parseValue(value, Double.class, DEFAULT_MAX_QUERY_SPILL_SPACE_THRESHOLD);
-                break;
+
             case MPP_SPILL_PATHS:
                 List<String> spillPathsSplit = ImmutableList.copyOf(
                     Splitter.on(",").trimResults().omitEmptyStrings().split(value));
@@ -669,13 +649,6 @@ public class MppConfig {
         return tablescanDsMaxSize;
     }
 
-    private static final int DEFAULT_MAX_SPILL_THREADS = ThreadCpuStatUtil.NUM_CORES;
-    private int maxSpillThreads = DEFAULT_MAX_SPILL_THREADS;
-
-    public int getMaxSpillThreads() {
-        return maxSpillThreads;
-    }
-
     private static final double DEFAULT_MPP_GLOBAL_MEMORY_LIMIT_RATIO = 1.0;
     private double globalMemoryLimitRatio = DEFAULT_MPP_GLOBAL_MEMORY_LIMIT_RATIO;
 
@@ -702,34 +675,6 @@ public class MppConfig {
 
     public String getDefaultCluster() {
         return defaultCluster;
-    }
-
-    private static final int DEFAULT_MAX_SPILL_FD_THRESHOLD = 10000;
-    private int maxSpillFdThreshold = DEFAULT_MAX_SPILL_FD_THRESHOLD;
-
-    public int getMaxSpillFdThreshold() {
-        return maxSpillFdThreshold;
-    }
-
-    private static final double DEFAULT_MAX_SPILL_SPACE_THRESHOLD = 0.1;
-    private double maxSpillSpaceThreshold = DEFAULT_MAX_SPILL_SPACE_THRESHOLD;
-
-    public double getMaxSpillSpaceThreshold() {
-        return maxSpillSpaceThreshold;
-    }
-
-    private static final double DEFAULT_AVALIABLE_SPACE_THRESHOLD = 0.9;
-    private double maxAvaliableSpaceThreshold = DEFAULT_AVALIABLE_SPACE_THRESHOLD;
-
-    public double getAvaliableSpillSpaceThreshold() {
-        return maxAvaliableSpaceThreshold;
-    }
-
-    private static final double DEFAULT_MAX_QUERY_SPILL_SPACE_THRESHOLD = 0.3;
-    private double maxQuerySpillSpaceThreshold = DEFAULT_MAX_QUERY_SPILL_SPACE_THRESHOLD;
-
-    public double getMaxQuerySpillSpaceThreshold() {
-        return maxQuerySpillSpaceThreshold;
     }
 
     private static final List<Path> DEFAULT_SPILL_PATHS = initDefaultPathList();

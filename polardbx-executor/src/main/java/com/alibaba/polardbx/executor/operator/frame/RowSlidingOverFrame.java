@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.frame;
 
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 
 import java.util.List;
 
@@ -55,10 +55,10 @@ public class RowSlidingOverFrame extends SlidingOverFrame {
     }
 
     @Override
-    public void processData(int index) {
+    public List<Object> processData(int index) {
         int realLeftIndex = Math.max(leftIndex, index - leftBound);
         int realRightIndex = Math.min(rightIndex, index + rightBound);
-        process(realLeftIndex, realRightIndex);
+        return process(realLeftIndex, realRightIndex);
     }
 }
 

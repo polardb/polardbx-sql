@@ -81,7 +81,7 @@ public class DdlEngineResourceManager {
                                 @NotNull long jobId,
                                 @NotNull Set<String> shared,
                                 @NotNull Set<String> exclusive) {
-        acquireResource(schemaName, jobId, __->false, shared, exclusive, (Connection conn) -> true);
+        acquireResource(schemaName, jobId, __ -> false, shared, exclusive, (Connection conn) -> true);
     }
 
     public void acquireResource(@NotNull String schemaName,
@@ -104,7 +104,7 @@ public class DdlEngineResourceManager {
         try {
             while (!lockManager.tryReadWriteLockBatch(schemaName, owner, readLocks, writeLocks, func)) {
                 LocalDateTime now = LocalDateTime.now();
-                if (now.minusHours(1L).isAfter(beginTs)){
+                if (now.minusHours(1L).isAfter(beginTs)) {
                     throw new TddlNestableRuntimeException("GET DDL LOCK TIMEOUT");
                 }
 
@@ -127,7 +127,9 @@ public class DdlEngineResourceManager {
                     "tryReadWriteLockBatch failed, schemaName:[%s], jobId:[%s], retryCount:[%d], shared:[%s], exclusive:[%s], blockers:[%s]",
                     schemaName, jobId, retryCount++, setToString(shared), setToString(exclusive), setToString(blockers))
                 );
-                Set<String> ddlBlockers = blockers.stream().filter(e-> StringUtils.startsWith(e, PersistentReadWriteLock.OWNER_PREFIX)).collect(Collectors.toSet());
+                Set<String> ddlBlockers =
+                    blockers.stream().filter(e -> StringUtils.startsWith(e, PersistentReadWriteLock.OWNER_PREFIX))
+                        .collect(Collectors.toSet());
                 if (CollectionUtils.isNotEmpty(ddlBlockers)) {
                     List<DdlEngineRecord> blockerJobRecords = getBlockerJobRecords(schemaName, ddlBlockers);
                     if (CollectionUtils.isEmpty(blockerJobRecords)) {
@@ -178,7 +180,7 @@ public class DdlEngineResourceManager {
         }
     }
 
-    public boolean downGradeWriteLock(Connection connection, long jobId, String writeLock){
+    public boolean downGradeWriteLock(Connection connection, long jobId, String writeLock) {
         String owner = PersistentReadWriteLock.OWNER_PREFIX + String.valueOf(jobId);
         return lockManager.downGradeWriteLock(connection, owner, writeLock);
     }
@@ -196,7 +198,7 @@ public class DdlEngineResourceManager {
     }
 
     public int releaseResource(Connection connection, long jobId, Set<String> resouceSet) {
-        if(CollectionUtils.isEmpty(resouceSet)){
+        if (CollectionUtils.isEmpty(resouceSet)) {
             return 0;
         }
         String owner = PersistentReadWriteLock.OWNER_PREFIX + String.valueOf(jobId);
@@ -226,37 +228,37 @@ public class DdlEngineResourceManager {
         return result;
     }
 
-    private String setToString(Set<String> lockSet){
-        if(CollectionUtils.isEmpty(lockSet)){
+    private String setToString(Set<String> lockSet) {
+        if (CollectionUtils.isEmpty(lockSet)) {
             return "";
         }
         return Joiner.on(",").join(lockSet);
     }
 
-    public static void startAcquiringLock(String schemaName, DdlContext ddlContext){
-        synchronized (allLocksTryingToAcquire){
-            if(!allLocksTryingToAcquire.containsKey(schemaName)){
+    public static void startAcquiringLock(String schemaName, DdlContext ddlContext) {
+        synchronized (allLocksTryingToAcquire) {
+            if (!allLocksTryingToAcquire.containsKey(schemaName)) {
                 allLocksTryingToAcquire.put(schemaName, new ArrayList<>());
             }
             allLocksTryingToAcquire.get(schemaName).add(ddlContext);
         }
     }
 
-    public static void finishAcquiringLock(String schemaName, DdlContext ddlContext){
-        synchronized (allLocksTryingToAcquire){
-            if(allLocksTryingToAcquire.containsKey(schemaName)){
+    public static void finishAcquiringLock(String schemaName, DdlContext ddlContext) {
+        synchronized (allLocksTryingToAcquire) {
+            if (allLocksTryingToAcquire.containsKey(schemaName)) {
                 allLocksTryingToAcquire.get(schemaName).remove(ddlContext);
-                if(CollectionUtils.isEmpty(allLocksTryingToAcquire.get(schemaName))){
+                if (CollectionUtils.isEmpty(allLocksTryingToAcquire.get(schemaName))) {
                     allLocksTryingToAcquire.remove(schemaName);
                 }
             }
         }
     }
 
-    public static List<DdlContext> getAllDdlAcquiringLocks(String schemaName){
+    public static List<DdlContext> getAllDdlAcquiringLocks(String schemaName) {
         List<DdlContext> result = new ArrayList<>();
-        synchronized (allLocksTryingToAcquire){
-            if(CollectionUtils.isEmpty(allLocksTryingToAcquire.get(schemaName))){
+        synchronized (allLocksTryingToAcquire) {
+            if (CollectionUtils.isEmpty(allLocksTryingToAcquire.get(schemaName))) {
                 return result;
             }
             result.addAll(allLocksTryingToAcquire.get(schemaName));

@@ -9,7 +9,7 @@
     SELECT d_tax, d_next_o_id     FROM bmsql_district     WHERE d_w_id = 1 AND d_id = 1     FOR UPDATE
 
   plan: |
-    LogicalView(tables="optest_0001.bmsql_district", sql="SELECT `d_tax`, `d_next_o_id` FROM `bmsql_district` AS `bmsql_district` WHERE ((`d_w_id` = 1) AND (`d_id` = 1)) FOR UPDATE")
+    phytableoperation(tables="optest_0001.[bmsql_district]", sql="select `bmsql_district`.`d_tax`, `bmsql_district`.`d_next_o_id` from ? as `bmsql_district` where ((`bmsql_district`.`d_w_id` = 1) and (`bmsql_district`.`d_id` = 1)) for update")
 
 - sql: |
     UPDATE bmsql_district     SET d_next_o_id = d_next_o_id + 1     WHERE d_w_id = 1 AND d_id = 1
@@ -36,13 +36,13 @@
     FOR UPDATE
 
   plan: |
-    LogicalView(tables="optest_0001.bmsql_stock", sql="SELECT `s_quantity`, `s_data`, `s_dist_01`, `s_dist_02`, `s_dist_03`, `s_dist_04`, `s_dist_05`, `s_dist_06`, `s_dist_07`, `s_dist_08`, `s_dist_09`, `s_dist_10` FROM `bmsql_stock` AS `bmsql_stock` WHERE ((`s_w_id` = 1) AND (`s_i_id` = 1)) FOR UPDATE")
+    phytableoperation(tables="optest_0001.[bmsql_stock]", sql="select `bmsql_stock`.`s_quantity`, `bmsql_stock`.`s_data`, `bmsql_stock`.`s_dist_01`, `bmsql_stock`.`s_dist_02`, `bmsql_stock`.`s_dist_03`, `bmsql_stock`.`s_dist_04`, `bmsql_stock`.`s_dist_05`, `bmsql_stock`.`s_dist_06`, `bmsql_stock`.`s_dist_07`, `bmsql_stock`.`s_dist_08`, `bmsql_stock`.`s_dist_09`, `bmsql_stock`.`s_dist_10` from ? as `bmsql_stock` where ((`bmsql_stock`.`s_w_id` = 1) and (`bmsql_stock`.`s_i_id` = 1)) for update")
 
 - sql: |
     SELECT i_price, i_name, i_data     FROM bmsql_item     WHERE i_id = 1
 
   plan: |
-    LogicalView(tables="optest_0001.bmsql_item", sql="SELECT `i_price`, `i_name`, `i_data` FROM `bmsql_item` AS `bmsql_item` WHERE (`i_id` = 1)")
+    phytableoperation(tables="optest_0001.[bmsql_item]", sql="select `bmsql_item`.`i_price`, `bmsql_item`.`i_name`, `bmsql_item`.`i_data` from ? as `bmsql_item` where (`bmsql_item`.`i_id` = 1)")
 
 - sql: |
     UPDATE bmsql_stock     SET s_quantity = 1, s_ytd = s_ytd + 1,         s_order_cnt = s_order_cnt + 1,         s_remote_cnt = s_remote_cnt + 1     WHERE s_w_id = 1 AND s_i_id = 1
@@ -55,23 +55,23 @@
 - sql: |
     SELECT w_name, w_street_1, w_street_2, w_city,        w_state, w_zip     FROM bmsql_warehouse     WHERE w_id = 1
   plan: |
-    LogicalView(tables="optest_0001.bmsql_warehouse", sql="SELECT `w_name`, `w_street_1`, `w_street_2`, `w_city`, `w_state`, `w_zip` FROM `bmsql_warehouse` AS `bmsql_warehouse` WHERE (`w_id` = 1)")
+    phytableoperation(tables="optest_0001.[bmsql_warehouse]", sql="select `bmsql_warehouse`.`w_name`, `bmsql_warehouse`.`w_street_1`, `bmsql_warehouse`.`w_street_2`, `bmsql_warehouse`.`w_city`, `bmsql_warehouse`.`w_state`, `bmsql_warehouse`.`w_zip` from ? as `bmsql_warehouse` where (`bmsql_warehouse`.`w_id` = 1)")
 - sql: |
     SELECT d_name, d_street_1, d_street_2, d_city,        d_state, d_zip     FROM bmsql_district     WHERE d_w_id = 1 AND d_id = 1
   plan: |
-    LogicalView(tables="optest_0001.bmsql_district", sql="SELECT `d_name`, `d_street_1`, `d_street_2`, `d_city`, `d_state`, `d_zip` FROM `bmsql_district` AS `bmsql_district` WHERE ((`d_w_id` = 1) AND (`d_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_district]", sql="select `bmsql_district`.`d_name`, `bmsql_district`.`d_street_1`, `bmsql_district`.`d_street_2`, `bmsql_district`.`d_city`, `bmsql_district`.`d_state`, `bmsql_district`.`d_zip` from ? as `bmsql_district` where ((`bmsql_district`.`d_w_id` = 1) and (`bmsql_district`.`d_id` = 1))")
 - sql: |
     SELECT c_id     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_last = 1     ORDER BY c_first
   plan: |
-    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_id` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_last` = 1)) order by `c_first`")
+    phytableoperation(tables="optest_0001.[bmsql_customer]", sql="select `bmsql_customer`.`c_id` from ? as `bmsql_customer` where ((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1) and (`bmsql_customer`.`c_last` = 1)) order by `bmsql_customer`.`c_first`")
 - sql: |
     SELECT c_first, c_middle, c_last, c_street_1, c_street_2,        c_city, c_state, c_zip, c_phone, c_since, c_credit,        c_credit_lim, c_discount, c_balance     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1     FOR UPDATE
   plan: |
-    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_first`, `c_middle`, `c_last`, `c_street_1`, `c_street_2`, `c_city`, `c_state`, `c_zip`, `c_phone`, `c_since`, `c_credit`, `c_credit_lim`, `c_discount`, `c_balance` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1)) for update")
+    phytableoperation(tables="optest_0001.[bmsql_customer]", sql="select `bmsql_customer`.`c_first`, `bmsql_customer`.`c_middle`, `bmsql_customer`.`c_last`, `bmsql_customer`.`c_street_1`, `bmsql_customer`.`c_street_2`, `bmsql_customer`.`c_city`, `bmsql_customer`.`c_state`, `bmsql_customer`.`c_zip`, `bmsql_customer`.`c_phone`, `bmsql_customer`.`c_since`, `bmsql_customer`.`c_credit`, `bmsql_customer`.`c_credit_lim`, `bmsql_customer`.`c_discount`, `bmsql_customer`.`c_balance` from ? as `bmsql_customer` where ((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1) and (`bmsql_customer`.`c_id` = 1)) for update")
 - sql: |
     SELECT c_data     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_data` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_customer]", sql="select `bmsql_customer`.`c_data` from ? as `bmsql_customer` where ((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1) and (`bmsql_customer`.`c_id` = 1))")
 - sql: |
     UPDATE bmsql_warehouse     SET w_ytd = w_ytd + 1     WHERE w_id = 1
   plan: |
@@ -91,11 +91,11 @@
 - sql: |
     SELECT c_id     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_last = 1     ORDER BY c_first
   plan: |
-    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_id` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_last` = 1)) order by `c_first`")
+    phytableoperation(tables="optest_0001.[bmsql_customer]", sql="select `bmsql_customer`.`c_id` from ? as `bmsql_customer` where ((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1) and (`bmsql_customer`.`c_last` = 1)) order by `bmsql_customer`.`c_first`")
 - sql: |
     SELECT c_first, c_middle, c_last, c_balance     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_first`, `c_middle`, `c_last`, `c_balance` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_customer]", sql="select `bmsql_customer`.`c_first`, `bmsql_customer`.`c_middle`, `bmsql_customer`.`c_last`, `bmsql_customer`.`c_balance` from ? as `bmsql_customer` where ((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1) and (`bmsql_customer`.`c_id` = 1))")
 - sql: |
     SELECT o_id, o_entry_d, o_carrier_id     FROM bmsql_oorder     WHERE o_w_id = 1 AND o_d_id = 1 AND o_c_id = 1       AND o_id = (          SELECT max(o_id)               FROM bmsql_oorder               WHERE o_w_id = 1 AND o_d_id = 1 AND o_c_id = 1          )
   plan: |
@@ -103,7 +103,7 @@
 - sql: |
     SELECT ol_i_id, ol_supply_w_id, ol_quantity,        ol_amount, ol_delivery_d     FROM bmsql_order_line     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1     ORDER BY ol_w_id, ol_d_id, ol_o_id, ol_number
   plan: |
-    logicalview(tables="optest_0001.bmsql_order_line", sql="select `ol_i_id`, `ol_supply_w_id`, `ol_quantity`, `ol_amount`, `ol_delivery_d` from `bmsql_order_line` as `bmsql_order_line` where ((`ol_w_id` = 1) and (`ol_d_id` = 1) and (`ol_o_id` = 1)) order by `ol_w_id`, `ol_d_id`, `ol_o_id`, `ol_number`")
+    phytableoperation(tables="optest_0001.[bmsql_order_line]", sql="select `bmsql_order_line`.`ol_i_id`, `bmsql_order_line`.`ol_supply_w_id`, `bmsql_order_line`.`ol_quantity`, `bmsql_order_line`.`ol_amount`, `bmsql_order_line`.`ol_delivery_d` from ? as `bmsql_order_line` where ((`bmsql_order_line`.`ol_w_id` = 1) and (`bmsql_order_line`.`ol_d_id` = 1) and (`bmsql_order_line`.`ol_o_id` = 1)) order by `bmsql_order_line`.`ol_w_id`, `bmsql_order_line`.`ol_d_id`, `bmsql_order_line`.`ol_o_id`, `bmsql_order_line`.`ol_number`")
 - sql: |
     SELECT count(*) AS low_stock FROM (    SELECT s_w_id, s_i_id, s_quantity         FROM bmsql_stock         WHERE s_w_id = 1 AND s_quantity < 1 AND s_i_id IN (            SELECT ol_i_id                 FROM bmsql_district                 JOIN bmsql_order_line ON ol_w_id = d_w_id                  AND ol_d_id = d_id                  AND ol_o_id >= d_next_o_id - 20                  AND ol_o_id < d_next_o_id                 WHERE d_w_id = 1 AND d_id = 1         )     ) AS L
   plan: |
@@ -111,7 +111,7 @@
 - sql: |
     SELECT no_o_id     FROM bmsql_new_order     WHERE no_w_id = 1 AND no_d_id = 1     ORDER BY no_o_id ASC
   plan: |
-    LogicalView(tables="optest_0001.bmsql_new_order", sql="SELECT `no_o_id` FROM `bmsql_new_order` AS `bmsql_new_order` WHERE ((`no_w_id` = 1) AND (`no_d_id` = 1)) ORDER BY `no_o_id`")
+    phytableoperation(tables="optest_0001.[bmsql_new_order]", sql="select `bmsql_new_order`.`no_o_id` from ? as `bmsql_new_order` where ((`bmsql_new_order`.`no_w_id` = 1) and (`bmsql_new_order`.`no_d_id` = 1)) order by `no_o_id`")
 - sql: |
     DELETE FROM bmsql_new_order     WHERE no_w_id = 1 AND no_d_id = 1 AND no_o_id = 1
   plan: |
@@ -119,7 +119,7 @@
 - sql: |
     SELECT o_c_id     FROM bmsql_oorder     WHERE o_w_id = 1 AND o_d_id = 1 AND o_id = 1
   plan: |
-    logicalview(tables="optest_0001.bmsql_oorder", sql="select `o_c_id` from `bmsql_oorder` as `bmsql_oorder` where ((`o_w_id` = 1) and (`o_d_id` = 1) and (`o_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_oorder]", sql="select `bmsql_oorder`.`o_c_id` from ? as `bmsql_oorder` where ((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1) and (`bmsql_oorder`.`o_id` = 1))")
 - sql: |
     UPDATE bmsql_oorder     SET o_carrier_id = 1     WHERE o_w_id = 1 AND o_d_id = 1 AND o_id = 1
   plan: |
@@ -127,7 +127,7 @@
 - sql: |
     SELECT sum(ol_amount) AS sum_ol_amount     FROM bmsql_order_line     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1
   plan: |
-    logicalview(tables="optest_0001.bmsql_order_line", sql="select sum(`ol_amount`) as `sum_ol_amount` from `bmsql_order_line` as `bmsql_order_line` where ((`ol_w_id` = 1) and (`ol_d_id` = 1) and (`ol_o_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_order_line]", sql="select sum(`bmsql_order_line`.`ol_amount`) as `sum_ol_amount` from ? as `bmsql_order_line` where ((`bmsql_order_line`.`ol_w_id` = 1) and (`bmsql_order_line`.`ol_d_id` = 1) and (`bmsql_order_line`.`ol_o_id` = 1))")
 - sql: |
     UPDATE bmsql_order_line     SET ol_delivery_d = 1     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1
   plan: |

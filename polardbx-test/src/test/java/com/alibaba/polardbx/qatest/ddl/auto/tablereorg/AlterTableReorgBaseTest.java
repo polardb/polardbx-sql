@@ -66,11 +66,11 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
     protected static String pk = "id";
 
     public static final String PARTITION_BY_BIGINT_KEY =
-        " partition by key(id) partitions 3";
+        "ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 4 partition by key(id) partitions 3";
     public static final String PARTITION_BY_INT_KEY =
-        " partition by key(c_int_32) partitions 3";
+        "ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8 partition by key(c_int_32) partitions 3";
     public static final String PARTITION_BY_INT_BIGINT_KEY =
-        " partition by key(c_int_32, id) partitions 3";
+        "ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16 partition by key(c_int_32, id) partitions 3";
     public static final String PARTITION_BY_INT_BIGINT_HASH =
         " partition by hash(c_int_32, id) partitions 3";
     public static final String PARTITION_BY_MONTH_HASH =
@@ -204,7 +204,8 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
         if (withConcurrentDml) {
             dmlWhilePartitionReorg(partitionRuleInfo, partitionRuleInfo.alterCommand, tableName);
         } else {
-            executePartReorg(partitionRuleInfo.tableStatus, partitionRuleInfo.alterCommand);
+            executePartReorg(partitionRuleInfo.tableStatus, partitionRuleInfo.alterCommand,
+                partitionRuleInfo.usePhysicalTableBackfill);
         }
     }
 
@@ -271,12 +272,15 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
         }
     }
 
-    private void executePartReorg(ComplexTaskMetaManager.ComplexTaskStatus status, String command) {
+    private void executePartReorg(ComplexTaskMetaManager.ComplexTaskStatus status, String command,
+                                  boolean usePhysicalBackfill) {
         String sqlHint = "";
         if (!status.isPublic()) {
             sqlHint = String.format(
-                "/*+TDDL:CMD_EXTRA(TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='%s')*/",
+                "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=false, TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG='%s')*/",
                 status.name());
+        } else if (usePhysicalBackfill) {
+            sqlHint = "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=true, PHYSICAL_BACKFILL_SPEED_TEST=false)*/";
         }
         String ignoreErr =
             "The DDL job has been paused or cancelled. Please use SHOW DDL";
@@ -764,7 +768,7 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
                     max2, tableName, (sql) -> {
                     executeDml(hintStr + sql, partitionRuleInfo.connection, ignoreError);
                 }))));
-            executePartReorg(partitionRuleInfo.tableStatus, command);
+            executePartReorg(partitionRuleInfo.tableStatus, command, partitionRuleInfo.usePhysicalTableBackfill);
             try {
                 TimeUnit.SECONDS.sleep(2);
             } catch (InterruptedException e) {
@@ -807,6 +811,8 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
             add("tT3");
             add("tT4");
         }};
+
+        boolean usePhysicalTableBackfill = false;
 
         public PartitionRuleInfo(PartitionStrategy partitionStrategy,
                                  int initDataType, String partitionRule,
@@ -864,6 +870,10 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
 
         public void setLogicalTableNames(List<String> logicalTableNames) {
             this.logicalTableNames = logicalTableNames;
+        }
+
+        public void setUsePhysicalTableBackfill(boolean usePhysicalTableBackfill) {
+            this.usePhysicalTableBackfill = usePhysicalTableBackfill;
         }
 
         public void prepareData(String tableName, Integer insertRow) {

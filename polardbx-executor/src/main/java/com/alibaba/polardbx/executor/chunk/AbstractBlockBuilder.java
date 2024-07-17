@@ -16,17 +16,15 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
-import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
-
 public abstract class AbstractBlockBuilder implements BlockBuilder {
 
-    public final int initialCapacity;
-    public final BooleanArrayList valueIsNull;
+    final int initialCapacity;
+    final protected BatchedArrayList.BatchBooleanArrayList valueIsNull;
     protected boolean containsNull;
 
-    AbstractBlockBuilder(int initialCapacity) {
+    public AbstractBlockBuilder(int initialCapacity) {
         this.initialCapacity = initialCapacity;
-        this.valueIsNull = new BooleanArrayList(initialCapacity);
+        this.valueIsNull = new BatchedArrayList.BatchBooleanArrayList(initialCapacity);
         this.containsNull = false;
     }
 
@@ -46,7 +44,7 @@ public abstract class AbstractBlockBuilder implements BlockBuilder {
         valueIsNull.ensureCapacity(capacity);
     }
 
-    void appendNullInternal() {
+    protected void appendNullInternal() {
         valueIsNull.add(true);
         containsNull = true;
     }
@@ -60,7 +58,7 @@ public abstract class AbstractBlockBuilder implements BlockBuilder {
         return containsNull;
     }
 
-    void checkReadablePosition(int position) {
+    protected void checkReadablePosition(int position) {
         if (position < 0 || position >= getPositionCount()) {
             throw new IllegalArgumentException("position is not valid");
         }
@@ -81,7 +79,13 @@ public abstract class AbstractBlockBuilder implements BlockBuilder {
         throw new UnsupportedOperationException();
     }
 
-    int getCapacity() {
+    protected int getCapacity() {
         return valueIsNull.elements().length;
+    }
+
+    @Override
+    public final long hashCodeUseXxhash(int pos) {
+        throw new UnsupportedOperationException(
+            "Block builder not support hash code calculated by xxhash, you should convert it to block first");
     }
 }

@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.ddl.job.task.tablegroup;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.ImplicitTableGroupUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
@@ -61,11 +61,13 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
     protected String logicalTable;
     protected boolean tableGroupExists;
     protected boolean reCreatePartitionGroups;
+    protected boolean withImplicitTableGroup;
 
     @JSONCreator
     public AlterTableSetTableGroupChangeMetaOnlyTask(String schemaName, String logicalTable, String curTableGroup,
                                                      String targetTableGroup, boolean reCreatePartitionGroups,
-                                                     boolean tableGroupExists, String curJoinGroup) {
+                                                     boolean tableGroupExists, String curJoinGroup,
+                                                     boolean withImplicitTableGroup) {
         super(schemaName);
         this.logicalTable = logicalTable;
         this.curTableGroup = curTableGroup;
@@ -73,6 +75,8 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
         this.reCreatePartitionGroups = reCreatePartitionGroups;
         this.tableGroupExists = tableGroupExists;
         this.curJoinGroup = curJoinGroup;
+        this.withImplicitTableGroup = withImplicitTableGroup;
+        onExceptionTryRollback();
     }
 
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
@@ -153,7 +157,7 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
         }
         addNewPartitionGroupFromPartitionInfo(partitionInfo,
             partitionGroupRecords,
-            tableGroupId, metaDbConnection);
+            tableGroupId, executionContext, metaDbConnection);
         updateTableVersion(metaDbConnection, schemaName, logicalTable, executionContext);
     }
 
@@ -219,6 +223,7 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
     private void addNewPartitionGroupFromPartitionInfo(PartitionInfo partitionInfo,
                                                        List<PartitionGroupRecord> partitionGroupRecords,
                                                        Long tableGroupId,
+                                                       ExecutionContext ec,
                                                        Connection connection) {
         PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
         TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
@@ -231,7 +236,9 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
             if (!tableGroupExists) {
                 TableGroupRecord tableGroupRecord = new TableGroupRecord();
                 tableGroupRecord.schema = partitionInfo.getTableSchema();
-                tableGroupRecord.tg_name = String.valueOf(System.currentTimeMillis());
+                tableGroupRecord.tg_name =
+                    withImplicitTableGroup ? (StringUtils.isNotEmpty(targetTableGroup) ? targetTableGroup :
+                        String.valueOf(System.currentTimeMillis())) : String.valueOf(System.currentTimeMillis());
                 tableGroupRecord.meta_version = 0L;
                 if (partitionInfo.getTableType() == PartitionTableType.SINGLE_TABLE) {
                     if (partitionInfo.getTableGroupId() != TableGroupRecord.INVALID_TABLE_GROUP_ID) {
@@ -246,18 +253,25 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                     tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
                 }
                 tableGroupId = tableGroupAccessor.addNewTableGroup(tableGroupRecord);
-                int tgType = tableGroupRecord.tg_type;
-                String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(tableGroupId, tgType);
-                String localiity = partitionInfo.getLocality();
-                List<TableGroupRecord> tableGroupRecords =
-                    tableGroupAccessor
-                        .getTableGroupsBySchemaAndName(partitionInfo.getTableSchema(), finalTgName, false);
-                if (GeneralUtil.isNotEmpty(tableGroupRecords)) {
-                    finalTgName = "tg" + tableGroupRecord.tg_name;
+                String locality = partitionInfo.getLocality();
+                if (!withImplicitTableGroup || StringUtils.isEmpty(targetTableGroup)) {
+                    if (!withImplicitTableGroup) {
+                        ImplicitTableGroupUtil.checkAutoCreateTableGroup(ec);
+                    }
+                    int tgType = tableGroupRecord.tg_type;
+                    String finalTgName = TableGroupNameUtil.autoBuildTableGroupName(tableGroupId, tgType);
+                    List<TableGroupRecord> tableGroupRecords =
+                        tableGroupAccessor
+                            .getTableGroupsBySchemaAndName(partitionInfo.getTableSchema(), finalTgName, false);
+                    if (GeneralUtil.isNotEmpty(tableGroupRecords)) {
+                        finalTgName = "tg" + tableGroupRecord.tg_name;
+                    }
+                    tableGroupAccessor.updateTableGroupName(tableGroupId, finalTgName);
+                    tableGroupAccessor.updateTableGroupLocalityById(tableGroupId, locality);
+                    targetTableGroup = finalTgName;//will pass the new create targetTableGroup to the following tasks
+                } else {
+                    tableGroupAccessor.updateTableGroupLocalityById(tableGroupId, locality);
                 }
-                tableGroupAccessor.updateTableGroupName(tableGroupId, finalTgName);
-                tableGroupAccessor.updateTableGroupLocalityById(tableGroupId, localiity);
-                targetTableGroup = finalTgName;//will pass the new create targetTableGroup to the following tasks
 
             } else {
                 int tableGroupType = TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
@@ -344,8 +358,7 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
             TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
                 .getTableGroupConfigById(tableGroupId);
             if (tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getTables())) {
-                TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupConfig.getAllTables().get(0);
-                String tableName = tablePartRecordInfoContext.getTableName();
+                String tableName = tableGroupConfig.getAllTables().get(0);
                 JoinGroupInfoRecord
                     joinGroupInfoRecord = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tableName, connection);
                 joinGroupTableDetailAccessor.deleteJoinGroupTableDetailBySchemaTable(schemaName, logicalTable);

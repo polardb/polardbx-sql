@@ -71,4 +71,21 @@ public class CharsetTest {
         Assert.assertEquals(CharsetName.of(Charset.forName("BINARY")), CharsetName.BINARY);
         Assert.assertEquals(CharsetName.of(Charset.forName("ASCII")), CharsetName.ASCII);
     }
+
+    @Test
+    public void testMixedCollation() {
+        Assert.assertSame(CollationName.getMixOfCollation0(CollationName.UTF8MB4_BIN, CollationName.UTF8MB4_GENERAL_CI),
+            CollationName.UTF8MB4_BIN);
+        Assert.assertSame(CollationName.getMixOfCollation0(CollationName.UTF8MB4_GENERAL_CI, CollationName.UTF8MB4_BIN),
+            CollationName.UTF8MB4_BIN);
+
+        Assert.assertSame(
+            CollationName.getMixOfCollation0(CollationName.UTF8MB4_0900_AI_CI, CollationName.UTF8MB4_GENERAL_CI),
+            CollationName.UTF8MB4_0900_AI_CI);
+        Assert.assertSame(
+            CollationName.getMixOfCollation0(CollationName.UTF8MB4_0900_AI_CI, CollationName.UTF8MB4_UNICODE_CI),
+            CollationName.UTF8MB4_0900_AI_CI);
+        Assert.assertSame(CollationName.getMixOfCollation0(CollationName.UTF8MB4_0900_AI_CI, CollationName.UTF8MB4_BIN),
+            CollationName.UTF8MB4_BIN);
+    }
 }

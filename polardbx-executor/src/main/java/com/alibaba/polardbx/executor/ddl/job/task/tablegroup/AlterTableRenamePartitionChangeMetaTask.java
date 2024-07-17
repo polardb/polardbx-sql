@@ -163,7 +163,7 @@ public class AlterTableRenamePartitionChangeMetaTask extends BaseDdlTask {
                     }
                 }
                 Optional<PartitionGroupRecord> partGroupRecord = partitionGroupRecords.stream()
-                    .filter(o -> o.partition_name.equalsIgnoreCase(subPartSpec.getName())).findFirst();
+                    .filter(o -> o.partition_name.equalsIgnoreCase(tablePartitionRecord.getPartName())).findFirst();
                 if (!partGroupRecord.isPresent()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_NAME_NOT_EXISTS,
                         String.format(

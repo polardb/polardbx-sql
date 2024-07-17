@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.utils;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.NumberUtils;
 
@@ -689,13 +690,22 @@ public class TStringUtil extends StringUtils {
         return str;
     }
 
+    /**
+     * used for result set encoding
+     */
     public static String javaEncoding(String encoding) {
         if (encoding.equalsIgnoreCase("utf8mb4")) {
             return "utf8";
         } else if (encoding.equalsIgnoreCase("binary")) {
-            return "iso_8859_1";
+            if (DynamicConfig.getInstance().isCompatibleCharsetVariables()) {
+                // compatible with MySQL's behavior
+                // resultSet encoding is binary, which means no conversion
+                return "utf8";
+            } else {
+                // compatible with the old behavior
+                return "iso_8859_1";
+            }
         }
-
         return encoding;
     }
 

@@ -1,0 +1,28 @@
+## DISABLE_FAST_SQL_PARSER
+create table oh_orders1
+(
+  sid int,
+  user_id varchar(64),
+  order_id varchar(64),
+  order_time datetime
+)
+partition by co_hash( substr(order_id, -4), substr(user_id, -4) )
+partitions 8;
+
+create table oh_orders2
+(
+sid varchar(64),
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by co_hash( substr(order_id, -4), substr(user_id, -4),  substr(sid, -4) )
+partitions 8;
+
+## dml-case-1
+
+insert into oh_orders2 (sid, user_id, order_id) values ('123456','123456', '123456');
+explain select * from oh_orders2 where sid='123456';
+
+## dml-case-2
+update oh_orders2 set order_id='123456789',sid='123456789',user_id='123456789' where sid='12345678';

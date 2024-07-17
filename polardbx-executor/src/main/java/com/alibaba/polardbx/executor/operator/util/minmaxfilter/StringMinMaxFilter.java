@@ -22,7 +22,6 @@ import com.alibaba.polardbx.executor.chunk.SliceBlock;
 
 /**
  * @author chenzilin
- * @date 2021/12/10 15:33
  */
 public class StringMinMaxFilter extends MinMaxFilter {
 
@@ -57,7 +56,7 @@ public class StringMinMaxFilter extends MinMaxFilter {
     @Override
     public void put(Block block, int pos) {
         if (!block.isNull(pos)) {
-            String str = ((SliceBlock) block).getRegion(pos).toStringUtf8();
+            String str = (block.cast(SliceBlock.class)).getRegion(pos).toStringUtf8();
             if (min == null || str.compareTo(min) < 0) {
                 min = str;
             }

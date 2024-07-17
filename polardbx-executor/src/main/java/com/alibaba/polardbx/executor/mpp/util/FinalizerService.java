@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.util;
 
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Threads;
+import com.google.common.collect.Sets;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;

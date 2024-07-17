@@ -1,0 +1,295 @@
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(c_custkey), sum(distinct c_custkey) from customer_test;
+
+  plan: |
+    hashagg(count(c_custkey)="count()", sum(distinct c_custkey)="sum(distinct c_custkey)")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_nationkey), count(distinct c_custkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(sum(distinct c_nationkey)="sum(distinct c_nationkey)", count(distinct c_custkey, c_address)="count(distinct c_custkey, c_address)")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey`, `c_custkey`, `c_address` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_nationkey), count(distinct c_nationkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(sum(distinct c_nationkey)="sum(sum(distinct c_nationkey))", count(distinct c_nationkey, c_address)="sum(count(distinct c_nationkey, c_address))")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)`, count(distinct `c_nationkey`, `c_address`) as `count(distinct c_nationkey, c_address)` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(distinct c_nationkey), sum(distinct c_nationkey) from customer_test;
+
+  plan: |
+    hashagg(count(distinct c_nationkey)="sum(count(distinct c_nationkey))", sum(distinct c_nationkey)="sum(sum(distinct c_nationkey))")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select count(distinct `c_nationkey`) as `count(distinct c_nationkey)`, sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(c_custkey), sum(distinct c_custkey) from customer_test group by  c_nationkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select count(*) as `count(c_custkey)`, sum(distinct `c_custkey`) as `sum(distinct c_custkey)` from `customer_test` as `customer_test` group by `c_nationkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(distinct c_nationkey), sum(distinct c_nationkey) from customer_test group by  c_nationkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select count(distinct `c_nationkey`) as `count(distinct c_nationkey)`, sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)` from `customer_test` as `customer_test` group by `c_nationkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select avg(distinct c_nationkey), sum(distinct c_nationkey) from customer_test;
+
+  plan: |
+    project(avg(distinct c_nationkey)="$f0 / $f1", sum(distinct c_nationkey)="$f0")
+      hashagg($f0="sum($f0)", $f1="sum($f1)")
+        gather(concurrent=true)
+          logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select sum(distinct `c_nationkey`) as `$f0`, count(distinct `c_nationkey`) as `$f1` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select group_concat(distinct c_nationkey), sum(distinct c_nationkey) from customer_test;
+
+  plan: |
+    hashagg(group_concat(distinct c_nationkey)="group_concat(distinct c_nationkey)", sum(distinct c_nationkey)="sum(distinct c_nationkey)")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(c_custkey), count(distinct c_custkey), max(c_custkey), max(distinct c_custkey) from customer;
+
+  plan: |
+    project(count(c_custkey)="count(c_custkey)", count(distinct c_custkey)="count(distinct c_custkey)", max(c_custkey)="max(c_custkey)", max(distinct c_custkey)="max(c_custkey)")
+      hashagg(count(c_custkey)="sum(count(c_custkey))", count(distinct c_custkey)="sum(count(distinct c_custkey))", max(c_custkey)="max(max(c_custkey))")
+        gather(concurrent=true)
+          logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select count(*) as `count(c_custkey)`, count(distinct `c_custkey`) as `count(distinct c_custkey)`, max(`c_custkey`) as `max(c_custkey)` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(c_custkey), min(distinct c_custkey) from customer;
+
+  plan: |
+    hashagg(sum(c_custkey)="sum(sum(c_custkey))", min(distinct c_custkey)="min(min(distinct c_custkey))")
+      gather(concurrent=true)
+        logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select sum(`c_custkey`) as `sum(c_custkey)`, min(`c_custkey`) as `min(distinct c_custkey)` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(c_custkey), sum(distinct c_custkey), bit_and(distinct c_custkey), bit_or(distinct c_custkey) from customer group by c_custkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select sum(`c_custkey`) as `sum(c_custkey)`, sum(`c_custkey`) as `sum(distinct c_custkey)`, (bit_and(`c_custkey`)) as `bit_and(distinct c_custkey)`, (bit_or(`c_custkey`)) as `bit_or(distinct c_custkey)` from `customer` as `customer` group by `c_custkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_phone), sum(distinct c_custkey) from customer group by c_custkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select sum(`c_phone`) as `sum(distinct c_phone)`, sum(`c_custkey`) as `sum(distinct c_custkey)` from `customer` as `customer` group by `c_custkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_phone), sum(distinct c_custkey) from customer group by c_phone;
+
+  plan: |
+    project(sum(distinct c_phone)="sum(distinct c_phone)", sum(distinct c_custkey)="sum(distinct c_custkey)")
+      hashagg(group="c_phone", sum(distinct c_phone)="sum(distinct c_phone)", sum(distinct c_custkey)="sum(c_custkey)")
+        gather(concurrent=true)
+          logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_phone`, `c_custkey` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_phone), sum(distinct c_custkey) from customer;
+
+  plan: |
+    hashagg(sum(distinct c_phone)="sum(distinct c_phone)", sum(distinct c_custkey)="sum(c_custkey)")
+      gather(concurrent=true)
+        logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_phone`, `c_custkey` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select c_phone, sum(distinct c_custkey) from customer;
+
+  plan: |
+    hashagg(c_phone="__first_value(c_phone)", sum(distinct c_custkey)="sum(sum(distinct c_custkey))")
+      gather(concurrent=true)
+        logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select (`c_phone`) as `c_phone`, sum(`c_custkey`) as `sum(distinct c_custkey)` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false*/select count(c_custkey), count(distinct c_custkey), max(c_custkey), max(distinct c_custkey) from customer;
+
+  plan: |
+    project(count(c_custkey)="count(c_custkey)", count(distinct c_custkey)="count(distinct c_custkey)", max(c_custkey)="max(c_custkey)", max(distinct c_custkey)="max(c_custkey)")
+      hashagg(count(c_custkey)="sum(count(c_custkey))", count(distinct c_custkey)="sum(count(distinct c_custkey))", max(c_custkey)="max(max(c_custkey))")
+        gather(concurrent=true)
+          logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select count(*) as `count(c_custkey)`, count(distinct `c_custkey`) as `count(distinct c_custkey)`, max(`c_custkey`) as `max(c_custkey)` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false*/select sum(c_custkey), sum(distinct c_custkey), bit_and(distinct c_custkey), bit_or(distinct c_custkey) from customer;
+
+  plan: |
+    hashagg(sum(c_custkey)="sum(sum(c_custkey))", sum(distinct c_custkey)="sum(sum(distinct c_custkey))", bit_and(distinct c_custkey)="bit_and(bit_and(distinct c_custkey))", bit_or(distinct c_custkey)="bit_or(bit_or(distinct c_custkey))")
+      gather(concurrent=true)
+        logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select sum(`c_custkey`) as `sum(c_custkey)`, sum(`c_custkey`) as `sum(distinct c_custkey)`, (bit_and(`c_custkey`)) as `bit_and(distinct c_custkey)`, (bit_or(`c_custkey`)) as `bit_or(distinct c_custkey)` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false*/select sum(c_custkey), sum(distinct c_custkey), bit_and(distinct c_custkey), bit_or(distinct c_custkey) from customer group by c_custkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select sum(`c_custkey`) as `sum(c_custkey)`, sum(`c_custkey`) as `sum(distinct c_custkey)`, (bit_and(`c_custkey`)) as `bit_and(distinct c_custkey)`, (bit_or(`c_custkey`)) as `bit_or(distinct c_custkey)` from `customer` as `customer` group by `c_custkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false*/select sum(distinct c_phone), sum(distinct c_custkey) from customer group by c_custkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select sum(`c_phone`) as `sum(distinct c_phone)`, sum(`c_custkey`) as `sum(distinct c_custkey)` from `customer` as `customer` group by `c_custkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_phone), sum(distinct c_custkey) from customer group by c_phone;
+
+  plan: |
+    project(sum(distinct c_phone)="sum(distinct c_phone)", sum(distinct c_custkey)="sum(distinct c_custkey)")
+      hashagg(group="c_phone", sum(distinct c_phone)="sum(distinct c_phone)", sum(distinct c_custkey)="sum(c_custkey)")
+        gather(concurrent=true)
+          logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_phone`, `c_custkey` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_phone), sum(distinct c_custkey) from customer;
+
+  plan: |
+    hashagg(sum(distinct c_phone)="sum(distinct c_phone)", sum(distinct c_custkey)="sum(c_custkey)")
+      gather(concurrent=true)
+        logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_phone`, `c_custkey` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_CBO_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select c_phone, sum(distinct c_custkey) from customer;
+
+  plan: |
+    hashagg(c_phone="__first_value(c_phone)", sum(distinct c_custkey)="sum(sum(distinct c_custkey))")
+      gather(concurrent=true)
+        logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select (`c_phone`) as `c_phone`, sum(`c_custkey`) as `sum(distinct c_custkey)` from `customer` as `customer`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(c_custkey), sum(distinct c_custkey) from customer_test;
+
+  plan: |
+    hashagg(count(c_custkey)="count()", sum(distinct c_custkey)="sum(distinct c_custkey)")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(distinct c_nationkey), sum(distinct c_nationkey) from customer_test;
+
+  plan: |
+    hashagg(count(distinct c_nationkey)="sum(count(distinct c_nationkey))", sum(distinct c_nationkey)="sum(sum(distinct c_nationkey))")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select count(distinct `c_nationkey`) as `count(distinct c_nationkey)`, sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_HASH_AGG=false ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(c_custkey), sum(distinct c_custkey) from customer_test group by  c_nationkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select count(*) as `count(c_custkey)`, sum(distinct `c_custkey`) as `sum(distinct c_custkey)` from `customer_test` as `customer_test` group by `c_nationkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_HASH_AGG=false ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select count(distinct c_nationkey), sum(distinct c_nationkey) from customer_test group by  c_nationkey;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select count(distinct `c_nationkey`) as `count(distinct c_nationkey)`, sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)` from `customer_test` as `customer_test` group by `c_nationkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select avg(distinct c_nationkey), sum(distinct c_nationkey) from customer_test;
+
+  plan: |
+    project(avg(distinct c_nationkey)="$f0 / $f1", sum(distinct c_nationkey)="$f0")
+      hashagg($f0="sum($f0)", $f1="sum($f1)")
+        gather(concurrent=true)
+          logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select sum(distinct `c_nationkey`) as `$f0`, count(distinct `c_nationkey`) as `$f1` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false ENABLE_EXPAND_DISTINCTAGG=false*/select group_concat(distinct c_nationkey), sum(distinct c_nationkey) from customer_test;
+
+  plan: |
+    hashagg(group_concat(distinct c_nationkey)="group_concat(distinct c_nationkey)", sum(distinct c_nationkey)="sum(distinct c_nationkey)")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_EXPAND_DISTINCTAGG=false*/select group_concat(c_nationkey), avg(c_nationkey) from customer_test group by c_custkey;
+
+  plan: |
+    project(group_concat(c_nationkey)="group_concat(c_nationkey)", avg(c_nationkey)="$f2 / $f3")
+      hashagg(group="c_custkey", group_concat(c_nationkey)="group_concat(group_concat(c_nationkey))", $f2="sum($f2)", $f3="sum($f3)")
+        gather(concurrent=true)
+          logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, group_concat(`c_nationkey`  ) as `group_concat(c_nationkey)`, sum(`c_nationkey`) as `$f2`, count(*) as `$f3` from `customer_test` as `customer_test` group by `c_custkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false enable_sort_agg=false ENABLE_EXPAND_DISTINCTAGG=false*/select group_concat(c_nationkey), avg(c_nationkey) from customer_test group by c_custkey;
+
+  plan: |
+    project(group_concat(c_nationkey)="group_concat(c_nationkey)", avg(c_nationkey)="$f2 / $f3")
+      hashagg(group="c_custkey", group_concat(c_nationkey)="group_concat(group_concat(c_nationkey))", $f2="sum($f2)", $f3="sum($f3)")
+        gather(concurrent=true)
+          logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, group_concat(`c_nationkey`  ) as `group_concat(c_nationkey)`, sum(`c_nationkey`) as `$f2`, count(*) as `$f3` from `customer_test` as `customer_test` group by `c_custkey`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false enable_sort_agg=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_nationkey), count(distinct c_custkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(sum(distinct c_nationkey)="sum(distinct c_nationkey)", count(distinct c_custkey, c_address)="count(distinct c_custkey, c_address)")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey`, `c_custkey`, `c_address` from `customer_test` as `customer_test`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_PUSH_AGG=false enable_sort_agg=false ENABLE_EXPAND_DISTINCTAGG=false*/select sum(distinct c_nationkey), count(distinct c_nationkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(sum(distinct c_nationkey)="sum(sum(distinct c_nationkey))", count(distinct c_nationkey, c_address)="sum(count(distinct c_nationkey, c_address))")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)`, count(distinct `c_nationkey`, `c_address`) as `count(distinct c_nationkey, c_address)` from `customer_test` as `customer_test`")
+
+- sql: |
+    select sum(distinct c_nationkey), count(distinct c_custkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(sum(distinct c_nationkey)="sum(c_nationkey) filter $3", count(distinct c_custkey, c_address)="count(c_custkey, c_address) filter $4")
+      project(c_nationkey="c_nationkey", c_custkey="c_custkey", c_address="c_address", $g_3="case(=($3, 3), 3, 4) = 3", $g_4="case(=($3, 3), 3, 4) = 4")
+        hashagg(group="c_nationkey,c_custkey,c_address,$e")
+          expand(projects="{c_nationkey=c_nationkey, c_custkey=null, c_address=null, $e=3}, {c_nationkey=null, c_custkey=c_custkey, c_address=c_address, $e=4}")
+            gather(concurrent=true)
+              logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey`, `c_custkey`, `c_address` from `customer_test` as `customer_test`")
+
+- sql: |
+    select sum(distinct c_nationkey), count(distinct c_nationkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(sum(distinct c_nationkey)="sum(sum(distinct c_nationkey))", count(distinct c_nationkey, c_address)="sum(count(distinct c_nationkey, c_address))")
+      gather(concurrent=true)
+        logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select sum(distinct `c_nationkey`) as `sum(distinct c_nationkey)`, count(distinct `c_nationkey`, `c_address`) as `count(distinct c_nationkey, c_address)` from `customer_test` as `customer_test`")
+
+- sql: |
+    select count(distinct c_custkey, c_address) from customer_test;
+
+  plan: |
+    hashagg(count(distinct c_custkey, c_address)="count(c_custkey, c_address)")
+      hashagg(group="c_custkey,c_address")
+        gather(concurrent=true)
+          logicalview(tables="customer_test[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_address` from `customer_test` as `customer_test` group by `c_custkey`, `c_address`")
+
+- sql: |
+    select count(distinct c_custkey, c_nationkey, c_address) from customer where c_custkey=3;
+
+  plan: |
+    phytableoperation(tables="customer[p1]", sql="select count(distinct `customer`.`c_custkey`, `customer`.`c_nationkey`, `customer`.`c_address`) as `count(distinct c_custkey, c_nationkey, c_address)` from ? as `customer` where (`customer`.`c_custkey` = 3)")
+
+- sql: |
+    select count(1), count(distinct c_custkey, c_nationkey, c_address) from customer where c_custkey=3;
+
+  plan: |
+    phytableoperation(tables="customer[p1]", sql="select count(1) as `count(1)`, count(distinct `customer`.`c_custkey`, `customer`.`c_nationkey`, `customer`.`c_address`) as `count(distinct c_custkey, c_nationkey, c_address)` from ? as `customer` where (`customer`.`c_custkey` = 3)")

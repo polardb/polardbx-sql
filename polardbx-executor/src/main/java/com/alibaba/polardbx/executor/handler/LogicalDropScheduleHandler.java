@@ -76,10 +76,8 @@ public class LogicalDropScheduleHandler extends HandlerCommon {
                 tableGroupInfoManager.getTableGroupConfigByName(record.getTableGroupName());
             if (tableGroupConfig != null) {
                 //权限检查
-                List<TablePartRecordInfoContext> allTables = tableGroupConfig.getAllTables();
-                if (CollectionUtils.isNotEmpty(allTables)) {
-                    for (TablePartRecordInfoContext tablePartRecordInfoContext : allTables) {
-                        final String tableName = tablePartRecordInfoContext.getTableName();
+                if (CollectionUtils.isNotEmpty(tableGroupConfig.getAllTables())) {
+                    for (String tableName : tableGroupConfig.getAllTables()) {
                         PolarPrivilegeUtils.checkPrivilege(record.getTableSchema(), tableName, PrivilegePoint.ALTER,
                             executionContext);
                     }

@@ -29,14 +29,15 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
 public class SliceBlockTest extends BaseBlockTest {
-    private static final String ORIGINAL_STRINGS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890中文字符串测试";
-    private static final Random RANDOM = new Random();
-    private static final Charset CHARSET = Charset.forName("UTF-8");
+    protected static final String ORIGINAL_STRINGS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890中文字符串测试";
+    protected static final Random RANDOM = new Random();
+    protected static final Charset CHARSET = StandardCharsets.UTF_8;
 
     @Test
     public void test() {
@@ -88,6 +89,99 @@ public class SliceBlockTest extends BaseBlockTest {
             Assert.assertTrue(sliceBlock.equals(i, block, i));
         }
 
+    }
+
+    @Test
+    public void testCopyAllValues() {
+        final boolean compatible = true;
+        SliceBlock sourceBlock = getNonNullBlock();
+        SliceBlock resultBlock = SliceBlock.from(sourceBlock, CHUNK_SIZE, null, compatible, false);
+        for (int i = 0; i < CHUNK_SIZE; i++) {
+            Assert.assertTrue("Failed in copying without selection",
+                resultBlock.equals(i, sourceBlock, i));
+        }
+
+        // test copy with selection, useSelection=false
+        int[] selection = new int[CHUNK_SIZE / 2];
+        for (int i = 0; i < selection.length; i++) {
+            selection[i] = i * 2;
+        }
+        resultBlock = SliceBlock.from(sourceBlock, selection.length, selection, compatible, false);
+        for (int i = 0; i < resultBlock.positionCount; i++) {
+            Assert.assertTrue("Failed in copying with selection and useSelection=false",
+                resultBlock.equals(i, sourceBlock, selection[i]));
+        }
+
+        // test copy with selection, useSelection=true
+        resultBlock = SliceBlock.from(sourceBlock, selection.length, selection, compatible, true);
+        for (int i = 0; i < resultBlock.positionCount; i++) {
+            Assert.assertTrue("Failed in copying with selection and useSelection=false",
+                resultBlock.equals(i, sourceBlock, selection[i]));
+        }
+    }
+
+    @Test
+    public void testCopyAllNulls() {
+        final boolean compatible = true;
+        SliceBlock sourceBlock = getAllNullBlock();
+        SliceBlock resultBlock = SliceBlock.from(sourceBlock, CHUNK_SIZE, null, compatible, false);
+        for (int i = 0; i < CHUNK_SIZE; i++) {
+            Assert.assertTrue("Failed in copying without selection",
+                resultBlock.equals(i, sourceBlock, i));
+        }
+
+        // test copy with selection, useSelection=false
+        int[] selection = new int[CHUNK_SIZE / 2];
+        for (int i = 0; i < selection.length; i++) {
+            selection[i] = i * 2;
+        }
+        resultBlock = SliceBlock.from(sourceBlock, selection.length, selection, compatible, false);
+        for (int i = 0; i < resultBlock.positionCount; i++) {
+            Assert.assertTrue("Failed in copying with selection and useSelection=false",
+                resultBlock.equals(i, sourceBlock, selection[i]));
+        }
+
+        // test copy with selection, useSelection=true
+        resultBlock = SliceBlock.from(sourceBlock, selection.length, selection, compatible, true);
+        for (int i = 0; i < resultBlock.positionCount; i++) {
+            Assert.assertTrue("Failed in copying with selection and useSelection=false",
+                resultBlock.equals(i, sourceBlock, selection[i]));
+        }
+    }
+
+    private SliceBlock getNonNullBlock() {
+        SliceType sliceType = new SliceType(CharsetName.UTF8MB4, CollationName.UTF8MB4_UNICODE_CI);
+        SliceBlockBuilder sliceBlockBuilder =
+            new SliceBlockBuilder(sliceType, CHUNK_SIZE, new ExecutionContext(), true);
+
+        // block builder writing
+        for (int i = 0; i < CHUNK_SIZE; i++) {
+            int length = RANDOM.nextInt(20);
+            if (length > 10) {
+                // append null
+                sliceBlockBuilder.writeObject(null);
+            } else if (length == 10) {
+                // append empty string
+                sliceBlockBuilder.writeObject(Slices.utf8Slice(""));
+            } else {
+                // append string
+                String s = generate(length);
+                sliceBlockBuilder.writeObject(Slices.utf8Slice(s));
+            }
+        }
+        return (SliceBlock) sliceBlockBuilder.build();
+    }
+
+    private SliceBlock getAllNullBlock() {
+        SliceType sliceType = new SliceType(CharsetName.UTF8MB4, CollationName.UTF8MB4_UNICODE_CI);
+        SliceBlockBuilder sliceBlockBuilder =
+            new SliceBlockBuilder(sliceType, CHUNK_SIZE, new ExecutionContext(), true);
+
+        // block builder writing
+        for (int i = 0; i < CHUNK_SIZE; i++) {
+            sliceBlockBuilder.appendNull();
+        }
+        return (SliceBlock) sliceBlockBuilder.build();
     }
 
     protected String generate(int length) {

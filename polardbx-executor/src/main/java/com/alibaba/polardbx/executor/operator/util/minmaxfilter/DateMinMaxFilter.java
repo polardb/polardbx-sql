@@ -25,7 +25,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 
 /**
  * @author chenzilin
- * @date 2021/12/13 19:15
  */
 public class DateMinMaxFilter extends MinMaxFilter {
     private Long min;
@@ -61,8 +60,8 @@ public class DateMinMaxFilter extends MinMaxFilter {
         if (!block.isNull(pos)) {
 
             MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                    block.getDate(pos),
-                    TimeParserFlags.FLAG_TIME_NO_ZERO_DATE);
+                block.getDate(pos),
+                TimeParserFlags.FLAG_TIME_NO_ZERO_DATE);
 
             long num = TimeStorage.writeTimestamp(mysqlDateTime);
 
@@ -78,9 +77,9 @@ public class DateMinMaxFilter extends MinMaxFilter {
     @Override
     public MinMaxFilterInfo toMinMaxFilterInfo() {
         return new MinMaxFilterInfo(
-                MinMaxFilterInfo.TYPE.LONG,
-                min == null ? null : min.longValue(),
-                max == null ? null : max.longValue(), null, null, null, null, null, null);
+            MinMaxFilterInfo.TYPE.LONG,
+            min == null ? null : min.longValue(),
+            max == null ? null : max.longValue(), null, null, null, null, null, null);
     }
 
     @Override

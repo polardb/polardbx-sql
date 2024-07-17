@@ -136,12 +136,12 @@ public class TableScanExec extends SourceExec implements Closeable {
             }
 
             if (dataTypes == null) {
-                createBlockBuilders();
                 List<DataType> columns = getDataTypes();
                 dataTypes = new DataType[columns.size()];
                 for (int i = 0; i < columns.size(); i++) {
                     dataTypes[i] = columns.get(i);
                 }
+                createBlockBuilders();
             }
             if (scanClient.getSplitNum() != 0) {
                 scanClient.executePrefetchThread(false);
@@ -235,7 +235,12 @@ public class TableScanExec extends SourceExec implements Closeable {
                         continue;
                     }
                 }
-                if (consumeResultSet.isPureAsyncMode()) {
+                if (context.isEnableOrcRawTypeBlock()) {
+                    // Special block parsing for raw orc block builder.
+                    // Normal table scan should not get there.
+                    appendRawOrcTypeRow(consumeResultSet);
+                    count++;
+                } else if (consumeResultSet.isPureAsyncMode()) {
                     final int filled = consumeResultSet.fillChunk(dataTypes, blockBuilders, chunkLimit - count);
                     count += filled;
                 } else {
@@ -263,6 +268,14 @@ public class TableScanExec extends SourceExec implements Closeable {
 
     protected void appendRow(TableScanClient.SplitResultSet consumeResultSet) throws SQLException {
         ResultSetCursorExec.buildOneRow(consumeResultSet.getResultSet(), dataTypes, blockBuilders, context);
+    }
+
+    protected void appendRawOrcTypeRow(TableScanClient.SplitResultSet consumeResultSet) throws Exception {
+        if (consumeResultSet.isOnlyXResult()) {
+            consumeResultSet.fillRawOrcTypeRow(dataTypes, blockBuilders, context);
+        } else {
+            ResultSetCursorExec.buildRawOrcTypeRow(consumeResultSet.getResultSet(), dataTypes, blockBuilders);
+        }
     }
 
     @Override

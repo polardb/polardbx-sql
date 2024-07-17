@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Objects;
 

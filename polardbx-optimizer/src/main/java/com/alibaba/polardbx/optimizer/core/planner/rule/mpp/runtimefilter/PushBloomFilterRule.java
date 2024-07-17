@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import org.apache.calcite.plan.Convention;
@@ -28,7 +28,6 @@ import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Filter;
-import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
@@ -88,8 +87,10 @@ public class PushBloomFilterRule extends RelOptRule {
                     .map(RexSlot::getIndex)
                     .map(idx -> filterInput.getRowType().getFieldList().get(idx).getType())
                     .map(DataTypeUtil::calciteToDrdsType)
-                    .allMatch(logicalView instanceof OSSTableScan ? RuntimeFilterUtil::canPushRuntimeFilterToOss : RuntimeFilterUtil::canPushRuntimeFilterToMysql);
-                pushToLogicalViewRuntimeFilterIdSet.add(((SqlRuntimeFilterFunction) ((RexCall) condition).getOperator()).getId());
+                    .allMatch(logicalView instanceof OSSTableScan ? RuntimeFilterUtil::canPushRuntimeFilterToOss :
+                        RuntimeFilterUtil::canPushRuntimeFilterToMysql);
+                pushToLogicalViewRuntimeFilterIdSet.add(
+                    ((SqlRuntimeFilterFunction) ((RexCall) condition).getOperator()).getId());
             }
 
             if (canPushDown) {
@@ -116,7 +117,7 @@ public class PushBloomFilterRule extends RelOptRule {
             }
             ((OSSTableScan) newLogicalView).pushRuntimeFilter(newFilter.getCondition());
             // with agg, we can't push runtime filter
-            if (((OSSTableScan)newLogicalView).withAgg()) {
+            if (((OSSTableScan) newLogicalView).withAgg()) {
                 return;
             }
             result = filter.copy(filter.getTraitSet(), newLogicalView,

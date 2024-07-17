@@ -71,7 +71,6 @@ public class NonBlockGeneralSourceExec extends SourceExec {
         final String defaultSchema = schema;
         this.listenableFuture = context.getExecutorService().submitListenableFuture(schema, traceId, -1,
             () -> {
-                RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
                 long startExecNano = System.nanoTime();
                 long threadCpuTime = ThreadCpuStatUtil.getThreadCpuTimeNano();
                 DefaultSchema.setSchemaName(defaultSchema);

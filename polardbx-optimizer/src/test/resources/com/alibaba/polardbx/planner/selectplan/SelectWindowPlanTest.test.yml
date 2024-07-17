@@ -1,4 +1,44 @@
 - sql: |
+    select id1,
+     sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
+     avg(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2,
+     id2
+    from test_simple_table;
+
+  plan: |
+
+    project(id1="id1", ow1="f3w0$o0", ow2="f4w1$o0", id2="id2")
+      sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="f3w0$o0", f4w0$o0="window#0avg($2)", reference windows="window#0=window(partition {0} order by [2 desc-nulls-last] rows between $4 preceding and $4 following aggs [avg($2)])", constants="[1]")
+        memsort(sort="id1 asc,id3 desc")
+          sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between $3 preceding and $3 following aggs [sum($1)])", constants="[1]")
+            logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table` order by `id1`, `id2`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
+    select *,
+      count(1) over (partition by id1) ow1,
+      avg(id2) over (partition by id1) ow2 
+    from test_simple_table;
+
+  plan: |
+
+    hashwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0count()", f4w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [count(), avg($1)])")
+      logicalview(tables="optest_0000.test_simple_table", sql="select `id1`, `id2`, `id3` from `test_simple_table` as `test_simple_table`")
+
+- sql: |
+    /*+TDDL:cmd_extra(ENABLE_HASH_WINDOW=FALSE)*/
+    select *,
+      count(1) over (partition by id1) ow1,
+      avg(id2) over (partition by id1) ow2 
+    from testwin;
+
+  plan: |
+
+    sortwindow(id1="id1", id2="id2", id3="id3", f3w0$o0="window#0count()", f4w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [count(), avg($1)])")
+      mergesort(sort="id1 asc")
+        logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin` order by `id1`")
+
+- sql: |
     select *,
      sum(id2) over (partition by id1 order by id2 asc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow1,
      sum(id3) over (partition by id1 order by id3 desc ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ow2 

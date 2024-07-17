@@ -20,17 +20,26 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.balancer.policy.PolicyDrainNode;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
+import com.alibaba.polardbx.executor.common.DbStatusManager;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -73,44 +82,132 @@ public class ActionDrainDatabase implements BalanceAction, Comparable<ActionDrai
         long totalRows = 0L;
         long totalSize = 0L;
         try {
-            List<DbGroupInfoRecord> groupDetailInfoRecordList = DbTopologyManager.getAllDbGroupInfoRecordByInstId(schema, drainNode);
-            List<String> groupNames = groupDetailInfoRecordList.stream().map(e->e.groupName).collect(Collectors.toList());
+            PolicyDrainNode.DrainNodeInfo drainNodeInfo =
+                PolicyDrainNode.DrainNodeInfo.parse(drainNode);
+            if (GeneralUtil.isNotEmpty(drainNodeInfo.getDnInstIdList())) {
+                Set<String> dnSet = new TreeSet<>(String::compareToIgnoreCase);
+                dnSet.addAll(drainNodeInfo.getDnInstIdList());
+                for (String dnId : dnSet) {
+                    List<DbGroupInfoRecord> groupDetailInfoRecordList =
+                        DbTopologyManager.getAllDbGroupInfoRecordByInstId(schema, dnId);
+                    List<String> groupNames =
+                        groupDetailInfoRecordList.stream().map(e -> e.groupName).collect(Collectors.toList());
 
-            if(DbInfoManager.getInstance().isNewPartitionDb(schema)){
-                Set<String> drainingPhyDb = new HashSet<>();
-                for(DbGroupInfoRecord groupInfo: groupDetailInfoRecordList){
-                    drainingPhyDb.add(groupInfo.phyDbName);
-                }
-                for(PartitionStat partitionStat: stats.getPartitionStats()){
-                    String phyDb = partitionStat.getPartitionGroupRecord().getPhy_db();
-                    if(drainingPhyDb.contains(phyDb)){
-                        totalRows += partitionStat.getPartitionRows();
-                        totalSize += partitionStat.getPartitionDiskSize();
-                    }
-                }
-            }else {
-                for (GroupStats.GroupsOfStorage groupsOfStorage: GeneralUtil.emptyIfNull(stats.getGroups())){
-                    if(groupsOfStorage==null || groupsOfStorage.getGroupDataSizeMap()==null){
-                        continue;
-                    }
-                    for(Map.Entry<String, Pair<Long, Long>> entry: groupsOfStorage.groupDataSizeMap.entrySet()){
-                        if(groupNames.contains(entry.getKey())){
-                            totalRows += entry.getValue().getKey();
-                            totalSize += entry.getValue().getValue();
+                    if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+                        Set<String> drainingPhyDb = new HashSet<>();
+                        for (DbGroupInfoRecord groupInfo : groupDetailInfoRecordList) {
+                            drainingPhyDb.add(groupInfo.phyDbName);
+                        }
+                        for (PartitionStat partitionStat : stats.getPartitionStats()) {
+                            String phyDb = partitionStat.getPartitionGroupRecord().getPhy_db();
+                            if (drainingPhyDb.contains(phyDb)) {
+                                totalRows += partitionStat.getPartitionRows();
+                                totalSize += partitionStat.getPartitionDiskSize();
+                            }
+                        }
+                    } else {
+                        for (GroupStats.GroupsOfStorage groupsOfStorage : GeneralUtil.emptyIfNull(stats.getGroups())) {
+                            if (groupsOfStorage == null || groupsOfStorage.getGroupDataSizeMap() == null) {
+                                continue;
+                            }
+                            for (Map.Entry<String, Pair<Long, Long>> entry : groupsOfStorage.groupDataSizeMap.entrySet()) {
+                                if (groupNames.contains(entry.getKey())) {
+                                    totalRows += entry.getValue().getKey();
+                                    totalSize += entry.getValue().getValue();
+                                }
+                            }
                         }
                     }
                 }
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
         }
 
-        return ActionUtils.convertToDelegatorJob(schema, sql, CostEstimableDdlTask.createCostInfo(totalRows, totalSize));
+        return ActionUtils.convertToDelegatorJob(schema, sql,
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize, null));
     }
 
     public String getSql() {
         return sql;
     }
+
+    @Override
+    public Long getBackfillRows() {
+        long totalRows = 0L;
+        try {
+            List<DbGroupInfoRecord> groupDetailInfoRecordList =
+                DbTopologyManager.getAllDbGroupInfoRecordByInstId(schema, drainNode);
+            List<String> groupNames =
+                groupDetailInfoRecordList.stream().map(e -> e.groupName).collect(Collectors.toList());
+
+            if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+                Set<String> drainingPhyDb = new HashSet<>();
+                for (DbGroupInfoRecord groupInfo : groupDetailInfoRecordList) {
+                    drainingPhyDb.add(groupInfo.phyDbName);
+                }
+                for (PartitionStat partitionStat : stats.getPartitionStats()) {
+                    String phyDb = partitionStat.getPartitionGroupRecord().getPhy_db();
+                    if (drainingPhyDb.contains(phyDb)) {
+                        totalRows += partitionStat.getPartitionRows();
+                    }
+                }
+            } else {
+                for (GroupStats.GroupsOfStorage groupsOfStorage : GeneralUtil.emptyIfNull(stats.getGroups())) {
+                    if (groupsOfStorage == null || groupsOfStorage.getGroupDataSizeMap() == null) {
+                        continue;
+                    }
+                    for (Map.Entry<String, Pair<Long, Long>> entry : groupsOfStorage.groupDataSizeMap.entrySet()) {
+                        if (groupNames.contains(entry.getKey())) {
+                            totalRows += entry.getValue().getKey();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
+        }
+        return totalRows;
+    }
+
+    @Override
+    public Long getDiskSize() {
+        long totalSize = 0L;
+        try {
+            List<DbGroupInfoRecord> groupDetailInfoRecordList =
+                DbTopologyManager.getAllDbGroupInfoRecordByInstId(schema, drainNode);
+            List<String> groupNames =
+                groupDetailInfoRecordList.stream().map(e -> e.groupName).collect(Collectors.toList());
+
+            if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
+                Set<String> drainingPhyDb = new HashSet<>();
+                for (DbGroupInfoRecord groupInfo : groupDetailInfoRecordList) {
+                    drainingPhyDb.add(groupInfo.phyDbName);
+                }
+                for (PartitionStat partitionStat : stats.getPartitionStats()) {
+                    String phyDb = partitionStat.getPartitionGroupRecord().getPhy_db();
+                    if (drainingPhyDb.contains(phyDb)) {
+                        totalSize += partitionStat.getPartitionDiskSize();
+                    }
+                }
+            } else {
+                for (GroupStats.GroupsOfStorage groupsOfStorage : GeneralUtil.emptyIfNull(stats.getGroups())) {
+                    if (groupsOfStorage == null || groupsOfStorage.getGroupDataSizeMap() == null) {
+                        continue;
+                    }
+                    for (Map.Entry<String, Pair<Long, Long>> entry : groupsOfStorage.groupDataSizeMap.entrySet()) {
+                        if (groupNames.contains(entry.getKey())) {
+                            totalSize += entry.getValue().getValue();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
+        }
+        return totalSize;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -143,6 +240,6 @@ public class ActionDrainDatabase implements BalanceAction, Comparable<ActionDrai
         if (res != 0) {
             return res;
         }
-        return  o.getSql().compareTo(sql);
+        return o.getSql().compareTo(sql);
     }
 }

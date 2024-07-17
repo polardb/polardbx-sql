@@ -18,6 +18,7 @@ package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +59,11 @@ public class CreateDbInfo {
      * </pre>
      */
     protected Map<String, String> groupPhyDbMap;
+
+    /**
+     * The list of all the group names of db
+     */
+    protected List<String> groupNameList = new ArrayList<>();
 
     /**
      * All the storage inst list

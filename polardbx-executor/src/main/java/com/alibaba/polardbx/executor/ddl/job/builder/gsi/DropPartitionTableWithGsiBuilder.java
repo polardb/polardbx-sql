@@ -17,17 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.job.builder.gsi;
 
 import com.alibaba.polardbx.executor.ddl.job.builder.DropPartitionTableBuilder;
-import com.alibaba.polardbx.executor.ddl.job.builder.DropTableBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPreparedData;
 import org.apache.calcite.rel.core.DDL;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 public class DropPartitionTableWithGsiBuilder extends DropTableWithGsiBuilder {
 

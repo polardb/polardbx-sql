@@ -60,7 +60,7 @@ public class LogicalDropTableGroup extends BaseDdlOperation {
 
     @Override
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
-        return TableGroupNameUtil.isOssTg(getTableGroupName());
+        return TableGroupNameUtil.isFileStorageTg(getTableGroupName());
     }
 
     public DropTableGroupPreparedData getPreparedData() {

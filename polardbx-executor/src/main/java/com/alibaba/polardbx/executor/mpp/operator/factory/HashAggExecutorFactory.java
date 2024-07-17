@@ -22,7 +22,7 @@ import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.AggregateUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
@@ -76,22 +76,25 @@ public class HashAggExecutorFactory extends ExecutorFactory {
             for (int j = 0; j < parallelism; j++) {
                 MemoryAllocatorCtx memoryAllocator = context.getMemoryPool().getMemoryAllocatorCtx();
 
-                List<DataType> outputDataTypes = CalciteUtils.getTypes(hashAgg.getRowType());
                 List<Aggregator> aggregators =
-                    AggregateUtils.convertAggregators(inputDataTypes,
-                        outputDataTypes.subList(groups.length, groups.length + hashAgg.getAggCallList().size()),
-                        hashAgg.getAggCallList(), context, memoryAllocator);
+                    AggregateUtils.convertAggregators(hashAgg.getAggCallList(), context, memoryAllocator);
 
                 HashAggExec exec =
                     new HashAggExec(inputDataTypes, groups, aggregators, CalciteUtils.getTypes(hashAgg.getRowType()),
                         estimateHashTableSize, spillerFactory, context);
-                exec.setId(hashAgg.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(hashAgg, exec, context);
-                }
+                registerRuntimeStat(exec, hashAgg, context);
                 executors.add(exec);
             }
         }
         return executors;
+    }
+
+    public static int[] convertFrom(ImmutableBitSet gp) {
+        List<Integer> list = gp.asList();
+        int[] groups = new int[list.size()];
+        for (int i = 0, n = list.size(); i < n; i++) {
+            groups[i] = list.get(i);
+        }
+        return groups;
     }
 }

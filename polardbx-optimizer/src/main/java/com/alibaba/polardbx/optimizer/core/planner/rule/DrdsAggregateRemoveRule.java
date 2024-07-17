@@ -20,12 +20,14 @@ import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Aggregate;
+import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.runtime.SqlFunctions;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Pair;
 
@@ -64,9 +66,18 @@ public class DrdsAggregateRemoveRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         final LogicalAggregate aggregate = call.rel(0);
         final RelNode input = call.rel(1);
-        if (!aggregate.getAggCallList().isEmpty() || aggregate.getAggOptimizationContext().isAggPushed()
+        if (aggregate.getAggOptimizationContext().isAggPushed()
             || aggregate.indicator) {
             return;
+        }
+
+        for (AggregateCall aggCall : aggregate.getAggCallList()) {
+            if (aggCall.getAggregation().getKind() != SqlKind.__FIRST_VALUE) {
+                return;
+            }
+            if (aggCall.getArgList().size() != 1) {
+                return;
+            }
         }
         final RelMetadataQuery mq = call.getMetadataQuery();
         if (!SqlFunctions.isTrue(mq.areColumnsUnique(input, aggregate.getGroupSet()))) {
@@ -84,6 +95,10 @@ public class DrdsAggregateRemoveRule extends RelOptRule {
         final List<RelDataTypeField> childFields = input.getRowType().getFieldList();
         for (int i : aggregate.getGroupSet()) {
             projects.add(RexInputRef.of2(i, childFields));
+        }
+        for (AggregateCall aggCall : aggregate.getAggCallList()) {
+            int loc = aggCall.getArgList().get(0);
+            projects.add(RexInputRef.of2(loc, childFields));
         }
         relBuilder.project(Pair.left(projects), Pair.right(projects));
         call.transformTo(relBuilder.build());

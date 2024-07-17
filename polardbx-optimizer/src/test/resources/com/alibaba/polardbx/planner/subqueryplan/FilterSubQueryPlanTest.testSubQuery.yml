@@ -29,7 +29,7 @@
   plan: |
 
     Project(id="id")
-      SemiHashJoin(condition="id = id + 1 AND name = name", type="semi")
+      SemiHashJoin(condition="id = id + 1 AND name = name", type="semi", build="inner")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
         Gather(concurrent=true)
@@ -346,7 +346,7 @@
 
   plan: |
     Project((((SELECT id FROM test_hash_tb2 AS b WHERE (a.id = b.name))))="id0", cor=[$cor0])
-      SemiHashJoin(condition="id = name", type="left")
+      SemiHashJoin(condition="id = name", type="left", build="inner")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
         Gather(concurrent=true)

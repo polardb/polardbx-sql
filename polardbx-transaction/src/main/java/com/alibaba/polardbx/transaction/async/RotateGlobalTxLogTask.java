@@ -18,6 +18,7 @@ package com.alibaba.polardbx.transaction.async;
 
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -41,6 +42,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class RotateGlobalTxLogTask implements Runnable {
@@ -57,6 +60,8 @@ public class RotateGlobalTxLogTask implements Runnable {
     private final TransactionExecutor executor;
 
     private int purgedCount;
+
+    private static Lock globalLock = new ReentrantLock();
 
     /**
      * Purge trans log created before {@param beforeSeconds}, and split the last partition into
@@ -97,6 +102,12 @@ public class RotateGlobalTxLogTask implements Runnable {
 
             if (!isInAllowedInterval()) {
                 TransactionLogger.warn("Skip rotate task since not in allowed interval");
+                return;
+            }
+
+            if (0 != DynamicConfig.getInstance().getTrxLogMethod()
+                && DynamicConfig.getInstance().isSkipLegacyLogTableClean()) {
+                TransactionLogger.warn("Skip legacy log rotate task");
                 return;
             }
 
@@ -167,6 +178,10 @@ public class RotateGlobalTxLogTask implements Runnable {
         // Keep parallelism <= number of groups.
         parallelism = Integer.min(reorderedQueue.size(), parallelism);
 
+        if (0 != DynamicConfig.getInstance().getTrxLogMethod()) {
+            parallelism = 1;
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("Ready to rotate trx log for schema ")
             .append(asyncQueue.getSchema())
@@ -179,28 +194,52 @@ public class RotateGlobalTxLogTask implements Runnable {
         TransactionLogger.warn(sb.toString());
 
         if (!groups.isEmpty()) {
-            List<Future> futures = new ArrayList<>(parallelism);
-            for (int i = 0; i < parallelism; i++) {
-                futures.add(asyncQueue.submitRandomBucket(() -> {
-                    while (true) {
-                        IDataSource datasource = reorderedQueue.poll();
+            if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+                List<Future> futures = new ArrayList<>(parallelism);
+                for (int i = 0; i < parallelism; i++) {
+                    futures.add(asyncQueue.submitRandomBucket(() -> {
+                        while (true) {
+                            IDataSource datasource = reorderedQueue.poll();
 
-                        if (null == datasource) {
-                            // All tasks are done.
-                            break;
-                        }
+                            if (null == datasource) {
+                                // All tasks are done.
+                                break;
+                            }
 
-                        try {
-                            int count = GlobalTxLogManager.rotate(datasource, beforeTxid, nextTxid);
-                            purgedCount.addAndGet(count);
-                        } catch (Exception e) {
-                            logger.error("Rotate transaction log failed on group "
-                                + ((TGroupDataSource) datasource).getFullDbGroupKey(), e);
+                            try {
+                                int count = GlobalTxLogManager.rotate(datasource, beforeTxid, nextTxid);
+                                purgedCount.addAndGet(count);
+                            } catch (Exception e) {
+                                logger.error("Rotate transaction log failed on group "
+                                    + ((TGroupDataSource) datasource).getFullDbGroupKey(), e);
+                            }
                         }
+                    }));
+                }
+                AsyncUtils.waitAll(futures);
+            } else {
+                // Legacy method is disabled, set global parallelism to 1.
+                while (true) {
+                    IDataSource datasource = reorderedQueue.poll();
+
+                    if (null == datasource) {
+                        // All tasks are done.
+                        break;
                     }
-                }));
+
+                    globalLock.lock();
+                    try {
+                        int count = GlobalTxLogManager.rotate(datasource, beforeTxid, nextTxid);
+                        purgedCount.addAndGet(count);
+                        Thread.sleep(1000);
+                    } catch (Exception e) {
+                        logger.error("Rotate transaction log failed on group "
+                            + ((TGroupDataSource) datasource).getFullDbGroupKey(), e);
+                    } finally {
+                        globalLock.unlock();
+                    }
+                }
             }
-            AsyncUtils.waitAll(futures);
         }
 
         return purgedCount.get();

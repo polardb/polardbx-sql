@@ -29,9 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.server;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.exception.code.ErrorType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -64,6 +61,9 @@ import com.alibaba.polardbx.executor.mpp.util.Failures;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 import io.airlift.jaxrs.testing.MockUriInfo;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -139,7 +139,8 @@ public class StatementResource {
                 clientContext.getOriginSql(),
                 queryManager,
                 pagesSerdeFactory,
-                physicalPlan);
+                physicalPlan,
+                clientContext);
             queries.put(query.getQueryId(), query);
             query.init();
 
@@ -256,12 +257,13 @@ public class StatementResource {
                      String query,
                      QueryManager queryManager,
                      PagesSerdeFactory pagesSerdeFactory,
-                     RelNode physicalPlan) {
+                     RelNode physicalPlan,
+                     ExecutionContext context) {
             requireNonNull(query, "query is null");
             requireNonNull(queryManager, "queryManager is null");
             this.session = requireNonNull(session, "sessionSupplier is null");
             this.queryId = requireNonNull(session.getQueryId(), "queryId is null");
-            this.serde = pagesSerdeFactory.createPagesSerde(CalciteUtils.getTypes(physicalPlan.getRowType()));
+            this.serde = pagesSerdeFactory.createPagesSerde(CalciteUtils.getTypes(physicalPlan.getRowType()), context);
             this.exchangeClientSupplier = exchangeClientSupplier;
             this.queryManager = queryManager;
             this.query = query;

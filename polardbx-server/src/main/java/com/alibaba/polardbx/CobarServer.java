@@ -16,19 +16,18 @@
 
 package com.alibaba.polardbx;
 
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.properties.MppConfig;
-import com.alibaba.polardbx.common.utils.*;
 import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -51,13 +50,20 @@ import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
+import com.alibaba.polardbx.gms.topology.DbInfoAccessor;
+import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.topology.VariableConfigAccessor;
+import com.alibaba.polardbx.gms.topology.VariableConfigRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.manager.ManagerConnectionFactory;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.NIOAcceptor;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.util.TimeUtil;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
@@ -66,13 +72,26 @@ import com.alibaba.polardbx.rpc.CdcRpcClient;
 import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.alibaba.polardbx.server.ServerConnectionFactory;
 import com.alibaba.polardbx.ssl.SslContextFactory;
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.text.DateFormat;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.ResourceBundle;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -169,7 +188,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             logger.info("===============================================");
             logger.info(NAME + " is ready to startup ...\n the Server base version is " + InstanceVersion.getVersion());
             SystemConfig system = config.getSystem();
-            ConfigDataMode.setCluster(system.getClusterName());
             logger.info("Startup Cluster : " + system.getClusterName());
             if (system.getUnitName() != null) {
                 logger.info("Unit Name : " + system.getUnitName());
@@ -228,7 +246,11 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             LeaderStatusBridge.getInstance().setUpNodeStatusManager(nodeStatusManager);
             CdcRpcClient.buildCdcRpcClient();
             tryStartCdcManager();
-
+            try {
+                tryInitServerVariables();
+            } catch (Throwable t) {
+                logger.warn("Try init server variables failed.", t);
+            }
             // init and start manager, listening manager port
             startupManager(system);
             // init and start server, listening server port
@@ -241,11 +263,89 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         }
     }
 
+    private static void tryInitServerVariables() throws SQLException {
+        // If this is a new instance, not an upgraded one, set some aggressive variables for it.
+        if (isNewInstance()) {
+            Properties properties = new Properties();
+            // Enable A/B table mechanism for trx log table.
+            properties.setProperty(ConnectionProperties.TRX_LOG_METHOD, String.valueOf(1));
+            // Enable auto-commit-tso trx by default.
+            properties.setProperty(ConnectionProperties.ENABLE_AUTO_COMMIT_TSO, "true");
+            // Ignore setting NO_TRANSACTION.
+            properties.setProperty(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION, "true");
+
+            //Disable udf
+            properties.setProperty(TddlConstants.ENABLE_JAVA_UDF, "false");
+
+            // Update inst config using insert ignore.
+            try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+                InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
+                instConfigAccessor.setConnection(metaDbConn);
+                instConfigAccessor.addInstConfigs(InstIdUtil.getInstId(), properties, true);
+            } catch (Throwable t) {
+                logger.error("Try init server variables failed.", t);
+            }
+        }
+
+        // Turn off some incompatible variables if necessary.
+        checkCompatible();
+    }
+
+    @VisibleForTesting
+    static void checkCompatible() throws SQLException {
+        List<VariableConfigRecord> dnVar = null;
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            VariableConfigAccessor variableConfigAccessor = new VariableConfigAccessor();
+            variableConfigAccessor.setConnection(metaDbConn);
+            dnVar = variableConfigAccessor.queryAll();
+        } catch (Throwable t) {
+            logger.error("Try init server variables failed.", t);
+        }
+        Properties properties = new Properties();
+        if (null != dnVar && !dnVar.isEmpty()) {
+            for (VariableConfigRecord record : dnVar) {
+                if ("hotspot".equalsIgnoreCase(record.paramKey) && isOn(record.paramValue)) {
+                    logger.warn("Found inventory hint usage, disable xa_tso.");
+                    properties.setProperty(ConnectionProperties.ENABLE_XA_TSO, "false");
+                }
+                if ("hotspot_lock_type".equalsIgnoreCase(record.paramKey) && isOn(record.paramValue)) {
+                    logger.warn("Found inventory hint usage, disable xa_tso.");
+                    properties.setProperty(ConnectionProperties.ENABLE_XA_TSO, "false");
+                }
+            }
+        }
+        if (!properties.isEmpty()) {
+            MetaDbUtil.setGlobal(properties);
+        }
+    }
+
+    private static boolean isOn(String paramValue) {
+        return "on".equalsIgnoreCase(paramValue) || "true".equalsIgnoreCase(paramValue);
+    }
+
+    private static boolean isNewInstance() {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
+            instConfigAccessor.setConnection(metaDbConn);
+            int result = instConfigAccessor.isOldestRecordCreatedWithinOneDay();
+            if (1 == result) {
+                return true;
+            }
+            // Use db_info to check.
+            DbInfoAccessor dbInfoAccessor = new DbInfoAccessor();
+            dbInfoAccessor.setConnection(metaDbConn);
+            return !dbInfoAccessor.existsUserDb();
+        } catch (Throwable t) {
+            logger.warn("Check if is new instance failed", t);
+        }
+        return false;
+    }
+
     private void startupServer(SystemConfig system) throws IOException {
         ServerConnectionFactory sf = new ServerConnectionFactory();
         sf.setCharset(system.getCharset());
         sf.setIdleTimeout(system.getIdleTimeout());
-        sf.setMaxPacketSize(system.getMaxAllowedPacket());
+        sf.setMaxPacketSize(DynamicConfig.getInstance().getMaxAllowedPacket());
         sf.setSocketRecvBuffer(system.getSocketRecvBuffer());
         sf.setSocketSendBuffer(system.getSocketSendBuffer());
         server = new NIOAcceptor(NAME + "Server", system.getServerPort(), sf, isOnline());
@@ -375,10 +475,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         }
     }
 
-    public void checkSsl() {
-        checkSslEnable(this.config.getSystem());
-    }
-
     public void reloadSystemConfig() {
         synchronized (lock) {
             SystemConfig systemConfig = this.config.getSystem();
@@ -412,9 +508,6 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                 processorCheck();
             }
 
-            this.config.reloadCluster(systemConfig.getClusterName(),
-                systemConfig.getUnitName(),
-                systemConfig.getInstanceId());
             CdcRpcClient.buildCdcRpcClient();
             // 设置ip白名单
             List<String> trustIpList = new ArrayList<String>();
@@ -435,19 +528,13 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
                     // 逻辑sql统计
                     schema.getDataSource().getRecorder().setCount(systemConfig.getSqlRecordCount());
                     schema.getDataSource().getRecorder().setMaxSizeThreshold(systemConfig.getSlowSqlSizeThresold());
-                    schema.getDataSource().getRecorder().setSlowSqlTime(systemConfig.getSlowSqlTime());
                     // 物理sql统计
                     schema.getDataSource().getPhysicalRecorder().setCount(systemConfig.getSqlRecordCount());
                     schema.getDataSource()
                         .getPhysicalRecorder()
                         .setMaxSizeThreshold(systemConfig.getSlowSqlSizeThresold());
-                    schema.getDataSource().getPhysicalRecorder().setSlowSqlTime(systemConfig.getSlowSqlTime());
                 }
             }
-
-            // 设置下maxAllowedPacket
-            server.getFactory().setMaxPacketSize(systemConfig.getMaxAllowedPacket());
-            manager.getFactory().setMaxPacketSize(systemConfig.getMaxAllowedPacket());
 
             server.getFactory().setSocketRecvBuffer(systemConfig.getSocketRecvBuffer());
             server.getFactory().setSocketSendBuffer(systemConfig.getSocketSendBuffer());

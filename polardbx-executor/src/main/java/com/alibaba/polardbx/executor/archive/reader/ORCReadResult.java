@@ -21,8 +21,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 
-import java.util.Iterator;
-
 public class ORCReadResult {
     private VectorizedRowBatch rowBatch;
     private DataType[] dataTypeList;

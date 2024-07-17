@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateTableWithGsiBuilder;
-import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreatePartitionTableJobFactory;
@@ -224,7 +223,8 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         Map<String, Long> specialDefaultValueFlags =
             createTablePreparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags();
         PhysicalPlanData physicalPlanData = DdlJobDataConverter
-            .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition);
+            .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition,
+                executionContext);
 
         // Create Primary Table
         ExecutableDdlJob4CreateTable createTableJob = (ExecutableDdlJob4CreateTable) new CreateTableJobFactory(
@@ -234,7 +234,9 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
             specialDefaultValueFlags,
             addedForeignKeys,
             physicalPlanData,
-            executionContext).create();
+            preparedData.getDdlVersionId(),
+            executionContext,
+            null).create();
 
         DdlTask thenCreateGsiTask = createTableJob.getCreateTableShowTableMetaTask();
         DdlTask lastTableSyncTask = createTableJob.getTableSyncTask();
@@ -314,13 +316,14 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         Map<String, Long> specialDefaultValueFlags =
             createTablePreparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags();
         PhysicalPlanData physicalPlanData = DdlJobDataConverter
-            .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition);
+            .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition,
+                executionContext);
 
         // Create Primary Table
         ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable)
             new CreatePartitionTableJobFactory(isAutoPartition, hasTimestampColumnDefault, specialDefaultValues,
                 specialDefaultValueFlags, addedForeignKeys, physicalPlanData, executionContext,
-                createTablePreparedData.getPrimaryTablePreparedData(), null).create();
+                createTablePreparedData.getPrimaryTablePreparedData(), null, null).create();
 
         result.addSequentialTasks(Lists.newArrayList(
             createTableJob.getCreatePartitionTableValidateTask(),

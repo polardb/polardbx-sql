@@ -17,11 +17,14 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
 import com.alibaba.polardbx.executor.chunk.Converters;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
 import com.alibaba.polardbx.executor.operator.util.ChunksIndex;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -33,7 +36,10 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Abstract Join Executor
@@ -64,6 +70,13 @@ abstract class AbstractJoinExec extends AbstractExecutor {
 
     final List<Integer> ignoreNullBlocks = new ArrayList<>();
 
+    protected int[] innerKeyMapping;
+
+    protected boolean useVecJoin;
+    protected boolean enableVecBuildJoinRow;
+
+    protected boolean shouldRecycle;
+
     AbstractJoinExec(Executor outerInput,
                      Executor innerInput,
                      JoinRelType joinType,
@@ -86,10 +99,22 @@ abstract class AbstractJoinExec extends AbstractExecutor {
         this.outerJoin = joinType == JoinRelType.LEFT || joinType == JoinRelType.RIGHT;
         this.semiJoin = (joinType == JoinRelType.SEMI || joinType == JoinRelType.ANTI) && !maxOneRow;
 
+        this.useVecJoin = context.getParamManager().getBoolean(ConnectionParams.ENABLE_VEC_JOIN);
+        this.enableVecBuildJoinRow = context.getParamManager().getBoolean(ConnectionParams.ENABLE_VEC_BUILD_JOIN_ROW);
+        this.shouldRecycle = context.getParamManager().getBoolean(ConnectionParams.ENABLE_DRIVER_OBJECT_POOL);
+
+        // mapping from key columns to its ref index in chunk.
+        this.innerKeyMapping = new int[this.innerInput.getDataTypes().size()];
+        Arrays.fill(innerKeyMapping, -1);
+
         if (joinKeys != null) {
             DataType[] keyColumnTypes = joinKeys.stream().map(t -> t.getUnifiedType()).toArray(DataType[]::new);
             int[] outerKeyColumns = joinKeys.stream().mapToInt(t -> t.getOuterIndex()).toArray();
             int[] innerKeyColumns = joinKeys.stream().mapToInt(t -> t.getInnerIndex()).toArray();
+
+            for (int i = 0; i < innerKeyColumns.length; i++) {
+                innerKeyMapping[innerKeyColumns[i]] = i;
+            }
 
             outerKeyChunkGetter = Converters.createChunkConverter(
                 outerInput.getDataTypes(), outerKeyColumns, keyColumnTypes, context);
@@ -256,4 +281,13 @@ abstract class AbstractJoinExec extends AbstractExecutor {
         ChunksIndex chunksIndex, Chunk outerChunk, int outerPosition, int innerPosition) {
         return false;
     }
+
+    interface ProbeOperator {
+        void nextRows();
+
+        void close();
+
+        int estimateSize();
+    }
+
 }

@@ -17,14 +17,14 @@
 package com.alibaba.polardbx.executor.operator.frame;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * The range unboundedFollowing window frame calculates frames with the following SQL form:
@@ -33,7 +33,7 @@ import java.util.List;
  *
  * <p>e.g.: ... RANGE BETWEEN 1 PRECEDING AND UNBOUNDED FOLLOWING.
  */
-public class RangeUnboundedFollowingOverFrame extends AbstractOverWindowFrame {
+public class RangeUnboundedFollowingOverFrame extends UnboundedFollowingOverFrame {
 
     private int rightIndex = 0;
     private int leftIndex = 0;
@@ -82,27 +82,26 @@ public class RangeUnboundedFollowingOverFrame extends AbstractOverWindowFrame {
         currentIndex = leftIndex;
         // 升序与降序的逻辑不一样
         if (isAscOrder < 0) {
-            aggregators.forEach(t -> t.resetToInitValue(0));
+            aggregators = aggregators.stream().map(aggregator -> aggregator.getNew()).collect(Collectors.toList());
         }
     }
 
-    private void process(int leftIndex, int rightIndex) {
+    private List<Object> process(int leftIndex, int rightIndex) {
         if (lastProcessedLeft == leftIndex && lastProcessedRight == rightIndex) {
-            return;
+            return aggregators.stream().map(t -> t.value()).collect(Collectors.toList());
         }
-        aggregators.forEach(t -> {
-            t.resetToInitValue(0);
-            for (int i = leftIndex; i <= rightIndex; i++) {
-                Chunk.ChunkRow row = chunksIndex.rowAt(i);
-                t.accumulate(0, row.getChunk(), row.getPosition());
-            }
-        });
+        aggregators = aggregators.stream().map(aggregator -> aggregator.getNew()).collect(Collectors.toList());
+        for (int i = leftIndex; i <= rightIndex; i++) {
+            final int l = i;
+            aggregators.forEach(aggregator -> aggregator.aggregate(chunksIndex.rowAt(l)));
+        }
         lastProcessedLeft = leftIndex;
         lastProcessedRight = rightIndex;
+        return aggregators.stream().map(t -> t.value()).collect(Collectors.toList());
     }
 
     @Override
-    public void processData(int index) {
+    public List<Object> processData(int index) {
         Object currentValue = chunksIndex.rowAt(index).getObject(orderByColIndex);
         int[] indexes;
         if (currentValue == null) {
@@ -111,7 +110,7 @@ public class RangeUnboundedFollowingOverFrame extends AbstractOverWindowFrame {
             indexes = getBound(index);
         }
         lastProcessedValue = currentValue;
-        process(indexes[0], indexes[1]);
+        return process(indexes[0], indexes[1]);
     }
 
     private void updateNullRows(int index) {

@@ -25,7 +25,6 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
-import com.alibaba.polardbx.optimizer.core.planner.rule.AccessPathRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.CheckMysqlIndexNLJoinRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
@@ -40,6 +39,7 @@ import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiHashJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiIndexNLJoin;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.volcano.RelSubset;
@@ -55,7 +55,10 @@ import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexTableInputRef;
+import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
@@ -308,7 +311,16 @@ public class IndexUtil {
                 for (int i = 0; i < prefixLen; i++) {
                     prefixTypeList.add(Index.PredicateType.EQUAL);
                 }
-                priorityQueue.add(new Index(indexMeta, prefixTypeList, totalSelectivity, joinSelectivity));
+                if (prefixLen == indexMeta.getKeyColumns().size() &&
+                    (indexMeta.isPrimaryKeyIndex() || indexMeta.isUniqueIndex())) {
+                    long cardinality = (long) tableMeta.getRowCount(null);
+                    if (cardinality <= 0) {
+                        cardinality = 1;
+                    }
+                    priorityQueue.add(new Index(indexMeta, prefixTypeList, 1D / cardinality, 1D / cardinality));
+                } else {
+                    priorityQueue.add(new Index(indexMeta, prefixTypeList, totalSelectivity, joinSelectivity));
+                }
             }
         }
 
@@ -429,9 +441,9 @@ public class IndexUtil {
     }
 
     public static Set<String> getCanUseIndexSet(TableScan tableScan) {
-        Set<String> useIndexSet = AccessPathRule.getUseIndex(tableScan.getIndexNode());
-        Set<String> ignoreIndexSet = AccessPathRule.getIgnoreIndex(tableScan.getIndexNode());
-        Set<String> forceIndexSet = AccessPathRule.getForceIndex(tableScan.getIndexNode());
+        Set<String> useIndexSet = getUseIndex(tableScan.getIndexNode());
+        Set<String> ignoreIndexSet = getIgnoreIndex(tableScan.getIndexNode());
+        Set<String> forceIndexSet = getForceIndex(tableScan.getIndexNode());
 
         Set<String> canUseIndexSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -462,5 +474,68 @@ public class IndexUtil {
             || join instanceof MysqlSemiHashJoin
             || join instanceof MysqlSemiIndexNLJoin
             || join instanceof MysqlMaterializedSemiJoin;
+    }
+
+    public static Set<String> getIndex(SqlNode indexNode, IndexHintType indexHintType) {
+        Set<String> useNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> ignoreNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> forceNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        if (indexNode != null && indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0) {
+            for (SqlNode subNode : ((SqlNodeList) indexNode).getList()) {
+                if (subNode instanceof SqlIndexHint) {
+                    SqlIndexHint indexHint = (SqlIndexHint) subNode;
+
+                    SqlNodeList indexList = indexHint.getIndexList();
+                    if (indexList != null) {
+                        for (int i = 0; i < indexList.size(); i++) {
+                            String indexName = RelUtils.lastStringValue(indexList.get(i));
+                            // Dealing with force index(`xxx`), `xxx` will decoded as string.
+                            if (indexName.startsWith("`") && indexName.endsWith("`")) {
+                                indexName = indexName.substring(1, indexName.length() - 1);
+                            }
+                            if (indexHint.ignoreIndex() && indexHintType == IndexHintType.IGNORE_INDEX) {
+                                // ignore index hint
+                                ignoreNameSet.add(indexName);
+                            } else if (indexHint.useIndex() && indexHintType == IndexHintType.USE_INDEX) {
+                                // use index hint
+                                useNameSet.add(indexName);
+                            } else if (indexHint.forceIndex() && indexHintType == IndexHintType.FORCE_INDEX) {
+                                // force index hint
+                                forceNameSet.add(indexName);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        switch (indexHintType) {
+        case USE_INDEX:
+            return useNameSet;
+        case IGNORE_INDEX:
+            return ignoreNameSet;
+        case FORCE_INDEX:
+            return forceNameSet;
+        default:
+            return new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        }
+    }
+
+    public static Set<String> getUseIndex(SqlNode indexNode) {
+        return getIndex(indexNode, IndexHintType.USE_INDEX);
+    }
+
+    public static Set<String> getIgnoreIndex(SqlNode indexNode) {
+        return getIndex(indexNode, IndexHintType.IGNORE_INDEX);
+    }
+
+    public static Set<String> getForceIndex(SqlNode indexNode) {
+        return getIndex(indexNode, IndexHintType.FORCE_INDEX);
+    }
+
+    public enum IndexHintType {
+        USE_INDEX,
+        IGNORE_INDEX,
+        FORCE_INDEX,
     }
 }

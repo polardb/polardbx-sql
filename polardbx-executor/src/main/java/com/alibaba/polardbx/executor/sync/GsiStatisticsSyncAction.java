@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
 
@@ -48,21 +49,22 @@ public class GsiStatisticsSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        GsiStatisticsManager statisticsManager = GsiStatisticsManager.getInstance();
-        if (alterKind == QUERY_RECORD || alterKind == INSERT_RECORD || alterKind == DELETE_RECORD) {
-            statisticsManager.writeBackSchemaLevelGsiStatistics(schemaName);
-            statisticsManager.reLoadSchemaLevelGsiStatisticsInfoFromMetaDb(schemaName);
-        } else if (alterKind == DELETE_SCHEMA) {
-            statisticsManager.removeSchemaLevelRecordFromCache(schemaName);
-        } else if (alterKind == RENAME_RECORD) {
-            statisticsManager.renameGsiRecordFromCache(schemaName, gsiName, newValue);
-            statisticsManager.writeBackSchemaLevelGsiStatistics(schemaName);
-            statisticsManager.reLoadSchemaLevelGsiStatisticsInfoFromMetaDb(schemaName);
-        } else if (alterKind == WRITE_BACK_ALL_SCHEMA) {
-            statisticsManager.writeBackAllGsiStatistics();
-            statisticsManager.loadFromMetaDb();
+        if (ConfigDataMode.needDNResource()) {
+            GsiStatisticsManager statisticsManager = GsiStatisticsManager.getInstance();
+            if (alterKind == QUERY_RECORD || alterKind == INSERT_RECORD || alterKind == DELETE_RECORD) {
+                statisticsManager.writeBackSchemaLevelGsiStatistics(schemaName);
+                statisticsManager.reLoadSchemaLevelGsiStatisticsInfoFromMetaDb(schemaName);
+            } else if (alterKind == DELETE_SCHEMA) {
+                statisticsManager.removeSchemaLevelRecordFromCache(schemaName);
+            } else if (alterKind == RENAME_RECORD) {
+                statisticsManager.renameGsiRecordFromCache(schemaName, gsiName, newValue);
+                statisticsManager.writeBackSchemaLevelGsiStatistics(schemaName);
+                statisticsManager.reLoadSchemaLevelGsiStatisticsInfoFromMetaDb(schemaName);
+            } else if (alterKind == WRITE_BACK_ALL_SCHEMA) {
+                statisticsManager.writeBackAllGsiStatistics();
+                statisticsManager.loadFromMetaDb();
+            }
         }
-
         return null;
     }
 

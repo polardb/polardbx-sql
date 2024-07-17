@@ -45,7 +45,6 @@ import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
 
 import java.text.NumberFormat;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -140,12 +139,12 @@ public class ShowParametric {
                     }
                     for (Point point : baselineInfo.getPointSet()) {
                         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-                        row.add(StringUtil.encode(schemaName, c.getCharset()));
-                        row.add(StringUtil.encode(baselineInfo.getId() + "", c.getCharset()));
+                        row.add(StringUtil.encode(schemaName, c.getResultSetCharset()));
+                        row.add(StringUtil.encode(baselineInfo.getId() + "", c.getResultSetCharset()));
                         row.add(StringUtil.encode(baselineInfo.getParameterSql().replaceAll("\n", " ").trim(),
-                            c.getCharset()));
+                            c.getResultSetCharset()));
                         long planId = point.getPlanId();
-                        row.add(StringUtil.encode(planId + "", c.getCharset()));
+                        row.add(StringUtil.encode(planId + "", c.getResultSetCharset()));
                         /**
                          * plan info
                          */
@@ -166,20 +165,22 @@ public class ShowParametric {
                                         SqlExplainFormat.TEXT,
                                         SqlExplainLevel.NO_ATTRIBUTES);
                                 }
-                                row.add(StringUtil.encode(planExplain, c.getCharset()));
-                                row.add(StringUtil.encode(planInfo.isAccepted() ? "TRUE" : "FALSE", c.getCharset()));
+                                row.add(StringUtil.encode(planExplain, c.getResultSetCharset()));
+                                row.add(StringUtil.encode(planInfo.isAccepted() ? "TRUE" : "FALSE",
+                                    c.getResultSetCharset()));
                             }
                         }
                         NumberFormat numberFormat = NumberFormat.getPercentInstance();
-                        row.add(StringUtil.encode(point.getSelectivityMap().toString(), c.getCharset()));
-                        row.add(StringUtil.encode(point.getInflationNarrow() + "", c.getCharset()));
-                        row.add(StringUtil.encode(point.getParams().toString(), c.getCharset()));
-                        row.add(StringUtil.encode(point.getChooseTime() + "", c.getCharset()));
+                        row.add(StringUtil.encode(point.getSelectivityMap().toString(), c.getResultSetCharset()));
+                        row.add(StringUtil.encode(point.getInflationNarrow() + "", c.getResultSetCharset()));
+                        row.add(StringUtil.encode(point.getParams().toString(), c.getResultSetCharset()));
+                        row.add(StringUtil.encode(point.getChooseTime() + "", c.getResultSetCharset()));
                         row.add(StringUtil
-                            .encode(numberFormat.format(point.getLastRecentlyChooseRate()) + "", c.getCharset()));
-                        row.add(StringUtil.encode(point.getRowcountExpected() + "", c.getCharset()));
-                        row.add(StringUtil.encode(point.getMaxRowcountExpected() + "", c.getCharset()));
-                        row.add(StringUtil.encode(point.getMinRowcountExpected() + "", c.getCharset()));
+                            .encode(numberFormat.format(point.getLastRecentlyChooseRate()) + "",
+                                c.getResultSetCharset()));
+                        row.add(StringUtil.encode(point.getRowcountExpected() + "", c.getResultSetCharset()));
+                        row.add(StringUtil.encode(point.getMaxRowcountExpected() + "", c.getResultSetCharset()));
+                        row.add(StringUtil.encode(point.getMinRowcountExpected() + "", c.getResultSetCharset()));
                         row.packetId = ++tmpPacketId;
                         proxy = row.write(proxy);
                     }

@@ -16,16 +16,30 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 
 public class IntegerBlockBuilder extends AbstractBlockBuilder {
 
-    private final IntArrayList values;
+    protected final BatchedArrayList.BatchIntArrayList values;
+    private DriverObjectPool<int[]> objectPool;
+    private int chunkLimit;
 
     public IntegerBlockBuilder(int capacity) {
         super(capacity);
-        this.values = new IntArrayList(capacity);
+        this.values = new BatchedArrayList.BatchIntArrayList(capacity);
+    }
+
+    public IntegerBlockBuilder(int capacity, int chunkLimit, DriverObjectPool<int[]> objectPool) {
+        super(capacity);
+        this.values = new BatchedArrayList.BatchIntArrayList(capacity);
+        this.objectPool = objectPool;
+        this.chunkLimit = chunkLimit;
     }
 
     @Override
@@ -63,8 +77,12 @@ public class IntegerBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public Block build() {
-        return new IntegerBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null,
+        Block block = new IntegerBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null,
             values.elements());
+        if (objectPool != null) {
+            block.setRecycler(objectPool.getRecycler(chunkLimit));
+        }
+        return block;
     }
 
     @Override
@@ -75,7 +93,16 @@ public class IntegerBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public BlockBuilder newBlockBuilder() {
-        return new IntegerBlockBuilder(getCapacity());
+        if (objectPool != null) {
+            return new IntegerBlockBuilder(getCapacity(), chunkLimit, objectPool);
+        } else {
+            return new IntegerBlockBuilder(getCapacity());
+        }
+    }
+
+    @Override
+    public BlockBuilder newBlockBuilder(ObjectPools objectPools, int chunkLimit) {
+        return new IntegerBlockBuilder(getCapacity(), chunkLimit, objectPools.getIntArrayPool());
     }
 
     @Override

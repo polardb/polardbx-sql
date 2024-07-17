@@ -17,19 +17,27 @@
 package org.apache.calcite.rel.logical;
 
 public class JoinReorderContext {
-    /** left deep */
+    /**
+     * left deep
+     */
     private boolean hasCommute = false;
     private boolean hasTopPushThrough = false;
 
-    /** zig-zag */
+    /**
+     * zig-zag
+     */
     private boolean hasCommuteZigZag = false;
 
-    /** bushy */
+    /**
+     * bushy
+     */
     private boolean hasExchange = false;
     private boolean hasRightAssociate = false;
     private boolean hasLeftAssociate = false;
+    private boolean hasSemiFilter = false;
 
-    public JoinReorderContext() {}
+    public JoinReorderContext() {
+    }
 
     void copyFrom(JoinReorderContext joinReorderContext) {
         this.hasCommute = joinReorderContext.hasCommute;
@@ -38,6 +46,7 @@ public class JoinReorderContext {
         this.hasLeftAssociate = joinReorderContext.hasLeftAssociate;
         this.hasRightAssociate = joinReorderContext.hasRightAssociate;
         this.hasCommuteZigZag = joinReorderContext.hasCommuteZigZag;
+        this.hasSemiFilter = joinReorderContext.hasSemiFilter;
     }
 
     public void clear() {
@@ -47,6 +56,7 @@ public class JoinReorderContext {
         hasExchange = false;
         hasRightAssociate = false;
         hasLeftAssociate = false;
+        hasSemiFilter = false;
     }
 
     public void avoidParticipateInJoinReorder() {
@@ -56,6 +66,17 @@ public class JoinReorderContext {
         hasExchange = true;
         hasRightAssociate = true;
         hasLeftAssociate = true;
+        hasSemiFilter = true;
+    }
+
+    public boolean reordered() {
+        return hasCommute
+            || hasTopPushThrough
+            || hasCommuteZigZag
+            || hasExchange
+            || hasRightAssociate
+            || hasLeftAssociate
+            || hasSemiFilter;
     }
 
     public boolean isHasCommute() {
@@ -104,5 +125,13 @@ public class JoinReorderContext {
 
     public void setHasCommuteZigZag(boolean hasCommuteZigZag) {
         this.hasCommuteZigZag = hasCommuteZigZag;
+    }
+
+    public boolean isHasSemiFilter() {
+        return hasSemiFilter;
+    }
+
+    public void setHasSemiFilter(boolean hasSemiFilter) {
+        this.hasSemiFilter = hasSemiFilter;
     }
 }

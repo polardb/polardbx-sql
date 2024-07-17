@@ -101,8 +101,7 @@ public class LogicalMergeTableGroup extends BaseDdlOperation {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_IS_EMPTY,
                 "it not allow to merge tables into empty tablegroup");
         } else {
-            TablePartRecordInfoContext tableInfo = tableGroupConfig.getAllTables().get(0);
-            String primaryTableName = tableInfo.getTableName();
+            String primaryTableName = tableGroupConfig.getAllTables().get(0);
             TableMeta tableMeta = schemaManager.getTable(primaryTableName);
             if (tableMeta.isGsi()) {
                 //all the gsi table version change will be behavior by primary table
@@ -128,8 +127,7 @@ public class LogicalMergeTableGroup extends BaseDdlOperation {
                     "tablegroup:[" + sourceGroup + "] is not exists");
             }
             Map<String, Long> tableVersions = new TreeMap<>(String::compareToIgnoreCase);
-            for (TablePartRecordInfoContext tableInfo : GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
-                String primaryTableName = tableInfo.getTableName();
+            for (String primaryTableName : GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
                 TableMeta tableMeta = schemaManager.getTable(primaryTableName);
                 if (tableMeta.isGsi()) {
                     //all the gsi table version change will be behavior by primary table
@@ -167,7 +165,7 @@ public class LogicalMergeTableGroup extends BaseDdlOperation {
         SqlMergeTableGroup sqlMergeTableGroup = (SqlMergeTableGroup) mergeTableGroup.sqlNode;
 
         for (String tableGroup : sqlMergeTableGroup.getSourceTableGroups()) {
-            if (TableGroupNameUtil.isOssTg(tableGroup)) {
+            if (TableGroupNameUtil.isFileStorageTg(tableGroup)) {
                 return true;
             }
         }

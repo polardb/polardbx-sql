@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.collect.Multimap;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.google.common.collect.Multimap;
+import com.google.common.util.concurrent.ListenableFuture;
 
 public interface RemoteTask {
     TaskId getTaskId();

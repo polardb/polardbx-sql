@@ -30,6 +30,7 @@ import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.math.RandomUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -45,13 +46,17 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
@@ -61,6 +66,12 @@ public class BaseTestCase implements BaseTestMode {
     private static final Log log = LogFactory.getLog(BaseTestCase.class);
 
     protected static final String PK_COLUMN_NAME = "pk";
+
+    private final List<String> COLUMNAR_SUPPORT_PARTITION_TYPE =
+        Arrays.asList("int", "char");
+
+    private final String CREATE_COLUMNAR_INDEX =
+        "create clustered columnar index %s on %s(%s) engine='EXTERNAL_DISK' partition by hash(%s) partitions %s";
 
     private static Cache<Engine, Object> engines = CacheBuilder.newBuilder().build();
 
@@ -75,13 +86,21 @@ public class BaseTestCase implements BaseTestMode {
         boolean useFileStorageMode = PropertiesUtil.useFileStorage()
             && usingNewPartDb()
             && ClassHelper.getFileStorageTestCases().contains(getClass());
-        if (!useFileStorageMode) {
-            return;
+        if (useFileStorageMode) {
+            // Check the existence of archive database && archive data if necessary
+            if (!checkInit()) {
+                initArchiveDB();
+            }
         }
 
-        // Check the existence of archive database && archive data if necessary
-        if (!checkInit()) {
-            initArchiveDB();
+        boolean columnarMode = PropertiesUtil.columnarMode() && usingNewPartDb()
+            && ClassHelper.getColumnarTestCases().contains(getClass());
+
+        boolean skipColumnarIndex = PropertiesUtil.skipCreateColumnarIndex();
+
+        if (!skipColumnarIndex && columnarMode && !initedColumnar()) {
+            createColumnarIndex();
+            prepareColumnarVars();
         }
     }
 
@@ -114,6 +133,19 @@ public class BaseTestCase implements BaseTestMode {
             throw new RuntimeException(t);
         }
         return db1Archived && db2Archived;
+    }
+
+    private boolean initedColumnar() {
+        String sourceDB1 = PropertiesUtil.polardbXAutoDBName1Innodb();
+        List<String> tableNames = collectTableNames(sourceDB1);
+        try (Connection conn = getPolardbxConnection(sourceDB1)) {
+            Statement statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery(
+                "show columnar indexes from " + tableNames.get(0));
+            return rs.next();
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
     }
 
     private Object prepareArchivedData() {
@@ -212,6 +244,94 @@ public class BaseTestCase implements BaseTestMode {
         }
 
         return new Object();
+    }
+
+    private void createColumnarIndex() {
+        String sourceDB1 = PropertiesUtil.polardbXAutoDBName1Innodb();
+        String sourceDB2 = PropertiesUtil.polardbXAutoDBName2Innodb();
+        createColumnarIndex(sourceDB1);
+        createColumnarIndex(sourceDB2);
+    }
+
+    private boolean hasPrimaryKey(String dbName, String tableName) {
+        try (Connection conn = getPolardbxConnection(dbName)) {
+            Statement statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery(" show columns from " + tableName);
+            while (rs.next()) {
+                String key = rs.getString("key");
+                if (StringUtils.containsIgnoreCase(key, "pri")) {
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        return false;
+    }
+
+    private void createColumnarIndex(String dbName) {
+        List<String> allTables = collectTableNames(dbName);
+        List<String> tableNames = allTables.stream().filter(t -> hasPrimaryKey(dbName, t)).collect(Collectors.toList());
+        List<String> difference = new ArrayList<>(allTables);
+        difference.removeAll(tableNames);
+        log.error("no primary key table list: " + difference.stream().collect(Collectors.joining(",")));
+        List<String> columnarCols = new ArrayList<>(tableNames.size());
+        for (String tableName : tableNames) {
+            columnarCols.add(getColumnForColumnar(dbName, tableName));
+        }
+        try (Connection conn = getPolardbxConnection(dbName)) {
+            for (int i = 0; i < tableNames.size(); ++i) {
+                String colName = columnarCols.get(i);
+                String sql =
+                    String.format(CREATE_COLUMNAR_INDEX, "col_idx_" + colName, tableNames.get(i), colName, colName,
+                        RandomUtils.nextInt(9) + 1);
+                JdbcUtil.executeSuccess(conn, sql);
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
+
+    private List<String> collectTableNames(String dbName) {
+        List<String> tables = new ArrayList<>();
+        try (Connection conn = getPolardbxConnection(dbName)) {
+            Statement statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery("show tables;");
+            while (rs.next()) {
+                tables.add(rs.getString(1));
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        return tables;
+    }
+
+    private String getColumnForColumnar(String dbName, String tableName) {
+        List<String> columns = new ArrayList<>();
+        try (Connection conn = getPolardbxConnection(dbName)) {
+            Statement statement = conn.createStatement();
+            ResultSet rs = statement.executeQuery(" show columns from " + tableName);
+            while (rs.next()) {
+                String type = rs.getString("type");
+                String column = rs.getString("field");
+                if (!StringUtils.containsIgnoreCase(type, "point") && COLUMNAR_SUPPORT_PARTITION_TYPE.stream()
+                    .anyMatch(t -> StringUtils.containsIgnoreCase(type, t))) {
+                    columns.add(column);
+                }
+            }
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        return columns.get(RandomUtils.nextInt(columns.size()));
+    }
+
+    private void prepareColumnarVars() {
+        String setGlobal = "set global %s=%s";
+        try (Connection conn = getPolardbxConnection(PropertiesUtil.polardbXAutoDBName1Innodb())) {
+            JdbcUtil.executeSuccess(conn, String.format(setGlobal, "WORKLOAD_TYPE", "ap"));
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
     }
 
     @Before
@@ -608,6 +728,19 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
+    public String getExplainPhysicalResult(Connection tddlConnection, String sql) throws SQLException {
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "explain physical " + sql);
+        try {
+            StringBuilder sb = new StringBuilder();
+            while (rs.next()) {
+                sb.append(rs.getString(1)).append("\n");
+            }
+            return sb.toString();
+        } finally {
+            JdbcUtil.close(rs);
+        }
+    }
+
     protected void checkPhySqlId(List<List<String>> trace) {
         final Map<String, List<Token>> phySqlGroups = new HashMap<>();
         for (List<String> traceRow : trace) {
@@ -776,5 +909,109 @@ public class BaseTestCase implements BaseTestMode {
                 );
             }
         }
+    }
+
+    public void runWithPurgeTrans(int repeat_time, Runnable task) throws Exception {
+        AtomicBoolean stop = new AtomicBoolean(false);
+        // Background thread running PURGE TRANS continuously.
+        Thread bg = new Thread(() -> {
+            try (Connection conn = getPolardbxConnection()) {
+                while (!stop.get()) {
+                    JdbcUtil.executeUpdate(conn, "PURGE TRANS v2");
+                    Thread.sleep(100);
+                }
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        });
+
+        try {
+            bg.start();
+
+            for (int i = 0; i < repeat_time; i++) {
+                task.run();
+            }
+        } finally {
+            stop.set(true);
+            bg.join();
+        }
+    }
+
+    protected static <T> void runIgnoreAllErrors(Callable<T> task) {
+        try {
+            task.call();
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    protected static void printTrxInfo(Connection conn) throws SQLException {
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, "show variables like '%tso%'");
+        while (rs.next()) {
+            System.out.println(rs.getString(1) + ": " + rs.getString(2));
+        }
+        rs = JdbcUtil.executeQuerySuccess(conn, "show variables like '%savepoint%'");
+        while (rs.next()) {
+            System.out.println(rs.getString(1) + ": " + rs.getString(2));
+        }
+        rs = JdbcUtil.executeQuerySuccess(conn, "show trans");
+        while (rs.next()) {
+            System.out.println(rs.getString(1)
+                + ": " + rs.getString(2)
+                + ": " + rs.getString(3)
+                + ": " + rs.getString(4));
+        }
+    }
+
+    protected void clearColdDataStatus() throws SQLException {
+        String instanceId = PropertiesUtil.configProp.getProperty("instanceId");
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement()) {
+            stmt.execute("begin");
+            stmt.executeUpdate(
+                String.format(
+                    "delete from inst_config where inst_id = '%s' and param_key = 'COLD_DATA_STATUS'",
+                    instanceId));
+            stmt.executeUpdate(String.format(
+                "update config_listener set op_version = op_version + 1 where data_id = 'polardbx.inst.config.%s'",
+                instanceId));
+            stmt.execute("commit");
+        }
+    }
+
+    protected void turnOnColdData() throws SQLException {
+        String instanceId = PropertiesUtil.configProp.getProperty("instanceId");
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement()) {
+            stmt.execute("begin");
+            stmt.executeUpdate(
+                String.format(
+                    "insert ignore into inst_config values (null, now(), now(), '%s', 'COLD_DATA_STATUS', '1') on duplicate key update param_val=1",
+                    instanceId));
+            stmt.executeUpdate(String.format(
+                "update config_listener set op_version = op_version + 1 where data_id = 'polardbx.inst.config.%s'",
+                instanceId));
+            stmt.execute("commit");
+        }
+
+    }
+
+    protected void turnOffColdData() throws SQLException {
+        // In columnar mode test case, oss engine is external disk now
+        Engine engine = PropertiesUtil.columnarMode() ? Engine.EXTERNAL_DISK : PropertiesUtil.engine();
+        String instanceId = PropertiesUtil.configProp.getProperty("instanceId");
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement()) {
+            stmt.execute("begin");
+            stmt.executeUpdate(
+                String.format(
+                    "insert ignore into inst_config values (null, now(), now(), '%s', 'COLD_DATA_STATUS', '0') on duplicate key update param_val=0;",
+                    instanceId));
+            stmt.executeUpdate(String.format(
+                "update config_listener set op_version = op_version + 1 where data_id = 'polardbx.inst.config.%s'",
+                instanceId));
+            stmt.execute("commit");
+        }
+        JdbcUtil.executeSuccess(getPolardbxConnection(), String.format("CLEAR FILESTORAGE '%s'", engine.name()));
     }
 }

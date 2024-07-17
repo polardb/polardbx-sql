@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.balancer.splitpartition;
 
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.Parameters;
@@ -30,10 +29,10 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
@@ -44,9 +43,10 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_AUTO_SPLIT_PARTITION;

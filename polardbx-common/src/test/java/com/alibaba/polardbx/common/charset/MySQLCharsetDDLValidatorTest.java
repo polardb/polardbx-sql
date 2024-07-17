@@ -343,4 +343,61 @@ public class MySQLCharsetDDLValidatorTest {
         Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb4", "utf8mb4_estonian_ci", true));
         Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported(null, "utf8mb4_estonian_ci", true));
     }
+
+    @Test
+    public void testCheckCharsetSupportedMySQL80() {
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8", "utf8mb3_general_ci", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8", "utf8mb3_bin", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8", "utf8mb3_unicode_ci", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8", "utf8mb3_general_mysql500_ci", true));
+        Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8", "utf8mb3_bi", true));
+        Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8", "utf8mb3_icelandic_ci", true));
+
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8mb3_general_ci", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8mb3_bin", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8mb3_unicode_ci", true));
+        Assert.assertTrue(
+            MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8mb3_general_mysql500_ci", true));
+        Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8mb3_bi", true));
+        Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8mb3_icelandic_ci", true));
+
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8_general_ci", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8_bin", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8_unicode_ci", true));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8_general_mysql500_ci", true));
+        Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8_bi", true));
+        Assert.assertFalse(MySQLCharsetDDLValidator.checkCharsetSupported("utf8mb3", "utf8_icelandic_ci", true));
+
+    }
+
+    @Test
+    public void testCheckCollationMySQL80() {
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_general_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_bin"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_unicode_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_icelandic_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_latvian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_romanian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_slovenian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_polish_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_estonian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_spanish_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_swedish_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_turkish_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_czech_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_danish_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_lithuanian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_slovak_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_spanish2_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_roman_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_persian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_esperanto_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_hungarian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_sinhala_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_german2_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_croatian_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_unicode_520_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_vietnamese_ci"));
+        Assert.assertTrue(MySQLCharsetDDLValidator.checkCollation("utf8mb3_general_mysql500_ci"));
+    }
 }

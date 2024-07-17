@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;

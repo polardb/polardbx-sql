@@ -1,0 +1,31 @@
+- sql : |
+    SELECT a.OBJ_DETAIL_ID AS objDetailId,
+           a.CLASSIFICATION_CODE AS classificationCode,
+      (SELECT pc.CODE_CLS_VAL_NAME
+       FROM test1 pc
+       WHERE pc.CODE_CLS_TYPE = 'FLDM'
+         AND pc.CODE_CLS_VAL = a.CLASSIFICATION_CODE) AS classificationName
+    FROM
+      (SELECT OBJ_DETAIL_ID,
+              CLASSIFICATION_CODE
+       FROM test2 ov
+       WHERE ov.AREA_CODE = '030600') a
+  plan : |
+    gather(concurrent=true)
+      logicalview(tables="test1,test2[p1,p2,p3,p4]", shardcount=4, sql="select `obj_detail_id`, `classification_code`, (((select `code_cls_val_name` from `test1` as `test1` where ((`code_cls_type` = 'fldm') and (`code_cls_val` = `t0`.`classification_code`))))) as `code_cls_val_name` from (select `obj_detail_id`, `classification_code` from `test2` as `test2` where (`area_code` = '030600')) as `t0`")
+- sql : |
+    /*TDDL:ENABLE_LV_SUBQUERY_UNWRAP=false*/
+    SELECT a.OBJ_DETAIL_ID AS objDetailId,
+           a.CLASSIFICATION_CODE AS classificationCode,
+      (SELECT pc.CODE_CLS_VAL_NAME
+       FROM test1 pc
+       WHERE pc.CODE_CLS_TYPE = 'FLDM'
+         AND pc.CODE_CLS_VAL = a.CLASSIFICATION_CODE) AS classificationName
+    FROM
+      (SELECT OBJ_DETAIL_ID,
+              CLASSIFICATION_CODE
+       FROM test2 ov
+       WHERE ov.AREA_CODE = '030600') a
+  plan : |
+    gather(concurrent=true)
+      logicalview(tables="test1,test2[p1,p2,p3,p4]", shardcount=4, sql="select `obj_detail_id`, `classification_code`, (((select `code_cls_val_name` from (select `code_cls_val_name`, `code_cls_val` from `test1` as `test1` where (`code_cls_type` = 'fldm')) as `t2` where (`code_cls_val` = `t0`.`classification_code`)))) as `$f2` from (select `obj_detail_id`, `classification_code` from `test2` as `test2` where (`area_code` = '030600')) as `t0`")

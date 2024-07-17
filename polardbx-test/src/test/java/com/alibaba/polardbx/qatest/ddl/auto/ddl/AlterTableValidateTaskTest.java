@@ -75,8 +75,7 @@ public class AlterTableValidateTaskTest extends BaseAutoPartitionNewPartition {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table wumu1 modify column b int after c");
 
-        JdbcUtil.executeUpdateFailed(tddlConnection,
-            "alter table wumu1 modify column b char after c", "not recommended");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table wumu1 modify column b char after c");
     }
 
 }

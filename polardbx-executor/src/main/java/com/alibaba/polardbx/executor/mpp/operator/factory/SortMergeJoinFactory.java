@@ -77,10 +77,7 @@ public class SortMergeJoinFactory extends ExecutorFactory {
             new SortMergeJoinExec(outer, inner, join.getJoinType(), maxOneRow, joinKeys, columnIsAscending,
                 otherCondition,
                 antiJoinOperands, context);
-        ret.setId(join.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(join, ret, context);
-        }
+        registerRuntimeStat(ret, join, context);
         return ret;
     }
 

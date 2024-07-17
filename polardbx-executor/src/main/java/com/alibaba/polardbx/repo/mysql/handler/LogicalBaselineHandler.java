@@ -26,12 +26,14 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.BaselineLoadSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselinePersistSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalBaseline;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
@@ -236,6 +238,10 @@ public class LogicalBaselineHandler extends HandlerCommon {
             return result;
         }
         String planJsonString = PlanManagerUtil.relNodeToJson(plan);
+        if (!PlanManagerUtil.baselineSupported(plan)) {
+            throw new TddlRuntimeException(ERR_BASELINE, "not support baseline add");
+        }
+
         PlanInfo planInfo =
             PlanManager.getInstance()
                 .createPlanInfo(schemaName, planJsonString, plan, baselineInfo.getId(), executionContext.getTraceId(),
@@ -280,10 +286,10 @@ public class LogicalBaselineHandler extends HandlerCommon {
             for (Long id : idList) {
                 switch (operation.toUpperCase()) {
                 case "LOAD":
-                    SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction());
+                    SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction(), SyncScope.CURRENT_ONLY);
                     break;
                 case "PERSIST":
-                    SyncManagerHelper.syncWithDefaultDB(new BaselinePersistSyncAction());
+                    SyncManagerHelper.syncWithDefaultDB(new BaselinePersistSyncAction(), SyncScope.CURRENT_ONLY);
                     break;
                 case "DELETE": {
                     BaselineSyncController baselineSyncController = new BaselineSyncController();
@@ -299,7 +305,12 @@ public class LogicalBaselineHandler extends HandlerCommon {
                     for (BaselineInfo baselineInfo : PlanManager.getInstance().getBaselineMap(schemaName).values()) {
                         for (PlanInfo planInfo : baselineInfo.getAcceptedPlans().values()) {
                             if (planInfo.getId() == id) {
-                                baselineSyncController.deletePlan(schemaName, baselineInfo, planInfo);
+                                if (baselineInfo.getAcceptedPlans().size() == 1) {
+                                    baselineSyncController.deleteBaseline(schemaName, baselineInfo);
+                                    break;
+                                } else {
+                                    baselineSyncController.deletePlan(schemaName, baselineInfo, planInfo);
+                                }
                             }
                         }
                         for (PlanInfo planInfo : baselineInfo.getUnacceptedPlans().values()) {
@@ -315,10 +326,10 @@ public class LogicalBaselineHandler extends HandlerCommon {
         } else {
             switch (operation.toUpperCase()) {
             case "LOAD":
-                SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction());
+                SyncManagerHelper.syncWithDefaultDB(new BaselineLoadSyncAction(), SyncScope.CURRENT_ONLY);
                 break;
             case "PERSIST":
-                SyncManagerHelper.syncWithDefaultDB(new BaselinePersistSyncAction());
+                SyncManagerHelper.syncWithDefaultDB(new BaselinePersistSyncAction(), SyncScope.CURRENT_ONLY);
                 break;
             case "DELETE_ALL": {
                 BaselineSyncController baselineSyncController = new BaselineSyncController();

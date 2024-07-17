@@ -93,4 +93,18 @@ public class TablePartitionConfigUtil {
         return getPublicTablePartitionConfigs(null, dbName, tableNames, fromDeltaTable);
     }
 
+    public static TablePartitionRecord getTablePartitionByDbTb(String dbName, String tbName, boolean fromDelta) {
+        return MetaDbUtil.queryMetaDbWrapper(null, (conn) -> {
+            TablePartitionAccessor tpa = new TablePartitionAccessor();
+            tpa.setConnection(conn);
+            List<TablePartitionRecord> result = tpa.getTablePartitionsByDbTbLvl0(dbName, tbName, fromDelta);
+            if (result.size() > 0) {
+
+                return result.get(0);
+            } else {
+                return null;
+            }
+        });
+    }
+
 }

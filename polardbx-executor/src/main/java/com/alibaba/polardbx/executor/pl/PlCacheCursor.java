@@ -42,7 +42,7 @@ public class PlCacheCursor extends CacheCursor {
         }
         // if spill happened, read the spill file
         if (spiller != null) {
-            getIterator();
+            iterator = getIterator();
         }
         openSpillFile = true;
     }

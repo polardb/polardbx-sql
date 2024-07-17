@@ -43,6 +43,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 public class CreateIndexJobFactory extends DdlJobFactory {
 
     private final List<PhysicalPlanData> physicalPlanDataList;
@@ -89,7 +91,7 @@ public class CreateIndexJobFactory extends DdlJobFactory {
             new CreateIndexPhyDdlTask(schemaName, physicalPlanData).onExceptionTryRecoveryThenRollback();
         DdlTask cdcDdlMarkTask =
             CBOUtil.isOss(schemaName, logicalTableName) || CBOUtil.isGsi(schemaName, logicalTableName) ? null :
-                new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
+                new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
         DdlTask showMetaTask = new CreateIndexShowMetaTask(schemaName, logicalTableName, indexName,
             physicalPlanData.getDefaultDbIndex(), physicalPlanData.getDefaultPhyTableName());
         DdlTask tableSyncTask = new TableSyncTask(schemaName, logicalTableName);

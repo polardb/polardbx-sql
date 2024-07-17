@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.CrcAccumulator;
+import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
 import com.alibaba.polardbx.common.orc.OrcBloomFilter;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
@@ -41,15 +43,19 @@ import org.apache.orc.ColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
+import java.nio.charset.Charset;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiFunction;
 
 class VarcharColumnProvider implements ColumnProvider<String> {
+    private static final Charset DEFAULT_CHARSET = CharsetName.defaultCharset().toJavaCharset();
     public final BiFunction<byte[], Integer, byte[]> collationHandlerFunction;
+    private final Charset sourceCharset;
 
     VarcharColumnProvider(CollationName collationName) {
+        sourceCharset = CollationName.getCharsetOf(collationName).toJavaCharset();
         CollationHandler collationHandler = CharsetFactory.INSTANCE.createCollationHandler(collationName);
 
         collationHandlerFunction = (bytes, length) -> {
@@ -65,7 +71,8 @@ class VarcharColumnProvider implements ColumnProvider<String> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex,
+                          SessionProperties sessionProperties) {
         BytesColumnVector bytesColumnVector = (BytesColumnVector) vector;
         for (int i = startIndex; i < endIndex; i++) {
             int idx = i;
@@ -85,7 +92,8 @@ class VarcharColumnProvider implements ColumnProvider<String> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize,
+                          SessionProperties sessionProperties) {
         BytesColumnVector bytesColumnVector = (BytesColumnVector) vector;
         for (int i = 0; i < selSize; i++) {
             int j = selection[i];
@@ -122,10 +130,12 @@ class VarcharColumnProvider implements ColumnProvider<String> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType,
+                       ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
+                    accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
@@ -163,8 +173,26 @@ class VarcharColumnProvider implements ColumnProvider<String> {
                 accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
                 ((BytesColumnVector) columnVector).setVal(rowNumber, bytes);
-                ((BytesColumnVector) redundantColumnVector).setVal(rowNumber, this.collationHandlerFunction.apply(bytes, dataType.length()));
+                ((BytesColumnVector) redundantColumnVector).setVal(rowNumber,
+                    this.collationHandlerFunction.apply(bytes, dataType.length()));
                 accumulator.ifPresent(a -> a.appendBytes(bytes, 0, bytes.length));
+            }
+        }
+    }
+
+    @Override
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+        } else {
+            // Write directly (Should convert to UTF-8)
+            // The format in binlog is original bytes in character set.
+            byte[] bytes = row.getBytes(columnId);
+            if (sourceCharset.equals(DEFAULT_CHARSET)) {
+                ((SliceBlockBuilder) blockBuilder).writeBytes(bytes);
+            } else {
+                ((SliceBlockBuilder) blockBuilder).writeBytes(
+                    new String(bytes, sourceCharset).getBytes(DEFAULT_CHARSET));
             }
         }
     }

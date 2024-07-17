@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.DropJavaFunctionDropMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.DropJavaFunctionSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropJavaFunctionMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -30,7 +31,6 @@ import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlDropJavaFunction;
 
-import java.sql.Connection;
 import java.util.List;
 
 public class DropJavaFunctionJobFactory extends AbstractFunctionJobFactory {
@@ -61,8 +61,9 @@ public class DropJavaFunctionJobFactory extends AbstractFunctionJobFactory {
         String functionName = dropFunction.getSqlDropFunction().getFuncName();
 
         DdlTask dropMetaTask = new DropJavaFunctionDropMetaTask(schema, null, functionName);
+        DdlTask cdcMarkTask = new CdcDropJavaFunctionMarkTask(schema, functionName);
         DdlTask syncTask = new DropJavaFunctionSyncTask(schema, functionName);
-        return Lists.newArrayList(dropMetaTask, syncTask);
+        return Lists.newArrayList(dropMetaTask, cdcMarkTask, syncTask);
     }
 
     public static ExecutableDdlJob dropFunction(LogicalDropJavaFunction dropFunction, ExecutionContext ec) {

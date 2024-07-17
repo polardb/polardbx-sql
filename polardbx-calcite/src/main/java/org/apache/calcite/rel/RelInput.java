@@ -104,6 +104,8 @@ public interface RelInput {
 
   RelDistribution getDistribution();
 
+  RelPartitionWise getPartitionWise();
+
   ImmutableList<ImmutableList<RexLiteral>> getTuples(String tag);
 
   ImmutableList<ImmutableList<RexNode>> getDynamicTuples(String tag);

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.expression.calc;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.core.function.calc.IScalarFunction;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
@@ -34,6 +35,10 @@ public class ScalarFunctionExpression extends AbstractExpression {
     private ExprContextProvider contextHolder;
 
     public ScalarFunctionExpression() {
+    }
+
+    public List<IExpression> getArgs() {
+        return args;
     }
 
     @Override
@@ -74,4 +79,20 @@ public class ScalarFunctionExpression extends AbstractExpression {
         return scalarFunctionExpression;
     }
 
+    public boolean isA(Class<? extends AbstractScalarFunction> funcType) {
+        return function.getClass() == funcType;
+    }
+
+    /**
+     * both two args are InputRefExpression
+     */
+    public boolean isInputRefArgs() {
+        if (args != null && args.size() == 2) {
+            if (args.get(0) instanceof InputRefExpression &&
+                args.get(1) instanceof InputRefExpression) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

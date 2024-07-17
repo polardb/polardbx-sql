@@ -196,7 +196,7 @@ public abstract class AbstractConnection implements NIOConnection {
         lastReadTime = TimeUtil.currentTimeMillis();
         if (got < 0) {
             logout();
-            throw new TddlRuntimeException(ERR_PACKET_READ, "end of stream has been reached unexpectedly");
+            throw new EOFException();
         }
         buffer.writerIndex(buffer.writerIndex() + got);
         netInBytes += got;

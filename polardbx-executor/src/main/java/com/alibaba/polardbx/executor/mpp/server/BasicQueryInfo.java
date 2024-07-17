@@ -29,11 +29,11 @@
  */
 package com.alibaba.polardbx.executor.mpp.server;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.exception.code.ErrorType;
 import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.QueryState;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;

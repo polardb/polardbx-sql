@@ -1,0 +1,45 @@
+
+# clean
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;
+
+CREATE TABLE `t_order_0` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x)
+);
+
+CREATE TABLE `t_order_1` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL
+);
+
+# explicit clustered columnar and name
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_0` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_0` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_0`;
+DROP INDEX `cci_seller_id` ON `t_order_0`;
+
+# explicit clustered columnar and partition
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_0` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`) partition by key(`seller_id`) partitions 2;
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_0` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_0`;
+
+# explicit clustered columnar and partition
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask",ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK=true)*/
+ALTER TABLE `t_order_1` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_1` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_1`;
+DROP INDEX `cci_seller_id` ON `t_order_1`;
+DROP INDEX `cci_seller_id` ON `t_order_0`;
+
+# cleanup
+drop table if exists `t_order_0`;
+drop table if exists `t_order_1`;

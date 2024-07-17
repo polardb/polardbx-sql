@@ -29,15 +29,15 @@
  */
 package com.alibaba.polardbx.executor.mpp.client;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 @Immutable
 public class QueryError {

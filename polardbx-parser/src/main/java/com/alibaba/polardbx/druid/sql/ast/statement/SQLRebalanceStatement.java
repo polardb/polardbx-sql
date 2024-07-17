@@ -82,6 +82,14 @@ public class SQLRebalanceStatement extends SQLStatementImpl {
         return this.target.equals(RebalanceTarget.CLUSTER);
     }
 
+    public boolean isRebalanceTenant() {
+        return this.target.equals(RebalanceTarget.TENANT);
+    }
+
+    public boolean isRebalanceTenantDb() {
+        return this.target.equals(RebalanceTarget.TENANT_DB);
+    }
+
     public boolean isRebalanceDatabase() {
         return this.target.equals(RebalanceTarget.DATABASE);
     }

@@ -69,7 +69,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `id`")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` from ? as `a` where (`a`.`id` = 1) order by `id`")
 
 - sql: |
     select id
@@ -78,7 +78,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `name`")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` from ? as `a` where (`a`.`id` = 1) order by `a`.`name`")
 
 
 - sql: |
@@ -88,7 +88,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `id`, `name`")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` from ? as `a` where (`a`.`id` = 1) order by `id`, `a`.`name`")
 
 
 - sql: |
@@ -98,4 +98,4 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `name`, `id`")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` from ? as `a` where (`a`.`id` = 1) order by `a`.`name`, `id`")

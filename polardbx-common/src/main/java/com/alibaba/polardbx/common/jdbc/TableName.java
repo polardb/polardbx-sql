@@ -36,11 +36,6 @@ public class TableName {
         return this.tableName;
     }
 
-    public void setTableName(String tableName) throws SQLException {
-        this.checkName(tableName);
-        this.tableName = tableName.trim();
-    }
-
     private void checkName(String tName) throws SQLException {
         if (StringUtils.isEmptyOrWhitespaceOnly(tName)) {
             throw new SQLException("tableName should not be empty", "S1009");
@@ -63,9 +58,6 @@ public class TableName {
                 case '\u001a':
                     needsHexEscape = true;
                     break;
-                case ' ':
-                    needsHexEscape = true;
-                    break;
                 case '"':
                     needsHexEscape = true;
                     break;
@@ -80,7 +72,6 @@ public class TableName {
                     throw new SQLException("tableName format error: " + this.tableName, "S1009");
                 }
             }
-
         }
     }
 
@@ -89,4 +80,3 @@ public class TableName {
         return getTableName();
     }
 }
-

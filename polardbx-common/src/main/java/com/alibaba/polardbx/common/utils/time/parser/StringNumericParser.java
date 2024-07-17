@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.utils.time.parser;
 
 import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.UnsignedLongs;
 import io.airlift.slice.Slice;
@@ -502,11 +503,8 @@ public class StringNumericParser extends MySQLTimeParserBase {
                     if (exponent <= (SIGNED_MAX_LONG - value) / 10) {
                         exponent = exponent * 10 + value;
                     } else {
-
-                        results[NUMERIC_INDEX] = isUnsigned ? UNSIGNED_LONG_MAX :
-                            (isNeg ? SIGNED_MIN_LONG : SIGNED_MAX_LONG);
-                        results[ERROR_INDEX] = MY_ERRNO_ERANGE;
-                        results[POSITION_INDEX] = pos;
+                        // too big
+                        handleRetTooBig(results, isUnsigned, isNeg, pos);
                         return;
                     }
                 }
@@ -517,11 +515,8 @@ public class StringNumericParser extends MySQLTimeParserBase {
         if (shift == 0) {
             if (addOn != 0) {
                 if (UnsignedLongs.compare(longResult, UNSIGNED_LONG_MAX) == 0) {
-
-                    results[NUMERIC_INDEX] = isUnsigned ? UNSIGNED_LONG_MAX :
-                        (isNeg ? SIGNED_MIN_LONG : SIGNED_MAX_LONG);
-                    results[ERROR_INDEX] = MY_ERRNO_ERANGE;
-                    results[POSITION_INDEX] = pos;
+                    // too big
+                    handleRetTooBig(results, isUnsigned, isNeg, pos);
                     return;
                 }
                 longResult++;
@@ -557,27 +552,37 @@ public class StringNumericParser extends MySQLTimeParserBase {
                 handleResult(isUnsigned, results, pos, isNeg, longResult);
                 return;
             }
-
-            results[NUMERIC_INDEX] = isUnsigned ? UNSIGNED_LONG_MAX :
-                (isNeg ? SIGNED_MIN_LONG : SIGNED_MAX_LONG);
-            results[ERROR_INDEX] = MY_ERRNO_ERANGE;
-            results[POSITION_INDEX] = pos;
+            // too big
+            handleRetTooBig(results, isUnsigned, isNeg, pos);
             return;
         }
 
         for (; shift > 0; shift--, longResult *= 10) {
             if (UnsignedLongs.compare(longResult, CUT_OFF) > 0) {
-
-                results[NUMERIC_INDEX] = isUnsigned ? UNSIGNED_LONG_MAX :
-                    (isNeg ? SIGNED_MIN_LONG : SIGNED_MAX_LONG);
-                results[ERROR_INDEX] = MY_ERRNO_ERANGE;
-                results[POSITION_INDEX] = pos;
+                // Overflow, number too big
+                handleRetTooBig(results, isUnsigned, isNeg, pos);
                 return;
             }
         }
 
         handleResult(isUnsigned, results, pos, isNeg, longResult);
 
+    }
+
+    public static void handleRetTooBig(long[] results, boolean isUnsigned, boolean isNeg, int pos) {
+        long result;
+        if (InstanceVersion.isMYSQL80()) {
+            result = isUnsigned ?
+                (isNeg ? 0 : UNSIGNED_LONG_MAX) :
+                (isNeg ? SIGNED_MIN_LONG : SIGNED_MAX_LONG);
+        } else {
+            result = isUnsigned ? UNSIGNED_LONG_MAX :
+                (isNeg ? SIGNED_MIN_LONG : SIGNED_MAX_LONG);
+        }
+
+        results[NUMERIC_INDEX] = result;
+        results[ERROR_INDEX] = MY_ERRNO_ERANGE;
+        results[POSITION_INDEX] = pos;
     }
 
     public static double parseStringToDouble(byte[] bytes, int offset, int len) {

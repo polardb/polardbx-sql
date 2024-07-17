@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.AlterGsiVisibilityValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterIndexVisibilityMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.CciUpdateIndexStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexVisibilityTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
@@ -25,6 +28,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -36,6 +40,9 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.AlterTableWithGsiPre
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -48,6 +55,7 @@ import java.util.Set;
  * @author zhuqiwei
  */
 public class AlterGsiVisibilityJobFactory extends DdlJobFactory {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AlterGsiVisibilityJobFactory.class);
     protected final String schemaName;
     protected final String primaryTableName;
     protected final String indexTableName;
@@ -67,7 +75,7 @@ public class AlterGsiVisibilityJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-        GsiValidator.validateGsi(schemaName, indexTableName);
+        GsiValidator.validateGsiOrCci(schemaName, indexTableName);
         GsiValidator.validateAllowDdlOnTable(schemaName, primaryTableName, executionContext);
     }
 
@@ -119,18 +127,64 @@ public class AlterGsiVisibilityJobFactory extends DdlJobFactory {
                 IndexVisibility.INVISIBLE);
         }
 
+        final CciUpdateIndexStatusTask changeCciStatusTask = buildChangeCciStatusTask();
+
+        final CdcAlterIndexVisibilityMarkTask cdcAlterIndexVisibilityMarkTask = new CdcAlterIndexVisibilityMarkTask(
+            schemaName, primaryTableName
+        );
+
         DdlTask syncTask = new TableSyncTask(schemaName, primaryTableName);
 
-        List<DdlTask> taskList = ImmutableList.of(
-            validateTask,
-            validateTableVersionTask,
-            changeGsiStatusTask,
-            syncTask
-        );
+        List<DdlTask> taskList = (null != changeCciStatusTask) ?
+            ImmutableList.of(
+                validateTask,
+                validateTableVersionTask,
+                changeGsiStatusTask,
+                changeCciStatusTask,
+                cdcAlterIndexVisibilityMarkTask,
+                syncTask
+            ) :
+            ImmutableList.of(
+                validateTask,
+                validateTableVersionTask,
+                changeGsiStatusTask,
+                cdcAlterIndexVisibilityMarkTask,
+                syncTask
+            );
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(taskList);
 
         return executableDdlJob;
+    }
+
+    @Nullable
+    private CciUpdateIndexStatusTask buildChangeCciStatusTask() {
+        CciUpdateIndexStatusTask changeCciStatusTask = null;
+        if (preparedData.isColumnar()
+            && executionContext.getParamManager().getBoolean(ConnectionParams.ALTER_CCI_STATUS)) {
+            final String beforeStatusStr =
+                executionContext.getParamManager().getString(ConnectionParams.ALTER_CCI_STATUS_BEFORE);
+            final String afterStatusStr =
+                executionContext.getParamManager().getString(ConnectionParams.ALTER_CCI_STATUS_AFTER);
+
+            try {
+                final ColumnarTableStatus beforeStatus = ColumnarTableStatus.valueOf(beforeStatusStr);
+                final ColumnarTableStatus afterStatus = ColumnarTableStatus.valueOf(afterStatusStr);
+
+                changeCciStatusTask = new CciUpdateIndexStatusTask(
+                    schemaName,
+                    primaryTableName,
+                    indexTableName,
+                    beforeStatus,
+                    afterStatus,
+                    beforeStatus.toIndexStatus(),
+                    afterStatus.toIndexStatus(),
+                    true);
+            } catch (Exception ignored) {
+                LOGGER.error("Unknown before({}) or after({}) status", beforeStatusStr, afterStatusStr);
+            }
+        }
+        return changeCciStatusTask;
     }
 
     public static ExecutableDdlJob create(AlterTableWithGsiPreparedData alterTableWithGsiPreparedData,

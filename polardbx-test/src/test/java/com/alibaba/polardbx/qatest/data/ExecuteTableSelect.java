@@ -1095,6 +1095,9 @@ public class ExecuteTableSelect {
     public static final String DEFAULT_PARTITIONING_DEFINITION =
         " dbpartition by hash(id) tbpartition by hash(id) tbpartitions 3";
 
+    public static final String DEFAULT_DBPARTITION_DEFINITION =
+        " dbpartition by hash(id)";
+
     public static final String DEFAULT_NEW_PARTITIONING_DEFINITION =
         " partition by key(id) partitions 3";
 

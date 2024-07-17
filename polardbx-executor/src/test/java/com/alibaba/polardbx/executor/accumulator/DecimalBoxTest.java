@@ -20,6 +20,7 @@ import java.util.Random;
 @RunWith(Parameterized.class)
 public class DecimalBoxTest {
 
+    private static final int scale = 9;
     private final int count;
     private final SimpleMode simpleMode;
     private DecimalBlock decimalBlock;
@@ -94,7 +95,7 @@ public class DecimalBoxTest {
     @Test
     public void testDecimalBoxSimple() {
         Assert.assertTrue(decimalBlock.isSimple());
-        DecimalBox box = new DecimalBox();
+        DecimalBox box = new DecimalBox(scale);
         for (int pos = 0; pos < decimalBlock.getPositionCount(); pos++) {
 
             int a1 = decimalBlock.fastInt1(pos);

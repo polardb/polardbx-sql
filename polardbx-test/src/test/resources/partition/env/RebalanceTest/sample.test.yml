@@ -25,7 +25,7 @@ singleBalanceCaseBeans:
       expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb" ]
       expectedManipulateColumns: [ 2 ]
     dataDistributionCheckActions:
-    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
+    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated'"
       expectedConditionResult: [ "0" ]
       objectName: "t1"
       objectType: "table"

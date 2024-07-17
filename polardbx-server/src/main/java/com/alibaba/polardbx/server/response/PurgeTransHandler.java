@@ -16,16 +16,16 @@
 
 package com.alibaba.polardbx.server.response;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableTask;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
-import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTask;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTask;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 
 import java.util.Calendar;
@@ -45,9 +45,13 @@ public class PurgeTransHandler extends AbstractTransHandler {
 
     @Override
     protected boolean doExecute() {
-
         int before = -1;
+        // 0 purge both new and legacy trx log table.
+        // 1 purge legacy table.
+        // 2 purge new table.
+        int v = 0;
         if (offset > 0) {
+            char str0 = stmt.charAt(offset - 1);
             String str = stmt.substring(offset);
             try {
                 before = Integer.parseInt(str);
@@ -55,39 +59,55 @@ public class PurgeTransHandler extends AbstractTransHandler {
                 c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, "Incorrect number of seconds: " + str);
                 return false;
             }
+
+            if (str0 == 'v' || str0 == 'V') {
+                if (before != 1 && before != 2) {
+                    c.writeErrMessage(ErrorCode.ER_PARSE_ERROR, "Incorrect version, expect 1 or 2, but was " + before);
+                    return false;
+                }
+                v = before;
+                before = -1;
+            }
         }
 
         TransactionExecutor executor = transactionManager.getTransactionExecutor();
         AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
 
-        int purgedCount;
-        try {
-            final Calendar startTime = Calendar.getInstance();
-            final Calendar endTime = Calendar.getInstance();
-            startTime.set(Calendar.HOUR_OF_DAY, 0);
-            startTime.set(Calendar.MINUTE, 0);
-            startTime.set(Calendar.SECOND, 0);
+        long purgedCount = 0;
+        if (1 == v || 0 == v) {
+            try {
+                final Calendar startTime = Calendar.getInstance();
+                final Calendar endTime = Calendar.getInstance();
+                startTime.set(Calendar.HOUR_OF_DAY, 0);
+                startTime.set(Calendar.MINUTE, 0);
+                startTime.set(Calendar.SECOND, 0);
 
-            endTime.set(Calendar.HOUR_OF_DAY, 23);
-            endTime.set(Calendar.MINUTE, 59);
-            endTime.set(Calendar.SECOND, 59);
-            RotateGlobalTxLogTask task =
-                new RotateGlobalTxLogTask(executor, startTime, endTime, before, 0, asyncQueue);
-            task.run();
-            purgedCount = task.getPurgedCount();
-        } catch (Throwable ex) {
-            c.writeErrMessage(ErrorCode.ERR_TRANS_LOG, "Purge trans failed: " + ex.getMessage());
-            logger.error("Purge trans failed", ex);
-            return false;
+                endTime.set(Calendar.HOUR_OF_DAY, 23);
+                endTime.set(Calendar.MINUTE, 59);
+                endTime.set(Calendar.SECOND, 59);
+                RotateGlobalTxLogTask task =
+                    new RotateGlobalTxLogTask(executor, startTime, endTime, before, 0, asyncQueue);
+                task.run();
+                purgedCount = task.getPurgedCount();
+            } catch (Throwable ex) {
+                c.writeErrMessage(ErrorCode.ERR_TRANS_LOG, "Purge trans failed: " + ex.getMessage());
+                logger.error("Purge trans failed", ex);
+                return false;
+            }
         }
 
-        try {
-            purgedCount += CleanLogTableTask.run(before, 0);
-        } catch (Throwable ex) {
-            c.writeErrMessage(ErrorCode.ERR_TRANS_LOG, "Purge trans failed on async commit log table: "
-                + ex.getMessage());
-            logger.error("Purge trans failed on async commit log table:", ex);
-            return false;
+        if (2 == v || 0 == v) {
+            StringBuilder remark = new StringBuilder();
+            try {
+                purgedCount += CleanLogTableTask.run(true, remark);
+            } catch (Throwable ex) {
+                c.writeErrMessage(ErrorCode.ERR_TRANS_LOG, "Purge trans failed on trx log table v2: "
+                    + ex.getMessage());
+                logger.error("Purge trans failed on trx log table v2:", ex);
+                return false;
+            } finally {
+                logger.warn("Run purge trans V2 manually, result: " + remark);
+            }
         }
 
         OkPacket packet = new OkPacket();

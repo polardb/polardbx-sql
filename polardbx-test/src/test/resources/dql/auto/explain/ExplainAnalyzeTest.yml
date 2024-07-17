@@ -1,0 +1,154 @@
+# TP tests
+- sql: |
+    explain analyze /*+ TDDL: WORKLOAD_TYPE=TP*/
+      select * from select_base_one_multi_db_multi_tb;
+
+  plan: |
+    Gather.*actual rowcount = 1000,.*
+      LogicalView.*actual rowcount = 1000,.*
+
+- sql: |
+    explain analyze /*+ TDDL: WORKLOAD_TYPE=TP*/ 
+    select * from select_base_one_multi_db_multi_tb order by pk limit 10;
+
+  plan: |
+    MergeSort.*actual rowcount = 10,.*
+      LogicalView.*actual rowcount = 10,.*
+
+- sql: |
+    explain analyze /*+ TDDL: WORKLOAD_TYPE=TP*/ 
+    select * from select_base_one_multi_db_multi_tb t1 where t1.pk in (select integer_test from select_base_one_multi_db_one_tb t2 where t2.pk > 600);
+
+  plan: |
+    MaterializedSemiJoin.*actual rowcount = 64,.*
+      Gather.*actual rowcount = 64,.*
+        LogicalView.*actual rowcount = 64,.*
+      Gather.*actual rowcount = 399,.*
+        LogicalView.*actual rowcount = 399,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) WORKLOAD_TYPE=TP*/ 
+    select * from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk ;
+
+  plan: |
+    HashJoin.*actual rowcount = 1000,.*
+      Gather.*actual rowcount = 1000,.*
+        LogicalView.*actual rowcount = 1000,.*
+      Gather.*actual rowcount = 1000,.*
+        LogicalView.*actual rowcount = 1000,.*
+
+# AP tests
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL*/ 
+    select * from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk where t1.pk > 500;
+
+  plan: |
+    HashJoin.*actual rowcount = 499,.*
+      Exchange.*actual rowcount = 499,.*
+        LogicalView.*actual rowcount = 499,.*
+      Exchange.*actual rowcount = 499,.*
+        LogicalView.*actual rowcount = 499,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL*/ 
+    select * from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk where t1.integer_test < 50;
+
+  plan: |
+    HashJoin.*actual rowcount = 783,.*
+      Exchange.*actual rowcount = 783,.*
+        LogicalView.*actual rowcount = 783,.*
+      Exchange.*actual rowcount = 1000,.*
+        LogicalView.*actual rowcount = 1000,.*
+
+- sql: |
+    explain analyze /*+ TDDL: WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL*/ 
+    select * from select_base_one_multi_db_multi_tb t1 where t1.pk in (select integer_test from select_base_one_multi_db_one_tb t2 where t2.pk > 600);
+
+  plan: |
+    MaterializedSemiJoin.*actual rowcount = 64,.*
+      LogicalView.*actual rowcount = 64,.*
+      Exchange.*actual rowcount = 399,.*
+        LogicalView.*actual rowcount = 399,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false BKA_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL*/  
+    select * from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk  join select_base_one_one_db_one_tb t3 on t1.pk=t3.pk where t2.integer_test < 50;
+
+  plan: |
+    HashJoin.*actual rowcount = 783,.*
+      Exchange.*actual rowcount = 783,.*
+        BKAJoin.*actual rowcount = 783,.*
+          LogicalView.*actual rowcount = 1000,.*
+          LogicalView.*actual rowcount = 783,.*
+      Exchange.*actual rowcount = 1000,.*
+        LogicalView.*actual rowcount = 1000,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_PARTIAL_AGG=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) ENABLE_SORT_AGG=false WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL*/  
+    select sum(t1.integer_test) from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk where t2.integer_test < 50 group by t1.varchar_test;
+
+  plan: |
+    Project.*actual rowcount = 20,.*
+      HashAgg.*actual rowcount = 20,.*
+        Exchange.*actual rowcount = .*
+          HashJoin.*actual rowcount = 783,.*
+            Exchange.*actual rowcount = 1000,.*
+              LogicalView.*actual rowcount = 1000,.*
+            Exchange.*actual rowcount = 783,.*
+              LogicalView.*actual rowcount = 783,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) ENABLE_HASH_AGG=false WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL*/  
+    select sum(t1.integer_test) from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk where t2.integer_test < 50 group by t1.varchar_test;
+
+  plan: |
+    Project.*actual rowcount = 20,.*
+      SortAgg.*actual rowcount = 20,.*
+        Exchange.*actual rowcount = 783,.*
+          HashJoin.*actual rowcount = 783,.*
+            Exchange.*actual rowcount = 1000,.*
+              LogicalView.*actual rowcount = 1000,.*
+            Exchange.*actual rowcount = 783,.*
+              LogicalView.*actual rowcount = 783,.*
+
+# MPP tests
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false BKA_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) WORKLOAD_TYPE=AP EXECUTOR_MODE=MPP*/  
+    select * from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk  join select_base_one_one_db_one_tb t3 on t1.pk=t3.pk where t2.integer_test < 50;
+
+  plan: |
+    HashJoin.*actual rowcount = 783,.*
+      Exchange.*actual rowcount = 783.*
+        BKAJoin.*actual rowcount = 783,.*
+          LogicalView.*actual rowcount = 1000,.*
+          LogicalView.*actual rowcount = 783,.*
+      Exchange.*actual rowcount = 1000.*
+        LogicalView.*actual rowcount = 1000,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_PARTIAL_AGG=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) ENABLE_SORT_AGG=false WORKLOAD_TYPE=AP EXECUTOR_MODE=MPP*/  
+    select sum(t1.integer_test) from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk where t2.integer_test < 50 group by t1.varchar_test;
+
+  plan: |
+    Project.*actual rowcount = 20,.*
+      HashAgg.*actual rowcount = 20,.*
+        Exchange.*actual rowcount = .*
+          HashJoin.*actual rowcount = 783,.*
+            Exchange.*actual rowcount = .*
+              LogicalView.*actual rowcount = 1000,.*
+            Exchange.*actual rowcount = 783,.*
+              LogicalView.*actual rowcount = 783,.*
+
+- sql: |
+    explain analyze /*+ TDDL: ENABLE_PUSH_JOIN=false ENABLE_BROADCAST_JOIN=false ENABLE_CBO_PUSH_JOIN=false HASH_JOIN(select_base_one_multi_db_multi_tb,select_base_one_multi_db_one_tb) ENABLE_HASH_AGG=false WORKLOAD_TYPE=AP EXECUTOR_MODE=MPP*/  
+    select sum(t1.integer_test) from select_base_one_multi_db_multi_tb t1 join select_base_one_multi_db_one_tb t2 on t1.pk = t2.pk where t2.integer_test < 50 group by t1.varchar_test;
+
+  plan: |
+    Project.*actual rowcount = 20,.*
+      SortAgg.*actual rowcount = 20,.*
+        Exchange.*actual rowcount = 783,.*
+          HashJoin.*actual rowcount = 783,.*
+            Exchange.*actual rowcount = .*
+              LogicalView.*actual rowcount = 1000,.*
+            Exchange.*actual rowcount = 783,.*
+              LogicalView.*actual rowcount = 783,.*

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.MemoryNotEnoughException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -33,6 +32,7 @@ import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
+import com.google.common.collect.Lists;
 
 import java.sql.ResultSet;
 import java.util.LinkedList;

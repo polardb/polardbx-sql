@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.scheduler;
 
-import com.alibaba.polardbx.common.async.AsyncCallableTask;
 import com.alibaba.polardbx.common.scheduler.FiredScheduledJobState;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.gms.scheduler.FiredScheduledJobsAccessor;

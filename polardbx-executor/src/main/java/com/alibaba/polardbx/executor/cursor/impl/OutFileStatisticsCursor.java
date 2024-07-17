@@ -45,8 +45,10 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
+import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
@@ -62,8 +64,9 @@ import com.alibaba.polardbx.optimizer.index.TableScanFinder;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
-import com.alibaba.polardbx.optimizer.view.DrdsSystemTableView;
+import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -74,6 +77,7 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.OutFileParams;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.commons.collections.CollectionUtils;
 import org.eclipse.jetty.util.StringUtil;
 
 import java.sql.Connection;
@@ -105,6 +109,8 @@ public class OutFileStatisticsCursor extends OutFileCursor {
     private static Set<String> ignoreSessionVariables = ImmutableSet.<String>builder()
         .add(ConnectionProperties.SERVER_ID.toLowerCase())
         .add(ConnectionProperties.CONN_POOL_PROPERTIES.toLowerCase())
+        .add(ConnectionProperties.VERSION_PREFIX.toLowerCase())
+        .add(ConnectionProperties.TRX_LOG_METHOD.toLowerCase())
         .build();
     /**
      * whether to print catalog only
@@ -135,6 +141,12 @@ public class OutFileStatisticsCursor extends OutFileCursor {
     private static final String SET_GLOBAL = "set global %s = '%s'";
 
     private static final String SET_SESSION = "set session %s = '%s'";
+
+    private static final String SKIP_COLUMNAR = "/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS='WaitColumnarTableCreationTask')*/ ";
+
+    private static final String VISIBLE_COLUMNAR =
+        "/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/"
+            + " ALTER TABLE `%s` ALTER INDEX `%s` VISIBLE;";
 
     private static final String CREATE_TABLEGROUP = "CREATE TABLEGROUP IF NOT EXISTS %s";
 
@@ -420,7 +432,7 @@ public class OutFileStatisticsCursor extends OutFileCursor {
             }
             TableMeta meta = CBOUtil.getTableMeta(tableScan.getTable());
             final String schemaName = StringUtil.isEmpty(meta.getSchemaName()) ? baseSchema : meta.getSchemaName();
-            String tableName = meta.getTableName();
+            String tableName = StatisticManager.getSourceTableName(schemaName, meta.getTableName());
             tablesUsed.computeIfAbsent(schemaName, x -> new HashSet<>());
             tablesUsed.get(schemaName).add(tableName);
         }
@@ -444,7 +456,10 @@ public class OutFileStatisticsCursor extends OutFileCursor {
      */
     public void prepareGlobalVariables() {
         outputCatalog(String.format(SET_GLOBAL, ConnectionProperties.AUTO_PARTITION_PARTITIONS,
-            DynamicConfig.getInstance().getAutoPartitionPartitions()));
+            DynamicConfig.getInstance().getAutoPartitionPartitions(false)));
+
+        outputCatalog(String.format(SET_GLOBAL, ConnectionProperties.COLUMNAR_DEFAULT_PARTITIONS,
+            DynamicConfig.getInstance().getAutoPartitionPartitions(true)));
     }
 
     public void prepareCreateDatabase(Map<String, SourceInUsed> sources) {
@@ -509,6 +524,11 @@ public class OutFileStatisticsCursor extends OutFileCursor {
 
                 List<String> tableDef = Lists.newArrayList();
                 for (String tableName : tables) {
+                    List<String> columnarIndexes =
+                        GlobalIndexMeta.getColumnarIndexNames(tableName, schemaName, context);
+                    // with columnar
+                    boolean withColumnar = !CollectionUtils.isEmpty(columnarIndexes);
+
                     // show create table result of full table name
                     ExecutionContext newExecutionContext = context.copy();
                     newExecutionContext.setTestMode(false);
@@ -549,10 +569,17 @@ public class OutFileStatisticsCursor extends OutFileCursor {
                                         outputCatalog(String.format(CREATE_TABLEGROUP,
                                             create.getTableGroup().getSimpleName()));
                                     }
-
                                 }
-                                tableDef.add(statement.toString().replace("\n", " ")
+
+                                tableDef.add((withColumnar ? SKIP_COLUMNAR : "")
+                                    + statement.toString().replace("\n", " ")
                                     .replace("\t", " "));
+                                if (withColumnar) {
+                                    for (String columnarIndex : columnarIndexes) {
+                                        tableDef.add(String.format(VISIBLE_COLUMNAR, tableName,
+                                            TddlSqlToRelConverter.unwrapGsiName(columnarIndex)));
+                                    }
+                                }
                             }
                         }
                     } finally {
@@ -576,7 +603,7 @@ public class OutFileStatisticsCursor extends OutFileCursor {
                     if (viewManager == null) {
                         continue;
                     }
-                    DrdsSystemTableView.Row row = viewManager.select(view);
+                    SystemTableView.Row row = viewManager.select(view);
                     outputCatalog(String.format(DROP_VIEW_IF_EXISTS, row.getViewName()));
                     outputCatalog(String.format(CREATE_VIEW, row.getViewName(),
                         row.getViewDefinition().replace("\n", " ").replace("\t", " ")));

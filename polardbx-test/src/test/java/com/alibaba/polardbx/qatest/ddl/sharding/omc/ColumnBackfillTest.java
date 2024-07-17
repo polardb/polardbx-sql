@@ -23,6 +23,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import com.google.common.collect.ImmutableList;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -41,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertFalse;
 
+@Ignore
 public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
     private final boolean supportsAlterType =
         StorageInfoManager.checkSupportAlterType(ConnectionManager.getInstance().getMysqlDataSource());

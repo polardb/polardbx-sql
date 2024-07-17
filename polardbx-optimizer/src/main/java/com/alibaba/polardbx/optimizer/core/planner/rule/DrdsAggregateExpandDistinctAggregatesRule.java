@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -492,6 +492,7 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
         // Some aggregate functions (e.g. COUNT) have the special property that they can return a
         // non-null result without any input. We need to make sure we return a result in this case.
         final List<Integer> needDefaultValueAggCalls = new ArrayList<>();
+        Set<Integer> nullRefs = new HashSet<>();
         for (AggregateCall aggCall : aggregate.getAggCallList()) {
             final int newFilterArg;
             final List<Integer> newArgList;
@@ -531,6 +532,8 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
             newCalls.add(newCall);
             aggCallIdx++;
         }
+
+        buildNullFilter(nullRefs, relBuilder);
 
         relBuilder.aggregate(
             relBuilder.groupKey(
@@ -643,8 +646,12 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
         // Create an aggregate on top, with the new aggregate list.
         final List<AggregateCall> newAggCalls =
             com.google.common.collect.Lists.newArrayList(aggregate.getAggCallList());
-        rewriteAggCalls(newAggCalls, argList, sourceOf);
+        final Set<Integer> nullRefs = new HashSet<>();
+        rewriteAggCalls(newAggCalls, argList, sourceOf, nullRefs);
         final int cardinality = aggregate.getGroupSet().cardinality();
+
+        buildNullFilter(nullRefs, relBuilder);
+
         relBuilder.push(
             aggregate.copy(aggregate.getTraitSet(), relBuilder.build(),
                 aggregate.indicator, ImmutableBitSet.range(cardinality), null,
@@ -740,6 +747,7 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
         final int groupAndIndicatorCount =
             aggregate.getGroupCount() + aggregate.getIndicatorCount();
         int i = groupAndIndicatorCount - 1;
+        Set<Integer> nullRefs = new HashSet<>();
         for (AggregateCall aggCall : aggCalls) {
             ++i;
 
@@ -807,7 +815,7 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
                 ImmutableBitSet.ORDERING.immutableSortedCopy(
                     ImmutableBitSet.permute(aggregate.getGroupSets(), map));
         }
-
+        buildNullFilter(nullRefs, relBuilder);
         relBuilder.push(
             aggregate.copy(aggregate.getTraitSet(), relBuilder.build(),
                 aggregate.indicator, newGroupSet, newGroupingSets, aggCallList));
@@ -841,7 +849,8 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
     private static void rewriteAggCalls(
         List<AggregateCall> newAggCalls,
         List<Integer> argList,
-        Map<Integer, Integer> sourceOf) {
+        Map<Integer, Integer> sourceOf,
+        Set<Integer> nullRefs) {
         // Rewrite the agg calls. Each distinct agg becomes a non-distinct call
         // to the corresponding field from the right; for example,
         // "COUNT(DISTINCT e.sal)" becomes   "COUNT(distinct_e.sal)".
@@ -980,5 +989,20 @@ public final class DrdsAggregateExpandDistinctAggregatesRule extends RelOptRule 
                 ImmutableBitSet.range(projects.size()),
                 null, com.google.common.collect.ImmutableList.<AggregateCall>of()));
         return relBuilder;
+    }
+
+    private void buildNullFilter(Set<Integer> nullRefs, RelBuilder relBuilder) {
+        if (nullRefs.size() > 0) {
+            final List<RexNode> fields = new ArrayList<>(relBuilder.fields());
+            List<RexNode> isNotNullOperands = new ArrayList<>();
+            for (Integer nullRef : nullRefs) {
+                if (fields.get(nullRef).getType().isNullable()) {
+                    isNotNullOperands.add(relBuilder.isNotNull(fields.get(nullRef)));
+                }
+            }
+            if (isNotNullOperands.size() > 0) {
+                relBuilder.filter(isNotNullOperands);
+            }
+        }
     }
 }

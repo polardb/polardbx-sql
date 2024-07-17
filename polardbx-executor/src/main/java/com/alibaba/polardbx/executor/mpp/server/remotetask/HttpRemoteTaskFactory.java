@@ -16,11 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
-import com.google.common.collect.Multimap;
 import com.alibaba.polardbx.common.properties.MppConfig;
-import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.Session;
+import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.execution.LocationFactory;
 import com.alibaba.polardbx.executor.mpp.execution.NodeTaskMap;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTask;
@@ -36,6 +35,7 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.server.ForAsyncHttp;
 import com.alibaba.polardbx.executor.mpp.server.TaskUpdateRequest;
 import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.collect.Multimap;
 import io.airlift.http.client.HttpClient;
 import io.airlift.json.JsonCodec;
 

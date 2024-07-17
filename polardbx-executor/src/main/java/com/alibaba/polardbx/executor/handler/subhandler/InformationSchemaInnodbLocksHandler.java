@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
-import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
-import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
+import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaInnodbLocks;

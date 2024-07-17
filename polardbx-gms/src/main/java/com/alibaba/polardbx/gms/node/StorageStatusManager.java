@@ -26,21 +26,23 @@ import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.RefreshStorageStatusSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
-
-import static com.alibaba.polardbx.gms.sync.SyncScope.ALL;
 
 public class StorageStatusManager extends AbstractLifecycle {
 
@@ -52,7 +54,11 @@ public class StorageStatusManager extends AbstractLifecycle {
 
     private static StorageStatusManager instance = new StorageStatusManager();
 
-    private static long KEEPALIVE_INTERVAR = 3L;
+    private static long KEEPALIVE_INTERVAL = 1L;
+
+    private static int WINDOW_SIZE = 3;
+
+    private static int UNNOTIFY_SYNC_THRESHOLD = 60;
 
     private Map<String, StorageStatus> statusMap = new HashMap<>();
 
@@ -73,7 +79,7 @@ public class StorageStatusManager extends AbstractLifecycle {
             ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(
                 new NamedThreadFactory("Storage-Status-Factory", true));
             scheduledExecutorService
-                .scheduleWithFixedDelay(new StorageLearnerStatusTask(), 0L, KEEPALIVE_INTERVAR,
+                .scheduleWithFixedDelay(new StorageLearnerStatusTask(), 0L, KEEPALIVE_INTERVAL,
                     TimeUnit.SECONDS);
         }
     }
@@ -87,6 +93,38 @@ public class StorageStatusManager extends AbstractLifecycle {
     }
 
     public class StorageLearnerStatusTask implements Runnable {
+
+        private LinkedList<Map<String, StorageStatus>> windowStatus = new LinkedList<Map<String, StorageStatus>>();
+
+        private int unnotifyNum = 0;
+
+        private Map<String, StorageStatus> calculateSendStatus(Map<String, StorageStatus> currentElement) {
+            if (windowStatus.size() >= WINDOW_SIZE) {
+                windowStatus.removeFirst();
+            }
+            windowStatus.addLast(currentElement);
+
+            Map<String, StorageStatus> maybeSendStatus = new HashMap<>();
+            if (windowStatus.size() >= WINDOW_SIZE) {
+                Map<String, List<StorageStatus>> storageIdStatus = new HashMap<>();
+                for (Map<String, StorageStatus> status : windowStatus) {
+                    for (Map.Entry<String, StorageStatus> entry : status.entrySet()) {
+                        storageIdStatus.computeIfAbsent(
+                            entry.getKey(), b -> new ArrayList<>()).add(entry.getValue());
+                    }
+                }
+                for (Map.Entry<String, List<StorageStatus>> entry : storageIdStatus.entrySet()) {
+                    StorageStatus lastStorageStatus = entry.getValue().get(entry.getValue().size() - 1);
+                    StorageStatus clone = lastStorageStatus.clone();
+                    boolean busy = entry.getValue().stream().anyMatch(t -> t.isBusy());
+                    boolean delay = entry.getValue().stream().anyMatch(t -> t.isDelay());
+                    clone.setBusy(busy);
+                    clone.setDelay(delay);
+                    maybeSendStatus.put(entry.getKey(), clone);
+                }
+            }
+            return maybeSendStatus;
+        }
 
         @Override
         public void run() {
@@ -113,10 +151,32 @@ public class StorageStatusManager extends AbstractLifecycle {
                         }
                     }
 
+                    Map<String, StorageStatus> maybeSendStatus = null;
                     if (polarDBXStatusMap.size() > 0) {
-                        GmsSyncManagerHelper
-                            .sync(new RefreshStorageStatusSyncAction(polarDBXStatusMap), SystemDbHelper.DEFAULT_DB_NAME,
-                                ALL);
+                        maybeSendStatus = calculateSendStatus(polarDBXStatusMap);
+                    }
+
+                    if (maybeSendStatus != null && maybeSendStatus.size() > 0) {
+                        boolean change = false;
+                        for (Map.Entry<String, StorageStatus> entry : maybeSendStatus.entrySet()) {
+                            StorageStatus storageStatus = entry.getValue();
+                            StorageStatus last = statusMap.get(entry.getKey());
+                            if (last == null || !last.satisfy(storageStatus)) {
+                                change = true;
+                                break;
+                            }
+                        }
+                        if (change) {
+                            unnotifyNum = 0;
+                        } else {
+                            unnotifyNum++;
+                        }
+                        if (change || unnotifyNum > UNNOTIFY_SYNC_THRESHOLD) {
+                            GmsSyncManagerHelper
+                                .sync(new RefreshStorageStatusSyncAction(polarDBXStatusMap),
+                                    SystemDbHelper.DEFAULT_DB_NAME,
+                                    SyncScope.NOT_COLUMNAR_SLAVE);
+                        }
                     }
                 }
             } catch (Throwable t) {
@@ -197,7 +257,7 @@ public class StorageStatusManager extends AbstractLifecycle {
             boolean isBusy = activeSession >= DynamicConfig.getInstance().getBusyThreshold();
             boolean isDelay = delaySecond >= DynamicConfig.getInstance().getDelayThreshold();
             if (isDelay) {
-                logger.warn("The storage id " + storageId + " is delay");
+//                logger.warn("The storage id " + storageId + " is delay");
             }
             polarDBXStatusMap.put(storageId,
                 new StorageStatus(instId, delaySecond, activeSession, isBusy, isDelay));

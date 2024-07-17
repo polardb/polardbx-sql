@@ -101,6 +101,11 @@ public class SqlIdentifier extends SqlNode {
   public SqlNode flashback;
 
   /**
+   * 记录AS OF 种类：AS_OF/AS_OF_80/AS_OF_57
+   */
+  public SqlOperator flashbackOperator;
+
+  /**
    * This identifier's collation (if any).
    */
   final SqlCollation collation;
@@ -153,7 +158,7 @@ public class SqlIdentifier extends SqlNode {
 //    for (String name : names) {
 //      assert name != null;
 //    }
-    this(names, collation, pos, componentPositions, null, null, null);
+    this(names, collation, pos, componentPositions, null, null, null, null);
   }
 
   public SqlIdentifier(
@@ -161,14 +166,14 @@ public class SqlIdentifier extends SqlNode {
       SqlCollation collation,
       SqlParserPos pos,
       List<SqlParserPos> componentPositions, SqlNode indexNode) {
-    this(names, collation, pos, componentPositions, indexNode, null, null);
+    this(names, collation, pos, componentPositions, indexNode, null, null, null);
   }
 
   public SqlIdentifier(
       String name,
       SqlParserPos pos,
       SqlNode indexNode) {
-    this(ImmutableList.of(name), null, pos, null, indexNode, null, null);
+    this(ImmutableList.of(name), null, pos, null, indexNode, null, null, null);
   }
 
   /**
@@ -181,6 +186,15 @@ public class SqlIdentifier extends SqlNode {
       SqlCollation collation,
       SqlParserPos pos,
       List<SqlParserPos> componentPositions, SqlNode indexNode, SqlNode partitions, SqlNode flashback) {
+    this(ImmutableList.copyOf(names), collation, pos, componentPositions, indexNode, partitions, flashback, null);
+  }
+
+  public SqlIdentifier(
+      List<String> names,
+      SqlCollation collation,
+      SqlParserPos pos,
+      List<SqlParserPos> componentPositions, SqlNode indexNode, SqlNode partitions, SqlNode flashback,
+      SqlOperator flashbackOperator) {
     super(pos);
     this.names = ImmutableList.copyOf(names);
     this.collation = collation;
@@ -192,16 +206,21 @@ public class SqlIdentifier extends SqlNode {
     this.indexNode = indexNode;
     this.partitions = partitions;
     this.flashback = flashback;
+    this.flashbackOperator = flashbackOperator;
   }
 
-  /** Creates an identifier that is a singleton wildcard star. */
+  /**
+   * Creates an identifier that is a singleton wildcard star.
+   */
   public static SqlIdentifier star(SqlParserPos pos) {
     return star(ImmutableList.of(""), pos, ImmutableList.of(pos));
   }
 
-  /** Creates an identifier that ends in a wildcard star. */
+  /**
+   * Creates an identifier that ends in a wildcard star.
+   */
   public static SqlIdentifier star(List<String> names, SqlParserPos pos,
-      List<SqlParserPos> componentPositions) {
+                                   List<SqlParserPos> componentPositions) {
     return new SqlIdentifier(Lists.transform(names, STAR_TO_EMPTY), null, pos,
         componentPositions);
   }
@@ -213,7 +232,7 @@ public class SqlIdentifier extends SqlNode {
   }
 
   @Override public SqlNode clone(SqlParserPos pos) {
-    return new SqlIdentifier(names, collation, pos, componentPositions, indexNode, partitions, flashback);
+    return new SqlIdentifier(names, collation, pos, componentPositions, indexNode, partitions, flashback, flashbackOperator);
   }
 
   public String toStringWithBacktick() {
@@ -497,6 +516,10 @@ public class SqlIdentifier extends SqlNode {
     final SqlQualified qualified = scope.fullyQualify(this);
     final SqlIdentifier fqId = qualified.identifier;
     return qualified.namespace.resolve().getMonotonicity(Util.last(fqId.names));
+  }
+
+  public SqlOperator getFlashbackOperator() {
+    return flashbackOperator;
   }
 }
 

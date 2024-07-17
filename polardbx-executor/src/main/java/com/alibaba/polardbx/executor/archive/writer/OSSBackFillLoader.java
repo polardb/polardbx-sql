@@ -58,7 +58,7 @@ public class OSSBackFillLoader extends com.alibaba.polardbx.executor.backfill.Lo
                                 BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                 Map<String, String> sourceTargetGroupMap, String designateLogicalPart) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc, false);
+            executeFunc, false, null);
         this.sourceTargetGroupMap = sourceTargetGroupMap;
         this.designateLogicalPart = designateLogicalPart;
     }
@@ -164,8 +164,9 @@ public class OSSBackFillLoader extends com.alibaba.polardbx.executor.backfill.Lo
         String targetGroup = sourceTargetGroupMap.get(sourceDbIndex);
         assert targetGroup != null;
         return InsertIndexExecutor
-            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext, executeFunc,
+            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext,
+                executeFunc,
                 false,
-                false, this.designateLogicalPart);
+                false, this.designateLogicalPart, false, null);
     }
 }

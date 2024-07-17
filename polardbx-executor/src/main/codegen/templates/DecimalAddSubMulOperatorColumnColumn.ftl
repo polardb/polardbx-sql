@@ -49,19 +49,19 @@ public class ${className} extends AbstractVectorizedExpression {
         <#if type.inputDataType1 == "Decimal">
 
         <#else>
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
+            ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
         </#if>
 
         <#if type.inputDataType2 == "Decimal">
 
         <#else>
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
+            ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
         </#if>
 
         <#if type.outputDataType == "Decimal">
-        Slice output = ((DecimalBlock) outputVectorSlot).getMemorySegments();
+            Slice output = (outputVectorSlot.cast(DecimalBlock.class)).getMemorySegments();
         <#else>
-        ${type.outputType}[] res = ((${type.outputVectorType}) outputVectorSlot).${type.outputType}Array();
+            ${type.outputType}[] res = (outputVectorSlot.cast(${type.outputVectorType}.class)).${type.outputType}Array();
         </#if>
 
         DecimalStructure leftDec = new DecimalStructure();
@@ -98,7 +98,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType1 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array1[j], leftDec);
                 <#elseif type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(j));
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
                 <#else>
                 DecimalConverter.longToDecimal(array1[j], leftDec, isLeftUnsigned);
                 </#if>
@@ -107,7 +107,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType2 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array2[j], rightDec);
                 <#elseif type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(j));
+                    rightDec = new DecimalStructure((rightInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
                 <#else>
                 DecimalConverter.longToDecimal(array2[j], rightDec, isRightUnsigned);
                 </#if>
@@ -116,14 +116,14 @@ public class ${className} extends AbstractVectorizedExpression {
                 FastDecimalUtils.${operator.decimalOp}(leftDec, rightDec, toValue);
             <#else>
                 <#if type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(j));
-                double leftDouble = DecimalConverter.decimalToDouble(leftDec);
-                res[j] = leftDouble ${operator.doubleOp} array2[j];
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
+                    double leftDouble = DecimalConverter.decimalToDouble(leftDec);
+                    res[j] = leftDouble ${operator.doubleOp} array2[j];
                 </#if>
                 <#if type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(j));
-                double rightDouble = DecimalConverter.decimalToDouble(rightDec);
-                res[j] = array1[j] ${operator.doubleOp} rightDouble;
+                    rightDec = new DecimalStructure((rightInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
+                    double rightDouble = DecimalConverter.decimalToDouble(rightDec);
+                    res[j] = array1[j] ${operator.doubleOp} rightDouble;
                 </#if>
             </#if>
             }
@@ -150,7 +150,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType1 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array1[i], leftDec);
                 <#elseif type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(i));
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
                 <#else>
                 DecimalConverter.longToDecimal(array1[i], leftDec, isLeftUnsigned);
                 </#if>
@@ -159,7 +159,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType2 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array2[i], rightDec);
                 <#elseif type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(i));
+                    rightDec = new DecimalStructure((rightInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
                 <#else>
                 DecimalConverter.longToDecimal(array2[i], rightDec, isRightUnsigned);
                 </#if>
@@ -168,18 +168,21 @@ public class ${className} extends AbstractVectorizedExpression {
                 FastDecimalUtils.${operator.decimalOp}(leftDec, rightDec, toValue);
             <#else>
                 <#if type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(i));
-                double leftDouble = DecimalConverter.decimalToDouble(leftDec);
-                res[i] = leftDouble ${operator.doubleOp} array2[i];
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
+                    double leftDouble = DecimalConverter.decimalToDouble(leftDec);
+                    res[i] = leftDouble ${operator.doubleOp} array2[i];
                 </#if>
                 <#if type.inputDataType2 == "Decimal">
-                rightDec = new DecimalStructure(((DecimalBlock) rightInputVectorSlot).getRegion(i));
-                double rightDouble = DecimalConverter.decimalToDouble(rightDec);
-                res[i] = array1[i] ${operator.doubleOp} rightDouble;
+                    rightDec = new DecimalStructure((rightInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
+                    double rightDouble = DecimalConverter.decimalToDouble(rightDec);
+                    res[i] = array1[i] ${operator.doubleOp} rightDouble;
                 </#if>
             </#if>
             }
         }
+         <#if type.outputDataType == "Decimal">
+             outputVectorSlot.cast(DecimalBlock.class).setFullState();
+         </#if>
     }
 }
 

@@ -16,7 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
@@ -30,11 +34,13 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartitionRouter;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumHasher;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
+import groovy.sql.Sql;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.type.SqlTypeUtil;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -154,11 +160,23 @@ public abstract class PartitionByDefinitionBase {
      */
     protected Monotonicity partIntFuncMonotonicity;
 
+    /**
+     * The array of part partition function for all partition columns,
+     * <pre>
+     *      some strategy like co_hash, allow using multi partFunc-wrapped partition columns,
+     *      so the size of this array may be >= 1;
+     *      but some strategy like hash/range/list/udf_hash, they allow using only one
+     *      partFunc-wrapped partition column, so the size of this array will be  <= 1
+     *  </pre>
+     */
+    protected PartitionIntFunction[] partFuncArr;
+
     public PartitionByDefinitionBase() {
         partitionExprList = new ArrayList<>();
         partitionExprTypeList = new ArrayList<>();
         partitionFieldList = new ArrayList<>();
         partitionColumnNameList = new ArrayList<>();
+        partFuncArr = null;
     }
 
     public PartitionStrategy getStrategy() {
@@ -334,8 +352,9 @@ public abstract class PartitionByDefinitionBase {
         Charset[] datumCharsets = new Charset[partCnt];
         SqlCollation[] datumCollations = new SqlCollation[partCnt];
         for (int i = 0; i < partCnt; i++) {
-            RelDataType partExprDataType = partitionFieldList.get(i).getField().getRelType();
-            datumDataTypes[i] = partExprDataType;
+            Field partFld = partitionFieldList.get(i).getField();
+            RelDataType partFldDataType = partFld.getRelType();
+            datumDataTypes[i] = partFldDataType;
             datumDrdsDataTypes[i] = DataTypeUtil.calciteToDrdsType(datumDataTypes[i]);
             datumCharsets[i] = datumDataTypes[i].getCharset();
             datumCollations[i] = datumDataTypes[i].getCollation();
@@ -385,6 +404,7 @@ public abstract class PartitionByDefinitionBase {
                                                           SearchDatumHasher partHasher,
                                                           PartitionStrategy partStrategy,
                                                           List<ColumnMeta> partFldList,
+                                                          PartitionIntFunction[] partFuncArr,
                                                           List<PartitionSpec> partitions) {
 
         PartitionRouter router = null;
@@ -398,7 +418,9 @@ public abstract class PartitionByDefinitionBase {
             return null;
         }
 
-        if (strategy.isHashed()) {
+        if (strategy.isDirectHash()) {
+            router = PartitionRouter.createByDirectHasher(partitions.size());
+        } else if (strategy.isHashed()) {
             // Extract hash value for hash-partition
 
             if (!strategy.isKey() || (strategy.isKey() && partFields.size() == 1)) {
@@ -439,6 +461,11 @@ public abstract class PartitionByDefinitionBase {
                 .map(part -> extractHashCodeFromPartitionBound(part.getBoundSpec())).toArray();
             router = PartitionRouter.createByHasher(strategy, datumArr, hasher, null/*use Long Comp*/);
 
+        } else if (strategy.isCoHashed()) {
+            Object[] datumArr = partitions.stream()
+                .map(part -> extractHashCodeFromPartitionBound(part.getBoundSpec())).toArray();
+            router = PartitionRouter.createByHasher(strategy, datumArr, hasher, null/*use Long Comp*/);
+
         } else {
             throw new UnsupportedOperationException("partition strategy " + strategy);
         }
@@ -456,5 +483,13 @@ public abstract class PartitionByDefinitionBase {
         PartitionBoundSpec newBndSpec = bndSpec.copy();
         newBndSpec.getMultiDatums().sort(cmp);
         return newBndSpec;
+    }
+
+    public PartitionIntFunction[] getPartFuncArr() {
+        return partFuncArr;
+    }
+
+    public void setPartFuncArr(PartitionIntFunction[] partFuncArr) {
+        this.partFuncArr = partFuncArr;
     }
 }

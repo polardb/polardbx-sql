@@ -56,10 +56,8 @@ public class LimitExecFactory extends ExecutorFactory {
             }
         }
         Executor exec = new LimitExec(inputs, skip, fetch, context);
-        exec.setId(limit.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(limit, exec, context);
-        }
+        registerRuntimeStat(exec, limit, context);
         return exec;
     }
+
 }

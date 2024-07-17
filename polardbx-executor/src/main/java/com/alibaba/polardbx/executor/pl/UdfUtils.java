@@ -17,18 +17,17 @@
 package com.alibaba.polardbx.executor.pl;
 
 import com.alibaba.polardbx.druid.sql.SQLUtils;
-import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLBlockStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
+import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.core.datatype.type.BasicTypeBuilders;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.schema.Function;
 import org.apache.calcite.schema.impl.TypeKnownScalarFunction;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -93,5 +92,26 @@ public class UdfUtils {
         }
         // disable type coercion
         SqlStdOperatorTable.instance().disableTypeCoercion(functionName, SqlSyntax.FUNCTION);
+    }
+
+    public static String removeFuncBody(String createFunctionContent) {
+        SQLCreateFunctionStatement
+            statement = (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunctionContent).get(0);
+        statement.setBlock(new SQLBlockStatement());
+        return statement.toString(VisitorFeature.OutputPlOnlyDefinition);
+    }
+
+    public static void validateContent(String content) {
+        String createFunction = UdfUtils.removeFuncBody(content);
+        // validate parser
+        SQLCreateFunctionStatement
+            statement = (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunction).get(0);
+        // validate input types
+        List<SQLParameter> inputParams = statement.getParameters();
+        for (SQLParameter param : inputParams) {
+            DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), param.getDataType());
+        }
+        // validate return types
+        DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), statement.getReturnDataType());
     }
 }

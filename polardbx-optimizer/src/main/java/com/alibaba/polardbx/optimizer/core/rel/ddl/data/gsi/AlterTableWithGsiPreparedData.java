@@ -20,9 +20,12 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameLocalIndexPreparedData;
 import lombok.Data;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Data
 public class AlterTableWithGsiPreparedData extends DdlPreparedData {
@@ -36,6 +39,9 @@ public class AlterTableWithGsiPreparedData extends DdlPreparedData {
     private RenameGlobalIndexPreparedData renameGlobalIndexPreparedData;
     private AlterGlobalIndexVisibilityPreparedData globalIndexVisibilityPreparedData;
     private RenameLocalIndexPreparedData renameLocalIndexPreparedData;
+
+    //if value=true, the no-exist tablegroup will be created before create table/gsi
+    private Map<String, Boolean> relatedTableGroupInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     public void addAlterGlobalIndexPreparedData(AlterTablePreparedData alterGlobalIndexPreparedData) {
         this.globalIndexPreparedData.add(alterGlobalIndexPreparedData);
@@ -66,4 +72,29 @@ public class AlterTableWithGsiPreparedData extends DdlPreparedData {
             || renameGlobalIndexPreparedData != null || globalIndexPreparedData.size() > 0;
     }
 
+    @Override
+    public void setDdlVersionId(@NotNull Long versionId) {
+        super.setDdlVersionId(versionId);
+        if (null != clusteredIndexPrepareData) {
+            clusteredIndexPrepareData.forEach(p -> p.setDdlVersionId(versionId));
+        }
+        if (null != globalIndexPreparedData) {
+            globalIndexPreparedData.forEach(p -> p.setDdlVersionId(versionId));
+        }
+        if (null != createIndexWithGsiPreparedData) {
+            createIndexWithGsiPreparedData.setDdlVersionId(versionId);
+        }
+        if (null != dropIndexWithGsiPreparedData) {
+            dropIndexWithGsiPreparedData.setDdlVersionId(versionId);
+        }
+        if (null != renameGlobalIndexPreparedData) {
+            renameGlobalIndexPreparedData.setDdlVersionId(versionId);
+        }
+        if (null != globalIndexVisibilityPreparedData) {
+            globalIndexVisibilityPreparedData.setDdlVersionId(versionId);
+        }
+        if (null != renameLocalIndexPreparedData) {
+            renameLocalIndexPreparedData.setDdlVersionId(versionId);
+        }
+    }
 }

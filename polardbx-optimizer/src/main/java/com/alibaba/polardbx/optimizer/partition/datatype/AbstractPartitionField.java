@@ -191,6 +191,11 @@ public abstract class AbstractPartitionField implements PartitionField {
     }
 
     @Override
+    public long xxHashCode() {
+        return field.xxHashCode();
+    }
+
+    @Override
     public byte[] rawBytes() {
         return field.rawBytes();
     }

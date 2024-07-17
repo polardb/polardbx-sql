@@ -17,54 +17,48 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.List;
 
 public class MutableChunk extends Chunk {
-    public MutableChunk(int positionCount, Block... blocks) {
-        super(positionCount, blocks);
-    }
+    private int chunkLimit;
+    private int[] outputIndexes;
+    private boolean isFirstAllocation;
 
+    // for literal
+    BitSet literalBitmap;
+
+    // for test
     public MutableChunk(Block... blocks) {
         super(blocks);
     }
 
-    public MutableChunk(int[] selection, Block[] slots) {
+    public MutableChunk(int[] selection, Block[] slots, int chunkLimit, int[] outputIndexes, BitSet literalBitmap) {
         super(selection, slots);
+        this.chunkLimit = chunkLimit;
+        this.outputIndexes = outputIndexes;
+        this.isFirstAllocation = true;
+        this.literalBitmap = literalBitmap;
     }
 
     public RandomAccessBlock slotIn(int index, DataType<?> dataType) {
-        RandomAccessBlock block = slotIn(index);
-        DataType slotDataType = block.getType();
-        if (slotDataType != null && !slotDataType.getDataClass().equals(dataType.getDataClass())) {
-            GeneralUtil.nestedException("block type " + slotDataType + " is not consistent with " + dataType);
-        }
-
-        return block;
+        return slotIn(index);
     }
 
     /**
      * unsafe method to get vector
      */
     public RandomAccessBlock slotIn(int index) {
-        RandomAccessBlock block = null;
-        if (index < blocks.length) {
-            block = (RandomAccessBlock) blocks[index];
-            if (block == null) {
-                GeneralUtil.nestedException("block in " + index + " does not exist");
-            }
-        } else {
-            GeneralUtil.nestedException("block in " + index + " does not exist");
-        }
-        return block;
+        return (RandomAccessBlock) blocks[index];
     }
 
     public void setSlotAt(RandomAccessBlock block, int index) {
-        Preconditions.checkNotNull(block, "block can't be null");
         this.blocks[index] = (Block) block;
     }
 
@@ -91,10 +85,7 @@ public class MutableChunk extends Chunk {
         reallocate(newBatchSize, blockCount, false);
     }
 
-    /**
-     * If the runtime size of Chunk exceeds the batch size, reallocate the vector.
-     */
-    public void reallocate(final int newBatchSize, int blockCount, boolean reuse) {
+    public void allocateWithObjectPool(final int newBatchSize, final int inputBlockCount, ObjectPools objectPools) {
         // Get the destination physical element count.
         // It's greater than or equal to batch size (position count).
         int distSize = newBatchSize;
@@ -103,14 +94,16 @@ public class MutableChunk extends Chunk {
             distSize = Math.max(newBatchSize, selectionBound);
         }
 
-        for (int i = blockCount; i < blocks.length; i++) {
+        int j = 0;
+        for (int i = inputBlockCount; i < blocks.length; i++) {
             Block vector = blocks[i];
             RandomAccessBlock newVector;
-            if (reuse
-                && vector.getPositionCount() == distSize
-                && vector instanceof RandomAccessBlock
-            ) {
-                newVector = (RandomAccessBlock) vector;
+
+            if (j < outputIndexes.length && outputIndexes[j] == i) {
+                j++;
+                // allocate memory for output vector in chunk limit size.
+                newVector = BlockUtils.createBlock(((RandomAccessBlock) vector).getType(),
+                    distSize, objectPools, chunkLimit);
             } else {
                 newVector = BlockUtils.createBlock(((RandomAccessBlock) vector).getType(), distSize);
             }
@@ -118,6 +111,127 @@ public class MutableChunk extends Chunk {
             newVector.resize(newBatchSize);
             blocks[i] = (Block) newVector;
         }
+
+        this.positionCount = newBatchSize;
+    }
+
+    public void allocateWithReuse(final int newBatchSize, final int inputBlockCount) {
+        if (isFirstAllocation) {
+            // In first allocation, allocate memory for all output blocks.
+            for (int i = inputBlockCount; i < blocks.length; i++) {
+                Block vector = blocks[i];
+                RandomAccessBlock newVector = (RandomAccessBlock) vector;
+
+                if (literalBitmap == null || !literalBitmap.get(i)) {
+                    newVector = BlockUtils.createBlock(((RandomAccessBlock) vector).getType(), chunkLimit);
+                    // set position count = max{selection count, batch size}
+                    newVector.resize(newBatchSize);
+                } else {
+                    // lazy allocation
+                    newVector.resize(0);
+                }
+
+                blocks[i] = (Block) newVector;
+            }
+            isFirstAllocation = false;
+        } else {
+            for (int i = inputBlockCount; i < blocks.length; i++) {
+                RandomAccessBlock vector = (RandomAccessBlock) blocks[i];
+                if (literalBitmap == null || !literalBitmap.get(i)) {
+                    // set position count = max{selection count, batch size}
+                    vector.resize(newBatchSize);
+                } else {
+                    vector.resize(0);
+                }
+            }
+        }
+        this.positionCount = newBatchSize;
+    }
+
+    /**
+     * If the runtime size of Chunk exceeds the batch size, reallocate the vector.
+     */
+    public void reallocate(final int newBatchSize, int blockCount, boolean reuse) {
+        if (reuse && chunkLimit > 0 && outputIndexes != null) {
+
+            if (isFirstAllocation) {
+                // In first allocation, allocate memory for all output blocks.
+                for (int i = blockCount; i < blocks.length; i++) {
+                    Block vector = blocks[i];
+
+                    // exclude the literal expression
+                    RandomAccessBlock newVector = (RandomAccessBlock) vector;
+                    if (literalBitmap == null || !literalBitmap.get(i)) {
+                        newVector = BlockUtils.createBlock(((RandomAccessBlock) vector).getType(), chunkLimit);
+                        // set position count = max{selection count, batch size}
+                        newVector.resize(newBatchSize);
+                    } else {
+                        newVector.resize(0);
+                    }
+
+                    blocks[i] = (Block) newVector;
+
+                }
+                isFirstAllocation = false;
+            } else {
+                // Just allocate memory for output vector in chunk limit size.
+                for (int i = 0; i < outputIndexes.length; i++) {
+                    Block vector = blocks[i];
+                    RandomAccessBlock newVector =
+                        BlockUtils.createBlock(((RandomAccessBlock) vector).getType(), chunkLimit);
+                    blocks[i] = (Block) newVector;
+                }
+
+                for (int i = blockCount; i < blocks.length; i++) {
+                    // set position count = max{selection count, batch size}
+                    RandomAccessBlock vector = (RandomAccessBlock) blocks[i];
+                    if (literalBitmap == null || !literalBitmap.get(i)) {
+                        vector.resize(newBatchSize);
+                    } else {
+                        vector.resize(0);
+                    }
+
+                }
+
+            }
+        } else {
+            // allocate memory for request.
+
+            // Get the destination physical element count.
+            // It's greater than or equal to batch size (position count).
+            int distSize = newBatchSize;
+            if (isSelectionInUse() && selection != null && selection.length > 0) {
+                int selectionBound = selection[selection.length - 1] + 1;
+                distSize = Math.max(newBatchSize, selectionBound);
+            }
+
+            for (int i = blockCount; i < blocks.length; i++) {
+                Block vector = blocks[i];
+                RandomAccessBlock newVector;
+
+                // don't merge branch
+                if (literalBitmap != null && literalBitmap.get(i)) {
+                    // exclude the literal expression
+                    newVector = (RandomAccessBlock) vector;
+                    newVector.resize(0);
+                } else if (reuse
+                    && vector.getPositionCount() == distSize
+                    && vector instanceof RandomAccessBlock
+                ) {
+                    // Just reuse vector if dist size is equal.
+                    newVector = (RandomAccessBlock) vector;
+                    // set position count = max{selection count, batch size}
+                    newVector.resize(newBatchSize);
+                } else {
+                    newVector = BlockUtils.createBlock(((RandomAccessBlock) vector).getType(), distSize);
+                    // set position count = max{selection count, batch size}
+                    newVector.resize(newBatchSize);
+                }
+
+                blocks[i] = (Block) newVector;
+            }
+        }
+
         this.positionCount = newBatchSize;
     }
 
@@ -129,11 +243,18 @@ public class MutableChunk extends Chunk {
         final int positionCount;
         int[] selection;
         List<RandomAccessBlock> blocks = new ArrayList<>(64);
+        int[] outputIndexes;
+        int chunkLimit;
+
+        // for literal
+        BitSet literalBitmap;
 
         public Builder(int positionCount) {
             Preconditions.checkArgument(
                 positionCount > 0, "Slot length expected to be greater than 0 but is " + positionCount);
             this.positionCount = positionCount;
+            this.chunkLimit = 0;
+            this.outputIndexes = null;
         }
 
         public Builder withSelection(int[] selection) {
@@ -157,11 +278,28 @@ public class MutableChunk extends Chunk {
             return this;
         }
 
+        public Builder addOutputIndexes(int[] outputIndexes) {
+            this.outputIndexes = outputIndexes;
+            return this;
+        }
+
+        public Builder addChunkLimit(int chunkLimit) {
+            this.chunkLimit = chunkLimit;
+            return this;
+        }
+
+        public Builder addLiteralBitmap(BitSet literalBitmap) {
+            this.literalBitmap = literalBitmap;
+            // exclude the root output index.
+            this.literalBitmap.clear(outputIndexes[0]);
+            return this;
+        }
+
         public MutableChunk build() {
             if (blocks.isEmpty()) {
                 throw new IllegalArgumentException("Can't create vector batch without any slots!");
             }
-            return new MutableChunk(selection, blocks.toArray(new Block[0]));
+            return new MutableChunk(selection, blocks.toArray(new Block[0]), chunkLimit, outputIndexes, literalBitmap);
         }
     }
 }

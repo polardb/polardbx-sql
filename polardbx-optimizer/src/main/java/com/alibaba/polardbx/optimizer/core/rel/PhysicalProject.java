@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
@@ -287,7 +287,7 @@ public class PhysicalProject extends Project implements PhysicalNode {
     public Pair<RelTraitSet, List<RelTraitSet>> passThroughTraits(
         RelTraitSet required) {
         return CBOUtil.passThroughTraitsForProject(required, exps,
-            input.getRowType(), input.getCluster().getTypeFactory(), traitSet);
+            input.getRowType(), input.getCluster().getTypeFactory(), traitSet, this);
     }
 
     @Override
@@ -302,7 +302,7 @@ public class PhysicalProject extends Project implements PhysicalNode {
             //      Agg
             //        LogicalView
             if (childTraits.simplify().getCollation().isTop()
-                    && !input.getTraitSet().simplify().getCollation().isTop()) {
+                && !input.getTraitSet().simplify().getCollation().isTop()) {
                 return null;
             }
             return CBOUtil.deriveTraitsForProject(childTraits, childId, exps,

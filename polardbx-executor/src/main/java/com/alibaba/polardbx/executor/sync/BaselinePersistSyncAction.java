@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.sync;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
+import com.alibaba.polardbx.gms.util.SyncUtil;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 /**
@@ -31,7 +32,7 @@ public class BaselinePersistSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        if (ConfigDataMode.isMasterMode() && LeaderStatusBridge.getInstance().hasLeadership()) {
+        if (SyncUtil.isNodeWithSmallestId()) {
             PlanManager.getInstance().persistBaseline();
         }
         return null;

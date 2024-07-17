@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.NumericTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
@@ -39,7 +40,9 @@ import com.google.protobuf.ByteString;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.airlift.slice.XxHash64;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
@@ -257,6 +260,17 @@ public class DatetimeField extends AbstractTemporalField {
             CollationHandler collationHandler = getCollationHandler();
             collationHandler.hashcode(packedBinary, length, numbers);
         }
+    }
+
+    @Override
+    public long xxHashCode() {
+        if (isNull()) {
+            return NULL_HASH_CODE;
+        }
+        MysqlDateTime dateTime = TimeStorage.readTimestamp(packedLong);
+        OriginalTimestamp originalTimestamp = new OriginalTimestamp(dateTime);
+        byte[] rawBytes = originalTimestamp.toString().getBytes(StandardCharsets.UTF_8);
+        return XxHash64.hash(rawBytes, 0, rawBytes.length);
     }
 
     @Override

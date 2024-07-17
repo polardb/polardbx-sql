@@ -3,7 +3,7 @@
 
 
   plan: |
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1)")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` from ? as `a` where (`a`.`id` = 1)")
 
 - sql: |
     Select * from tf_f_user_service where user_id IN (3015020529145996) AND product_id IN (90657326) AND end_date > now() AND province_code = '30' AND partition_id = RIGHT(CAST(3015020529145996 AS char), 4) limit 2001

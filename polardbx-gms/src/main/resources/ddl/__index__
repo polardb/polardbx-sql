@@ -5,7 +5,6 @@ ddl_job_engine.xml
 global_secondary_index.xml
 logical_statistics.xml
 mpp_engine.xml
-plan_management.xml
 privilege.xml
 recycle_bin.xml
 scale_out.xml
@@ -16,4 +15,6 @@ schema_evolution.xml
 ccl_rule.xml
 cdc.xml
 table_group.xml
+columnar.xml
 foreign_key.xml
+spm.xml

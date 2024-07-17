@@ -19,27 +19,141 @@ package com.alibaba.polardbx.druid.sql.parser;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
-import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropJavaFunctionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
-import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class SQLStatementParserTest {
+
+    private final SQLParserFeature[] FEATURES = {
+        SQLParserFeature.EnableSQLBinaryOpExprGroup,
+        SQLParserFeature.UseInsertColumnsCache, SQLParserFeature.OptimizedForParameterized,
+        SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
+        SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
+    };
+
+    @Test
+    public void testStartReplicaCheck() {
+        String sql = "check replica table `testdb`.`testtb` for channel 'test'";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` FOR CHANNEL 'test'", statement.toString());
+
+        sql = "check replica table `testdb` for channel 'test'";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` FOR CHANNEL 'test'", statement.toString());
+    }
+
+    @Test
+    public void testPauseReplicaCheck() {
+        String sql = "check replica table `testdb`.`testtb` pause";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` PAUSE", statement.toString());
+
+        sql = "check replica table `testdb` pause";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` PAUSE", statement.toString());
+    }
+
+    @Test
+    public void testContinueReplicaCheck() {
+        String sql = "check replica table `testdb`.`testtb` continue";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` CONTINUE", statement.toString());
+
+        sql = "check replica table `testdb` continue";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` CONTINUE", statement.toString());
+    }
+
+    @Test
+    public void testCancelReplicaCheck() {
+        String sql = "check replica table `testdb`.`testtb` cancel";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` CANCEL", statement.toString());
+
+        sql = "check replica table `testdb` cancel";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` CANCEL", statement.toString());
+    }
+
+    @Test
+    public void testResetReplicaCheck() {
+        String sql = "check replica table `testdb`.`testtb` reset";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` RESET", statement.toString());
+
+        sql = "check replica table `testdb` reset";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` RESET", statement.toString());
+
+    }
+
+    @Test
+    public void testShowReplicaCheckProgress() {
+        String sql = "check replica table `testdb`.`testtb` show progress";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` SHOW PROGRESS", statement.toString());
+
+        sql = "check replica table `testdb` show progress";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` SHOW PROGRESS", statement.toString());
+    }
+
+    @Test
+    public void testShowReplicaCheckDiff() {
+        String sql = "check replica table `testdb`.`testtb` show diff";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb`.`testtb` SHOW DIFF", statement.toString());
+
+        sql = "check replica table `testdb` show diff";
+        parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        statementList = parser.parseStatementList();
+        statement = statementList.get(0);
+        Assert.assertEquals("CHECK REPLICA TABLE `testdb` SHOW DIFF", statement.toString());
+    }
+
+    @Test
+    public void testReplicaHashcheck() {
+        String sql =
+            "replica hashcheck(col1, col2, col3) from test_tb where ( val1 <= pk1 < val2 AND val3 <= pk2 < val4)";
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+    }
 
     @Test
     public void testParseCreateTablePartitionBy() {
@@ -52,12 +166,6 @@ public class SQLStatementParserTest {
                 + "e varchar(16) NOT NULL) "
                 + "partition by hash (c,d) partitions 2 subpartition by hash (a,b) "
                 + "(  partition p1 subpartitions 2, partition p2 subpartitions 4)";
-        SQLParserFeature[] FEATURES = {
-            SQLParserFeature.EnableSQLBinaryOpExprGroup,
-            SQLParserFeature.UseInsertColumnsCache, SQLParserFeature.OptimizedForParameterized,
-            SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr, SQLParserFeature.DRDSAsyncDDL,
-            SQLParserFeature.DRDSBaseline, SQLParserFeature.DrdsMisc, SQLParserFeature.DrdsGSI, SQLParserFeature.DrdsCCL
-        };
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, FEATURES);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement statement = statementList.get(0);
@@ -142,6 +250,61 @@ public class SQLStatementParserTest {
 
         String unparseSql2 = stmt.toString();
         Assert.assertEquals(expectResult, unparseSql2);
+    }
+
+    @Test
+    public void testUnparserOriginSqlWithSubPart3_k_k_tp() {
+        String content =
+            "create table if not exists k_k_tp6 ( "
+                + "a bigint unsigned not null, "
+                + "b bigint unsigned not null, "
+                + "c datetime NOT NULL, "
+                + "d varchar(16) NOT NULL, "
+                + "e varchar(16) NOT NULL ) "
+                + "partition by key (c,d) partitions 3 subpartition by key (a,b) "
+                + "( "
+                + "subpartition sp1 values less than (0,9223372036854775807), "
+                + "subpartition sp2 values less than (3,9223372036854775807), "
+                + "subpartition sp3 values less than (4611686018427387905,9223372036854775807), "
+                + "subpartition sp4 values less than (9223372036854775807,9223372036854775807) ) "
+                + "( "
+                + "partition p1 values less than (3,9223372036854775807), "
+                + "partition p2 values less than (4611686018427387905,9223372036854775807), "
+                + "partition p3 values less than (9223372036854775807,9223372036854775807) )";
+
+        String expectResult = "CREATE TABLE IF NOT EXISTS k_k_tp6 (\n"
+            + "\ta bigint UNSIGNED NOT NULL,\n"
+            + "\tb bigint UNSIGNED NOT NULL,\n"
+            + "\tc datetime NOT NULL,\n"
+            + "\td varchar(16) NOT NULL,\n"
+            + "\te varchar(16) NOT NULL\n"
+            + ")\n"
+            + "PARTITION BY KEY (c, d) PARTITIONS 3\n"
+            + "SUBPARTITION BY KEY (a, b) (\n"
+            + "\tSUBPARTITION sp1 VALUES LESS THAN (0, 9223372036854775807), \n"
+            + "\tSUBPARTITION sp2 VALUES LESS THAN (3, 9223372036854775807), \n"
+            + "\tSUBPARTITION sp3 VALUES LESS THAN (4611686018427387905, 9223372036854775807), \n"
+            + "\tSUBPARTITION sp4 VALUES LESS THAN (9223372036854775807, 9223372036854775807)\n"
+            + ") (\n"
+            + "\tPARTITION p1 VALUES LESS THAN (3, 9223372036854775807), \n"
+            + "\tPARTITION p2 VALUES LESS THAN (4611686018427387905, 9223372036854775807), \n"
+            + "\tPARTITION p3 VALUES LESS THAN (9223372036854775807, 9223372036854775807)\n"
+            + ")";
+
+        SQLUtils.FormatOption defaultFormatOption = SQLUtils.DEFAULT_FORMAT_OPTION;
+        SQLUtils.DEFAULT_FORMAT_OPTION = new SQLUtils.FormatOption(
+            VisitorFeature.OutputUCase,
+            VisitorFeature.OutputPrettyFormat,
+            VisitorFeature.OutputHashPartitionsByRange);
+
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(content));
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        SQLStatement stmt = parseResult.get(0);
+        String unparseSql = stmt.toString();
+        Assert.assertEquals(expectResult, unparseSql);
+        System.out.println(unparseSql);
+
+        SQLUtils.DEFAULT_FORMAT_OPTION = defaultFormatOption;
     }
 
     @Test
@@ -302,6 +465,80 @@ public class SQLStatementParserTest {
     }
 
     @Test
+    public void testUnparserOriginSqlWithCoHash() {
+        String content = "create table ch_t1_sbi_svc\n"
+            + "(\n"
+            + "id bigint not null auto_increment,\n"
+            + "sid varchar(32),\n"
+            + "user_id int,\n"
+            + "order_id varchar(14),\n"
+            + "order_time datetime,\n"
+            + "primary key(id)\n"
+            + ")\n"
+            + "partition by co_hash(substr(user_id, -4),substr(order_id, -4))\n"
+            + "partitions 8";
+        String expectResult = "CREATE TABLE ch_t1_sbi_svc (\n"
+            + "\tid bigint NOT NULL AUTO_INCREMENT,\n"
+            + "\tsid varchar(32),\n"
+            + "\tuser_id int,\n"
+            + "\torder_id varchar(14),\n"
+            + "\torder_time datetime,\n"
+            + "\tPRIMARY KEY (id)\n"
+            + ")\n"
+            + "PARTITION BY CO_HASH (substr(user_id, -4), substr(order_id, -4)) PARTITIONS 8";
+
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(content));
+
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        Assert.assertEquals(1, parseResult.size());
+
+        SQLStatement stmt = parseResult.get(0).clone();
+        String unparseSql = SQLUtils.toSQLString(stmt, DbType.mysql, null, VisitorFeature.OutputHashPartitionsByRange);
+        Assert.assertEquals(expectResult, unparseSql);
+        String unparseSql2 = stmt.toString();
+        Assert.assertEquals(expectResult, unparseSql2);
+    }
+
+    @Test
+    public void testUnparserOriginSqlWithCoHashSp() {
+        String content = "CREATE TABLE `ch_t1_sp_ch_ch` (\n"
+            + "`id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
+            + "`sid` bigint DEFAULT NULL,\n"
+            + "`tid` bigint DEFAULT NULL,\n"
+            + "`user_id` varchar(32) DEFAULT NULL,\n"
+            + "`order_id` varchar(32) DEFAULT NULL,\n"
+            + "`order_time` datetime DEFAULT NULL,\n"
+            + "PRIMARY KEY (`id`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
+            + "PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))\n"
+            + "PARTITIONS 2\n"
+            + "SUBPARTITION BY CO_HASH(SUBSTR(`sid`,-4),SUBSTR(`tid`,-4))\n"
+            + "SUBPARTITIONS 2;\n";
+        String expectResult = "CREATE TABLE `ch_t1_sp_ch_ch` (\n"
+            + "\t`id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
+            + "\t`sid` bigint DEFAULT NULL,\n"
+            + "\t`tid` bigint DEFAULT NULL,\n"
+            + "\t`user_id` varchar(32) DEFAULT NULL,\n"
+            + "\t`order_id` varchar(32) DEFAULT NULL,\n"
+            + "\t`order_time` datetime DEFAULT NULL,\n"
+            + "\tPRIMARY KEY (`id`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
+            + "PARTITION BY CO_HASH (SUBSTR(`order_id`, -8), SUBSTR(`user_id`, -4)) PARTITIONS 2\n"
+            + "SUBPARTITION BY CO_HASH (SUBSTR(`sid`, -4), SUBSTR(`tid`, -4)) SUBPARTITIONS 2";
+
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(content));
+
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        Assert.assertEquals(1, parseResult.size());
+
+        SQLStatement stmt = parseResult.get(0).clone();
+        String unparseSql = SQLUtils.toSQLString(stmt, DbType.mysql, null, VisitorFeature.OutputHashPartitionsByRange);
+        Assert.assertEquals(expectResult, unparseSql);
+        String unparseSql2 = stmt.toString();
+        Assert.assertEquals(expectResult, unparseSql2);
+    }
+
+    @Test
     public void testParserOriginSqlAfterHashTag() {
         String content =
             "# POLARX_ORIGIN_SQL=CREATE TABLE test ( id int, _drds_implicit_id_ bigint AUTO_INCREMENT, PRIMARY KEY (_drds_implicit_id_) )\n"
@@ -331,10 +568,12 @@ public class SQLStatementParserTest {
                 + "  MODIFY COLUMN c1_1 timestamp(6) DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6)";
         String expectResult =
             "/*+TDDL:cmd_extra(TSO=706967379996416416016007390155295989780000000000000000)*/\n"
-                + "/*+TDDL:CMD_EXTRA(OMC_FORCE_TYPE_CONVERSION=TRUE)*/\n"
+                + "# POLARX_ORIGIN_SQL=/*+TDDL:CMD_EXTRA(OMC_FORCE_TYPE_CONVERSION=TRUE)*/ ALTER TABLE column_backfill_ts_tbl MODIFY COLUMN c1_1 timestamp(6) DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6), ALGORITHM = omc\n"
+                + "# POLARX_TSO=706967379996416416016007390155295989780000000000000000\n"
+                + "\n"
+                + "/*+tddl:cmd_extra(omc_force_type_conversion=true)*/\n"
                 + "ALTER TABLE column_backfill_ts_tbl\n"
-                + "\tMODIFY COLUMN c1_1 timestamp(6) DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6),\n"
-                + "\tALGORITHM = omc";
+                + "\tMODIFY COLUMN c1_1 timestamp(6) DEFAULT current_timestamp(6) ON UPDATE current_timestamp(6)";
         MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(content));
         List<SQLStatement> parseResult = parser.parseStatementList();
         Assert.assertEquals(1, parseResult.size());
@@ -351,6 +590,21 @@ public class SQLStatementParserTest {
         MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(content));
         List<SQLStatement> parseResult = parser.parseStatementList();
         System.out.println(parseResult.get(0));
+    }
+
+    @Test
+    public void test2() {
+        String sql = "alter tablegroup mytg2tV move partitions "
+            + "(p1,p3) to 'ziyang-cdc-gdn-test-9-do-not-delete-re-9mjd-dn-0', (p2) to 'ziyang-cdc-gdn-test-9-do-not-delete-re-9mjd-dn-1'";
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql));
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        String expectResult = "ALTER TABLEGROUP mytg2tV MOVE PARTITIONS "
+            + "(p2) TO 'ziyang-cdc-gdn-test-9-do-not-delete-re-9mjd-dn-1', "
+            + "(p1, p3) TO 'ziyang-cdc-gdn-test-9-do-not-delete-re-9mjd-dn-0' ";
+        Assert.assertEquals(expectResult, parseResult.get(0).toString());
+
+        parser = new MySqlStatementParser(ByteString.from(parseResult.get(0).toString()));
+        parseResult = parser.parseStatementList();
     }
 
     @Test

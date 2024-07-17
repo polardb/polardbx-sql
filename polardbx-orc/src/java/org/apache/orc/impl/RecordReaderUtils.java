@@ -17,6 +17,8 @@
  */
 package org.apache.orc.impl;
 
+import org.apache.orc.customized.ORCMemoryAllocator;
+import org.apache.orc.customized.ORCProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +59,7 @@ public class RecordReaderUtils {
     private InStream.StreamOptions options;
     private boolean isOpen = false;
     private final long maxMergeDistance;
+    private Supplier<Boolean> isCanceled;
 
     private DefaultDataReader(DataReaderProperties properties) {
       this.fileSystemSupplier = properties.getFileSystemSupplier();
@@ -65,6 +68,7 @@ public class RecordReaderUtils {
       this.useZeroCopy = properties.getZeroCopy();
       this.options = properties.getCompression();
       this.maxMergeDistance = properties.getMaxMergeDistance();
+      this.isCanceled = null;
     }
 
     @Override
@@ -83,6 +87,11 @@ public class RecordReaderUtils {
     }
 
     @Override
+    public void setController(Supplier<Boolean> isCanceled) {
+      this.isCanceled = isCanceled;
+    }
+
+    @Override
     public OrcProto.StripeFooter readStripeFooter(StripeInformation stripe) throws IOException {
       if (!isOpen) {
         open();
@@ -91,7 +100,7 @@ public class RecordReaderUtils {
       int tailLength = (int) stripe.getFooterLength();
 
       // read the footer
-      ByteBuffer tailBuf = ByteBuffer.allocate(tailLength);
+      ByteBuffer tailBuf = ORCMemoryAllocator.getInstance().allocateOnHeap(tailLength);
       file.readFully(offset, tailBuf.array(), tailBuf.arrayOffset(), tailLength);
       return OrcProto.StripeFooter.parseFrom(
           InStream.createCodedInputStream(InStream.create("footer",
@@ -102,8 +111,19 @@ public class RecordReaderUtils {
     public BufferChunkList readFileData(BufferChunkList range,
                                         boolean doForceDirect
                                         ) throws IOException {
-      RecordReaderUtils.readDiskRanges(file, zcr, range, doForceDirect, maxMergeDistance);
+      RecordReaderUtils.readDiskRanges(file, zcr, range, doForceDirect, maxMergeDistance,
+          isCanceled, null, null, null);
       return range;
+    }
+
+    @Override
+    public BufferChunkList readFileData(BufferChunkList range, boolean doForceDirect,
+                                        ORCProfile memoryCounter,
+                                        ORCProfile ioBytesCounter,
+                                        ORCProfile ioTimer) throws IOException {
+        RecordReaderUtils.readDiskRanges(file, zcr, range, doForceDirect, maxMergeDistance,
+            isCanceled, memoryCounter, ioBytesCounter, ioTimer);
+        return range;
     }
 
     @Override
@@ -131,7 +151,9 @@ public class RecordReaderUtils {
 
     @Override
     public void releaseBuffer(ByteBuffer buffer) {
-      zcr.releaseBuffer(buffer);
+      if (zcr != null) {
+        zcr.releaseBuffer(buffer);
+      }
     }
 
     @Override
@@ -374,8 +396,8 @@ public class RecordReaderUtils {
       } else {
         // otherwise, build a single buffer that holds the entire range
         ByteBuffer result = allocateDirect
-                              ? ByteBuffer.allocateDirect(current.getLength())
-                              : ByteBuffer.allocate(current.getLength());
+                              ? ORCMemoryAllocator.getInstance().allocateOffHeap(current.getLength())
+                              : ORCMemoryAllocator.getInstance().allocateOnHeap(current.getLength());
         // we know that the range spans buffers
         ByteBuffer copy = currentBuffer.duplicate();
         // skip over the front matter
@@ -412,17 +434,27 @@ public class RecordReaderUtils {
   static void readRanges(FSDataInputStream file,
                          BufferChunk first,
                          BufferChunk last,
-                         boolean allocateDirect) throws IOException {
+                         boolean allocateDirect,
+                         ORCProfile memoryCounter,
+                         ORCProfile ioBytesCounter,
+                         ORCProfile ioTimer) throws IOException {
     // assume that the chunks are sorted by offset
     long offset = first.getOffset();
     int readSize = (int) (computeEnd(first, last) - offset);
-    byte[] buffer = new byte[readSize];
+
+    ByteBuffer readBuffer = ORCMemoryAllocator.getInstance().allocateOnHeap(readSize, memoryCounter);
+    byte[] buffer = readBuffer.array();
+
+    long start = System.nanoTime();
     file.readFully(offset, buffer, 0, buffer.length);
+    if (ioTimer != null) {
+        ioTimer.update(System.nanoTime() - start);
+    }
 
     // get the data into a ByteBuffer
     ByteBuffer bytes;
     if (allocateDirect) {
-      bytes = ByteBuffer.allocateDirect(readSize);
+      bytes = ORCMemoryAllocator.getInstance().allocateOffHeap(readSize);
       bytes.put(buffer);
       bytes.flip();
     } else {
@@ -475,9 +507,13 @@ public class RecordReaderUtils {
   static void readDiskRanges(FSDataInputStream file,
                              HadoopShims.ZeroCopyReaderShim zcr,
                              BufferChunkList list,
-                             boolean doForceDirect, long maxMergeDistance) throws IOException {
+                             boolean doForceDirect, long maxMergeDistance,
+                             Supplier<Boolean> isCanceled,
+                             ORCProfile memoryCounter,
+                             ORCProfile ioBytesCounter,
+                             ORCProfile ioTimer) throws IOException {
     BufferChunk current = list == null ? null : list.get();
-    while (current != null) {
+    while ((isCanceled == null || !isCanceled.get()) && current != null) {
       while (current.hasData()) {
         current = (BufferChunk) current.next;
       }
@@ -485,7 +521,7 @@ public class RecordReaderUtils {
       if (zcr != null) {
         zeroCopyReadRanges(file, zcr, current, last, doForceDirect);
       } else {
-        readRanges(file, current, last, doForceDirect);
+        readRanges(file, current, last, doForceDirect, memoryCounter, ioBytesCounter, ioTimer);
       }
       current = (BufferChunk) last.next;
     }
@@ -562,8 +598,9 @@ public class RecordReaderUtils {
       TreeMap<Key, ByteBuffer> tree = getBufferTree(direct);
       Map.Entry<Key, ByteBuffer> entry = tree.ceilingEntry(new Key(length, 0));
       if (entry == null) {
-        return direct ? ByteBuffer.allocateDirect(length) : ByteBuffer
-            .allocate(length);
+        return direct
+            ? ORCMemoryAllocator.getInstance().allocateOffHeap(length)
+            : ORCMemoryAllocator.getInstance().allocateOnHeap(length);
       }
       tree.remove(entry.getKey());
       return entry.getValue();

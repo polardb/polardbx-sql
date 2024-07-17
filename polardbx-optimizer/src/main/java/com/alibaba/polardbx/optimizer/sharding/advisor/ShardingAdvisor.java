@@ -42,6 +42,7 @@ import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.clearspring.analytics.util.Lists;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
@@ -111,7 +112,7 @@ public class ShardingAdvisor {
      * @param count the occurrence of ast
      */
     public void addPlan(RelNode relNode, int count) {
-        shardColumnRelFinder.setMq(RelMetadataQuery.instance());
+        shardColumnRelFinder.setMq(PlannerUtils.newMetadataQuery());
         shardColumnRelFinder.setCount(count);
         shardColumnRelFinder.go(relNode);
         shardColumnRelFinder.getShardColumnEdges().addEdges();
@@ -150,7 +151,6 @@ public class ShardingAdvisor {
      * @return the result of sharding advise
      */
     public ShardResultForOutput adviseFromPlanCache(String schemaName, Map<String, AdvisorCache> caches) {
-        RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
         // record the sql needed
         List<Pair<SqlParameterized, Integer>> sqls = new ArrayList<>();
         //consider plan cache

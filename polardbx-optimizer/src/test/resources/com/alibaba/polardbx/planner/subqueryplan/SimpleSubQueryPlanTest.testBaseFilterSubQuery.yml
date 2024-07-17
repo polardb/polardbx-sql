@@ -17,7 +17,7 @@
 
   plan: |
     hashagg(count(id)="count()")
-      semihashjoin(condition="name = name", type="semi")
+      semihashjoin(condition="name = name", type="semi", build="inner")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
         gather(concurrent=true)

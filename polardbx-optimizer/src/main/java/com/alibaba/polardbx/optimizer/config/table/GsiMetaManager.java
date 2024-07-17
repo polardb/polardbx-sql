@@ -44,6 +44,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Maps;
+import lombok.Getter;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition.SqlIndexResiding;
@@ -67,6 +68,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -144,7 +146,7 @@ public class GsiMetaManager extends AbstractLifecycle {
             + __DRDS__SYSTABLE__TABLES__UK_NAME + "''";
 
     private static final String SELECT_PARTITIONED_TABLE_INFO =
-        "select id, '''' as table_catalog, table_schema, table_name, (case tbl_type when 0 then 1 when 1 then 3 when 2 then 0 when 3 then 2 when 4 then 3 when 5 then 3 else -1 end ) as table_type, '' as db_partition_key, '' as db_partition_policy, "
+        "select id, '''' as table_catalog, table_schema, table_name, (case tbl_type when 0 then 1 when 1 then 3 when 2 then 0 when 3 then 2 when 4 then 3 when 5 then 3 when 7 then 4 else -1 end ) as table_type, '' as db_partition_key, '' as db_partition_policy, "
             + "null as db_partition_count, '' as tb_partition_key, '' as tb_partition_policy, null as tb_partition_count, part_comment as comment from table_partitions";
 
     private static final String SELECT_PARTITIONED_TABLE_INFO_BY_SCHEMA_TABLE =
@@ -289,6 +291,7 @@ public class GsiMetaManager extends AbstractLifecycle {
      * for CREATE TABLE / CREATE INDEX / ALTER TABLE ADD INDEX
      */
     public void insertIndexMetaForPolarX(Connection connection, List<IndexRecord> indexRecords) {
+
         try {
 //            Collections.sort(indexRecords, Comparator.comparing(IndexRecord::getColumnName));
 //            Collections.reverse(indexRecords);
@@ -508,12 +511,35 @@ public class GsiMetaManager extends AbstractLifecycle {
         }
     }
 
+    /**
+     * for ALTER CHANGE COLUMN
+     */
+    public void changeColumnMetaNotAddVersion(Connection connection, String schemaName, String tableName,
+                                              String indexName, String oldColumnName, String newColumnName,
+                                              String nullable) {
+
+        try {
+            doExecuteUpdate(getSqlChangeColumnMeta(),
+                ImmutableList
+                    .of(stringParamRow(newColumnName, nullable, schemaName, tableName, indexName, oldColumnName)),
+                connection);
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
+                e,
+                "update Global Secondary Index meta failed!");
+        }
+    }
+
     // ~ Native methods
     // -----------------------------------------------------------------------------------------------------
 
     @Override
     protected void doInit() {
         // PolarDB-X has its own schema change.
+    }
+
+    private boolean check() {
+        return true;
     }
 
     private List<TableRecord> getAllTableRecords(String schema) {
@@ -622,7 +648,7 @@ public class GsiMetaManager extends AbstractLifecycle {
         }
     }
 
-    private List<TableRecord> getTableRecords(String schema, String tableName) {
+    public List<TableRecord> getTableRecords(String schema, String tableName) {
         try {
             String queryTblInfoSql;
             if (DbInfoManager.getInstance().isNewPartitionDb(schema)) {
@@ -1186,7 +1212,7 @@ public class GsiMetaManager extends AbstractLifecycle {
     }
 
     public enum TableType {
-        SINGLE(0), SHARDING(1), BROADCAST(2), GSI(3);
+        SINGLE(0), SHARDING(1), BROADCAST(2), GSI(3), COLUMNAR(4);
 
         private final int value;
 
@@ -1204,6 +1230,8 @@ public class GsiMetaManager extends AbstractLifecycle {
                 return BROADCAST;
             case 3:
                 return GSI;
+            case 4:
+                return COLUMNAR;
             default:
                 return null;
             }
@@ -1245,6 +1273,25 @@ public class GsiMetaManager extends AbstractLifecycle {
         public boolean isGsi(String tableName) {
             return !isEmpty() && tableMeta.containsKey(tableName)
                 && tableMeta.get(tableName).tableType == TableType.GSI;
+        }
+
+        public boolean isColumnar(String tableName) {
+            return !isEmpty() && tableMeta.containsKey(tableName)
+                && tableMeta.get(tableName).tableType == TableType.COLUMNAR;
+        }
+
+        public boolean withColumnar(String tableName) {
+            return !isEmpty() && tableMeta.containsKey(tableName)
+                && tableMeta.get(tableName).tableType != TableType.COLUMNAR
+                && GeneralUtil.isNotEmpty(tableMeta.get(tableName).indexMap)
+                && tableMeta.get(tableName).indexMap.values().stream().anyMatch(e -> e.columnarIndex);
+        }
+
+        public boolean isGsiOrCci(String tableName) {
+            return !isEmpty()
+                && tableMeta.containsKey(tableName)
+                && (tableMeta.get(tableName).tableType == TableType.GSI
+                || tableMeta.get(tableName).tableType == TableType.COLUMNAR);
         }
 
         public boolean isEmpty() {
@@ -1433,7 +1480,8 @@ public class GsiMetaManager extends AbstractLifecycle {
             // index tables in __DRDS__SYSTABLE__TABLES__
             final Set<String> tableNameSet = new HashSet<>();
             for (final TableRecord tableRecord : allTableRecords) {
-                if (tableRecord.tableType != TableType.GSI.getValue()) {
+                if (tableRecord.tableType != TableType.GSI.getValue()
+                    && tableRecord.tableType != TableType.COLUMNAR.getValue()) {
                     continue;
                 }
 
@@ -1457,7 +1505,8 @@ public class GsiMetaManager extends AbstractLifecycle {
                     tableRecord.tbPartitionKey,
                     tableRecord.tbPartitionPolicy,
                     tableRecord.tbPartitionCount,
-                    tableType == TableType.GSI ? TreeMaps.caseInsensitiveMap() :
+                    (tableType == TableType.GSI || tableType == TableType.COLUMNAR) ?
+                        TreeMaps.caseInsensitiveMap() :
                         tmpTableIndexMap.get(fullName ?
                             SqlIdentifier.surroundWithBacktick(tableRecord.tableSchema) + "." + SqlIdentifier
                                 .surroundWithBacktick(tableRecord.tableName) : tableRecord.tableName),
@@ -1546,6 +1595,7 @@ public class GsiMetaManager extends AbstractLifecycle {
                         IndexStatus.from((int) indexRecord.indexStatus),
                         indexRecord.version,
                         (indexRecord.flag & IndexesRecord.FLAG_CLUSTERED) != 0L,
+                        (indexRecord.flag & IndexesRecord.FLAG_COLUMNAR) != 0L,
                         IndexVisibility.convert(indexRecord.visible))
                 );
 
@@ -1730,6 +1780,7 @@ public class GsiMetaManager extends AbstractLifecycle {
         public final boolean nonUnique;
         public final String indexSchema;
         public final String indexName;
+
         public final List<GsiIndexColumnMetaBean> indexColumns;
         public final List<GsiIndexColumnMetaBean> coveringColumns;
         public final String indexType;
@@ -1740,13 +1791,14 @@ public class GsiMetaManager extends AbstractLifecycle {
         public final IndexStatus indexStatus;
         public final long version;
         public final boolean clusteredIndex;
+        public final boolean columnarIndex;
         public final IndexVisibility visibility;
 
         public GsiIndexMetaBean(String tableCatalog, String tableSchema, String tableName, boolean nonUnique,
                                 String indexSchema, String indexName, List<GsiIndexColumnMetaBean> indexColumns,
                                 List<GsiIndexColumnMetaBean> coveringColumns, String indexType, String comment,
                                 String indexComment, SqlIndexResiding indexLocation, String indexTableName,
-                                IndexStatus indexStatus, long version, boolean clusteredIndex,
+                                IndexStatus indexStatus, long version, boolean clusteredIndex, boolean columnarIndex,
                                 IndexVisibility visibility) {
             this.tableCatalog = tableCatalog;
             this.tableSchema = tableSchema;
@@ -1764,7 +1816,16 @@ public class GsiMetaManager extends AbstractLifecycle {
             this.indexStatus = indexStatus;
             this.version = version;
             this.clusteredIndex = clusteredIndex;
+            this.columnarIndex = columnarIndex;
             this.visibility = visibility;
+        }
+
+        public List<GsiIndexColumnMetaBean> getIndexColumns() {
+            return indexColumns;
+        }
+
+        public List<GsiIndexColumnMetaBean> getCoveringColumns() {
+            return coveringColumns;
         }
 
         public GsiIndexMetaBean clone() {
@@ -1776,7 +1837,7 @@ public class GsiMetaManager extends AbstractLifecycle {
                 indexSchema, indexName, newIndexColumns,
                 newCoveringColumns, indexType, comment,
                 indexComment, indexLocation, indexTableName,
-                indexStatus, version, clusteredIndex, visibility);
+                indexStatus, version, clusteredIndex, columnarIndex, visibility);
         }
 
         @Override
@@ -1793,6 +1854,9 @@ public class GsiMetaManager extends AbstractLifecycle {
             hashcode += indexStatus.getValue();
             if (clusteredIndex) {
                 hashcode += 0xA55A; // Magic number.
+            }
+            if (columnarIndex) {
+                hashcode += 0xB66B; // Magic number.
             }
             return hashcode;
         }
@@ -1811,6 +1875,7 @@ public class GsiMetaManager extends AbstractLifecycle {
         }
     }
 
+    @Getter
     public static class TableRecord extends GsiMeta implements Orm<TableRecord> {
 
         public static TableRecord ORM = new TableRecord();

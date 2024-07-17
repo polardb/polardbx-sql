@@ -20,7 +20,6 @@ singleBalanceCaseBeans:
                                  `c3` double NOT NULL
          )
              PARTITION BY RANGE(`c1`)
-         PARTITIONS 32
          (PARTITION `p1` VALUES LESS THAN (16487) ENGINE = InnoDB,
 PARTITION `p2` VALUES LESS THAN (51474) ENGINE = InnoDB,
 PARTITION `p3` VALUES LESS THAN (202501) ENGINE = InnoDB,
@@ -56,7 +55,6 @@ PARTITION `p24` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
                                      `c3` double NOT NULL
              )
                  PARTITION BY RANGE(`c1`)
-             PARTITIONS 32
              (PARTITION `p1` VALUES LESS THAN (48908) ENGINE = InnoDB,
 PARTITION `p2` VALUES LESS THAN (73171) ENGINE = InnoDB,
 PARTITION `p3` VALUES LESS THAN (102499) ENGINE = InnoDB,
@@ -92,7 +90,6 @@ PARTITION `p24` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
                                      `c3` double NOT NULL
              )
                  PARTITION BY RANGE(`c1`)
-             PARTITIONS 32
              (PARTITION `p1` VALUES LESS THAN (27225) ENGINE = InnoDB,
 PARTITION `p2` VALUES LESS THAN (57893) ENGINE = InnoDB,
 PARTITION `p3` VALUES LESS THAN (61277) ENGINE = InnoDB,

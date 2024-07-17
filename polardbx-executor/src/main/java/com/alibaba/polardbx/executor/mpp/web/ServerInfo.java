@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.web;
 
+import com.alibaba.polardbx.gms.node.NodeVersion;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.alibaba.polardbx.gms.node.NodeVersion;
 import io.airlift.units.Duration;
 
 import javax.annotation.concurrent.Immutable;

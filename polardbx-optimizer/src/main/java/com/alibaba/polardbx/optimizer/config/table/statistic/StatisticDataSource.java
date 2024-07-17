@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
-import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -26,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public interface StatisticDataSource {
     void init();
@@ -62,12 +62,16 @@ public interface StatisticDataSource {
     /**
      * update ndv info by table name and column name from meta source if needed
      */
-    void updateColumnCardinality(String schema, String tableName, String columnName) throws SQLException;
+    void updateColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
+                                 ThreadPoolExecutor sketchHllExecutor)
+        throws SQLException;
 
     /**
      * force rebuilt ndv info by table name and column name from meta source
      */
-    void rebuildColumnCardinality(String schema, String tableName, String columnName) throws SQLException;
+    void rebuildColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
+                                  ThreadPoolExecutor sketchHllExecutor)
+        throws SQLException;
 
     /**
      * get current ndv value from cache
@@ -83,4 +87,6 @@ public interface StatisticDataSource {
     String scheduleJobs();
 
     long ndvModifyTime(String schema, String tableName, String columnNames);
+
+    void clearCache();
 }

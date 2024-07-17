@@ -16,11 +16,16 @@
 
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsGrantSecurityLabelStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRevokeSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropUserStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLGrantStatement;
@@ -30,21 +35,25 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateRol
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateUserStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlDropRoleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlGrantRoleStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRevokeRoleStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
+import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
+import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import com.alibaba.polardbx.server.ServerConnection;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_SERVER;
 import static com.alibaba.polardbx.server.parser.ServerParse.CREATE_ROLE;
 import static com.alibaba.polardbx.server.parser.ServerParse.CREATE_USER;
 import static com.alibaba.polardbx.server.parser.ServerParse.DROP_ROLE;
@@ -52,7 +61,6 @@ import static com.alibaba.polardbx.server.parser.ServerParse.DROP_USER;
 import static com.alibaba.polardbx.server.parser.ServerParse.GRANT;
 import static com.alibaba.polardbx.server.parser.ServerParse.REVOKE;
 import static com.alibaba.polardbx.server.parser.ServerParse.SET_PASSWORD;
-import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_SERVER;
 
 /**
  * Entry point for privilege command handlers.
@@ -96,7 +104,16 @@ public class PrivilegeCommandHandlers {
 
     public static boolean handle(int commandCode, ServerConnection conn, ByteString sql, boolean hasMore,
                                  boolean inProcedureCall) {
-        SQLStatement stmt = FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes).get(0);
+        List<SQLStatement> stmtList =
+            FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes);
+        stmtList.removeIf(s -> s instanceof MySqlHintStatement);
+        SQLStatement stmt = stmtList.get(0);
+
+        if (stmt instanceof DrdsGrantSecurityLabelStatement
+            || stmt instanceof DrdsRevokeSecurityLabelStatement) {
+            return conn.execute(sql, hasMore);
+        }
+
         PolarAccountInfo granter = PolarHandlerCommon.getMatchGranter(conn);
         PrivilegeCommandHandler handler = createHandler(commandCode, conn, sql, granter, stmt);
         handler.handle(hasMore);

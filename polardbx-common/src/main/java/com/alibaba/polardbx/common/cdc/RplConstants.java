@@ -27,4 +27,8 @@ public class RplConstants {
     public final static String SUB_CHANNEL = "SUB_CHANNEL";
 
     public final static String IS_ALL = "IS_ALL";
+
+    public static final String RPL_FULL_VALID_DB = "dbName";
+
+    public static final String RPL_FULL_VALID_TB = "tbName";
 }

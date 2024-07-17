@@ -155,8 +155,7 @@ public class LogicalShowLocalityInfoHandler extends HandlerCommon {
                 partitionGroupRecordList = tableGroupConfig.getPartitionGroupRecords();
                 objectName = tableGroupConfig.getTableGroupRecord().getTg_name();
                 locality = tableGroupConfig.getLocalityDesc().toString();
-                List<String> tableList =
-                    tableGroupConfig.getAllTables().stream().map(o -> o.getTableName()).collect(Collectors.toList());
+                List<String> tableList = tableGroupConfig.getAllTables();
                 String tableListString = String.join(",", tableList);
                 result.addRow(new Object[] {objectId, objectName, "tablegroup", locality, tableListString});
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecordList) {

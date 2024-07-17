@@ -44,6 +44,7 @@ public class AlterForeignKeyTask extends BaseGmsTask {
     private String phyTableName;
     private List<ForeignKeyData> addedForeignKeys;
     private List<String> droppedForeignKeys;
+    private boolean withoutIndex;
 
     @JSONCreator
     public AlterForeignKeyTask(String schemaName,
@@ -51,12 +52,14 @@ public class AlterForeignKeyTask extends BaseGmsTask {
                                String dbIndex,
                                String phyTableName,
                                List<ForeignKeyData> addedForeignKeys,
-                               List<String> droppedForeignKeys) {
+                               List<String> droppedForeignKeys,
+                               boolean withoutIndex) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
         this.addedForeignKeys = addedForeignKeys;
         this.droppedForeignKeys = droppedForeignKeys;
+        this.withoutIndex = withoutIndex;
     }
 
     @Override
@@ -64,7 +67,7 @@ public class AlterForeignKeyTask extends BaseGmsTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         TableMetaChanger.addForeignKeyMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName,
-            addedForeignKeys);
+            addedForeignKeys, withoutIndex);
         TableMetaChanger.dropForeignKeyMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName,
             droppedForeignKeys);
     }
@@ -86,7 +89,7 @@ public class AlterForeignKeyTask extends BaseGmsTask {
                     tableMeta.getForeignKeys().get(schemaName + "/" + logicalTableName + "/" + indexName));
             }
             TableMetaChanger.addForeignKeyMeta(metaDbConnection, schemaName, logicalTableName, dbIndex, phyTableName,
-                rollbackAddedFks);
+                rollbackAddedFks, withoutIndex);
         }
     }
 

@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
-    <meta name="description" content="Cluster Overview - PolarDBX">
-    <title>Cluster Overview - PolarDBX</title>
+    <meta name="description" content="Cluster Overview - PolarDB-X">
+    <title>Cluster Overview - PolarDB-X</title>
 
-    <link rel="icon" href="assets/favicon.ico">
+    <link rel="icon" href="assets/favicon.png">
 
     <!-- Bootstrap core -->
     <link href="vendor/bootstrap/css/bootstrap.css" rel="stylesheet">
@@ -39,21 +39,25 @@
 <div class="container">
     <div id="title"></div>
 
-    <div class="hud-container">
-        <div id="cluster-hud">
-            <div class="loader">Loading...</div>
+    <div class="content-container">
+        <div class="hud-container card-container">
+            <div class="container-title">
+                Cluster HUD
+            </div>
+            <div id="cluster-hud">
+                <div class="loader">Loading...</div>
+            </div>
+        </div>
+
+        <div class="query-list-container card-container">
+            <div class="container-title">
+                Query List
+            </div>
+            <div id="query-list" class="font-black">
+                <div class="loader">Loading...</div>
+            </div>
         </div>
     </div>
-
-    <div id="query-list-container">
-        <div id="query-list-title">
-            Query Details
-        </div>
-        <div id="query-list" class="font-white">
-            <div class="loader">Loading...</div>
-        </div>
-    </div>
-
 </div> <!-- /container -->
 
 <script type="text/javascript" src="dist/index.js"></script>

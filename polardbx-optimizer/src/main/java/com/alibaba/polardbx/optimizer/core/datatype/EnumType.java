@@ -89,7 +89,13 @@ public class EnumType extends AbstractDataType<String> {
 
     public Object convertTo(DataType toType, EnumValue value) {
         if (toType instanceof NumberType) {
-            return toType.convertFrom(this.enumValues.get(value.value));
+            Integer intValue;
+            if ("".equals(value.value)) {
+                intValue = 0;
+            } else {
+                intValue = this.enumValues.get(value.value);
+            }
+            return toType.convertFrom(intValue);
         }
 
         return toType.convertFrom(value.value);
@@ -134,8 +140,11 @@ public class EnumType extends AbstractDataType<String> {
     }
 
     public String convertTo(Integer value) {
-        return enumIndexs.get(value);
-
+        if (value.equals(0)) {
+            return "";
+        } else {
+            return enumIndexs.get(value);
+        }
     }
 
     public Map<String, Integer> getEnumValues() {

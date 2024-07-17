@@ -158,6 +158,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             break;
         case LOGICAL:
             if (origin.isReplace()) {
+                origin.setUkContainsAllSkAndGsiContainsAllUk(executionStrategyRs.ukContainsAllSkAndGsiContainsAllUk);
                 updated = handleReplace(origin, context, executionStrategyRs, ec);
             } else if (origin.isUpsert()) {
                 updated = handleUpsert(origin, context, ec);
@@ -446,13 +447,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
 
         final LogicalInsert newInsert = replaceExpAndSeqWithParam(replace, true, false, ec);
 
-        if (ec.foreignKeyChecks()) {
-            if (!primaryMeta.getReferencedForeignKeys().isEmpty()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
-                    "Can not check referenced foreign key for replace");
-            }
-        }
-
+        newInsert.setUkContainsAllSkAndGsiContainsAllUk(replace.isUkContainsAllSkAndGsiContainsAllUk());
         // Writer for primary table
         InsertWriter primaryInsertWriter = null;
         ReplaceRelocateWriter primaryReplaceRelocateWriter = null;
@@ -575,22 +570,6 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             updateColumnSet.addAll(updateColumnList);
             if (primaryMeta.getPrimaryKey().stream().anyMatch(cm -> updateColumnSet.contains(cm.getName()))) {
                 throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "Can not check primary key for upsert");
-            }
-        }
-
-        if (ec.foreignKeyChecks()) {
-            // TODO(qihua): support upsert Fk check
-            Set<String> updateColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            updateColumnSet.addAll(updateColumnList);
-            if (primaryMeta.getForeignKeys().values().stream().anyMatch(
-                foreignKeyData -> foreignKeyData.columns.stream().anyMatch(updateColumnSet::contains))) {
-                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "Can not check foreign key for upsert");
-            }
-
-            updateColumnSet.addAll(updateColumnList);
-            if (primaryMeta.getReferencedForeignKeys().values().stream().anyMatch(
-                foreignKeyData -> foreignKeyData.refColumns.stream().anyMatch(updateColumnSet::contains))) {
-                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "Can not check referenced key for upsert");
             }
         }
 
@@ -1085,7 +1064,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                     gsiColumnMappings.add(new ArrayList<>());
                 }
 
-                if (null != gsi.getColumn(column)) {
+                if (gsi.containsColumn(column)) {
                     gsiColumnMappings.get(gsiIndex).add(i);
                 }
             });
@@ -1354,7 +1333,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                     result.getGsiInsertWriters(), autoIncParamIndex, null, null, result.getEvalRowColMetas(),
                     result.getGenColRexNodes(), result.getInputToEvalFieldsMapping(), result.getDefaultExprColMetas(),
                     result.getDefaultExprColRexNodes(), result.getDefaultExprEvalFieldsMapping(),
-                    result.isPushablePrimaryKeyCheck(), result.isPushableForeignConstraintCheck());
+                    result.isPushablePrimaryKeyCheck(), result.isPushableForeignConstraintCheck(),
+                    result.isModifyForeignKey(), result.isUkContainsAllSkAndGsiContainsAllUk());
             /**
              * 2、update the index of RexDynamicParam in onDuplicatedUpdate list recursively
              * how to update them? firstly, find out the minimum RexDynamicPara and compute the offset

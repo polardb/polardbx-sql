@@ -60,7 +60,7 @@
 
   plan: |
 
-    IndexScan(tables="optest_0001.g_i_buyer_03", sql="SELECT `id`, `order_snapshot` FROM `g_i_buyer` AS `g_i_buyer` WHERE ((`buyer_id` = 'b1') AND (`seller_id` = 's1'))")
+    phytableoperation(tables="optest_0001.[g_i_buyer_03]", sql="select `t_order`.`id`, `t_order`.`order_snapshot` from ? as `t_order` where ((`t_order`.`buyer_id` = 'b1') and (`t_order`.`seller_id` = 's1'))")
 
 -
   sql: |
@@ -69,7 +69,7 @@
 
   plan: |
 
-    indexscan(tables="optest_0000.g_i_seller_02", sql="select `id`, `order_snapshot` from `g_i_seller` as `g_i_seller` where ((`seller_id` = 's1') and (`buyer_id` = 'b1'))")
+    phytableoperation(tables="optest_0000.[g_i_seller_02]", sql="select `t_order`.`id`, `t_order`.`order_snapshot` from ? as `t_order` where ((`t_order`.`buyer_id` = 'b1') and (`t_order`.`seller_id` = 's1'))")
 -
   sql: |
     /*+TDDL:index(t_order,g_i_buyer)*/
@@ -77,7 +77,7 @@
 
   plan: |
 
-    IndexScan(tables="optest_0001.g_i_buyer_03", sql="SELECT `id`, `order_snapshot` FROM `g_i_buyer` AS `g_i_buyer` WHERE ((`buyer_id` = 'b1') AND (`seller_id` = 's1'))")
+    phytableoperation(tables="optest_0001.[g_i_buyer_03]", sql="select `t_order`.`id`, `t_order`.`order_snapshot` from ? as `t_order` where ((`t_order`.`buyer_id` = 'b1') and (`t_order`.`seller_id` = 's1'))")
 
 -
   sql: |
@@ -140,9 +140,8 @@
     select t_order.id,order_dim.order_date, t_order.order_snapshot, t_buyer.name, n1.n_name from t_order join t_buyer on t_buyer.buyer_id = t_order.buyer_id join nation as n1 on t_buyer.nationkey = n1.n_nationkey join order_dim on t_order.order_id = order_dim.order_id;
 
   plan: |
-
     gather(concurrent=true)
-      indexscan(tables="[0000-0003].g_i_buyer_[00-11],order_dim,t_buyer_[00-11],nation", shardcount=12, sql="select `g_i_buyer`.`id`, `order_dim`.`order_date`, `g_i_buyer`.`order_snapshot`, `t_buyer`.`name`, `nation`.`n_name` from `g_i_buyer` as `g_i_buyer` inner join `order_dim` as `order_dim` on (`g_i_buyer`.`order_id` = `order_dim`.`order_id`) inner join (`t_buyer` as `t_buyer` inner join `nation` as `nation` on (`t_buyer`.`nationkey` = `nation`.`n_nationkey`)) on (`g_i_buyer`.`buyer_id` = `t_buyer`.`buyer_id`)")
+      indexscan(tables="[0000-0003].t_buyer_[00-11],nation,g_i_buyer_[00-11],order_dim", shardcount=12, sql="select `g_i_buyer`.`id`, `order_dim`.`order_date`, `g_i_buyer`.`order_snapshot`, `t_buyer`.`name`, `nation`.`n_name` from `t_buyer` as `t_buyer` inner join `nation` as `nation` on (`t_buyer`.`nationkey` = `nation`.`n_nationkey`) inner join (`g_i_buyer` as `g_i_buyer` inner join `order_dim` as `order_dim` on (`g_i_buyer`.`order_id` = `order_dim`.`order_id`)) on (`t_buyer`.`buyer_id` = `g_i_buyer`.`buyer_id`)")
 
 -
   sql: |

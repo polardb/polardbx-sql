@@ -1,0 +1,148 @@
+- sql: |
+    values
+      row(1,'name1'),
+      row(2,'name2'); 
+
+  plan: |
+    dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
+
+- sql: |
+    select 
+      * 
+    from (
+      values 
+        row(1,'name1'),
+        row(2,'name2')
+    ) 
+    as 
+      t(id, name);
+
+  plan: |
+    dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
+
+- sql: |
+    values
+      row(1,'name1'),
+      row(2,'name2')
+    order by
+      column_0 
+    limit 
+      1
+
+  plan: |
+    topn(sort="column_0 asc", offset=0, fetch=1)
+      dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
+
+- sql: |
+    select 
+      * 
+    from (
+      values
+        row(1,'name1'),
+        row(2,'name2')
+      order by
+        column_0 
+      limit 
+        1
+    ) 
+    as 
+      t(id, name);
+
+  plan: |
+    topn(sort="column_0 asc", offset=0, fetch=1)
+      dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
+
+- sql: |
+    values 
+      row(1,'name1'), 
+      row(2,'name2') 
+    union 
+    values 
+      row(3,'name3'), 
+      row(4,'name4'), 
+      row(5,'name5');
+
+  plan: |
+    hashagg(group="column_0,column_1")
+      unionall(concurrent=true)
+        dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
+        dynamicvalues(tuples=[{ 3, 'name3' }, { 4, 'name4' }, { 5, 'name5' }])
+
+
+- sql: |
+    select 
+      *
+    from 
+      (
+        values 
+          row(1，'name1'),
+          row(2,'name2')
+      ) 
+      as 
+        t(id, name) 
+      join 
+        test
+      on 
+        t.id = test.id;
+
+  plan: |
+    bkajoin(condition="column_0 = id", type="inner")
+      dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
+      gather(concurrent=true)
+        logicalview(tables="test[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name` from `test` as `test` where (`id` in (...))")
+    
+- sql: |
+    select
+      l_orderkey,
+      sum(l_extendedprice*(1-l_discount)) as revenue,
+      o_orderdate,
+      o_shippriority
+    from
+      customer,
+      orders,
+      lineitem,
+      (
+        values
+          row(1,'name1'),
+          row(2,'name2'),
+          row(3,'name3'),
+          row(4,'name4')
+        order by
+          column_0
+        limit 
+          2
+      )
+      as
+        tmp(id, name)
+    where
+      c_mktsegment = 'BUILDING'
+      and c_custkey = o_custkey
+      and l_orderkey = o_orderkey
+      and o_orderdate < '1995-03-15'
+      and l_shipdate > '1995-03-15'
+      and c_name = tmp.name
+      and o_orderkey = tmp.id
+    group by
+      l_orderkey,
+      o_orderdate,
+      o_shippriority
+    order by
+      revenue desc,
+      o_orderdate;
+    
+  plan: |
+    project(l_orderkey="l_orderkey", revenue="revenue", o_orderdate="o_orderdate", o_shippriority="o_shippriority")
+      exchange(distribution=single, collation=[3 desc-nulls-last, 1 asc-nulls-first])
+        memsort(sort="revenue desc,o_orderdate asc")
+          project(l_orderkey="l_orderkey", o_orderdate="o_orderdate", o_shippriority="o_shippriority", revenue="revenue")
+            hashagg(group="o_orderdate,o_shippriority,l_orderkey", revenue="sum(__*__)")
+              exchange(distribution=hash[6, 7, 8], collation=[])
+                project(column_0="column_0", column_1="column_1", c_custkey="c_custkey", c_name="c_name", o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderdate="o_orderdate", o_shippriority="o_shippriority", l_orderkey="l_orderkey", __*__="__*__")
+                  bkajoin(condition="o_custkey = c_custkey and column_1 = c_name", type="inner")
+                    project(column_0="column_0", column_1="column_1", o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderdate="o_orderdate", o_shippriority="o_shippriority", l_orderkey="l_orderkey", __*__="__*__")
+                      hashjoin(condition="o_orderkey = column_0 and column_0 = l_orderkey", type="inner")
+                        logicalview(tables="orders[p1,p2,p3,p4],lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `orders`.`o_orderkey`, `orders`.`o_custkey`, `orders`.`o_orderdate`, `orders`.`o_shippriority`, `lineitem`.`l_orderkey`, (`lineitem`.`l_extendedprice` * (1 - `lineitem`.`l_discount`)) as `__*__` from `orders` as `orders` inner join `lineitem` as `lineitem` on ((`orders`.`o_orderkey` = `lineitem`.`l_orderkey`) and (`orders`.`o_orderdate` < '1995-03-15') and (`lineitem`.`l_shipdate` > '1995-03-15')) where (`orders`.`o_orderkey` = `lineitem`.`l_orderkey`)")
+                        exchange(distribution=broadcast, collation=[])
+                          topn(sort="column_0 asc", offset=0, fetch=2)
+                            dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }, { 3, 'name3' }, { 4, 'name4' }])
+                    logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name` from `customer` as `customer` where ((`c_mktsegment` = 'building') and (((`c_custkey`, `c_name`)) in (...)))")

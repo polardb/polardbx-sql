@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
@@ -71,6 +72,20 @@ public class DrdsRelMdColumnUniqueness extends RelMdColumnUniqueness {
         TableMeta tableMeta = CBOUtil.getTableMeta(rel.getTable());
         if (tableMeta == null) {
             return null;
+        }
+        if (tableMeta.isColumnar()) {
+            GsiMetaManager.GsiTableMetaBean tableMetaBean = tableMeta.getGsiTableMetaBean();
+            if (tableMetaBean != null
+                && tableMetaBean.gsiMetaBean != null
+                && tableMetaBean.gsiMetaBean.tableName != null
+                && tableMetaBean.gsiMetaBean.indexStatus == IndexStatus.PUBLIC) {
+                tableMeta = PlannerContext.getPlannerContext(rel).getExecutionContext()
+                    .getSchemaManager(tableMeta.getSchemaName())
+                    .getTableWithNull(tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName);
+            }
+        }
+        if (tableMeta == null) {
+            return false;
         }
 
         if (DrdsRelMdSelectivity.isPrimaryKeyAutoIncrement(tableMeta) && columns.cardinality() > 0) {

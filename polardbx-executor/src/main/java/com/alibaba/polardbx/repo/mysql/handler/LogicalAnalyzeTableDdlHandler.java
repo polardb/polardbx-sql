@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.utils.LoggerUtil;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AnalyzeTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAnalyzeTableMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -30,6 +33,7 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -40,6 +44,7 @@ import org.apache.calcite.sql.SqlAnalyzeTableDdl;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Pair;
+import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
@@ -53,9 +58,7 @@ import static com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper.deSer
  * @author wumu
  */
 public class LogicalAnalyzeTableDdlHandler extends LogicalCommonDdlHandler {
-    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
-
-    private final int ANALYZE_TABLE_DEFAULT_SPEED = 100000000;
+    private static final Logger logger = LoggerUtil.statisticsLogger;
 
     public LogicalAnalyzeTableDdlHandler(IRepository repo) {
         super(repo);
@@ -63,15 +66,28 @@ public class LogicalAnalyzeTableDdlHandler extends LogicalCommonDdlHandler {
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
-        if (executionContext.getExtraCmds().get(ConnectionProperties.ANALYZE_TABLE_SPEED_LIMITATION) == null) {
-            executionContext.getExtraCmds().put(ConnectionProperties.ANALYZE_TABLE_SPEED_LIMITATION,
-                ANALYZE_TABLE_DEFAULT_SPEED);
-        }
 
         LogicalAnalyzeTable logicalAnalyzeTable = (LogicalAnalyzeTable) logicalDdlPlan;
         final SqlAnalyzeTableDdl analyzeTable = (SqlAnalyzeTableDdl) logicalAnalyzeTable.getNativeSqlNode();
-        List<Pair<String, String>> tableNameList =
-            extractTableList(analyzeTable.getTableNames(), executionContext.getSchemaName(), executionContext);
+
+        String defaultSchemaName = executionContext.getSchemaName();
+
+        List<Pair<String, String>> tableNameList = new ArrayList<>();
+        for (SqlNode tableSqlNode : analyzeTable.getTableNames()) {
+            String schemaName = defaultSchemaName;
+            String tableName;
+            if (tableSqlNode instanceof SqlIdentifier) {
+                if (((SqlIdentifier) tableSqlNode).names.size() == 2) {
+                    schemaName = ((SqlIdentifier) tableSqlNode).names.get(0);
+                }
+            }
+            tableName = Util.last(((SqlIdentifier) tableSqlNode).names);
+            OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+            if (optimizerContext == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
+            }
+            tableNameList.add(Pair.of(schemaName, tableName));
+        }
 
         ExecutableDdlJob result = new ExecutableDdlJob();
         if (!tableNameList.isEmpty()) {
@@ -89,6 +105,10 @@ public class LogicalAnalyzeTableDdlHandler extends LogicalCommonDdlHandler {
                 result.addExcludeResources(Sets.newHashSet(fullTableName));
             }
         }
+
+        CdcAnalyzeTableMarkTask cdcAnalyzeTableMarkTask = new CdcAnalyzeTableMarkTask(executionContext.getSchemaName(),
+            buildCdcMarkTableName(analyzeTable.getTableNames()));
+        result.addTask(cdcAnalyzeTableMarkTask);
 
         return result;
     }
@@ -116,21 +136,18 @@ public class LogicalAnalyzeTableDdlHandler extends LogicalCommonDdlHandler {
                 AnalyzeTablePhyDdlTask task = (AnalyzeTablePhyDdlTask) deSerializeTask(record.name, record.value);
                 List<String> schemaNames = task.getSchemaNames();
                 List<String> tableNames = task.getTableNames();
-                List<Boolean> useHill = task.getUseHll();
-                List<Boolean> success = task.getSuccess();
+                List<Boolean> useHlls = task.getUseHll();
+                List<String> msg = task.getMsg();
 
                 for (int i = 0; i < tableNames.size(); ++i) {
                     String schemaName = schemaNames.get(i);
                     String table = tableNames.get(i);
-                    if (!useHill.get(i)) {
+                    if (!useHlls.get(i)) {
                         result.addRow(new Object[] {schemaName + "." + table, "analyze", "use hll", "false"});
                     }
 
-                    if (success.get(i)) {
-                        result.addRow(new Object[] {schemaName + "." + table, "analyze", "status", "OK"});
-                    } else {
-                        result.addRow(new Object[] {schemaName + "." + table, "analyze", "status", "FAIL"});
-                    }
+                    result.addRow(new Object[] {schemaName + "." + table, "analyze", "status", msg.get(i)});
+//
                 }
             }
         } catch (Throwable ex) {
@@ -139,6 +156,18 @@ public class LogicalAnalyzeTableDdlHandler extends LogicalCommonDdlHandler {
         }
 
         return result;
+    }
+
+    private String buildCdcMarkTableName(List<SqlNode> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return "*";
+        } else {
+            if (tables.size() > 1) {
+                return "*";
+            } else {
+                return ((SqlIdentifier) tables.get(0)).getLastName();
+            }
+        }
     }
 
     private List<Pair<String, String>> extractTableList(List<SqlNode> tableNameSqlNodeList, String currentSchemaName,

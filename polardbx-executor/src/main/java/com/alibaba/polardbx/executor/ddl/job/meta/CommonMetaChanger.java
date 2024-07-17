@@ -16,13 +16,14 @@
 
 package com.alibaba.polardbx.executor.ddl.job.meta;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
-import com.alibaba.polardbx.executor.sync.ClearOSSFileSystemSyncAction;
+import com.alibaba.polardbx.executor.sync.ClearFileSystemCacheSyncAction;
 import com.alibaba.polardbx.executor.sync.DeleteOssFileSyncAction;
 import com.alibaba.polardbx.executor.sync.InvalidateBufferPoolSyncAction;
 import com.alibaba.polardbx.executor.sync.RemoveColumnStatisticSyncAction;
@@ -33,8 +34,10 @@ import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager.PhyInfoSchemaContext;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
+import org.jetbrains.annotations.Nullable;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 import java.util.List;
@@ -135,22 +138,23 @@ public class CommonMetaChanger {
 //    }
 
     private static void removeTableStatistic(String schemaName, String logicalTableName) {
-        SyncManagerHelper.sync(new RemoveTableStatisticSyncAction(schemaName, logicalTableName), schemaName);
+        SyncManagerHelper.sync(new RemoveTableStatisticSyncAction(schemaName, logicalTableName), schemaName,
+            SyncScope.ALL);
     }
 
     private static void invalidateAlterTableColumnStatistic(String schemaName, String logicalTableName,
                                                             List<String> columnList) {
         SyncManagerHelper.sync(new RemoveColumnStatisticSyncAction(schemaName, logicalTableName, columnList),
-            schemaName);
+            schemaName, SyncScope.ALL);
     }
 
     private static void renameStatistic(String schemaName, String logicalTableName, String newLogicalTableName) {
         SyncManagerHelper.sync(new RenameStatisticSyncAction(schemaName, logicalTableName, newLogicalTableName),
-            schemaName);
+            schemaName, SyncScope.ALL);
     }
 
     public static void invalidateBufferPool() {
-        SyncManagerHelper.sync(new InvalidateBufferPoolSyncAction(), DefaultDbSchema.NAME);
+        SyncManagerHelper.sync(new InvalidateBufferPoolSyncAction(), DefaultDbSchema.NAME, SyncScope.ALL);
     }
 
     public static void invalidateBufferPool(String schemaName) {
@@ -158,14 +162,15 @@ public class CommonMetaChanger {
     }
 
     private static void invalidateBufferPool(String schemaName, String logicalTableName) {
-        SyncManagerHelper.sync(new InvalidateBufferPoolSyncAction(schemaName, logicalTableName), schemaName);
+        SyncManagerHelper.sync(new InvalidateBufferPoolSyncAction(schemaName, logicalTableName), schemaName,
+            SyncScope.ALL);
     }
 
-    public static void clearOSSFileSystemCache() {
-        SyncManagerHelper.sync(new ClearOSSFileSystemSyncAction(), DefaultDbSchema.NAME);
+    public static void clearFileSystemCache(@Nullable Engine engine, boolean all) {
+        SyncManagerHelper.sync(new ClearFileSystemCacheSyncAction(engine, all), DefaultDbSchema.NAME, SyncScope.ALL);
     }
 
     public static void clearOSSFileSystemCache(List<String> paths, String schema) {
-        SyncManagerHelper.sync(new DeleteOssFileSyncAction(paths), schema);
+        SyncManagerHelper.sync(new DeleteOssFileSyncAction(paths), schema, SyncScope.ALL);
     }
 }

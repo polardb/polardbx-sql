@@ -11,3 +11,18 @@
           hashagg(group="name", count(id)="sum(count(id))")
             gather(concurrent=true)
               logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `name`, count(*) as `count(id)` from `test_hash_tb` as `test_hash_tb` group by `name`")
+
+- sql: |
+    select count(1)
+    from test_hash_tb a
+    group by a.name having count(1)>1 order by count(1) ;
+
+
+  plan: |
+
+    memsort(sort="count(1) asc")
+      project(count(1)="count(1)")
+        filter(condition="count(1) > 1")
+          hashagg(group="name", count(1)="sum(count(1))")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `name`, count(*) as `count(1)` from `test_hash_tb` as `test_hash_tb` group by `name`")

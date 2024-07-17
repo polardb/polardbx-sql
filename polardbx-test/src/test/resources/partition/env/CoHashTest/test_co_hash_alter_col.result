@@ -1,0 +1,12 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE if not exists `ch_tbl1` (
+`id` bigint(11) NOT NULL,
+`val` bigint(11) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`id`,`val`, 4)
+PARTITIONS 3;
+## error_msg: $# must be the same #$
+alter table ch_tbl1 modify column val varchar(32) not null;
+must be the same
+drop table if exists ch_tbl1;

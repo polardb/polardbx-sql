@@ -213,7 +213,11 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
             if (!first) {
                 query.append(", ");
             }
-            query.append("@").append(key).append("=").append("NULL");
+            if (key.equalsIgnoreCase("sql_log_bin")) {
+                query.append(key).append("=").append("'ON'");
+            } else {
+                query.append("@").append(key).append("=").append("NULL");
+            }
         }
 
         if (!first) { // 需要确保SET指令是完整的, 而不是只有一个SET前缀.
@@ -229,6 +233,10 @@ public class TAtomConnectionProxy extends ConnectionProxyImpl {
                 ps.close();
                 ps = null;
                 if (!isGlobal) {
+                    for (String key : serverVariablesNeedToRemove) {
+                        sessionVariables.remove(key);
+                        sessionVariablesChanged.remove(key);
+                    }
                     for (Entry<String, Object> e : tmpVariablesChanged.entrySet()) {
                         sessionVariables.put(e.getKey(), e.getValue());
                         sessionVariablesChanged.put(e.getKey(), e.getValue());
