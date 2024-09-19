@@ -21,6 +21,7 @@ import com.alibaba.polardbx.cdc.CdcTableUtil;
 import com.alibaba.polardbx.gms.util.JdbcUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
+import com.alibaba.polardbx.qatest.privileges.encdb.EncdbTestBase;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.Assert;
@@ -207,6 +208,9 @@ public class ConnectionManager {
             } catch (Throwable t) {
                 //ignore
             }
+
+            //remove encdb jdbc8 driver
+            EncdbTestBase.cleanJDBC8Driver();
 
         } catch (Throwable t) {
             log.error(this.toString(), t);

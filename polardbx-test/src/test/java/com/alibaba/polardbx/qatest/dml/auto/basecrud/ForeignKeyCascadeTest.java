@@ -771,6 +771,11 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
                             JdbcUtil.executeQuerySuccess(tddlConnection, String.format("select * from %s", tableName3));
                         Assert.assertTrue(rs.next());
                         assertEquals(rs.getLong(3), 9);
+
+                        // update one column on child table
+                        sql = String.format("update %s set c = 9 where b = 7", tableName3);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
+
                         break;
                     case "RESTRICT":
                     case "NO ACTION":
@@ -863,6 +868,11 @@ public class ForeignKeyCascadeTest extends DDLBaseNewDBTestCase {
                         // update one of referenced columns
                         sql = String.format("update %s set b = 9 where c = 3", tableName1);
                         JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql, "");
+
+                        // update one column on child table
+                        sql = String.format("update %s set b = 2 where c = 1", tableName3);
+                        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
+
                         break;
 
                     case "SET NULL":

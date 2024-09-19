@@ -159,7 +159,7 @@
         <commons-io.version>2.7</commons-io.version>
         <commons-pool.version>1.6</commons-pool.version>
         <guava.version>30.1.1-jre</guava.version>
-        <fastjson.version>1.2.67</fastjson.version>
+        <fastjson.version>1.2.83</fastjson.version>
         <druid.version>1.2.8</druid.version>
         <cglib-nodep.version>3.1</cglib-nodep.version>
         <jdom.version>2.0.2</jdom.version>
