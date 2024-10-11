@@ -1096,6 +1096,23 @@ public abstract class HandlerCommon implements PlanHandler {
         return sortedColumns;
     }
 
+    protected List<String> getUpdateSortedColumns(TableMeta tableMeta, ForeignKeyData data,
+                                                  List<String> updateColumns) {
+        Map<String, String> columnMap =
+            IntStream.range(0, data.columns.size()).collect(TreeMaps::caseInsensitiveMap,
+                (m, i) -> m.put(data.columns.get(i), data.refColumns.get(i)), Map::putAll);
+
+        List<String> sortedColumns = new ArrayList<>();
+        tableMeta.getAllColumns().forEach(c -> {
+            if (data.columns.stream().anyMatch(c.getName()::equalsIgnoreCase) &&
+                updateColumns.stream().anyMatch(c.getName()::equalsIgnoreCase)) {
+                sortedColumns.add(columnMap.get(c.getName()));
+            }
+        });
+
+        return sortedColumns;
+    }
+
     protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResults(ForeignKeyData data,
                                                                                           String schemaName,
                                                                                           String tableName,
@@ -1104,12 +1121,17 @@ public abstract class HandlerCommon implements PlanHandler {
                                                                                           List<List<Object>> values,
                                                                                           PhysicalPlanBuilder builder,
                                                                                           List<String> selectKeys,
+                                                                                          List<String> updateColumns,
                                                                                           boolean isFront,
-                                                                                          boolean isInsert) {
+                                                                                          boolean isInsert,
+                                                                                          boolean isUpdateCheck) {
         List<String> columns = isInsert ? selectKeys : isFront ? data.refColumns : data.columns;
 
         List<String> sortedColumns;
-        if (!isInsert) {
+        if (isUpdateCheck) {
+            sortedColumns = getUpdateSortedColumns(tableMeta, data, updateColumns);
+            columns = sortedColumns;
+        } else if (!isInsert) {
             sortedColumns =
                 isFront ? getSortedColumns(true, tableMeta, data) : getSortedColumns(false, parentTableMeta, data);
         } else {
@@ -1216,9 +1238,10 @@ public abstract class HandlerCommon implements PlanHandler {
             Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
                 getShardResults(data.getValue(), schemaName, tableName, tableMeta, parentTableMeta, updateValueList,
                     builder, null,
-                    true, false);
+                    tableModify.getUpdateColumnList(), true, false, true);
 
-            List<String> sortedColumns = getSortedColumns(true, tableMeta, data.getValue());
+            List<String> sortedColumns =
+                getUpdateSortedColumns(tableMeta, data.getValue(), tableModify.getUpdateColumnList());
 
             ExecutionContext selectEc = executionContext.copy();
             selectEc.setParams(new Parameters(selectEc.getParams().getCurrentParameter(), false));
@@ -1315,7 +1338,7 @@ public abstract class HandlerCommon implements PlanHandler {
                 getShardResults(data.getValue(), schemaName, tableName, refTableMeta, tableMeta,
                     shardConditionValueList, builder,
                     null,
-                    false, false);
+                    null, false, false, false);
 
             columnMap = IntStream.range(0, data.getValue().columns.size()).collect(TreeMaps::caseInsensitiveMap,
                 (m, i) -> m.put(data.getValue().refColumns.get(i), data.getValue().columns.get(i)),
@@ -1454,7 +1477,7 @@ public abstract class HandlerCommon implements PlanHandler {
                     executionContext, false) :
                 getShardResults(data.getValue(), schemaName, tableName, refTableMeta, tableMeta, conditionValueList,
                     builder, null,
-                    false, false);
+                    null, false, false, false);
 
             List<String> sortedColumns = getSortedColumns(false, tableMeta, data.getValue());
 

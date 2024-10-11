@@ -428,7 +428,7 @@ public class LogicalInsertHandler extends HandlerCommon {
                 Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
                     getShardResults(data.getValue(), schemaName, tableName, tableMeta, parentTableMeta,
                         conditionValueList,
-                        builder, sortedColumns, true, true);
+                        builder, sortedColumns, null, true, true, false);
 
                 conditionValueList = conditionValueList.stream().distinct().collect(Collectors.toList());
 
@@ -519,7 +519,7 @@ public class LogicalInsertHandler extends HandlerCommon {
                 Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
                     getShardResults(data.getValue(), schemaName, tableName, tableMeta, parentTableMeta,
                         conditionValueList,
-                        builder, sortedColumns, true, true);
+                        builder, sortedColumns, null, true, true, false);
 
                 List<List<Object>> selectValues = getSelectValues(selectEc, schemaName,
                     parentTableMeta, conditionValueList, logicalInsert, memoryAllocator, builder, shardResults,

@@ -453,6 +453,12 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
             return false;
         }
 
+        // 针对mysql系统库，过滤
+        if (StringUtils.equalsIgnoreCase(schemaName, "mysql") && StringUtils.equalsIgnoreCase("DROP_DATABASE",
+            sqlKind.toString())) {
+            return false;
+        }
+
         return true;
     }
 
