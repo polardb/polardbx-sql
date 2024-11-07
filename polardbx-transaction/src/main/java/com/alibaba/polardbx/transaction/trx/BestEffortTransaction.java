@@ -28,10 +28,10 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.LockUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionState;
+import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
 import com.alibaba.polardbx.transaction.jdbc.SavePoint;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.log.RedoLogManager;
@@ -147,7 +147,8 @@ public class BestEffortTransaction extends AbstractTransaction {
          * 写入 global_tx_log 状态为 SUCCEED （还未提交）
          */
         try {
-            GlobalTxLogManager.append(id, getType(), TransactionState.SUCCEED, connectionContext, primaryConnection);
+            GlobalTxLogManager.appendWithSocketTimeout(id, getType(), TransactionState.SUCCEED, connectionContext,
+                primaryConnection);
         } catch (SQLIntegrityConstraintViolationException ex) {
             // 被抢占 Rollback 了，停止提交
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Transaction ID exists. Commit interrupted");

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.gms.util;
 
-import com.alibaba.polardbx.common.TddlConstants;
-
 import java.util.Formatter;
 import java.util.Random;
 import java.util.Set;
@@ -31,9 +29,9 @@ public class PartColLocalIndexNameUtil {
                                          String preferName) {
         // Assign new name with suffix.
         final Random random = new Random();
-        final Formatter formatter = new Formatter();
         String fullName;
         do {
+            Formatter formatter = new Formatter();
             final String suffix = "$" + formatter.format("%04x", random.nextInt(0x10000));
             fullName = preferName + suffix;
         } while (existsNames.contains(fullName));

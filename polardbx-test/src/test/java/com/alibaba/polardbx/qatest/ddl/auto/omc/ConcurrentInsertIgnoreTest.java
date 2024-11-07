@@ -32,8 +32,8 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s modify column b bigint";
         String selectSql = "select * from %s order by a";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d, %d + %d, 'a', 'b')", count, count, FILL_COUNT);
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d, %d + %d, 'a', 'b')", count, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
@@ -50,8 +50,8 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s modify column b bigint, modify column c char(10) after d";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
@@ -68,8 +68,8 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s modify column b bigint";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
@@ -86,8 +86,7 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint";
         String selectSql = "select * from %s order by a";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d, %d + %d, 'a', 'b')", count, count, FILL_COUNT);
+            "insert ignore into %%s values(%d, %d + %d, 'a', 'b')", count, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
@@ -104,8 +103,8 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
@@ -122,8 +121,8 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint, change column c d char(10), change column d c varchar(20)";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB)) && (colC.equalsIgnoreCase(colD));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
@@ -140,8 +139,8 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint, drop column d, add column f char(10) default 'xyz'";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
-                + "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (Objects.equals(colA, colB))
                 && (colC.equalsIgnoreCase(colD) || colD.equalsIgnoreCase("xyz"));
@@ -149,5 +148,53 @@ public class ConcurrentInsertIgnoreTest extends ConcurrentDMLBaseTest {
             1);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
             1);
+    }
+
+    @Test
+    public void singleChangeMultiWithInsertIgnore() throws Exception {
+        String tableName = "omc_single_multi_with_insert_ignore";
+        String colDef = "int unique key";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") single", colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint, drop column d, add column f char(10) default 'xyz'";
+        String selectSql = "select * from %s order by a desc";
+        Function<Integer, String> generator = (count) -> String.format(
+            buildCmdExtra(ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (Objects.equals(colA, colB))
+                && (colC.equalsIgnoreCase(colD) || colD.equalsIgnoreCase("xyz"));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker,
+            true, false, 1, createSql);
+    }
+
+    @Test
+    public void broadcastChangeMultiWithInsertIgnore() throws Exception {
+        String tableName = "omc_single_multi_with_insert_ignore";
+        String colDef = "int unique key";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") broadcast", colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint, drop column d, add column f char(10) default 'xyz'";
+        String selectSql = "select * from %s order by a desc";
+        Function<Integer, String> generator = (count) -> String.format(
+            buildCmdExtra(ENABLE_LOCAL_UK_FULL_TABLE_SCAN) +
+                "insert ignore into %%s values(%d + %d, %d, 'a', 'b')", count, FILL_COUNT, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (Objects.equals(colA, colB))
+                && (colC.equalsIgnoreCase(colD) || colD.equalsIgnoreCase("xyz"));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker,
+            true, false, 1, createSql);
     }
 }

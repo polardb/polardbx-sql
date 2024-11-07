@@ -27,8 +27,10 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.corrector.Reporter;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
@@ -40,8 +42,10 @@ import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlSelect;
 
@@ -51,20 +55,28 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
+
 @TaskName(name = "AlterTableGroupMovePartitionsCheckTask")
 @Getter
-public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask {
+public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
     final private String logicalTableName;
     final private Map<String, Set<String>> sourcePhyTableNames;
     final private Map<String, Set<String>> targetPhyTableNames;
     final private Boolean stopDoubleWrite;
     final private List<String> relatedTables;
+    final private long dataSize;
 
     @JSONCreator
     public AlterTableGroupMovePartitionsCheckTask(String schemaName, String logicalTableName,
                                                   Map<String, Set<String>> sourcePhyTableNames,
                                                   Map<String, Set<String>> targetPhyTableNames,
-                                                  Boolean stopDoubleWrite, List<String> relatedTables
+                                                  Boolean stopDoubleWrite,
+                                                  List<String> relatedTables,
+                                                  Set<String> sourceStorageInsts,
+                                                  Set<String> targetStorageInsts,
+                                                  long dataSize
     ) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
@@ -72,6 +84,10 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask {
         this.targetPhyTableNames = targetPhyTableNames;
         this.stopDoubleWrite = stopDoubleWrite;
         this.relatedTables = relatedTables;
+        this.dataSize = dataSize;
+        if (sourceStorageInsts != null && targetStorageInsts != null) {
+            setResourceAcquired(buildResourceRequired(sourceStorageInsts, targetStorageInsts, dataSize));
+        }
         onExceptionTryRollback();
     }
 
@@ -106,6 +122,26 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask {
         } else {
             checkWithDoubleCheck(executionContext, useFastChecker);
         }
+    }
+
+    @Override
+    public DdlEngineResources getDdlEngineResources() {
+        return this.resourceAcquired;
+    }
+
+    DdlEngineResources buildResourceRequired(Set<String> sourceStorageInsts, Set<String> targetStorageInsts,
+                                             Long dataSize) {
+        String owner = "CheckTask:" + logicalTableName;
+        DdlEngineResources resourceRequired = new DdlEngineResources();
+        for (String storageInst : sourceStorageInsts) {
+            resourceRequired.request(storageInst + DN_IO, 25L, owner);
+            resourceRequired.request(storageInst + DN_CPU, 25L, owner);
+        }
+        for (String storageInst : targetStorageInsts) {
+            resourceRequired.request(storageInst + DN_IO, 25L, owner);
+            resourceRequired.request(storageInst + DN_CPU, 25L, owner);
+        }
+        return resourceRequired;
     }
 
     @Override
@@ -280,5 +316,59 @@ public class AlterTableGroupMovePartitionsCheckTask extends BaseBackfillTask {
             throw GeneralUtil.nestedException(
                 "alter tableGroup checker found error after backfill. Please try to rollback/recover this job");
         }
+    }
+
+    @Override
+    public String remark() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("|checker detail: ");
+        sb.append("table_schema [");
+        sb.append(schemaName);
+        sb.append("] ");
+        sb.append("table [");
+        sb.append(logicalTableName);
+        sb.append("] ");
+        sb.append("source physical table info [");
+        int j = 0;
+        for (Map.Entry<String, Set<String>> entry : sourcePhyTableNames.entrySet()) {
+            if (j > 0) {
+                sb.append(", ");
+            }
+            j++;
+            sb.append("(");
+            sb.append(entry.getKey()).append(":");
+            int i = 0;
+            for (String tbName : entry.getValue()) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(tbName);
+                i++;
+            }
+            sb.append(")");
+        }
+        sb.append("], target physical table info [");
+        j = 0;
+        for (Map.Entry<String, Set<String>> entry : targetPhyTableNames.entrySet()) {
+            if (j > 0) {
+                sb.append(", ");
+            }
+            j++;
+            sb.append("(");
+            sb.append(entry.getKey()).append(":");
+            int i = 0;
+            for (String tbName : entry.getValue()) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(tbName);
+                i++;
+            }
+            sb.append(")");
+        }
+        sb.append("], size [");
+        sb.append(DataSize.succinctBytes(dataSize));
+        sb.append("]");
+        return sb.toString();
     }
 }

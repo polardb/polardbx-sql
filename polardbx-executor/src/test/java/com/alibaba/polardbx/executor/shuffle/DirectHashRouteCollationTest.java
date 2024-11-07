@@ -22,7 +22,12 @@ import org.junit.Test;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DirectHashRouteCollationTest {
@@ -142,6 +147,26 @@ public class DirectHashRouteCollationTest {
         checkConsistency(block, searchDatumInfos);
     }
 
+    @Test
+    public void testVarCharUtf8Mb4() {
+        ExecutionContext executionContext = new ExecutionContext();
+        executionContext.setEnableOssCompatible(Boolean.TRUE);
+        DataType type = new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI);
+        SliceBlockBuilder blockBuilder =
+            new SliceBlockBuilder(type, 1024, executionContext, executionContext.getParamManager().getBoolean(
+                ConnectionParams.ENABLE_OSS_COMPATIBLE));
+        List<SearchDatumInfo> searchDatumInfos = new ArrayList<>();
+        writeBytes(type, new byte[] {'a', 'B', ' '}, searchDatumInfos, blockBuilder, Charset.forName("utf8"));
+        writeBytes(type, new byte[] {'A', 'B', ' '}, searchDatumInfos, blockBuilder, Charset.forName("utf8"));
+        writeBytes(type, new byte[] {'A', 'b', ' '}, searchDatumInfos, blockBuilder, Charset.forName("utf8"));
+        writeBytes(type, new byte[] {'a', 'b', ' '}, searchDatumInfos, blockBuilder, Charset.forName("utf8"));
+        writeBytes(type, new byte[] {'a', 'b'}, searchDatumInfos, blockBuilder, Charset.forName("utf8"));
+        writeBytes(type, new byte[] {'a', 'b', ' ', ' '}, searchDatumInfos, blockBuilder, Charset.forName("utf8"));
+
+        Block block = blockBuilder.build();
+        checkConsistency(block, searchDatumInfos);
+    }
+
     private void writeBytes(DataType type, byte[] bytes, List<SearchDatumInfo> searchDatumInfos,
                             SliceBlockBuilder blockBuilder, Charset charset) {
         blockBuilder.writeString(new String(bytes, charset));
@@ -165,5 +190,62 @@ public class DirectHashRouteCollationTest {
             IntStream.range(0, block.getPositionCount()).mapToLong(block::hashCodeUseXxhash).distinct().count() == 1);
         Assert.assertTrue(IntStream.range(0, block.getPositionCount())
             .mapToLong(i -> NonConsistencyHasherUtils.calcHashCode(searchDatumInfos.get(i))).distinct().count() == 1);
+    }
+
+    @Test
+    public void testCharFieldSkew() {
+        DataType type = new CharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI);
+        testSkew(type);
+        type = new CharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_BIN);
+        testSkew(type);
+    }
+
+    @Test
+    public void testVarCharFieldSkew() {
+        DataType type = new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_GENERAL_CI);
+        testSkew(type);
+        type = new VarcharType(CharsetName.UTF8MB4, CollationName.UTF8MB4_BIN);
+        testSkew(type);
+    }
+
+    private void testSkew(DataType type) {
+        List<PartitionField> partitionFields = Arrays.asList(
+            getPartitionField(type, "JPBS21082984490347130065".getBytes()),
+            getPartitionField(type, "JPBR21073100350927170621".getBytes()),
+            getPartitionField(type, "JPBS21082984340345560593".getBytes()),
+            getPartitionField(type, "JPBS22080617230503440904".getBytes()),
+            getPartitionField(type, "JPBS22071902121219350135".getBytes()),
+            getPartitionField(type, "JPBS22071018910901310901".getBytes()),
+            getPartitionField(type, "JPBS22043001810618580367".getBytes()),
+            getPartitionField(type, "JPBS22072026671000490511".getBytes()),
+            getPartitionField(type, "JPBS22072090520333570941".getBytes()),
+            getPartitionField(type, "JPBS22072591990853040266".getBytes()),
+            getPartitionField(type, "JPBS22072735210846060183".getBytes()),
+            getPartitionField(type, "JPBS22070126010737400679".getBytes()),
+            getPartitionField(type, "JPBS22071798090713090622".getBytes()),
+            getPartitionField(type, "JPBS22072425270837500933".getBytes()),
+            getPartitionField(type, "JPBS22072169520632570863".getBytes()),
+            getPartitionField(type, "JPBS22043083710432430348".getBytes()),
+            getPartitionField(type, "JPBS22042369890646300579".getBytes()),
+            getPartitionField(type, "JPBS22072724010731420761".getBytes()),
+            getPartitionField(type, "JPBS22072415891155260120".getBytes()),
+            getPartitionField(type, "JPBS22072074361242110099".getBytes())
+        );
+        List<Long> partition = partitionFields.stream().map(filed -> filed.xxHashCode()).map(code -> code & 3).collect(
+            Collectors.toList());
+        Assert.assertTrue(partition.stream().distinct().count() == 4);
+
+        Map<Long, Long> countMap = partition.stream()
+            .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        Long maxCount = Collections.max(countMap.values());
+        Long minCount = Collections.min(countMap.values());
+
+        Assert.assertTrue(maxCount <= 10 && minCount >= 2, "char filed skew");
+    }
+
+    private PartitionField getPartitionField(DataType type, byte[] bytes) {
+        PartitionField partFiled = PartitionFieldBuilder.createField(type);
+        partFiled.store(bytes, DataTypes.CharType);
+        return partFiled;
     }
 }

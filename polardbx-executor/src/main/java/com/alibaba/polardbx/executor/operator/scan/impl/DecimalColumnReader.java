@@ -429,9 +429,13 @@ public class DecimalColumnReader extends AbstractColumnReader {
         int len = (int) length;
         byte[] tmp = new byte[len];
         byte[] read = new byte[len];
-        int num = dataStream.read(read);
-        if (num < len) {
-            throw new IOException("Failed to read bytes with length: " + length);
+        int n = 0;
+        while (n < len) {
+            int count = dataStream.read(read, n, len - n);
+            if (count < 0) {
+                throw new IOException("Failed to read decimal with length: " + length);
+            }
+            n += count;
         }
         boolean isUtf8FromLatin1 =
             MySQLUnicodeUtils.utf8ToLatin1(read, 0, (int) length, tmp);

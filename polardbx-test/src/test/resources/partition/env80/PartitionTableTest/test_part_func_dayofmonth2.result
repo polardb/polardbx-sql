@@ -26,7 +26,8 @@ part_route('', 'hash_dayofmonth', '2025-01-01 00:00:00.000')
 p1
 explain select d from hash_dayofmonth where d between '2022-02-28' and '2022-03-01';
 Logical ExecutionPlan
-PhyTableOperation(tables="hash_dayofmonth[p1]", sql="SELECT `hash_dayofmonth`.`d` AS `d` FROM ? AS `hash_dayofmonth` WHERE (`hash_dayofmonth`.`d` BETWEEN ? AND ?)", params="2022-03-01,2022-02-28")
+Gather(concurrent=true)
+  LogicalView(tables="hash_dayofmonth[p1]", sql="SELECT `d` FROM `hash_dayofmonth` AS `hash_dayofmonth` WHERE (`d` BETWEEN ? AND ?)")
 explain select d from hash_dayofmonth where d between '2024-02-28' and '2024-03-01';
 Logical ExecutionPlan
 Gather(concurrent=true)

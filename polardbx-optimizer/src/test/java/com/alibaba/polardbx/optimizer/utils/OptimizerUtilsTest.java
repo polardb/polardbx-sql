@@ -9,6 +9,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.PushDownOpt;
@@ -17,6 +18,8 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
 import org.mockito.MockedStatic;
@@ -30,6 +33,12 @@ import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static com.alibaba.polardbx.common.utils.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
 /**
  * @author fangwu
@@ -63,7 +72,7 @@ public class OptimizerUtilsTest {
     @Test
     public void testFindAllRawStrings() {
         // params has raw string and which size > IN_PRUNE_SIZE
-        ExecutionContext executionContext = Mockito.mock(ExecutionContext.class);
+        ExecutionContext executionContext = mock(ExecutionContext.class);
         Parameters parameters = new Parameters();
         Map<Integer, ParameterContext> params = Maps.newHashMap();
         params.put(1,
@@ -75,7 +84,7 @@ public class OptimizerUtilsTest {
 
         parameters.setParams(params);
 
-        Mockito.when(executionContext.getParams()).thenReturn(parameters);
+        when(executionContext.getParams()).thenReturn(parameters);
         Assert.assertTrue(OptimizerUtils.findAllRawStrings(ImmutableSet.of(1, 2), executionContext).length == 2);
         Assert.assertTrue(OptimizerUtils.findAllRawStrings(ImmutableSet.of(2), executionContext).length == 1);
     }
@@ -111,47 +120,102 @@ public class OptimizerUtilsTest {
     }
 
     @Test
-    public void testPruning() throws Exception {
+    public void testPruning() {
         // if 'DynamicConfig.getInstance().isEnablePruningIn' return false, then pruneRawStringMap is null
-        MockedStatic<OptimizerUtils> optimizerUtilsMockedStatic =
-            Mockito.mockStatic(OptimizerUtils.class, Mockito.CALLS_REAL_METHODS);
-        LogicalView testLogicalView = Mockito.mock(LogicalView.class);
-        PushDownOpt pushDownOpt = Mockito.mock(PushDownOpt.class);
-        Mockito.when(testLogicalView.getPushDownOpt()).thenReturn(pushDownOpt);
-        ExecutionContext executionContext = new ExecutionContext();
-        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_PRUNING_IN, "false");
-        Map<Pair<String, List<String>>, Parameters> rs =
-            OptimizerUtils.pruningInValue(testLogicalView, executionContext);
-        Assert.assertTrue(rs == null);
+        try (MockedStatic<OptimizerUtils> optimizerUtilsMockedStatic =
+            Mockito.mockStatic(OptimizerUtils.class, Mockito.CALLS_REAL_METHODS)) {
+            LogicalView testLogicalView = mock(LogicalView.class);
+            PushDownOpt pushDownOpt = mock(PushDownOpt.class);
+            when(testLogicalView.getPushDownOpt()).thenReturn(pushDownOpt);
+            ExecutionContext executionContext = new ExecutionContext();
+            DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_PRUNING_IN, "false");
+            Map<Pair<String, List<String>>, Parameters> rs =
+                OptimizerUtils.pruningInValue(testLogicalView, executionContext);
+            Assert.assertTrue(rs == null);
 
-        // 'is need prune' return true and findAllRawStrings return no raw string
-        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_PRUNING_IN, "true");
-        //OptimizerUtils.findAllRawStrings(ImmutableSet.of(1), executionContext)
-        optimizerUtilsMockedStatic.when(() -> OptimizerUtils.findAllRawStrings(ImmutableSet.of(1), executionContext))
-            .thenReturn(new Pair[0]);
+            // 'is need prune' return true and findAllRawStrings return no raw string
+            DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_PRUNING_IN, "true");
+            //OptimizerUtils.findAllRawStrings(ImmutableSet.of(1), executionContext)
+            optimizerUtilsMockedStatic.when(
+                    () -> OptimizerUtils.findAllRawStrings(ImmutableSet.of(1), executionContext))
+                .thenReturn(new Pair[0]);
 
-        rs = OptimizerUtils.pruningInValue(testLogicalView, executionContext);
-        Assert.assertTrue(rs == null);
+            rs = OptimizerUtils.pruningInValue(testLogicalView, executionContext);
+            Assert.assertTrue(rs == null);
 
-        // 'is need prune' return true and findAllRawStrings return no raw string
-        Parameters parameters = new Parameters();
-        Map<Integer, ParameterContext> params = Maps.newHashMap();
-        params.put(1,
-            new ParameterContext(ParameterMethod.setObject1, new Object[] {
-                1, new RawString(IntStream.range(0, 10000).boxed().collect(
-                Collectors.toList()))}));
-        parameters.setParams(params);
-        executionContext.setParams(parameters);
-        optimizerUtilsMockedStatic.when(() -> OptimizerUtils.findAllRawStrings(ImmutableSet.of(1), executionContext))
-            .thenCallRealMethod();
+            // 'is need prune' return true and findAllRawStrings return no raw string
+            Parameters parameters = new Parameters();
+            Map<Integer, ParameterContext> params = Maps.newHashMap();
+            params.put(1,
+                new ParameterContext(ParameterMethod.setObject1, new Object[] {
+                    1, new RawString(IntStream.range(0, 10000).boxed().collect(
+                    Collectors.toList()))}));
+            parameters.setParams(params);
+            executionContext.setParams(parameters);
+            optimizerUtilsMockedStatic.when(
+                    () -> OptimizerUtils.findAllRawStrings(ImmutableSet.of(1), executionContext))
+                .thenCallRealMethod();
 
-        // mock sharding
-        Mockito.when(pushDownOpt.getShardRelatedInTypeParamIndexes()).thenReturn(ImmutableSet.of(1));
-        Mockito.doAnswer(invocationOnMock -> buildRandomSharding()).when(testLogicalView)
-            .buildTargetTables(Mockito.any());
-        rs = OptimizerUtils.pruningInValue(testLogicalView, executionContext);
+            // mock sharding
+            when(pushDownOpt.getShardRelatedInTypeParamIndexes()).thenReturn(ImmutableSet.of(1));
+            Mockito.doAnswer(invocationOnMock -> buildRandomSharding()).when(testLogicalView)
+                .buildTargetTables(Mockito.any());
+            rs = OptimizerUtils.pruningInValue(testLogicalView, executionContext);
 
-        Assert.assertTrue(rs.size() == 25);
+            Assert.assertTrue(rs.size() == 25);
+        }
+    }
+
+    /**
+     * Tests the scenario where the provided {@code RelNode} has non-empty parameters.
+     * Verifies that the returned map of parameters is not null.
+     */
+    @Test
+    public void testGetParametersMapForOptimizerWithNonEmptyParameters() {
+        // Mock a RelNode with non-empty parameters
+        RelNode relNode = mock(RelNode.class);
+        PlannerContext plannerContext = mock(PlannerContext.class);
+
+        when(plannerContext.getParams()).thenReturn(new Parameters());
+        try (MockedStatic<PlannerContext> plannerContextMockedStatic = mockStatic(PlannerContext.class)) {
+            plannerContextMockedStatic.when(() -> PlannerContext.getPlannerContext(relNode)).thenReturn(plannerContext);
+
+            Map<Integer, ParameterContext> result = OptimizerUtils.getParametersMapForOptimizer(relNode);
+
+            assertNotNull(result);
+        }
+    }
+
+    /**
+     * Validates that the method correctly retrieves non-null parameters from a PlannerContext.
+     */
+    @Test
+    public void testGetParametersForOptimizerWithNonEmptyParametersInContext() {
+        // Mock a PlannerContext with non-empty parameters
+        PlannerContext plannerContext = mock(PlannerContext.class);
+        when(plannerContext.getParams()).thenReturn(new Parameters());
+
+        Parameters result = OptimizerUtils.getParametersForOptimizer(plannerContext);
+
+        assertNotNull(result);
+    }
+
+    /**
+     * Ensures that the method falls back to the thread-local parameters when PlannerContext's parameters are null.
+     * Also checks that the thread-local variable is indeed null after the call.
+     */
+    @Test
+    public void testGetParametersForOptimizerWithNullParametersInContext() {
+        // Mock a PlannerContext with null parameters
+        PlannerContext plannerContext = mock(PlannerContext.class);
+        when(plannerContext.getParams()).thenReturn(null);
+
+        // Call the method under test
+        Parameters result = OptimizerUtils.getParametersForOptimizer(plannerContext);
+
+        // Assert that both the thread-local and the method result are null
+        assertNull(RelMetadataQuery.THREAD_PARAMETERS.get());
+        assertNull(result);
     }
 
     @Test

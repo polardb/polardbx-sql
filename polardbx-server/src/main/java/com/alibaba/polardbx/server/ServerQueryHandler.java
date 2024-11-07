@@ -99,7 +99,8 @@ public class ServerQueryHandler implements QueryHandler {
         if (ConfigDataMode.isFastMock() && ExecutorContext.getContext(source.getSchema()) == null) {
             c.switchDb(source.getSchema());
         }
-        if (CobarServer.getInstance().getConfig().isLock()) {
+
+        if (CobarServer.getInstance().getConfig().isLock() && !c.isPolardbxRoot()) {
             PacketUtil.getLock().write(PacketOutputProxyFactory.getInstance().createProxy(c));
             return;
         }

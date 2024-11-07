@@ -31,4 +31,6 @@ public class RplConstants {
     public static final String RPL_FULL_VALID_DB = "dbName";
 
     public static final String RPL_FULL_VALID_TB = "tbName";
+
+    public static final String RPL_FULL_VALID_MODE = "mode";
 }

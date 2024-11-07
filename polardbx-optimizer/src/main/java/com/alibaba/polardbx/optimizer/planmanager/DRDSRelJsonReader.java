@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.planmanager;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -91,6 +92,8 @@ public class DRDSRelJsonReader {
 
     private boolean supportMpp;
 
+    public static final String ARGS_KEY = "args";
+
     public DRDSRelJsonReader(RelOptCluster cluster, RelOptSchema relOptSchema,
                              Schema schema, boolean supportMpp) {
         this.cluster = cluster;
@@ -106,6 +109,10 @@ public class DRDSRelJsonReader {
         o = JSON.parseObject(s, TYPE_REF.getType());
         @SuppressWarnings("unchecked") final List<Map<String, Object>> rels = (List) o.get("rels");
         readRels(rels);
+        String args = (String) o.get(ARGS_KEY);
+        if (args != null && lastRel != null) {
+            PlannerContext.getPlannerContext(lastRel).decodeArguments(args);
+        }
         return lastRel;
     }
 

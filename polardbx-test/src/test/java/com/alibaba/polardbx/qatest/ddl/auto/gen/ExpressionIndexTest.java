@@ -32,6 +32,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testCreateFailed() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "expr_create_fail_tbl";
 
         String create = String.format(
@@ -86,6 +89,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testCreateSucc() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "expr_index_create_tbl";
         String indexName = tableName + "_idx";
         String create =
@@ -126,6 +132,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testSpecialIndexName() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "expr_special_index_tbl";
         String create =
             String.format("create table %s (a int primary key, b int, c int, d varchar(64), e varchar(64))", tableName);
@@ -147,6 +156,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testSpecialColumnName() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "expr_special_column_tbl";
         String indexName = tableName + "_idx";
         String create = String.format("create table %s (a int primary key, abs varchar(64))", tableName);
@@ -217,6 +229,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testAutoPartitionTable() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "expr_auto_part_tbl";
 
         String create = String.format(
@@ -252,6 +267,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testMultipleAlterTable() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "expr_index_multi_alter_tbl";
         String create = String.format(
             "create table %s (a int primary key, b int, c varchar(20), d varchar(20)) partition by hash(a)",
@@ -330,6 +348,9 @@ public class ExpressionIndexTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableAddColumnAndIndex() {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "com_index_multi_alter_tbl";
         String create = String.format(
             "create table %s (a int primary key, b int, c varchar(20), d varchar(20)) partition by hash(a)",

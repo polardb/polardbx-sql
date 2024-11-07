@@ -18,7 +18,6 @@ package com.alibaba.polardbx.common.utils.logger;
 
 import com.alibaba.polardbx.common.utils.logger.jcl.JclLoggerAdapter;
 import com.alibaba.polardbx.common.utils.logger.jdk.JdkLoggerAdapter;
-import com.alibaba.polardbx.common.utils.logger.log4j.Log4jLoggerAdapter;
 import com.alibaba.polardbx.common.utils.logger.slf4j.Slf4jLoggerAdapter;
 import com.alibaba.polardbx.common.utils.logger.support.FailsafeLogger;
 
@@ -43,8 +42,6 @@ public class LoggerFactory {
             setLoggerAdapter(new Slf4jLoggerAdapter());
         } else if ("jcl".equals(logger)) {
             setLoggerAdapter(new JclLoggerAdapter());
-        } else if ("log4j".equals(logger)) {
-            setLoggerAdapter(new Log4jLoggerAdapter());
         } else if ("jdk".equals(logger)) {
             setLoggerAdapter(new JdkLoggerAdapter());
         } else {
@@ -52,13 +49,9 @@ public class LoggerFactory {
                 setLoggerAdapter(new Slf4jLoggerAdapter());
             } catch (Throwable e1) {
                 try {
-                    setLoggerAdapter(new Log4jLoggerAdapter());
-                } catch (Throwable e2) {
-                    try {
-                        setLoggerAdapter(new JclLoggerAdapter());
-                    } catch (Throwable e3) {
-                        setLoggerAdapter(new JdkLoggerAdapter());
-                    }
+                    setLoggerAdapter(new JclLoggerAdapter());
+                } catch (Throwable e3) {
+                    setLoggerAdapter(new JdkLoggerAdapter());
                 }
             }
         }

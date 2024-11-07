@@ -31,6 +31,8 @@ import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlDataCleanupRateLimiter;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlIntraTaskExecutor;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
@@ -49,6 +51,7 @@ import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.ttl.TtlConfigUtil;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.server.util.LogUtils;
 import com.alibaba.polardbx.transaction.ColumnarTsoManager;
@@ -433,6 +436,258 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             } catch (Throwable t) {
                 logger.warn("load gsi statictics error", t);
             }
+        }
+
+        /* ========ttl job config======== */
+        if (p.containsKey(ConnectionProperties.TTL_GLOBAL_SELECT_WORKER_COUNT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_GLOBAL_SELECT_WORKER_COUNT);
+            DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.TTL_GLOBAL_SELECT_WORKER_COUNT, valStr);
+            TtlIntraTaskExecutor.getInstance()
+                .adjustTaskExecutorWorkerCount(TtlIntraTaskExecutor.SELECT_TASK_EXECUTOR_TYPE,
+                    DynamicConfig.getInstance().getTtlGlobalSelectWorkerCount());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_GLOBAL_DELETE_WORKER_COUNT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_GLOBAL_DELETE_WORKER_COUNT);
+            DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.TTL_GLOBAL_DELETE_WORKER_COUNT, valStr);
+            TtlIntraTaskExecutor.getInstance()
+                .adjustTaskExecutorWorkerCount(TtlIntraTaskExecutor.DELETE_TASK_EXECUTOR_TYPE,
+                    DynamicConfig.getInstance().getTtlGlobalDeleteWorkerCount());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_TMP_TBL_MAX_DATA_LENGTH)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_TMP_TBL_MAX_DATA_LENGTH);
+            DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.TTL_TMP_TBL_MAX_DATA_LENGTH, valStr);
+            TtlConfigUtil.setMaxTtlTmpTableDataLength(DynamicConfig.getInstance().getTtlTmpTableMaxDataLength());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_TBL_MAX_DATA_FREE_PERCENT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_TBL_MAX_DATA_FREE_PERCENT);
+            DynamicConfig.getInstance().loadValue(logger, ConnectionProperties.TTL_TBL_MAX_DATA_FREE_PERCENT, valStr);
+            TtlConfigUtil.setMaxDataFreePercentOfTtlTable(
+                DynamicConfig.getInstance().getTtlTmpTableMaxDataFreePercent());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME, valStr);
+            TtlConfigUtil.setIntraTaskInterruptionMaxWaitTime(
+                DynamicConfig.getInstance().getTtlIntraTaskInterruptionMaxWaitTime());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME, valStr);
+            TtlConfigUtil.setIntraTaskDelegateEachRoundWaitTime(
+                DynamicConfig.getInstance().getTtlIntraTaskMonitorEachRoundWaitTime());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB, valStr);
+            TtlConfigUtil.setEnableAutoControlOptiTblByTtlJob(
+                DynamicConfig.getInstance().isTtlEnableAutoOptimizeTableInTtlJob());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING, valStr);
+            TtlConfigUtil.setEnablePerformAutoOptiTtlTableAfterArchiving(
+                DynamicConfig.getInstance().isTtlEnableAutoExecOptimizeTableAfterArchiving());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_SCHEDULED_JOB_MAX_PARALLELISM)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_SCHEDULED_JOB_MAX_PARALLELISM);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_SCHEDULED_JOB_MAX_PARALLELISM, valStr);
+            TtlConfigUtil.setTtlScheduledJobMaxParallelism(
+                DynamicConfig.getInstance().getTtlScheduledJobMaxParallelism());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL, valStr);
+
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_JOB_DEFAULT_BATCH_SIZE)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_JOB_DEFAULT_BATCH_SIZE);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_JOB_DEFAULT_BATCH_SIZE, valStr);
+            TtlConfigUtil.setTtlJobDefaultBatchSize(DynamicConfig.getInstance().getTtlJobDefaultBatchSize());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_CLEANUP_BOUND_INTERVAL_COUNT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_CLEANUP_BOUND_INTERVAL_COUNT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_CLEANUP_BOUND_INTERVAL_COUNT, valStr);
+            TtlConfigUtil.setTtlCleanupBoundIntervalCount(
+                DynamicConfig.getInstance().getTtlCleanupBoundIntervalCount());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_STOP_ALL_JOB_SCHEDULING)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_STOP_ALL_JOB_SCHEDULING);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_STOP_ALL_JOB_SCHEDULING, valStr);
+            TtlConfigUtil.setStopAllTtlTableJobScheduling(DynamicConfig.getInstance().isTtlStopAllJobScheduling());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_USE_ARCHIVE_TRANS_POLICY)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_USE_ARCHIVE_TRANS_POLICY);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_USE_ARCHIVE_TRANS_POLICY, valStr);
+            TtlConfigUtil.setUseArchiveTransPolicy(DynamicConfig.getInstance().isTtlUseArchiveTransPolicy());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_SELECT_MERGE_UNION_SIZE)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_SELECT_MERGE_UNION_SIZE);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_SELECT_MERGE_UNION_SIZE, valStr);
+            TtlConfigUtil.setMergeUnionSizeForSelectLowerBound(
+                DynamicConfig.getInstance().getTtlSelectMergeUnionSize());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_SELECT_MERGE_CONCURRENT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_SELECT_MERGE_CONCURRENT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_SELECT_MERGE_CONCURRENT, valStr);
+            TtlConfigUtil.setUseMergeConcurrentForSelectLowerBound(
+                DynamicConfig.getInstance().isTtlSelectMergeConcurrent());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_SELECT_STMT_HINT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_SELECT_STMT_HINT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_SELECT_STMT_HINT, valStr);
+            TtlConfigUtil.setQueryHintForSelectLowerBound(DynamicConfig.getInstance().getTtlSelectStmtHint());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_DELETE_STMT_HINT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_DELETE_STMT_HINT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_DELETE_STMT_HINT, valStr);
+            TtlConfigUtil.setQueryHintForDeleteExpiredData(DynamicConfig.getInstance().getTtlDeleteStmtHint());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_INSERT_STMT_HINT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_INSERT_STMT_HINT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_INSERT_STMT_HINT, valStr);
+            TtlConfigUtil.setQueryHintForInsertExpiredData(DynamicConfig.getInstance().getTtlInsertStmtHint());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_OPTIMIZE_TABLE_STMT_HINT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_OPTIMIZE_TABLE_STMT_HINT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_OPTIMIZE_TABLE_STMT_HINT, valStr);
+            TtlConfigUtil.setQueryHintForOptimizeTable(DynamicConfig.getInstance().getTtlOptimizeTableStmtHint());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ALTER_ADD_PART_STMT_HINT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ALTER_ADD_PART_STMT_HINT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ALTER_ADD_PART_STMT_HINT, valStr);
+            TtlConfigUtil.setQueryHintForAutoAddParts(DynamicConfig.getInstance().getTtlAlterTableAddPartsStmtHint());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DQL_CONN)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DQL_CONN);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DQL_CONN, valStr);
+            TtlConfigUtil.setDefaultGroupParallelismOnDqlConn(
+                DynamicConfig.getInstance().getTtlGroupParallelismOnDqlConn());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DML_CONN)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DML_CONN);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DML_CONN, valStr);
+            TtlConfigUtil.setDefaultGroupParallelismOnDmlConn(
+                DynamicConfig.getInstance().getTtlGroupParallelismOnDmlConn());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING, valStr);
+            TtlConfigUtil.setAutoAddMaxValuePartForCci(DynamicConfig.getInstance().getTtlAddMaxValPartOnCciCreating());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING, valStr);
+            TtlConfigUtil.setAutoAddMaxValuePartForCci(DynamicConfig.getInstance().getTtlAddMaxValPartOnCciCreating());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS, valStr);
+            TtlConfigUtil.setMaxWaitAcquireRatePermitsPeriods(
+                DynamicConfig.getInstance().getTtlMaxWaitAcquireRatePermitsPeriods());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT, valStr);
+            TtlConfigUtil.setEnableTtlCleanupRowsSpeedLimit(
+                DynamicConfig.getInstance().getTtlEnableCleanupRowsSpeedLimit());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN, valStr);
+            TtlConfigUtil.setCleanupRowsSpeedLimitEachDn(
+                DynamicConfig.getInstance().getTtlCleanupRowsSpeedLimitEachDn());
+            TtlDataCleanupRateLimiter.getInstance().adjustRate(TtlConfigUtil.getCleanupRowsSpeedLimitEachDn());
+
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB, valStr);
+            TtlConfigUtil.setIgnoreMaintainWindowInTtlJob(
+                DynamicConfig.getInstance().getTtlIgnoreMaintainWindowInDdlJob());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_GLOBAL_WORKER_DN_RATIO)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_GLOBAL_WORKER_DN_RATIO);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_GLOBAL_WORKER_DN_RATIO, valStr);
+            TtlConfigUtil.setTtlGlobalWorkerDnRatio(DynamicConfig.getInstance().getTtlGlobalWorkerDnRatio());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT, valStr);
+            TtlConfigUtil.setPreBuiltPartCntForCreatColumnarIndex(
+                DynamicConfig.getInstance().getTtlDefaultArcPreAllocateCount());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT, valStr);
+            TtlConfigUtil.setPostBuiltPartCntForCreateColumnarIndex(
+                DynamicConfig.getInstance().getTtlDefaultArcPostAllocateCount());
+        }
+
+        if (p.containsKey(ConnectionProperties.TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI)) {
+            String valStr = p.getProperty(ConnectionProperties.TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI);
+            DynamicConfig.getInstance()
+                .loadValue(logger, ConnectionProperties.TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI, valStr);
+            TtlConfigUtil.setEnableAutoAddPartsForArcCci(
+                DynamicConfig.getInstance().getTtlEnableAutoAddPartsForArcCci());
         }
 
         if (CobarServer.getInstance().isInited()) {

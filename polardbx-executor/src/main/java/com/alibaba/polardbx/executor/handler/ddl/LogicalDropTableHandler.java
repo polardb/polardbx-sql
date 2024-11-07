@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.RecycleBinManager;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
@@ -36,16 +37,20 @@ import com.alibaba.polardbx.executor.ddl.job.factory.DropTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.PureCdcDdlMark4DropTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RecycleOssTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RenameTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -56,6 +61,9 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.ttl.TtlArchiveKind;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import org.apache.calcite.rel.ddl.RenameTable;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -63,8 +71,12 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlRenameTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
 
@@ -81,11 +93,21 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
             logicalDropTable.setImportTable(true);
         }
 
+        String targetSchemaName = logicalDropTable.getSchemaName();
+        String targetTableName = logicalDropTable.getTableName();
+        tryForbidDropTableOperationIfNeed(executionContext, targetSchemaName, targetTableName);
+        boolean checkIfArcTblViewOfTtlTblWithCci =
+            TtlUtil.checkIfDropArcTblViewOfTtlTableWithCci(targetSchemaName, targetTableName, executionContext);
+        if (checkIfArcTblViewOfTtlTblWithCci) {
+            return buildDropArchiveTableViewForTtlTableJob(logicalDropTable, executionContext);
+        }
+
         if (executionContext.getParamManager().getBoolean(ConnectionParams.PURGE_FILE_STORAGE_TABLE)
             && logicalDropTable.isPurge()) {
             LogicalRenameTableHandler.makeTableVisible(logicalDropTable.getSchemaName(),
                 logicalDropTable.getTableName(), executionContext);
         }
+
         logicalDropTable.prepareData();
 
         if (logicalDropTable.ifExists()) {
@@ -108,7 +130,6 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         logicalDropTable.setDdlVersionId(versionId);
 
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDropTable.getSchemaName());
-
         CheckOSSArchiveUtil.checkWithoutOSS(logicalDropTable.getSchemaName(), logicalDropTable.getTableName());
         if (!isNewPartDb) {
             if (logicalDropTable.isWithGsi()) {
@@ -152,6 +173,16 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         }
     }
 
+    private static void tryForbidDropTableOperationIfNeed(ExecutionContext executionContext, String targetSchemaName, String targetTableName) {
+        boolean allowDropTblOp =
+            TtlUtil.checkIfAllowedDropTableOperation(targetSchemaName, targetTableName, executionContext);
+        if (!allowDropTblOp) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("Forbid to drop the ttl-defined table `%s`.`%s` with archive cci, please use the hint /*TDDL:cmd_extra(TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false)*/ to drop this table", targetSchemaName,
+                    targetTableName));
+        }
+    }
+
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         final SqlDropTable sqlDropTable = (SqlDropTable) logicalDdlPlan.getNativeSqlNode();
@@ -163,12 +194,18 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         TableValidator.validateTableName(logicalTableName);
 
         final boolean tableExists = TableValidator.checkIfTableExists(schemaName, logicalTableName);
+        final boolean arcTblViewForTtlTblWithCci =
+            TtlUtil.checkIfDropArcTblViewOfTtlTableWithCci(schemaName, logicalTableName, executionContext);
         if (!tableExists && sqlDropTable.isIfExists()) {
             // do nothing
         } else if (isImportTable) {
             //do nothing
-        } else if (!tableExists) {
+        } else if (!tableExists && !arcTblViewForTtlTblWithCci) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, schemaName, logicalTableName);
+        }
+
+        if (arcTblViewForTtlTblWithCci) {
+            return false;
         }
 
         // can't drop table where referencing by other tables
@@ -339,4 +376,54 @@ public class LogicalDropTableHandler extends LogicalCommonDdlHandler {
         ).create();
     }
 
+    private DdlJob buildDropArchiveTableViewForTtlTableJob(LogicalDropTable logicalDropTable,
+                                                           ExecutionContext executionContext) {
+
+        String arcTblSchema = logicalDropTable.getSchemaName();
+        String arcTblName = logicalDropTable.getTableName();
+        TtlInfoRecord ttlInfoRec = TtlUtil.fetchTtlDefinitionInfoByArcDbAndArcTb(arcTblSchema, arcTblName);
+        String ttlTblSchema = ttlInfoRec.getTableSchema();
+        String ttlTblName = ttlInfoRec.getTableName();
+        TableMeta ttlTblMeta = executionContext.getSchemaManager(ttlTblSchema).getTable(ttlTblName);
+        TtlDefinitionInfo ttlInfo = ttlTblMeta.getTtlDefinitionInfo();
+
+        List<DdlTask> taskList = new ArrayList<>();
+        String dropCiSqlForArcTbl =
+            TtlTaskSqlBuilder.buildDropColumnarIndexSqlForArcTbl(ttlInfo, arcTblSchema, arcTblName);
+        SubJobTask dropCiSubJobTask = new SubJobTask(ttlTblSchema, dropCiSqlForArcTbl, "");
+        dropCiSubJobTask.setParentAcquireResource(true);
+
+        String dropViewSqlForArcTbl = TtlTaskSqlBuilder.buildDropViewSqlFroArcTbl(arcTblSchema, arcTblName, ttlInfo);
+        SubJobTask dropViewSubJobTask = new SubJobTask(arcTblSchema, dropViewSqlForArcTbl, "");
+        dropViewSubJobTask.setParentAcquireResource(true);
+
+        String currArcTblSchema = ttlInfo.getArchiveTableSchema();
+        String currArcTblName = ttlInfo.getArchiveTableName();
+
+        String modifyTtlUnbindArcTblSql =
+            TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, "", "",
+                TtlArchiveKind.UNDEFINED);
+        String modifyTtlUnbindArcTblSqlForRollback =
+            TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, currArcTblSchema, currArcTblName,
+                TtlArchiveKind.COLUMNAR);
+        SubJobTask modifyTtlForUnbindArcTblSubTask =
+            new SubJobTask(ttlTblSchema, modifyTtlUnbindArcTblSql, modifyTtlUnbindArcTblSqlForRollback);
+        modifyTtlForUnbindArcTblSubTask.setParentAcquireResource(true);
+
+        taskList.add(modifyTtlForUnbindArcTblSubTask);
+        taskList.add(dropViewSubJobTask);
+        taskList.add(dropCiSubJobTask);
+
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        executableDdlJob.addSequentialTasks(taskList);
+        Set<String> resources = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        resources.add(ttlTblSchema);
+        resources.add(ttlTblName);
+        resources.add(arcTblSchema);
+        resources.add(arcTblName);
+
+        executableDdlJob.addExcludeResources(resources);
+
+        return executableDdlJob;
+    }
 }

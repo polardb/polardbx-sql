@@ -49,6 +49,12 @@ public class SubqueryUserCaseTest extends BaseTestCase {
                     + "                 OR jgdm.qxbm = xzqh.qhdm ))";
             c.createStatement().execute("use " + testSchemaDrds);
             c.createStatement().executeQuery(testSql);
+
+            testSql =
+                "select  * from single_tbl a join single_tbl1 b on a.name=b.name and exists(select 1 from single_tbl2);";
+
+            c.createStatement().execute("use " + testSchemaAuto);
+            c.createStatement().executeQuery(testSql);
         }
     }
 

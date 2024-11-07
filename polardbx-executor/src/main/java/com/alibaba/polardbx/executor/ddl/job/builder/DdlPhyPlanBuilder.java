@@ -27,6 +27,17 @@ import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
@@ -53,7 +64,9 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.commons.collections.CollectionUtils;
@@ -70,6 +83,9 @@ import java.util.Set;
  * @since 2021/07
  */
 public abstract class DdlPhyPlanBuilder {
+
+    // this sql is only used for build sql for add local index.
+    private static final String ADD_INDEX_SQL = "ALTER TABLE t1 ADD INDEX k1(c1);";
 
     protected DDL relDdl;
 
@@ -90,6 +106,7 @@ public abstract class DdlPhyPlanBuilder {
     protected PartitionInfo partitionInfo;
     protected Map<String, List<List<String>>> tableTopology;
     protected List<PhyDdlTableOperation> physicalPlans;
+    protected List<PhyDdlTableOperation> physicalPlansForLocalIndex;
 
     protected boolean tableRuleFromMeta = false;
 
@@ -130,9 +147,12 @@ public abstract class DdlPhyPlanBuilder {
      *
      * @return physical plan
      */
-    public PhysicalPlanData genPhysicalPlanData(boolean autoPartition) {
+    public PhysicalPlanData genPhysicalPlanData(boolean autoPartition, boolean forLocalIndex) {
         Objects.requireNonNull(tableTopology);
         Objects.requireNonNull(physicalPlans);
+        if (forLocalIndex) {
+            Objects.requireNonNull(physicalPlansForLocalIndex);
+        }
         if (!built) {
             throw new AssertionError("DdlPhyPlanBuilder::build has not been called!");
         }
@@ -143,16 +163,31 @@ public abstract class DdlPhyPlanBuilder {
         if (relDdl.sqlNode instanceof SqlCreateTable) {
             Engine tableEngine = ((SqlCreateTable) relDdl.sqlNode).getEngine();
             boolean pushDownFk = ((SqlCreateTable) relDdl.sqlNode).getPushDownForeignKeys();
-            return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
-                Engine.isFileStore(tableEngine), pushDownFk, executionContext);
+            if (forLocalIndex) {
+                return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlansForLocalIndex, false,
+                    autoPartition, Engine.isFileStore(tableEngine), pushDownFk, executionContext);
+            } else {
+                return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
+                    Engine.isFileStore(tableEngine), pushDownFk, executionContext);
+            }
         } else {
-            return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
-                executionContext);
+            if (forLocalIndex) {
+                return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlansForLocalIndex, false,
+                    autoPartition,
+                    executionContext);
+            } else {
+                return DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, false, autoPartition,
+                    executionContext);
+            }
         }
     }
 
     public PhysicalPlanData genPhysicalPlanData() {
         return genPhysicalPlanData(false);
+    }
+
+    public PhysicalPlanData genPhysicalPlanData(boolean autoPartition) {
+        return genPhysicalPlanData(autoPartition, false);
     }
 
     protected void buildExistingTableRule(String tableName) {
@@ -246,6 +281,52 @@ public abstract class DdlPhyPlanBuilder {
         this.physicalPlans = physicalPlans;
     }
 
+    protected void buildPhysicalPlansForLocalIndex(String tableName) {
+//        initParameterIndex();
+
+        SqlNode newTableName = relDdl.getNewTableName();
+
+        List<PhyDdlTableOperation> physicalPlans = new ArrayList<>();
+        List<SQLTableElement> indexes = ((SqlCreateTable) sqlTemplate).getLocalIndexes();
+        if (indexes == null || indexes.size() == 0) {
+            this.physicalPlansForLocalIndex = null;
+            return;
+        }
+        String sql = buildSqlForAddLocalIndex(indexes);
+        for (Map.Entry<String, List<List<String>>> t : tableTopology.entrySet()) {
+            String group = t.getKey();
+            List<List<String>> tableNames = t.getValue();
+            for (List<String> subTableNames : tableNames) {
+                // 这里是为每个分表 构建 mysql 物理执行计划 （建物理表）
+                // 需要替换为 oss 表构建计划
+                PhyDdlTableOperation phyDdlTable =
+                    PhyDdlTableOperation.create(ddlPreparedData.getSchemaName(), tableName, executionContext);
+                phyDdlTable.setDbIndex(group);
+                phyDdlTable.setLogicalTableName(tableName);
+                if (newTableName != null) {
+                    phyDdlTable.setRenameLogicalTableName(((SqlIdentifier) newTableName).getLastName());
+                }
+                phyDdlTable.setTableNames(ImmutableList.of(subTableNames));
+                phyDdlTable.setKind(SqlKind.ALTER_TABLE);
+                Pair<BytesSql, Map<Integer, ParameterContext>> sqlAndParam =
+                    buildSqlAndParamForLocalIndex(sql, subTableNames);
+                phyDdlTable.setBytesSql(sqlAndParam.getKey());
+                phyDdlTable.setNativeSqlNode(sqlTemplate);
+                phyDdlTable.setDbType(DbType.MYSQL);
+                phyDdlTable.setParam(sqlAndParam.getValue());
+                phyDdlTable.setTableRule(tableRule);
+                phyDdlTable.setPartitioned(
+                    tableRule != null && !PlannerUtils.isSingleTable(tableRule) && !tableRule.isBroadcast());
+                phyDdlTable.setPartitionInfo(partitionInfo);
+                phyDdlTable.setSequence(sequenceBean);
+                phyDdlTable.setHint(ddlPreparedData.isWithHint());
+                phyDdlTable.setSchemaName(ddlPreparedData.getSchemaName());
+                physicalPlans.add(phyDdlTable);
+            }
+        }
+        this.physicalPlansForLocalIndex = physicalPlans;
+    }
+
     protected void initParameterIndex() {
         if (tableTopology != null) {
             if (tableTopology.keySet().size() == 0) {
@@ -287,6 +368,42 @@ public abstract class DdlPhyPlanBuilder {
         return new Pair<>(BytesSql.getBytesSql(sql), params);
     }
 
+    private Pair<BytesSql, Map<Integer, ParameterContext>> buildSqlAndParamForLocalIndex(String sql,
+                                                                                         List<String> tableNames) {
+        Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
+        Engine engine;
+        if (this.sqlTemplate instanceof SqlCreateTable
+            && Engine.isFileStore(engine = ((SqlCreateTable) this.sqlTemplate).getEngine())) {
+            // for file-store engine, avoid to generate MySQL physical sql with engine info.
+        } else {
+
+            Map<Integer, ParameterContext> params = buildParams(tableNames);
+            return new Pair<>(BytesSql.getBytesSql(sql), params);
+        }
+        return null;
+    }
+
+    private String buildSqlForAddLocalIndex(List<SQLTableElement> indexes) {
+        SQLAlterTableStatement alterStatement =
+            (SQLAlterTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(ADD_INDEX_SQL,
+                JdbcConstants.MYSQL).get(0);
+        SQLAlterTableAddIndex item = (SQLAlterTableAddIndex) alterStatement.getItems().get(0);
+        List<SQLAlterTableItem> sqlAlterTableAddIndexes = new ArrayList<>();
+        for (SQLTableElement index : indexes) {
+            SQLAlterTableAddIndex sqlAlterTableAddIndex = (SQLAlterTableAddIndex) item.clone();
+            if (index instanceof MySqlTableIndex) {
+                sqlAlterTableAddIndex.setIndexDefinition(((MySqlTableIndex) index).getIndexDefinition());
+            } else if (index instanceof MySqlKey) {
+                sqlAlterTableAddIndex.setIndexDefinition(((MySqlKey) index).getIndexDefinition());
+            }
+            sqlAlterTableAddIndexes.add(sqlAlterTableAddIndex);
+        }
+        alterStatement.setItems(sqlAlterTableAddIndexes);
+        alterStatement.setTableSource(new SQLIdentifierExpr("?", 0));
+        String sql = alterStatement.toString();
+        return sql;
+    }
+
     private Map<Integer, ParameterContext> buildParams(List<String> tableNames) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(tableNames));
         return PlannerUtils.buildParam(tableNames, this.params, paramIndex);
@@ -323,6 +440,10 @@ public abstract class DdlPhyPlanBuilder {
 
     public List<PhyDdlTableOperation> getPhysicalPlans() {
         return physicalPlans;
+    }
+
+    public List<PhyDdlTableOperation> getPhysicalPlansForLocalIndex() {
+        return physicalPlansForLocalIndex;
     }
 
     public SqlNode getSqlTemplate() {

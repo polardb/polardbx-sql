@@ -18,6 +18,16 @@ package com.alibaba.polardbx.common.scheduler;
 
 public enum FiredScheduledJobState {
 
+    /**
+     * <pre>
+     *     state machine:
+     * status of scheduled_job      :    ENABLED
+     * status of fired_scheduled_job:  ->QUEUED(init)   ->RUNNING  ->SUCCESS
+     *                                                  ->FAILED
+     *                                                  ->SKIPED
+     *                                                  ->INTERUPTED (actively exit by task itself)
+     * </pre>
+     */
     QUEUED,
     RUNNING,
     SUCCESS,

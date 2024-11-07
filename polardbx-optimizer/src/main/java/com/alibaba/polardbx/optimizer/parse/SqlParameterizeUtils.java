@@ -37,6 +37,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.visitor.DrdsParameterizeSqlVisitor;
 import com.alibaba.polardbx.optimizer.parse.visitor.ParamCountVisitor;
+import org.apache.calcite.sql.SqlBaseline;
 
 import java.util.ArrayList;
 import java.util.List;

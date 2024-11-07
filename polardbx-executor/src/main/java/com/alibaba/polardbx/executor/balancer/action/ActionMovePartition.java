@@ -31,16 +31,21 @@ import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Sets;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.hadoop.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -60,6 +65,9 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
     public static final String NAME = "MovePartition";
     private static final String MOVE_PARTITION_SQL = "alter tablegroup %s move partitions %s to %s";
     private static final String MOVE_SUBPARTITION_SQL = "alter tablegroup %s move subpartitions %s to %s";
+    private static final String MOVE_PARTITIONS_SUBSQL = " (%s) to %s";
+    private static final String ALTER_TABLEGROUP_PARTITIONS_SUBSQL = "alter tablegroup %s move partitions ";
+    private static final String ALTER_TABLEGROUP_SUBPARTITIONS_SUBSQL = "alter tablegroup %s move subpartitions ";
 
     private String schema;
     private String tableGroupName;
@@ -232,6 +240,65 @@ public class ActionMovePartition implements BalanceAction, Comparable<ActionMove
                 TStringUtil.quoteString(targetStorage));
         }
         return sql;
+    }
+
+    public static String getMovesSql(String schema, String tableGroupName, List<ActionMovePartition> moves) {
+        Map<String, String> targetStorageMap =
+            DbTopologyManager.getGroupNameToStorageInstIdMap(schema);
+        List<String> subSqls = new ArrayList<>();
+        String sql = String.format(ALTER_TABLEGROUP_PARTITIONS_SUBSQL, TStringUtil.backQuote(tableGroupName));
+        if (moves.get(0).isSubpartition) {
+            sql = String.format(ALTER_TABLEGROUP_SUBPARTITIONS_SUBSQL, TStringUtil.backQuote(tableGroupName));
+        }
+        for (ActionMovePartition move : moves) {
+            if (!targetStorageMap.containsKey(move.toGroup)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE,
+                    "target storage not found: group=" + move.toGroup);
+            }
+            String targetStorage = targetStorageMap.get(move.toGroup);
+            String partitionList =
+                move.partitionNames.stream().map(TStringUtil::backQuote).collect(Collectors.joining(","));
+            String subSql;
+            subSql = String.format(MOVE_PARTITIONS_SUBSQL,
+                partitionList,
+                TStringUtil.quoteString(targetStorage));
+            subSqls.add(subSql);
+        }
+        if (subSqls.size() > 0) {
+            sql = sql + StringUtils.join(", ", subSqls) + ";";
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE,
+                "move action not found in ActionMovePartitions");
+        }
+        return sql;
+    }
+
+    public static ExecutableDdlJob movesToDdlJob(String tableGroupName, List<ActionMovePartition> moves,
+                                                 ExecutionContext ec) {
+        long totalRows = 0L;
+        long totalSize = 0L;
+        if (moves.size() <= 0) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE,
+                "move action not found in ActionMovePartitions");
+        }
+        ActionMovePartition move = moves.get(0);
+        String schema = move.schema;
+        String sql = getMovesSql(schema, tableGroupName, moves);
+        BalanceStats stats = move.stats;
+        List<String> partitionNames = new ArrayList<>();
+        moves.stream().forEach(o -> partitionNames.addAll(o.partitionNames));
+        try {
+            List<PartitionStat> partitionStatList =
+                stats.filterPartitionStat(tableGroupName, Sets.newHashSet(partitionNames));
+            for (PartitionStat partitionStat : partitionStatList) {
+                totalRows += partitionStat.getPartitionRows();
+                totalSize += partitionStat.getPartitionDiskSize();
+            }
+        } catch (Exception e) {
+            EventLogger.log(EventType.DDL_WARN, "calculate rebalance rows error. " + e.getMessage());
+        }
+        return ActionUtils.convertToDelegatorJob(move.schema, sql,
+            CostEstimableDdlTask.createCostInfo(totalRows, totalSize, (long) move.getLogicalTableCount()));
     }
 
     @Override

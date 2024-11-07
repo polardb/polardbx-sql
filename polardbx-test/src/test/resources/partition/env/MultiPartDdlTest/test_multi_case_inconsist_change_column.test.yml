@@ -1,0 +1,42 @@
+DROP DATABASE IF EXISTS d_multi_part_ddl;
+CREATE DATABASE d_multi_part_ddl MODE 'auto';
+USE d_multi_part_ddl;
+DROP TABLE IF EXISTS test_multi_change_column1;
+CREATE TABLE test_multi_change_column1 (
+c1 int,
+c2 double,
+c3 varchar(10),
+c4 varchar(40)
+);
+ALTER TABLE test_multi_change_column1
+ADD LOCAL INDEX i_c1c2 (c1, c2),
+ADD LOCAL INDEX i_c2c3 (c2, c3),
+ADD LOCAL INDEX i_c3c4 (c3, c4);
+ALTER TABLE test_multi_change_column1
+CHANGE COLUMN c1 C2 int AFTER C1,
+CHANGE COLUMN c2 C1 double;
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+
+ALTER TABLE test_multi_change_column1
+CHANGE COLUMN c1 C3 int AFTER C4,
+CHANGE COLUMN C3 c1 varchar(30) AFTER c2,
+ADD COLUMN c5 varchar(50);
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+
+ALTER TABLE `test_multi_change_column1`
+MODIFY COLUMN `C2` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+MODIFY COLUMN `c3` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+MODIFY COLUMN `C4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`,
+MODIFY COLUMN `c1` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`;
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+
+ALTER TABLE `test_multi_change_column1`
+CHANGE COLUMN `c3` `C8` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+CHANGE COLUMN `c5` `c2` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c8`,
+CHANGE COLUMN `C2` `c5` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+CHANGE COLUMN `c4` `c3` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c5`,
+MODIFY COLUMN `C1` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_multi_change_column1;
+
+USE polardbx;
+DROP DATABASE IF EXISTS d_multi_part_ddl;

@@ -228,6 +228,7 @@ public class VectorizedProjectExec extends AbstractExecutor {
             // compaction by selection array
             boolean selectionInUse = preAllocatedChunk.isSelectionInUse();
             int[] selection = preAllocatedChunk.selection();
+            int size = preAllocatedChunk.getPositionCount();
             if (selectionInUse && selection != null) {
                 ((RandomAccessBlock) outputBlock).compact(selection);
             }

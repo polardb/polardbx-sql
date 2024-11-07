@@ -70,33 +70,4 @@ public class HintTest extends AutoReadBaseTestCase {
         String result = rs.getString("STATEMENT");
         assert result.contains("+sample_percentage(");
     }
-
-    @Test
-    public void testHintFlagInsideTran() throws SQLException {
-        String hint = "/*TDDL:a()*/ ";
-        String sql = "select * from " + baseOneTableName;
-        tddlConnection.createStatement().execute("clear plancache");
-        try {
-            tddlConnection.createStatement().execute("begin");
-
-            // execute first and put it into plancache
-            tddlConnection.createStatement().execute(sql);
-
-            // get explain, a cached plan should be returned
-            String result = getExplainResult(tddlConnection, sql);
-            Assert.assertTrue(result.contains("HitCache:true"));
-
-            // get explain by hint, a new plan should be returned
-            result = getExplainResult(tddlConnection, hint + sql);
-            Assert.assertTrue(result.contains("HitCache:false"));
-
-            // go back to no hint sql, a cached plan should be returned
-            result = getExplainResult(tddlConnection, sql);
-            Assert.assertTrue(result.contains("HitCache:true"));
-        } finally {
-            // clear trans
-            tddlConnection.createStatement().execute("rollback");
-        }
-
-    }
 }

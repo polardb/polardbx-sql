@@ -38,6 +38,7 @@ import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobStatManager;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlDuration;
 import com.alibaba.polardbx.executor.mdl.MdlKey;
@@ -50,6 +51,7 @@ import com.alibaba.polardbx.gms.metadb.evolution.ColumnMappingRecord;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignColsRecord;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
@@ -62,7 +64,6 @@ import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -90,6 +91,7 @@ import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
 import com.alibaba.polardbx.rpc.client.XSession;
 import com.alibaba.polardbx.rpc.compatible.XResultSet;
@@ -98,9 +100,9 @@ import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
+import com.google.common.collect.ImmutableList;
 import lombok.val;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -293,6 +295,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                                 != 0);
                         // Load lock flag.
                         locked = (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_LOCK) != 0;
+
                     }
 
                     if (meta.isColumnar()) {
@@ -529,14 +532,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 2. Allow two concurrent version exists, which is not safe for single-versioned TableRule & PartitionInfoManager
      */
     public void tonewversion(String tableName) {
-        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, -1, true, false);
+        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, -1, true, false, false);
     }
 
     public void tonewversion(String tableName,
                              boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                             boolean allowTwoVersion) {
+                             boolean allowTwoVersion, boolean forceSyncFailed) {
         tonewversionImpl(Arrays.asList(tableName), preemptive, initWait, interval, timeUnit, -1, allowTwoVersion,
-            false);
+            false, forceSyncFailed);
     }
 
     /**
@@ -545,17 +548,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     @Override
     public void toNewVersionInTrx(List<String> tableNameList,
                                   boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
-                                  long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup,
+                                  boolean forceSyncFailed) {
         tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
-            sameTableGroup);
-    }
-
-    @Override
-    public void toNewVersionInTrx(List<String> tableNameList,
-                                  boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
-                                  long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
-        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
-            sameTableGroup, trxId);
+            sameTableGroup, forceSyncFailed);
     }
 
     /**
@@ -563,19 +559,15 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 1. Be preemptive to avoid deadlock within multiple tables
      */
     @Override
-    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion, long trxId) {
+    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion,
+                                  boolean forceSyncFailed) {
         ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
         boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = paramManager.getLong(ConnectionParams.TG_PREEMPTIVE_MDL_INITWAIT);
         Long interval = paramManager.getLong(ConnectionParams.TG_PREEMPTIVE_MDL_INTERVAL);
 
         toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS, connId,
-            allowTwoVersion, tableNameList.size() > 1, trxId);
-    }
-
-    @Override
-    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion) {
-        toNewVersionInTrx(tableNameList, connId, allowTwoVersion, 1L);
+            allowTwoVersion, tableNameList.size() > 1, forceSyncFailed);
     }
 
     /**
@@ -596,7 +588,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 return;
             }
 
-            toNewVersionInTrx(Collections.singletonList(tableName), -1, allowTwoVersion);
+            toNewVersionInTrx(Collections.singletonList(tableName), -1, allowTwoVersion, false);
         }
 
     }
@@ -908,6 +900,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         int idx = 0;
         for (String cname : columns) {
             if (!columnMetas.containsKey(cname)) {
+                if (cname.equalsIgnoreCase("null")) {
+                    //mysql 8.0 函数索引，没有列名，兼容5.7，会插入null
+                    continue;
+                }
                 throw new RuntimeException("column " + cname + " is not a column of table " + tableName);
             }
             final Long subParts = keySubParts.get(idx);
@@ -1102,6 +1098,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         if (meta.getPartitionInfo() != null) {
                             meta.setTableGroupDigestList(TableGroupVersionManager.getTableGroupDigestList(
                                 meta.getPartitionInfo().getTableGroupId()));
+                            initTtlDefinitionInfo(schemaName, origTableName, tableInfoManager, meta);
                         }
                         // fetch file metas for oss engine.
                         if (meta.getPartitionInfo() != null && Engine.isFileStore(meta.getEngine())) {
@@ -1204,6 +1201,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         logTblMeta.setLocalPartitionDefinitionInfo(
             LocalPartitionDefinitionInfo.from(tblInfoMgr.getLocalPartitionRecord(schemaName, logicalTableName))
         );
+
+        // init ttl definition info
+        initTtlDefinitionInfo(schemaName, logicalTableName, tblInfoMgr, logTblMeta);
+        if (logTblMeta.getTtlDefinitionInfo() != null) {
+            TtlScheduledJobStatManager.getInstance().registerTtlTableIfNeed(schemaName, logicalTableName);
+        }
+
         // get the partitionInfo secondly
         PartitionInfo curPartitionInfo = ruleMgr.getPartitionInfoManager().getPartitionInfo(origTableName);
         // set the partitionInfo at the last step
@@ -1221,7 +1225,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     curPartitionInfo = PartitionInfoUtil
                         .updatePartitionInfoByOutDatePartitionRecords(conn, curPartitionInfo.getTableGroupId(),
                             curPartitionInfo, tblInfoMgr);
-                    newPartitionInfo = newPartitionInfo.copy();
+                    // PartitionInfo.copy() won't copy PartitionByDefinitionBase.router
+                    //newPartitionInfo = newPartitionInfo.copy();
                     logTblMeta.setNewPartitionInfo(curPartitionInfo);
                     logTblMeta.setPartitionInfo(newPartitionInfo);
                     ruleMgr.getPartitionInfoManager().putNewPartitionInfo(logicalTableName, newPartitionInfo);
@@ -1233,6 +1238,53 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         }
 
         logParitionInfo(logTblMeta);
+    }
+
+    protected static void initTtlDefinitionInfo(String schemaName,
+                                                String logicalTableName,
+                                                TableInfoManager tblInfoMgr,
+                                                TableMeta logTblMeta) {
+        List<ColumnMeta> pkColMetas = logTblMeta.getPrimaryKey().stream().collect(Collectors.toList());
+        List<String> pkColNames = new ArrayList<>();
+        for (int i = 0; i < pkColMetas.size(); i++) {
+            ColumnMeta pkCm = pkColMetas.get(i);
+            pkColNames.add(pkCm.getName());
+        }
+
+        /**
+         * Check If tableMeta contain ttl_col
+         */
+
+        logTblMeta.setTtlDefinitionInfo(
+            TtlDefinitionInfo.createFrom(tblInfoMgr.getTtlInfoRecord(schemaName, logicalTableName), pkColNames)
+        );
+
+        if (logTblMeta.getTtlDefinitionInfo() != null) {
+
+            /**
+             * Label archive cci of ttl20
+             */
+            Map<String, GsiMetaManager.GsiIndexMetaBean> cciPublished = logTblMeta.getColumnarIndexPublished();
+            Map<String, GsiMetaManager.GsiIndexMetaBean> arcCciPublished = logTblMeta.getArchiveColumnarIndexPublished();
+            TtlDefinitionInfo ttlInfo = logTblMeta.getTtlDefinitionInfo();
+            if (ttlInfo != null && ttlInfo.needPerformExpiredDataArchivingByCci()) {
+                if (cciPublished != null && arcCciPublished != null && !cciPublished.isEmpty()) {
+                    String rawCciName = ttlInfo.getTtlInfoRecord().getArcTmpTblName();
+                    for ( Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> cciItem : cciPublished.entrySet() ) {
+                        String cciItemKey = cciItem.getKey();
+                        String fullCciName = cciItemKey.toLowerCase();
+                        GsiMetaManager.GsiIndexMetaBean cciBean = cciItem.getValue();
+                        if (fullCciName.startsWith(rawCciName)) {
+                            arcCciPublished.putIfAbsent(cciItemKey, cciBean);
+                        }
+                    }
+                }
+            }
+
+            TtlScheduledJobStatManager.getInstance()
+                .registerTtlTableIfNeed(logTblMeta.getSchemaName(), logTblMeta.getTableName());
+        }
+
     }
 
     private static void loadNewestPartitionInfo(Connection metaDbConnect,
@@ -1272,7 +1324,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     curPartitionInfo = PartitionInfoUtil
                         .updatePartitionInfoByOutDatePartitionRecords(metaDbConnect, curPartitionInfo.getTableGroupId(),
                             curPartitionInfo, tblInfoMgr);
-                    newPartitionInfo = newPartitionInfo.copy();
+                    //newPartitionInfo = newPartitionInfo.copy();
                     logTblMeta.setNewPartitionInfo(curPartitionInfo);
                     logTblMeta.setPartitionInfo(newPartitionInfo);
                     ruleMgr.getPartitionInfoManager().putNewPartitionInfo(logicalTableName, newPartitionInfo);
@@ -1322,13 +1374,6 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         }
     }
 
-    private void tonewversionImpl(List<String> tableNameList,
-                                  boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                  long connId, boolean allowTwoVersion, boolean sameTableGroup) {
-        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
-            sameTableGroup, 1L);
-    }
-
     /**
      * Steps:
      * 1. Check meta version of table, decide whether loading new TableMeta if necessary
@@ -1344,7 +1389,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
     private void tonewversionImpl(List<String> tableNameList,
                                   boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                  long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup,
+                                  boolean forceSyncFailed) {
         synchronized (OptimizerContext.getContext(schemaName)) {
             GmsTableMetaManager newSchemaManager;
             GmsTableMetaManager oldSchemaManager;
@@ -1396,7 +1442,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                     newSchemaManager.init();
                     SQLRecorderLogger.ddlMetaLogger.info("allowTwoVersion1:" + String.valueOf(allowTwoVersion));
-                    if (allowTwoVersion) {
+                    if (allowTwoVersion && !forceSyncFailed) {
                         OptimizerContext.getContext(schemaName).setSchemaManager(newSchemaManager);
                     }
                     SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
@@ -1424,7 +1470,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                         }
                         return null;
-                    }, trxId);
+                    });
             }
         }
     }
@@ -1466,6 +1512,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     PartitionInfoManager.reload(schemaName, tableName);
                 }
             }
+            TtlScheduledJobStatManager.getInstance().unregisterTtlTableIfNeed(schemaName, tableName);
             staleTables.put(tableName, version);
         }
 
@@ -1622,6 +1669,21 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         final GsiMetaManager gsiMetaManager =
             new GsiMetaManager(dataSource, schemaName);
         return gsiMetaManager.getTableAndIndexMeta(primaryOrIndexTableName, statusSet);
+    }
+
+    @Override
+    public boolean cciExists(String columnarTableName, boolean isColumnar) {
+        if (!isColumnar) {
+            return false;
+        }
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            ColumnarTableMappingAccessor accessor = new ColumnarTableMappingAccessor();
+            accessor.setConnection(metaDbConn);
+            List<ColumnarTableMappingRecord> records = accessor.querySchemaIndex(schemaName, columnarTableName);
+            return !records.isEmpty();
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 
     @Override

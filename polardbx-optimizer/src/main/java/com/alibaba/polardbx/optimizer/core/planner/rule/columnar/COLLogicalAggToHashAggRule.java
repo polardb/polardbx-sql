@@ -19,9 +19,9 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.columnar;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.planner.rule.CBOPushAggRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalAggToHashAggRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.TwoPhaseAggUtil;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -54,11 +54,8 @@ public class COLLogicalAggToHashAggRule extends LogicalAggToHashAggRule {
     @Override
     protected void createHashAgg(RelOptRuleCall call, LogicalAggregate agg, RelNode newInput) {
         List<Pair<RelDistribution, RelDistribution>> implementationList = new ArrayList<>();
-        if (tryConvertToPartialAgg(call, agg, newInput)) {
-            if (PlannerContext.getPlannerContext(agg).getParamManager().getBoolean(ConnectionParams.PARTIAL_AGG_ONLY)) {
-                return;
-            }
-        }
+        tryConvertToPartialAgg(call, agg, newInput);
+
         ImmutableBitSet groupIndex = agg.getGroupSet();
         if (groupIndex.cardinality() == 0) {
             implementationList.add(Pair.of(RelDistributions.SINGLETON, RelDistributions.SINGLETON));
@@ -98,7 +95,7 @@ public class COLLogicalAggToHashAggRule extends LogicalAggToHashAggRule {
         }
 
         // split to two phase agg
-        CBOPushAggRule.TwoPhaseAggComponent twoPhaseAggComponent = CBOPushAggRule.splitAgg(agg);
+        TwoPhaseAggUtil.TwoPhaseAggComponent twoPhaseAggComponent = TwoPhaseAggUtil.splitAgg(agg);
         if (twoPhaseAggComponent == null) {
             return false;
         }
@@ -167,16 +164,15 @@ public class COLLogicalAggToHashAggRule extends LogicalAggToHashAggRule {
             return false;
         }
 
-        // no distinct
+        // no distinct and filter
         List<AggregateCall> aggregateCalls = hashAgg.getAggCallList();
         for (AggregateCall aggregateCall : aggregateCalls) {
             if (aggregateCall.isDistinct() || aggregateCall.filterArg > -1) {
                 return false;
             }
-        }
-
-        if (plannerContext.getParamManager().getBoolean(ConnectionParams.PARTIAL_AGG_ONLY)) {
-            return true;
+            if (aggregateCall.hasFilter()) {
+                return false;
+            }
         }
 
         // cardinality good enough

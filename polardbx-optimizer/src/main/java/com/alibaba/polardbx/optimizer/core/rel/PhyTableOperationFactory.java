@@ -87,6 +87,7 @@ public class PhyTableOperationFactory extends PhyOperationBuilderCommon {
         buildParams.setBytesSql(opTemplateBuildParams.bytesSql);
         buildParams.setDbType(DbType.MYSQL);
         buildParams.setDynamicParams(opTemplateBuildParams.dynamicParams);
+        buildParams.setParamIndexMapping(opTemplateBuildParams.paramIndexMapping);
         buildParams.setBatchParameters(opTemplateBuildParams.batchParameters);
 
         PhyTableOperation operation = buildPhyTblOpByParamsInner(buildParams, false);
@@ -131,6 +132,7 @@ public class PhyTableOperationFactory extends PhyOperationBuilderCommon {
         buildParams.setBytesSql(targetPhyOp.getBytesSql());
         buildParams.setDbType(targetPhyOp.getDbType());
         buildParams.setDynamicParams(targetPhyOp.getParam());
+        buildParams.setParamIndexMapping(targetPhyOp.getParamIndex());
         buildParams.setBatchParameters(targetPhyOp.getBatchParameters());
 
         if (newBuildParams != null) {
@@ -153,6 +155,10 @@ public class PhyTableOperationFactory extends PhyOperationBuilderCommon {
 
             if (newBuildParams.dynamicParams != null) {
                 buildParams.setDynamicParams(newBuildParams.dynamicParams);
+            }
+
+            if (newBuildParams.paramIndexMapping != null) {
+                buildParams.setParamIndexMapping(newBuildParams.paramIndexMapping);
             }
 
             if (newBuildParams.bytesSql != null) {
@@ -199,6 +205,7 @@ public class PhyTableOperationFactory extends PhyOperationBuilderCommon {
         operation.setBytesSql(buildParams.bytesSql);
         operation.setDbType(DbType.MYSQL);
         operation.setParam(buildParams.dynamicParams);
+        operation.setParamIndex(buildParams.paramIndexMapping);
         operation.setBatchParameters(buildParams.batchParameters);
 
         if (buildParams.nativeSqlNode != null) {

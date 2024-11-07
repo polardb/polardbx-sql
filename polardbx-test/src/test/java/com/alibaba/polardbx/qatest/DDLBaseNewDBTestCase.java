@@ -33,6 +33,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
@@ -69,6 +70,8 @@ import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
+import org.hamcrest.Matcher;
+import org.hamcrest.Matchers;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.Assert;
@@ -100,7 +103,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.resultSetContentSameAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 
@@ -256,12 +261,25 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         try {
             while (!dbName.equalsIgnoreCase(db) && retryCount > 0) {
                 retryCount--;
-                if (!usingNewPartDb()) {
-                    JdbcUtil.createDatabase(connection, db, DB_HINT);
-                } else {
-                    JdbcUtil.createPartDatabase(connection, db);
+                try {
+                    if (!usingNewPartDb()) {
+                        JdbcUtil.createDatabase(connection, db, DB_HINT);
+                    } else {
+                        JdbcUtil.createPartDatabase(connection, db);
+                    }
+                    dbName = connection.getSchema();
+                } catch (Throwable ex) {
+                    if (ex.getMessage().toLowerCase().contains("not finished dropping")) {
+                        try {
+                            JdbcUtil.dropDatabase(connection, db);
+                        } catch (Throwable e2) {
+                            logger.warn(e2.getMessage());
+                        }
+
+                    } else {
+                        throw ex;
+                    }
                 }
-                dbName = connection.getSchema();
             }
         } catch (Exception e) {
             logger.error(e.getMessage());
@@ -837,6 +855,22 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             JdbcUtil.close(rs);
         }
         return cnt;
+    }
+
+    public List<Integer> getAllDataNumFromTable(Connection conn, String tableName, String columnTobeSelect) {
+        String sql = String.format("select %s from %s order by %s asc", columnTobeSelect, tableName, columnTobeSelect);
+        List<Integer> nums = new ArrayList<>();
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
+        try {
+            while (rs.next()) {
+                nums.add(rs.getInt(1));
+            }
+        } catch (SQLException e) {
+            logger.error(e.getMessage(), e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+        return nums;
     }
 
     // drop 某个分库中得某个表，主要用于异常测试
@@ -2356,6 +2390,28 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         return result;
     }
 
+    @NotNull
+    protected List<CdcDdlRecord> queryDdlRecordByDdlSql(String schemaName, String ddlSql)
+        throws SQLException {
+        final List<CdcDdlRecord> result = new ArrayList<>();
+
+        final String sql = String.format(
+            "select * from __cdc__.%s where schema_name = ? and ddl_sql like ?",
+            CdcTableUtil.CDC_DDL_RECORD_TABLE);
+        try (PreparedStatement ps = tddlConnection.prepareStatement(sql)) {
+            ps.setString(1, schemaName);
+            ps.setString(2, "%" + ddlSql + "%");
+
+            final ResultSet resultSet = ps.executeQuery();
+
+            while (resultSet.next()) {
+                result.add(CdcDdlRecord.fill(resultSet));
+            }
+        }
+
+        return result;
+    }
+
     protected List<ColumnarTableEvolutionRecord> queryLatestColumnarTableEvolutionRecordByDdlJobId(Long ddlJobId)
         throws SQLException {
         final List<ColumnarTableEvolutionRecord> result;
@@ -2387,6 +2443,21 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
             final TableInfoManager tableInfoManager = new TableInfoManager();
             tableInfoManager.setConnection(metaConn);
             result = tableInfoManager.queryColumnarTableMapping(tableId);
+        }
+
+        return result;
+    }
+
+    protected List<ColumnarTableMappingRecord> queryDropColumnarTableMappingRecordByIndexName(String schemaName,
+                                                                                               String tableName,
+                                                                                               String indexName)
+        throws SQLException {
+        final List<ColumnarTableMappingRecord> result;
+        try (final Connection metaConn = getMetaConnection()) {
+            final ColumnarTableMappingAccessor accessor = new ColumnarTableMappingAccessor();
+            accessor.setConnection(metaConn);
+            result = accessor.queryBySchemaTableIndexLike(schemaName, tableName, indexName + "%",
+                ColumnarTableStatus.DROP.name());
         }
 
         return result;
@@ -2449,6 +2520,29 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         Truth.assertThat(columnarTableMappingRecords.get(0).status).isEqualTo(cciTableStatus.name());
         Truth.assertThat(columnarTableMappingRecords.get(0).latestVersionId)
             .isEqualTo(columnarTableEvolutionRecords.get(0).versionId);
+    }
+
+    protected void checkLatestColumnarMappingRecordByDropDbSql(String sqlDdl,
+                                                               String schemaName,
+                                                               String tableName,
+                                                               String indexName,
+                                                               DdlType ddlType,
+                                                               ColumnarTableStatus cciTableStatus)
+        throws SQLException {
+        final List<CdcDdlRecord> cdcDdlRecords = queryDdlRecordByDdlSql(schemaName, sqlDdl);
+        Truth
+            .assertWithMessage("No ddl record found for sql: %s ", sqlDdl)
+            .that(cdcDdlRecords)
+            .hasSize(1);
+
+        final List<ColumnarTableMappingRecord> columnarTableMappingRecords =
+            queryDropColumnarTableMappingRecordByIndexName(schemaName, tableName, indexName);
+        Truth.assertThat(columnarTableMappingRecords).hasSize(1);
+        Truth.assertThat(columnarTableMappingRecords.get(0).tableSchema).isEqualTo(schemaName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).tableName).isEqualTo(tableName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).indexName).startsWith(indexName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).status).isEqualTo(cciTableStatus.name());
+        Truth.assertThat(columnarTableMappingRecords.get(0).latestVersionId).isGreaterThan(-1);
     }
 
     protected void checkColumnarSchemaEvolutionRecordByDdlSql(String sqlDdl,
@@ -2655,5 +2749,139 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         cdcDdlRecordConsumer.accept(ddlRecords.get(0));
         final DDLExtInfo ddlExtInfo = JSONObject.parseObject(ddlRecords.get(0).ext, DDLExtInfo.class);
         ddlExtInfoConsumer.accept(ddlExtInfo);
+    }
+
+    protected void checkTraceRowCount(int rowCount) {
+        checkTraceRowCount(rowCount, tddlConnection);
+    }
+
+    protected List<List<String>> checkTraceRowCountIs(int expectedTraceCount) {
+        return checkTraceRowCount(Matchers.is(expectedTraceCount));
+    }
+
+    protected List<List<String>> checkTraceRowCount(Matcher<Integer> matcher) {
+        final List<List<String>> trace = getTrace(tddlConnection);
+
+        Assert.assertThat("Unexpected trace count: \n" + Optional
+            .ofNullable(trace)
+            .map(tu -> tu.stream().map(r -> String.join(", ", r)).collect(Collectors.joining("\n")))
+            .orElse("show trace result is null"), trace.size(), matcher);
+
+        return trace;
+    }
+
+    protected static @NotNull String buildSqlCheckData(List<String> columnNames, String tableName) {
+        return "select " + String.join(",", columnNames) + " from " + tableName;
+    }
+
+    protected void executeOnceThenCheckDataAndTraceResultAndRouteCorrectness(String hint,
+                                                                             String insert,
+                                                                             List<String> columnNames,
+                                                                             String tableName,
+                                                                             Matcher<Integer> traceCountMatcher)
+        throws SQLException {
+        final List<List<Object>> mysqlResult = executeOnceThenCheckDataAndTraceResult(hint,
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            traceCountMatcher);
+
+        JdbcUtil.assertRouteCorrectness(hint,
+            tableName,
+            mysqlResult,
+            columnNames,
+            ImmutableList.of("c1"),
+            tddlConnection);
+    }
+
+    protected @NotNull List<List<Object>> executeOnceThenCheckDataAndTraceResult(String hint,
+                                                                                 String insert,
+                                                                                 String sqlCheckData,
+                                                                                 Matcher<Integer> traceCountMatcher) {
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null, true);
+        checkTraceRowCount(traceCountMatcher);
+
+        return selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
+    }
+
+    protected void executeTwiceThenCheckDataAndTraceResult(String hint,
+                                                           String insert,
+                                                           String sqlCheckData,
+                                                           Matcher<Integer> traceCountMatcher) {
+        executeTwiceThenCheckDataAndTraceResult(hint, insert, sqlCheckData, false, traceCountMatcher);
+    }
+
+    protected void executeTwiceThenCheckDataAndTraceResult(String hint,
+                                                           String insert,
+                                                           String sqlCheckData,
+                                                           boolean compareAffectedRows,
+                                                           Matcher<Integer> traceCountMatcher) {
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
+
+        selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null,
+            compareAffectedRows);
+        checkTraceRowCount(traceCountMatcher);
+
+        selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
+    }
+
+    protected void executeTwiceThenCheckGsiDataAndTraceResult(String hint,
+                                                              String insert,
+                                                              String tableName,
+                                                              String gsiName,
+                                                              int traceCount) throws SQLException {
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null, true);
+        checkTraceRowCountIs(traceCount);
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
+    }
+
+    protected void executeThriceThenCheckDataAndTraceResult(String hint,
+                                                            String insert,
+                                                            String sqlCheckData,
+                                                            boolean compareAffectedRows,
+                                                            Matcher<Integer> traceCountMatcher) {
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
+
+        selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null,
+            compareAffectedRows);
+        checkTraceRowCount(traceCountMatcher);
+
+        selectContentSameAssert(sqlCheckData, null, mysqlConnection, tddlConnection);
+    }
+
+    protected void executeThriceThenCheckGsiDataAndTraceResult(String hint,
+                                                               String insert,
+                                                               String tableName,
+                                                               String gsiName,
+                                                               boolean compareAffectedRows,
+                                                               int traceCount) throws SQLException {
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null,
+            compareAffectedRows);
+        checkTraceRowCountIs(traceCount);
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
     }
 }

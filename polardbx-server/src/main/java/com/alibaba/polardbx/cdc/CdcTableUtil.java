@@ -133,6 +133,9 @@ public class CdcTableUtil {
         String
             .format("SELECT COUNT(ID) FROM %s WHERE INSTRUCTION_TYPE =? and INSTRUCTION_ID =?", CDC_INSTRUCTION_TABLE);
 
+    public final static String QUERY_CDC_DDL_RECORD_LIMIT_1 =
+        "SELECT JOB_ID,EXT FROM `" + CDC_DDL_RECORD_TABLE + "` LIMIT 1";
+
     private CdcTableUtil() {
     }
 
@@ -234,7 +237,10 @@ public class CdcTableUtil {
         }
     }
 
-    public void insertDdlRecord(Connection connection, Long jobId, String sqlKind, String schema, String tableName,
+    /**
+     * @return 如果时TSO事务，返回insert的commitTso，该值意味着是该打标sql在binlog事件中的tso值
+     */
+    public long insertDdlRecord(Connection connection, Long jobId, String sqlKind, String schema, String tableName,
                                 String ddlSql, String metaInfo, CdcDdlMarkVisibility visibility, String ext)
         throws SQLException {
         if (ddlSql.lastIndexOf(";") == (ddlSql.length() - 1)) {
@@ -257,6 +263,11 @@ public class CdcTableUtil {
                 stmt.executeUpdate();
             }
         });
+        if (connection instanceof InnerConnection) {
+            return ((InnerConnection) connection).getCommitTso();
+        } else {
+            return -1L;
+        }
     }
 
     /**
@@ -300,7 +311,8 @@ public class CdcTableUtil {
             TablesAccessor tablesAccessor = new TablesAccessor();
             tablesAccessor.setConnection(metaDbConn);
             TablesRecord tablesRecord = tablesAccessor.query(schemaName, tableName, false);
-            return tablesRecord != null && Engine.isFileStore(tablesRecord.engine);
+            return tablesRecord != null && Engine.isFileStore(tablesRecord.engine)
+                && !Engine.supportColumnar(Engine.of(tablesRecord.engine));
         }
     }
 

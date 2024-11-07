@@ -75,6 +75,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -293,7 +295,12 @@ public class PolicyPartitionBalance implements BalancePolicy {
             "[schema %s, table %s] start to solve move partition problem: M=%d, N=%d, originalPlace=%s, partitionSize=%s",
             schemaName, tableName, M, N, Arrays.toString(originalPlace), Arrays.toString(partitionSize));
         EventLogger.log(EventType.REBALANCE_INFO, logInfo);
-        Solution solution = MixedModel.solveMovePartition(M, N, originalPlace, partitionSize, solveLevel);
+        Solution solution;
+        if (options.shuffleDataDistribution != 0) {
+            solution = MixedModel.solveShufflePartition(M, N, originalPlace, partitionSize);
+        } else {
+            solution = MixedModel.solveMovePartition(M, N, originalPlace, partitionSize, solveLevel);
+        }
         if (solution.withValidSolve) {
             Date endTime = new Date();
             Long costMillis = endTime.getTime() - startTime.getTime();
@@ -784,43 +791,52 @@ public class PolicyPartitionBalance implements BalancePolicy {
             }
         }
 
-        moves.sort(Comparator.comparingLong(o -> -o.dataSize));
+        // TODO
+        // 1. we need to shuffle toGroup most possibly.
+        // 2. for subjob on tablegroup, we need to allocate resource for tablegroup.
+//        moves.sort(Comparator.comparingLong(o -> -o.dataSize));
 //        int toIndex = Math.min(options.maxActions * 8, moves.size());
 //        moves = moves.subList(0, toIndex);
-//        Map<String, List<MoveInfo>> movesGroupByTg = moves.stream().collect(
-//            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
-//        );
+        Map<String, List<MoveInfo>> movesGroupByTg = moves.stream().collect(
+            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
+        );
         long maxTaskUnitSize = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_SIZE);
         if (maxTaskUnitSize < 1024) {
             maxTaskUnitSize = options.maxTaskUnitSize;
         }
-        for (int i = 0; i < moves.size(); ) {
-            Long sumMoveSize = 0L;
-            int j = i;
-            int nextI;
-            for (; j < moves.size() && sumMoveSize <= maxTaskUnitSize * 1024 * 1024; j++) {
-                sumMoveSize += moves.get(j).dataSize;
-            }
-            nextI = j;
-            Map<String, List<ActionMovePartition>> movePartitionActions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-//            Long finalSumMoveRows = sumMoveSize;
-            GeneralUtil.emptyIfNull(moves.subList(i, nextI)).stream().collect(
-                Collectors.groupingBy(o -> o.targetDn,
-                    Collectors.mapping(o -> o.partitionStat, Collectors.toList()))
-            ).forEach((toGroup, partitions) -> {
-                for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions,
-                    toGroup, stats)) {
-//                    if (actions.size() >= options.maxActions) {
-//                        break;
-//                    }
-                    movePartitionActions.computeIfAbsent(act.getTableGroupName(), o -> new ArrayList<>()).add(act);
-                }
-            });
-            if (!movePartitionActions.isEmpty()) {
-                actions.add(new ActionMovePartitions(schemaName, movePartitionActions));
-            }
-            i = nextI;
+        for (String tgName : movesGroupByTg.keySet()) {
+            List<PolicyPartitionBalance.MoveInfo> movesGroup = movesGroupByTg.get(tgName);
+            List<ActionMovePartitions> movePartitionsList =
+                PolicyPartitionBalance.shuffleToGroup(schemaName, movesGroup, maxTaskUnitSize, stats);
+            actions.addAll(movePartitionsList);
         }
+//        for (int i = 0; i < moves.size(); ) {
+//            Long sumMoveSize = 0L;
+//            int j = i;
+//            int nextI;
+//            for (; j < moves.size() && sumMoveSize <= maxTaskUnitSize * 1024 * 1024; j++) {
+//                sumMoveSize += moves.get(j).dataSize;
+//            }
+//            nextI = j;
+//            Map<String, List<ActionMovePartition>> movePartitionActions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+////            Long finalSumMoveRows = sumMoveSize;
+//            GeneralUtil.emptyIfNull(moves.subList(i, nextI)).stream().collect(
+//                Collectors.groupingBy(o -> o.targetDn,
+//                    Collectors.mapping(o -> o.partitionStat, Collectors.toList()))
+//            ).forEach((toGroup, partitions) -> {
+//                for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions,
+//                    toGroup, stats)) {
+////                    if (actions.size() >= options.maxActions) {
+////                        break;
+////                    }
+//                    movePartitionActions.computeIfAbsent(act.getTableGroupName(), o -> new ArrayList<>()).add(act);
+//                }
+//            });
+//            if (!movePartitionActions.isEmpty()) {
+//                actions.add(new ActionMovePartitions(schemaName, movePartitionActions));
+//            }
+//            i = nextI;
+//        }
 
 //        for (String tgName : movesGroupByTg.keySet()) {
 //            List<MoveInfo> movesOfTg = movesGroupByTg.get(tgName);
@@ -866,7 +882,7 @@ public class PolicyPartitionBalance implements BalancePolicy {
         }
     }
 
-    public class MoveInfo {
+    public static class MoveInfo {
         PartitionStat partitionStat;
         String targetDn;
 
@@ -889,6 +905,48 @@ public class PolicyPartitionBalance implements BalancePolicy {
         return Optional.ofNullable(storageStatusMap.get(storageInst))
             .map(StorageInstHaContext::isAllReplicaReady)
             .orElse(false);
+    }
+
+    public static List<ActionMovePartitions> shuffleToGroup(String schemaName, List<MoveInfo> moves,
+                                                            long maxTaskUnitSize,
+                                                            BalanceStats stats) {
+        List<ActionMovePartitions> movePartitionsList = new ArrayList<>();
+        Map<String, Queue<MoveInfo>> moveInfoMap = new HashMap<>();
+        for (MoveInfo moveInfo : moves) {
+            if (!moveInfoMap.containsKey(moveInfo.targetDn)) {
+                moveInfoMap.put(moveInfo.targetDn,
+                    new PriorityQueue<MoveInfo>((o1, o2) -> Long.compare(o1.dataSize, o2.dataSize)));
+            }
+            moveInfoMap.get(moveInfo.targetDn).add(moveInfo);
+        }
+        List<String> dns = new ArrayList<>(moveInfoMap.keySet());
+        long splitTaskUnitSize = maxTaskUnitSize * 1024 * 1024 / dns.size();
+        int i = 0;
+        while (i < moves.size()) {
+            List<MoveInfo> moveInfoList = new ArrayList<>();
+            for (String dn : dns) {
+                long sumMoveSize = 0L;
+                Queue<MoveInfo> moveInfoQueue = moveInfoMap.get(dn);
+                while (!moveInfoQueue.isEmpty() && sumMoveSize < splitTaskUnitSize) {
+                    MoveInfo moveInfo = moveInfoQueue.poll();
+                    sumMoveSize += moveInfo.dataSize;
+                    moveInfoList.add(moveInfo);
+                    i++;
+                }
+            }
+            Map<String, List<ActionMovePartition>> movePartitionActions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            GeneralUtil.emptyIfNull(moveInfoList).stream().collect(
+                Collectors.groupingBy(o -> o.targetDn,
+                    Collectors.mapping(o -> o.partitionStat, Collectors.toList()))
+            ).forEach((toGroup, partitions) -> {
+                for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions,
+                    toGroup, stats)) {
+                    movePartitionActions.computeIfAbsent(act.getTableGroupName(), o -> new ArrayList<>()).add(act);
+                }
+            });
+            movePartitionsList.add(new ActionMovePartitions(schemaName, movePartitionActions));
+        }
+        return movePartitionsList;
     }
 
 }

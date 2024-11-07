@@ -143,24 +143,6 @@ public class MyPhyTableScanCursor extends MyPhysicalCursor {
         return exs;
     }
 
-    /**
-     * For multi get, delay the initialization to next method. If
-     * GROUP_CONCURRENT_BLOCK is set, initialization should call at first.
-     */
-    private boolean isDelayInit(ExecutionContext executionContext) {
-        QueryConcurrencyPolicy queryConcurrencyPolicy = getQueryConcurrencyPolicy(executionContext);
-
-        switch (queryConcurrencyPolicy) {
-        case GROUP_CONCURRENT_BLOCK:
-        case RELAXED_GROUP_CONCURRENT:
-        case CONCURRENT:
-        case FIRST_THEN_CONCURRENT:
-            return false;
-        default:
-            return true;
-        }
-    }
-
     public String getGroupName() {
         return plan.getDbIndex();
     }

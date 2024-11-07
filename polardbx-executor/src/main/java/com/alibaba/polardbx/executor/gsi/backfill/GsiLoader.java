@@ -71,7 +71,8 @@ public class GsiLoader extends Loader {
 
     public static Loader create(String schemaName, String primaryTable, String indexTable,
                                 BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
-                                boolean useHint, boolean canUseReturning, ExecutionContext ec) {
+                                boolean useHint, boolean canUseReturning, boolean onlineModifyColumn,
+                                ExecutionContext ec) {
         final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
 
         // Construct target table
@@ -83,8 +84,8 @@ public class GsiLoader extends Loader {
         final SqlNodeList targetColumnList = new SqlNodeList(
             indexTableMeta.getAllColumns()
                 .stream()
-                .filter(columnMeta -> (!columnMeta.isGeneratedColumn() && !(columnMeta.getMappingName() != null
-                    && columnMeta.getMappingName().isEmpty())))
+                .filter(columnMeta -> (!columnMeta.isGeneratedColumn() && !(onlineModifyColumn
+                    && columnMeta.getMappingName() != null && columnMeta.getMappingName().isEmpty())))
                 .map(columnMeta -> new SqlIdentifier(columnMeta.getName(), SqlParserPos.ZERO))
                 .collect(Collectors.toList()),
             SqlParserPos.ZERO);

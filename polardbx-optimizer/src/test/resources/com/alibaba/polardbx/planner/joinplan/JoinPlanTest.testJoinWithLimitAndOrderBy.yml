@@ -10,11 +10,11 @@
 
   plan: |
 
-    HashJoin(condition="name = name", type="inner")
-      MergeSort(sort="id ASC")
-        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id`")
-      Gather(concurrent=true)
-        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+    hashjoin(condition="name = name", type="inner")
+      mergesort(sort="id asc")
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
@@ -22,12 +22,12 @@
 
   plan: |
 
-    Limit(offset=0, fetch=10)
-      HashJoin(condition="name = name", type="inner")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+    limit(offset=0, fetch=10)
+      hashjoin(condition="name = name", type="inner")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
@@ -35,12 +35,12 @@
 
   plan: |
 
-    Limit(offset=5, fetch=10)
-      HashJoin(condition="name = name", type="inner")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+    limit(offset=5, fetch=10)
+      hashjoin(condition="name = name", type="inner")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
@@ -49,8 +49,8 @@
 
   plan: |
 
-    MergeSort(sort="id ASC", offset=0, fetch=10)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) ORDER BY `test_hash_tb`.`id` LIMIT 10")
+    mergesort(sort="id asc", offset=0, fetch=10)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` as `id0`, `test_hash_tb0`.`name` as `name0`, `test_hash_tb0`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) order by `test_hash_tb`.`id` limit 10")
 
 -
   sql: |
@@ -58,8 +58,8 @@
 
   plan: |
 
-    MergeSort(sort="name ASC", offset=0, fetch=10)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) ORDER BY `test_hash_tb`.`name` LIMIT 10")
+    mergesort(sort="name asc", offset=0, fetch=10)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` as `id0`, `test_hash_tb0`.`name` as `name0`, `test_hash_tb0`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) order by `test_hash_tb`.`name` limit 10")
 
 -
   sql: |
@@ -67,8 +67,8 @@
 
   plan: |
 
-    MergeSort(sort="name0 ASC", offset=0, fetch=10)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) ORDER BY `test_hash_tb0`.`name` LIMIT 10")
+    mergesort(sort="name0 asc", offset=0, fetch=10)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` as `id0`, `test_hash_tb0`.`name` as `name0`, `test_hash_tb0`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) order by `test_hash_tb0`.`name` limit 10")
 
 -
   sql: |
@@ -89,32 +89,34 @@
 
   plan: |
 
-    TopN(sort="name ASC", offset=0, fetch=10)
-      HashJoin(condition="name = name", type="right")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+    topn(sort="name asc", offset=0, fetch=10)
+      hashjoin(condition="name = name", type="right")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
     select * from test_hash_tb t1 left join test_hash_tb t2 on t1.name=t2.name order by t1.id limit 10
 
   plan: |
+
     limit(offset=0, fetch=10)
       hashjoin(condition="name = name", type="left")
         mergesort(sort="id asc", fetch=10)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` order by `id` limit 10")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id` limit 10")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+
 -
   sql: |
     select * from test_hash_tb t1 left join test_hash_tb t2 on t1.name=t2.name and t1.id=t2.id order by t1.id limit 10
 
   plan: |
 
-    MergeSort(sort="id ASC", offset=0, fetch=10)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` AS `id0`, `test_hash_tb0`.`name` AS `name0`, `test_hash_tb0`.`create_time` AS `create_time0` FROM `test_hash_tb` AS `test_hash_tb` LEFT JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = `test_hash_tb0`.`name`) AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`)) ORDER BY `test_hash_tb`.`id` LIMIT 10")
+    mergesort(sort="id asc", offset=0, fetch=10)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb0`.`id` as `id0`, `test_hash_tb0`.`name` as `name0`, `test_hash_tb0`.`create_time` as `create_time0` from `test_hash_tb` as `test_hash_tb` left join `test_hash_tb` as `test_hash_tb0` on ((`test_hash_tb`.`name` = `test_hash_tb0`.`name`) and (`test_hash_tb`.`id` = `test_hash_tb0`.`id`)) order by `test_hash_tb`.`id` limit 10")
 
 -
   sql: |
@@ -123,12 +125,12 @@
 
   plan: |
 
-    Project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time")
-      HashJoin(condition="name = name", type="inner")
-        MergeSort(sort="id ASC")
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
+    project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time")
+      hashjoin(condition="name = name", type="inner")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
@@ -140,7 +142,7 @@
       project(id="id0", name="name0", create_time="create_time0", id0="id", name0="name", create_time0="create_time")
         hashjoin(condition="name = name", type="inner")
           mergesort(sort="id asc")
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` order by `id`")
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id`")
           gather(concurrent=true)
             logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
 
@@ -150,12 +152,12 @@
 
   plan: |
 
-    HashAgg(group="name")
-      HashJoin(condition="name = name", type="inner")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name` FROM `test_hash_tb` AS `test_hash_tb`")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name` FROM `test_hash_tb` AS `test_hash_tb`")
+    hashagg(group="name")
+      hashjoin(condition="name = name", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `name` from `test_hash_tb` as `test_hash_tb`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `name` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
@@ -171,14 +173,13 @@
 
   plan: |
 
-    Project(min(t2.id)="min(t2.id)")
-      HashAgg(group="create_time,name0", min(t2.id)="MIN(id)")
-        HashJoin(condition="name = name", type="inner")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
-
+    project(min(t2.id)="min(t2.id)")
+      hashagg(group="create_time,name0", min(t2.id)="min(id)")
+        hashjoin(condition="name = name", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
 
 -
   sql: |
@@ -193,6 +194,7 @@
        t1.name in (2134, 123100) and t1.int_col1!=1243 and t1.int_col2!=1243 and t1.int_col3!=1243 and t1.int_col4!=1243
 
   plan: |
+
     project(1="1")
       hashjoin(condition="name = name", type="inner")
         gather(concurrent=true)

@@ -231,7 +231,7 @@ public class XATsoTransactionTest extends CrudBasedLockTestCase {
                 long connId = rs.getLong("PROCESS_ID");
                 if (connId == connectionId) {
                     String type = rs.getString("TYPE");
-                    Assert.assertTrue(type.equalsIgnoreCase("XA_TSO"));
+                    Assert.assertTrue(type.equalsIgnoreCase("XATSO"));
                 }
             }
             // commit

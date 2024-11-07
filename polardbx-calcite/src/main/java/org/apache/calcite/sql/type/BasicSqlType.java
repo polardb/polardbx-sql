@@ -67,17 +67,17 @@ public class BasicSqlType extends AbstractSqlType {
         computeDigest();
     }
 
-  /**
-   * Constructs a type with precision/length and scale.
-   *
-   * @param typeName Type name
-   */
-  public BasicSqlType(RelDataTypeSystem typeSystem, SqlTypeName typeName,
-      int precision, int scale) {
-    this(typeSystem, typeName, true, precision, scale);
+    /**
+     * Constructs a type with precision/length and scale.
+     *
+     * @param typeName Type name
+     */
+    public BasicSqlType(RelDataTypeSystem typeSystem, SqlTypeName typeName,
+                        int precision, int scale) {
+        this(typeSystem, typeName, true, precision, scale);
 //    assert typeName.allowsPrecScale(true, true);
-    computeDigest();
-  }
+        computeDigest();
+    }
 
     /**
      * Internal constructor.
@@ -181,8 +181,8 @@ public class BasicSqlType extends AbstractSqlType {
         boolean printPrecision = precision != PRECISION_NOT_SPECIFIED;
         boolean printScale = scale != SCALE_NOT_SPECIFIED;
 
-        if (SqlTypeName.DATETIME_TYPES.contains(typeName)) {
-            // for time/datetime/timestamp, we should print fsp(scale) rather than precision.
+        if (SqlTypeName.DATETIME_TYPES.contains(typeName) || SqlTypeName.APPROX_TYPES.contains(typeName)) {
+            // for time/datetime/timestamp/float/real/double, we should print fsp(scale) rather than precision.
             if (getScale() >= 0) {
                 sb.append('(');
                 sb.append(getScale());

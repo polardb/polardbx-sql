@@ -1,0 +1,395 @@
+test_hash_tb:
+  CREATE TABLE `test_hash_tb` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_hash_ta:
+  CREATE TABLE `test_hash_ta` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_hash_tc:
+  CREATE TABLE `test_hash_tc` (
+  `id` int(11) NOT NULL,
+  `key` int(11) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_single:
+  CREATE TABLE `test_single` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 single;
+
+test_broadcast:
+  CREATE TABLE `test_broadcast` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 BROADCAST;
+
+test_broadcast_b:
+  CREATE TABLE `test_broadcast_b` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 BROADCAST;
+
+test_group_sequence:
+  CREATE TABLE `test_group_sequence` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_time_sequence:
+  CREATE TABLE `test_time_sequence` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT BY TIME,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` timestamp,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_compound_key:
+  CREATE TABLE `test_compound_key` (
+  `id` bigint(20) NOT NULL,
+  `name` bigint(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`) subpartition by hash(`NAME`) subpartitions 2;
+
+test_tb_without_pk:
+  CREATE TABLE `test_tb_without_pk` (
+  `id`                BIGINT(11)   NOT NULL DEFAULT 1,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_without_pk_has_uk:
+  CREATE TABLE `test_tb_without_pk_has_uk` (
+  `id`                BIGINT(11)   NOT NULL DEFAULT 1,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_pk_auto_increment:
+  CREATE TABLE `test_tb_pk_auto_increment` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_pk_no_auto_increment_no_default:
+  CREATE TABLE `test_tb_pk_no_auto_increment_no_default` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_pk_no_auto_increment_default_1:
+  CREATE TABLE `test_tb_pk_no_auto_increment_default_1` (
+  `pk`                BIGINT(11)   NOT NULL DEFAULT 1,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_pk_auto_increment_with_ugsi:
+  CREATE TABLE `test_tb_pk_auto_increment_with_ugsi` (
+  `pk`                BIGINT(11)   NOT NULL AUTO_INCREMENT,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  UNIQUE INDEX uk_c4(c4, c3),
+  GLOBAL UNIQUE INDEX g_u_c2_a(c2) COVERING(c5) partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_pk_no_auto_increment_no_default_with_ugsi:
+  CREATE TABLE `test_tb_pk_no_auto_increment_no_default_with_ugsi` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  UNIQUE INDEX uk_c4(c4, c3),
+  GLOBAL UNIQUE INDEX g_u_c2_b(c2) COVERING(c5) partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+test_tb_pk_no_auto_increment_default_1_with_ugsi:
+  CREATE TABLE `test_tb_pk_no_auto_increment_default_1_with_ugsi` (
+  `pk`                BIGINT(11)   NOT NULL DEFAULT 1,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  UNIQUE INDEX uk_c4(c4, c3),
+  GLOBAL UNIQUE INDEX g_u_c2_c(c2) COVERING(c5) partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+t1:
+  CREATE TABLE `t1` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX t1_i_a(c3) COVERING(c5, c6) partition BY HASH(c3) subpartition by HASH(c3) subpartitions 7,
+  GLOBAL UNIQUE INDEX t1_i_b(c2) COVERING(c5) partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+t2:
+  CREATE TABLE `t2` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX t2_i_a(c3) COVERING(c5, c6) partition BY HASH(c3) subpartition by HASH(c3) subpartitions 7,
+  GLOBAL UNIQUE INDEX t2_i_b(c1) COVERING(c5) partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+
+t3:
+  CREATE TABLE `t3` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  GLOBAL INDEX t3_i_a(c3) COVERING(c5, c6) partition BY HASH(c3) subpartition by HASH(c3) subpartitions 7,
+  GLOBAL UNIQUE INDEX t3_i_b(c2) COVERING(c5) partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+t4:
+  CREATE TABLE `t4` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `c1`                BIGINT       DEFAULT NULL,
+  `c2`                BIGINT       DEFAULT NULL,
+  `c3`                BIGINT       DEFAULT NULL,
+  `c4`                BIGINT       DEFAULT NULL,
+  `c5`                VARCHAR(255) DEFAULT NULL,
+  `c6`                DATETIME     DEFAULT NULL,
+  `c7`                TEXT         DEFAULT NULL,
+  `c8`                TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`),
+  UNIQUE INDEX uk_c4(c4),
+  GLOBAL INDEX t4_i_a(c3) COVERING(c5, c6) partition BY HASH(c3) subpartition by HASH(c3) subpartitions 7,
+  GLOBAL UNIQUE INDEX t4_i_b(c2) COVERING(c5) partition BY HASH(c2) subpartition by HASH(c2) subpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 partition BY HASH(c1) subpartition by HASH(c1) subpartitions 7
+
+self_join_t1:
+  CREATE TABLE `self_join_t1` (
+  `pk` int(11) NOT NULL,
+  `c1` int(11) DEFAULT NULL,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 partition BY HASH(c1)
+
+test_hash_tb1:
+  CREATE TABLE `test_hash_tb1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_hash_tb2:
+  CREATE TABLE `test_hash_tb2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`);
+
+test_ordered_subpartition:
+  CREATE TABLE `test_ordered_subpartition` (
+  `id` varchar(32) NOT NULL,
+  `user_id` varchar(32) NOT NULL ,
+  `pad` varchar(32) NOT NULL ,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(user_id)
+  PARTITIONS 16
+  SUBPARTITION BY RANGE COLUMNS(create_time)
+  (
+  SUBPARTITION sp202403a VALUES LESS THAN('2024-03-11'),
+  SUBPARTITION sp202403b VALUES LESS THAN('2024-03-21'),
+  SUBPARTITION sp202403c VALUES LESS THAN('2024-04-01'),
+  SUBPARTITION sp202404a VALUES LESS THAN('2024-04-11'),
+  SUBPARTITION sp202404b VALUES LESS THAN('2024-04-21'),
+  SUBPARTITION sp202404c VALUES LESS THAN('2024-05-01')
+  );
+
+test_ordered_subpartition_b:
+  CREATE TABLE `test_ordered_subpartition_b` (
+  `id` varchar(32) NOT NULL,
+  `user_id` varchar(32) NOT NULL ,
+  `pad` varchar(32) NOT NULL ,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY KEY(user_id)
+  PARTITIONS 16
+  SUBPARTITION BY RANGE COLUMNS(create_time)
+  (
+  SUBPARTITION sp202403a VALUES LESS THAN('2024-03-11'),
+  SUBPARTITION sp202403b VALUES LESS THAN('2024-03-21'),
+  SUBPARTITION sp202403c VALUES LESS THAN('2024-04-01'),
+  SUBPARTITION sp202404a VALUES LESS THAN('2024-04-11'),
+  SUBPARTITION sp202404b VALUES LESS THAN('2024-04-21'),
+  SUBPARTITION sp202404c VALUES LESS THAN('2024-05-01')
+  );
+
+test_ordered_subpartition_c:
+  CREATE TABLE `test_ordered_subpartition_c` (
+  `id` varchar(32) NOT NULL,
+  `user_id` varchar(32) NOT NULL ,
+  `pad` varchar(32) NOT NULL ,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 
+  PARTITION BY RANGE COLUMNS(create_time)
+  SUBPARTITION BY KEY(user_id)
+  SUBPARTITIONS 16
+  (
+  PARTITION sp202403a VALUES LESS THAN('2024-03-11'),
+  PARTITION sp202403b VALUES LESS THAN('2024-03-21'),
+  PARTITION sp202403c VALUES LESS THAN('2024-04-01'),
+  PARTITION sp202404a VALUES LESS THAN('2024-04-11'),
+  PARTITION sp202404b VALUES LESS THAN('2024-04-21'),
+  PARTITION sp202404c VALUES LESS THAN('2024-05-01')
+  );
+
+test_ordered_partition:
+  CREATE TABLE `test_ordered_partition` (
+  `id` varchar(32) NOT NULL,
+  `user_id` varchar(32) NOT NULL ,
+  `pad` varchar(32) NOT NULL ,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY RANGE COLUMNS(create_time)
+  (
+  SUBPARTITION sp202403a VALUES LESS THAN('2024-03-11'),
+  SUBPARTITION sp202403b VALUES LESS THAN('2024-03-21'),
+  SUBPARTITION sp202403c VALUES LESS THAN('2024-04-01'),
+  SUBPARTITION sp202404a VALUES LESS THAN('2024-04-11'),
+  SUBPARTITION sp202404b VALUES LESS THAN('2024-04-21'),
+  SUBPARTITION sp202404c VALUES LESS THAN('2024-05-01')
+  );
+
+test_ordered_partition_b:
+  CREATE TABLE `test_ordered_partition_b` (
+  `id` varchar(32) NOT NULL,
+  `user_id` varchar(32) NOT NULL ,
+  `pad` varchar(32) NOT NULL ,
+  `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY USING BTREE (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY RANGE COLUMNS(create_time)
+  (
+  SUBPARTITION sp202403a VALUES LESS THAN('2024-03-11'),
+  SUBPARTITION sp202403b VALUES LESS THAN('2024-03-21'),
+  SUBPARTITION sp202403c VALUES LESS THAN('2024-04-01'),
+  SUBPARTITION sp202404a VALUES LESS THAN('2024-04-11'),
+  SUBPARTITION sp202404b VALUES LESS THAN('2024-04-21'),
+  SUBPARTITION sp202404c VALUES LESS THAN('2024-05-01')
+  );

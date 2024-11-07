@@ -1,6 +1,7 @@
 package com.alibaba.polardbx.qatest.columnar.dql;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.qatest.ColumnarIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
@@ -9,6 +10,7 @@ import org.junit.Test;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+@ColumnarIgnore // close #58321033
 public class ExchangePartitionPruningTest extends ColumnarReadBaseTestCase {
     private static final String TABLE_1 = "test_exchange_prune_1";
     private static final String TABLE_2 = "test_exchange_prune_2";

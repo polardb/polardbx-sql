@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.executor.vectorized.metadata.ArgumentInfo;
 import com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionConstructor;
@@ -26,6 +27,7 @@ import org.junit.Test;
 import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class VectorizedExpressionRegistryTest {
@@ -41,5 +43,44 @@ public class VectorizedExpressionRegistryTest {
         assertEquals("Class of " + sig + " should be " + TestVectorizedExpression.class,
             TestVectorizedExpression.class, constructor.get().getDeclaringClass());
         assertTrue(constructor.get().build(0, new VectorizedExpression[0]) instanceof TestVectorizedExpression);
+    }
+
+    @Test
+    public void testNotExistSignature() {
+        ArgumentInfo arg1 = new ArgumentInfo(DataTypes.LongType, ArgumentKind.Const);
+        ArgumentInfo arg2 = new ArgumentInfo(DataTypes.IntegerType, ArgumentKind.Variable);
+        ExpressionSignature sig = new ExpressionSignature("expr_test_not_exist", new ArgumentInfo[] {arg1, arg2});
+
+        Optional<ExpressionConstructor<?>> constructor =
+            VectorizedExpressionRegistry.builderConstructorOf(sig);
+        assertFalse("Construct of " + sig + " should not exist.", constructor.isPresent());
+        try {
+            constructor.get().build(0, new VectorizedExpression[0]);
+            Assert.fail("Expect failed when signature does not exist");
+        } catch (Exception e) {
+            Assert.assertTrue(e.getMessage().contains("No value"));
+        }
+    }
+
+    @Test
+    public void testNotExistClass() {
+        try {
+            ExpressionConstructor.of(FailTestVectorizedExpression.class);
+            Assert.fail("Expect failed when class construct does not exist");
+        } catch (Exception e) {
+            Assert.assertTrue(e.getMessage().contains("Failed to get builder constructor"));
+            Assert.assertTrue(e.getMessage().contains(FailTestVectorizedExpression.class.getName()));
+        }
+    }
+
+}
+
+class FailTestVectorizedExpression extends AbstractVectorizedExpression {
+    private FailTestVectorizedExpression() {
+        super(DataTypes.BlobType, 0, null);
+    }
+
+    @Override
+    public void eval(EvaluationContext ctx) {
     }
 }

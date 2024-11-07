@@ -8,8 +8,7 @@
     update orders set o_orderstatus = 'A' where o_orderkey in (1,1000);
 
   plan: |
-    logicalmodifyview(tables="[0000,0003].orders_[00,15]", shardcount=2, sql="update `orders` as `orders` set `o_orderstatus` = ? where (`o_orderkey` in(?))", pruninginfo="all size:2*2(part), pruning size:2")
-
+    logicalmodifyview(tables="[0000,0003].orders_[00,15]", shardcount=2, sql="update `orders` as `orders` force index(`primary`) set `o_orderstatus` = ? where (`o_orderkey` in(?))", pruninginfo="all size:2*2(part), pruning size:2")
 - sql: |
     delete from orders where o_orderkey = 1 or o_orderkey = 1000;
 

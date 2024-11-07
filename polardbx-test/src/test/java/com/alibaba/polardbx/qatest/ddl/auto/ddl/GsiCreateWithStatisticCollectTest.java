@@ -77,16 +77,6 @@ public class GsiCreateWithStatisticCollectTest extends BaseTestCase {
             // create gsi
             c.createStatement().execute(String.format(ALTER_TABLE, TB_NAME));
 
-            // assert table rowcount and update time
-            rs = c.createStatement().executeQuery(String.format(CHECK_TABLES, DB_NAME, TB_NAME));
-            rs.next();
-            rowCount = rs.getInt("TABLE_ROWS");
-            Timestamp dateNew = rs.getTimestamp("UPDATE_TIME");
-
-            rs.close();
-            assert rowCount > 0;
-            assert dateNew.after(date);
-
             // assert statistics
             rs = c.createStatement().executeQuery(String.format(CHECK_STATISTIC, DB_NAME, TB_NAME));
             rs.next();

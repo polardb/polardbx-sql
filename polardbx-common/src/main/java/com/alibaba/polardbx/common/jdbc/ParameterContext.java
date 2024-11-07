@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -84,7 +85,12 @@ public class ParameterContext implements Serializable {
             } else if (args[i] instanceof RawString) {
                 buffer.append(((RawString) args[i]).display());
             } else {
-                buffer.append(args[i]);
+                if (DynamicConfig.getInstance().isEnableChangeParamTypeByMeta()
+                    && this.parameterMethod == ParameterMethod.setString) {
+                    buffer.append("'").append(args[i]).append("'");
+                } else {
+                    buffer.append(args[i]);
+                }
             }
             if (i != args.length - 1) {
                 buffer.append(", ");

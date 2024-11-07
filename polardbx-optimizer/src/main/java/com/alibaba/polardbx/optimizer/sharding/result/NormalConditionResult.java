@@ -78,6 +78,10 @@ public class NormalConditionResult extends ColumnEqualityConditionResult {
     }
 
     public PartitionPruneStep toPartPruneStep(ExecutionContext ec) {
+        return toPartPruneStep(ec, null);
+    }
+
+    public PartitionPruneStep toPartPruneStep(ExecutionContext ec, PartitionInfo cciPartInfo) {
 
         PartitionPruneStep pruneStepInfo = null;
         if (null == label || GeneralUtil.isEmpty(predicates)) {
@@ -93,8 +97,8 @@ public class NormalConditionResult extends ColumnEqualityConditionResult {
         final List<RexNode> sorted = PredicateUtil.sortPredicates(predicates);
         final RexNode comparison = RexUtil.composeConjunction(builder, sorted, true);
         if (null != comparison) {
-            PartitionInfo partInfo =
-                ec.getSchemaManager(schema).getTable(tableName).getPartitionInfo();
+            PartitionInfo partInfo = cciPartInfo == null ?
+                ec.getSchemaManager(schema).getTable(tableName).getPartitionInfo() : cciPartInfo;
             if (partInfo == null) {
                 return null;
             }

@@ -151,6 +151,7 @@ public class LogicalUnArchive extends BaseDdlOperation {
             if (record == null) {
                 continue;
             }
+
             // without archive table
             if (StringUtils.isEmpty(record.getArchiveTableName()) || StringUtils.isEmpty(
                 record.getArchiveTableName())) {

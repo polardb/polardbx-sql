@@ -98,6 +98,8 @@ public class ImplicitTableGroupTest {
                     buildGsiIndexMetaBean(schemaName, tableName, "gsi_2", Lists.newArrayList("c1", "C2")));
                 indexMap.put("gsi_3$abc",
                     buildGsiIndexMetaBean(schemaName, tableName, "gsi_3", Lists.newArrayList("c2", "C1")));
+                indexMap.put("gs`i_4$abc",
+                    buildGsiIndexMetaBean(schemaName, tableName, "gs`i_4", Lists.newArrayList("c2", "C1")));
 
                 GsiMetaManager.GsiTableMetaBean gsiTableMetaBean = new GsiMetaManager.GsiTableMetaBean(null,
                     schemaName, tableName, GsiMetaManager.TableType.SHARDING, null, null, null,
@@ -830,9 +832,34 @@ public class ImplicitTableGroupTest {
     public void testAlterTableModifyColumn() {
         String sql = "alter table t1 modify column c1 bigint not null";
         sql = ImplicitTableGroupUtil.tryAttachImplicitTableGroup("xx", "t1", sql);
-        Assert.assertEquals("ALTER TABLE t1\n"
-                + "\tMODIFY COLUMN c1 bigint NOT NULL WITH TABLEGROUP=tgi2 IMPLICIT, INDEX gsi_3 WITH TABLEGROUP=tgi2 IMPLICIT, INDEX gsi_2 WITH TABLEGROUP=tgi2 IMPLICIT, INDEX gsi_1 WITH TABLEGROUP=tgi2 IMPLICIT",
-            sql);
+        String expectedSql = "ALTER TABLE t1\n"
+            + "\tMODIFY COLUMN c1 bigint NOT NULL WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gsi_3` WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gsi_2` WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gsi_1` WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gs``i_4` WITH TABLEGROUP=tgi2 IMPLICIT";
+
+        Assert.assertEquals(expectedSql, sql);
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, SQL_PARSE_FEATURES);
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        Assert.assertEquals(expectedSql, parseResult.get(0).toString());
+    }
+
+    @Test
+    public void testAlterTableRemovePartitioning() {
+        String sql = "alter table t1 remove partitioning";
+        sql = ImplicitTableGroupUtil.tryAttachImplicitTableGroup("xx", "t1", sql);
+        String expectedSql = "ALTER TABLE t1\n"
+            + "\tREMOVE PARTITIONING WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gsi_3` WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gsi_2` WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gsi_1` WITH TABLEGROUP=tgi2 IMPLICIT, "
+            + "INDEX `gs``i_4` WITH TABLEGROUP=tgi2 IMPLICIT";
+        Assert.assertEquals(expectedSql, sql);
+
+        SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, SQL_PARSE_FEATURES);
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        Assert.assertEquals(expectedSql, parseResult.get(0).toString());
     }
 
     private void processImplicitTableGroup4Index(SQLAlterTableStatement alterTableStatement, String tableGroupName) {

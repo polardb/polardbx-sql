@@ -23,8 +23,6 @@ import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -35,7 +33,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
@@ -62,15 +59,15 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType.*;
+import static com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType.INTERVAL_DAY;
+import static com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType.INTERVAL_MONTH;
+import static com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType.INTERVAL_WEEK;
+import static com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType.INTERVAL_YEAR;
 
 /**
  * @author chenghui.lch
  */
 public class PartitionPruneStepBuilder {
-
-    private static final Logger log = LoggerFactory.getLogger(PartitionPruneStepBuilder.class);
-
     protected static final long DEFAULT_MAX_ENUMERABLE_INTERVAL_LENGTH = 32;
     protected static final long DEFAULT_MAX_IN_SUBQUERY_PRUNING_SIZE = 8192L;
 
@@ -80,13 +77,9 @@ public class PartitionPruneStepBuilder {
     public static PartitionPruneStep genFullScanAllPhyPartsStepInfoByDbNameAndTbName(String dbName,
                                                                                      String logTbName,
                                                                                      ExecutionContext executionContext) {
-        PartitionInfoManager partitionInfoManager =
-            executionContext.getSchemaManager(dbName).getTddlRuleManager().getPartitionInfoManager();
-        PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(logTbName);
-        if (partInfo == null) {
-            log.warn(String.format("db-%s logTbName %s %s", dbName, logTbName,
-                partitionInfoManager.getPartInfoCtxCache().size()));
-        }
+        TableMeta tableMeta = executionContext.getSchemaManager(dbName).getTable(logTbName);
+        PartitionInfo partInfo = tableMeta.getPartitionInfo();
+
         return genFullScanPruneStepInfoInner(partInfo, partInfo.getPartitionBy().getPhysicalPartLevel(), true);
     }
 
@@ -100,9 +93,9 @@ public class PartitionPruneStepBuilder {
      * fullScanSubPartsCrossAllParts=false:  scan subpartitions of just one partition
      * fullScanSubPartsCrossAllParts=true:  scan subpartitions of just all partitions
      */
-    protected static PartitionPruneStep genFullScanPruneStepInfoInner(PartitionInfo partInfo,
-                                                                      PartKeyLevel partLevel,
-                                                                      boolean fullScanSubPartsCrossAllParts) {
+    public static PartitionPruneStep genFullScanPruneStepInfoInner(PartitionInfo partInfo,
+                                                                   PartKeyLevel partLevel,
+                                                                   boolean fullScanSubPartsCrossAllParts) {
         BuildStepOpParams buildParams = new BuildStepOpParams();
         buildParams.setCurrFullContext(null);
         buildParams.setPartInfo(partInfo);
@@ -166,22 +159,38 @@ public class PartitionPruneStepBuilder {
         return finalStep;
     }
 
-    public static PartitionPruneStep generatePointSelectPruneStepInfo(List<Object> pointValue,
-                                                                      List<DataType> pointValueOpTypes,
-                                                                      ExecutionContext ec,
-                                                                      ExecutionContext[] newEcOutput,
-                                                                      PartitionInfo partInfo,
-                                                                      RelDataType tbRelRowType) {
+    /**
+     *
+     */
+    public static PartitionPruneStep genPointSelectPruneStepInfoForTtlRouting(List<Object> pointValue,
+                                                                              List<DataType> pointValueOpTypes,
+                                                                              ExecutionContext ec,
+                                                                              ExecutionContext[] newEcOutput,
+                                                                              PartitionInfo partInfo,
+                                                                              RelDataType tbRelRowType) {
         RexBuilder rexBuilder = PartitionPrunerUtils.getRexBuilder();
 
         List<ColumnMeta> partColFldList = partInfo.getPartitionBy().getPartitionFieldList();
-        List<RexNode> partColRexInputList = new ArrayList<>();
+
+        /**
+         * map.key: colName
+         * map.val: the col index of table column definition order
+         */
         final Map<String, Integer> indexColRefMap = tbRelRowType.getFieldList()
             .stream()
-            .collect(Collectors.toMap(RelDataTypeField::getName,
-                RelDataTypeField::getIndex,
-                (x, y) -> y,
-                TreeMaps::caseInsensitiveMap));
+            .collect(
+                Collectors.toMap(
+                    RelDataTypeField::getName,
+                    RelDataTypeField::getIndex,
+                    (x, y) -> y,
+                    TreeMaps::caseInsensitiveMap
+                )
+            );
+
+        /**
+         * Gen all the InputRef of tbRelRowType for part Cols by using the mapping of indexColRefMap
+         */
+        List<RexNode> partColRexInputList = new ArrayList<>();
         partColFldList.stream().forEach(
             fld -> {
                 if (indexColRefMap.containsKey(fld.getName())) {
@@ -1130,9 +1139,9 @@ public class PartitionPruneStepBuilder {
 
             Boolean isBoundInclude[] = new Boolean[2];
             if (checkCanEnumRange(partInfo, pruningCtx, rangeInfo, isBoundInclude)) {
-                PartKeyLevel keyLevel = PartKeyLevel.PARTITION_KEY;
+                PartKeyLevel keyLevel = rangeInfo.getPartLevel();
                 PartEnumRouteFunction routeFunc =
-                    new PartEnumRouteFunction(partInfo, rangeInfo, isBoundInclude[0], isBoundInclude[1]);
+                    new PartEnumRouteFunction(partInfo, rangeInfo, isBoundInclude[0], isBoundInclude[1], keyLevel);
 
                 BuildStepOpParams buildParams = new BuildStepOpParams();
                 buildParams.setCurrFullContext(null);
@@ -1247,7 +1256,7 @@ public class PartitionPruneStepBuilder {
             /**
              * All the part int func is time func
              */
-            MySQLIntervalType intervalType = partInfo.getPartitionBy().getIntervalType();
+            MySQLIntervalType intervalType = partBy.getIntervalType();
             if (intervalType != null) {
                 if (!inclMin && (intervalType == INTERVAL_YEAR || intervalType == INTERVAL_MONTH
                     || intervalType == INTERVAL_WEEK || intervalType == INTERVAL_DAY)) {
@@ -1269,8 +1278,8 @@ public class PartitionPruneStepBuilder {
 
         PartitionFieldIterator iterator = PartitionFieldIterators
             .getIterator(minPartitionField.dataType(),
-                partInfo.getPartitionBy().getIntervalType(),
-                partInfo.getPartitionBy().getPartIntFunc()
+                partBy.getIntervalType(),
+                partBy.getPartIntFunc()
             );
 
         boolean isValidRange = iterator.range(minPartitionField, maxPartitionField, inclMin, inclMax);

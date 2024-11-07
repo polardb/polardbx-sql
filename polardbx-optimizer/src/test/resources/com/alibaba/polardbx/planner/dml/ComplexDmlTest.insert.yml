@@ -584,3 +584,35 @@
 
     gather(concurrent=true)
       logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_hash_tb2` as `test_hash_tb2`")
+
+- sql: |
+    
+    insert into t1_upsert(id, xx_date) values (1, "2024-01-27 00:00:00.0") on duplicate key update xx_date=values(xx_date);
+
+  plan: |
+    
+    phytableoperation(tables="optest_0001.[t1_upsert_27]", sql="insert into ? (`id`, `xx_date`) values(?, ?) on duplicate key update `xx_date` = values(`xx_date`)", params="`t1_upsert_27`,1,2024-01-27 00:00:00.0")
+    
+- sql: |
+    
+    insert into t2_upsert(id, name, xx_date) values (1, "b", "2024-01-27 00:00:00.0") on duplicate key update xx_date=values(xx_date);
+
+  plan: |
+    
+    logicalupsert(sql="insert into ? (`id`, `name`, `xx_date`) values(?, ?, ?) on duplicate key update `xx_date` = ?", uniquekeyselect=[select [[id]] on t2_upsert])
+
+- sql: |
+    
+    insert into t2_upsert(id, name, xx_date) values (1, "b", "2024-01-27 00:00:00.0") on duplicate key update xx_date=values(xx_date), name=values(name);
+
+  plan: |
+    
+    logicalupsert(sql="insert into ? (`id`, `name`, `xx_date`) values(?, ?, ?) on duplicate key update `xx_date` = ?, `name` = ?", uniquekeyselect=[select [[id]] on t2_upsert])
+
+- sql: |
+    
+    insert into t3_upsert(name, xx_date) values ("b", "2024-01-27 00:00:00.0") on duplicate key update xx_date=values(xx_date);
+
+  plan: |
+    
+    logicalupsert(sql="insert into ? (`id`, `name`, `xx_date`) values(?, ?, ?) on duplicate key update `xx_date` = ?", uniquekeyselect=[select [[id], [name]] on t3_upsert])

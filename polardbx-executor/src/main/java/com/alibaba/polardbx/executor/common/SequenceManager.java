@@ -173,10 +173,10 @@ public class SequenceManager extends AbstractSequenceManager {
 
     @Override
     public Sequence getSequence(String schemaName, String seqName) {
-        if (!ConfigDataMode.isMasterMode()) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
-                "Sequence operations are not allowed on a Read-Only Instance");
-        }
+//        if (!ConfigDataMode.isMasterMode()) {
+//            throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
+//                "Sequence operations are not allowed on a Read-Only Instance");
+//        }
 
         checkSubManager();
 

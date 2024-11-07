@@ -19,7 +19,10 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.LoggerUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -37,6 +40,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class TopN {
+    private static final Logger logger = LoggerUtil.statisticsLogger;
     /**
      * middle value
      */
@@ -49,6 +53,7 @@ public class TopN {
     private long[] countArr;
     private long[] prefixCountArr;
     private final double sampleRate;
+    private long maxCount;
 
     public TopN(DataType dataType, double sampleRate) {
         this.dataType = dataType;
@@ -56,13 +61,15 @@ public class TopN {
         valueMap = Maps.newHashMap();
     }
 
-    public TopN(Object[] valueArr, long[] countArr, long[] prefixCountArr, DataType dataType, double sampleRate) {
+    public TopN(Object[] valueArr, long[] countArr, long[] prefixCountArr, DataType dataType, double sampleRate,
+                long maxCount) {
         assert valueArr.length == countArr.length;
         this.dataType = dataType;
         this.valueArr = valueArr;
         this.countArr = countArr;
         this.prefixCountArr = prefixCountArr;
         this.sampleRate = sampleRate;
+        this.maxCount = maxCount;
         this.build = true;
     }
 
@@ -241,12 +248,13 @@ public class TopN {
         valueArr = new Object[loc];
         countArr = new long[loc];
         prefixCountArr = new long[loc];
+        maxCount = 0;
         for (int i = 0; i < loc; i++) {
             valueArr[i] = valueList.get(i);
             countArr[i] = valueMap.get(valueArr[i]);
             prefixCountArr[i] = (i == 0 ? 0 : prefixCountArr[i - 1]) + countArr[i];
+            maxCount = Math.max(maxCount, countArr[i]);
         }
-
         this.build = true;
         valueMap.clear();
         return true;
@@ -315,6 +323,11 @@ public class TopN {
         return true;
     }
 
+    public long getMaxCount() {
+        return maxCount;
+    }
+
+    // static method
     public static String serializeToJson(TopN topN) {
         if (topN == null) {
             return null;
@@ -333,7 +346,7 @@ public class TopN {
         topNJson.put("sampleRate", topN.sampleRate);
         topNJson.put("valueArr", valueJsonArray);
         topNJson.put("countArr", countJsonArray);
-        return topNJson.toJSONString();
+        return topNJson.toString(SerializerFeature.DisableCircularReferenceDetect);
     }
 
     public static TopN deserializeFromJson(String json) {
@@ -351,16 +364,48 @@ public class TopN {
         JSONArray valueJsonArray = topNJson.getJSONArray("valueArr");
         JSONArray countJsonArray = topNJson.getJSONArray("countArr");
         Object[] valueArr = valueJsonArray.toArray();
+        try {
+            validateTopNValues(valueArr);
+        } catch (IllegalArgumentException e) {
+            logger.error("validateBucketBounds error ", e);
+            return null;
+        }
         Object[] countObjArr = countJsonArray.toArray();
         long[] countArr = new long[countObjArr.length];
         for (int i = 0; i < countObjArr.length; i++) {
             countArr[i] = Long.parseLong(countObjArr[i].toString());
         }
         long[] prefixCountArr = new long[countObjArr.length];
+        long maxCount = 0L;
         for (int i = 0; i < countObjArr.length; i++) {
             prefixCountArr[i] = (i == 0 ? 0 : prefixCountArr[i - 1]) + countArr[i];
+            maxCount = Math.max(maxCount, countArr[i]);
         }
-        return new TopN(valueArr, countArr, prefixCountArr, datatype, sampleRate);
+        return new TopN(valueArr, countArr, prefixCountArr, datatype, sampleRate, maxCount);
+    }
+
+    /**
+     * Validates the elements within a top N value array to ensure they meet specific criteria.
+     * Throws an IllegalArgumentException if the array is null, empty, contains null elements,
+     * or includes elements of type JSONObject.
+     *
+     * @param values An array containing the values to be validated.
+     */
+    protected static void validateTopNValues(final Object[] values) {
+        // Check if the array is null or empty
+        if (values == null || values.length == 0) {
+            throw new IllegalArgumentException("The values array cannot be null or empty.");
+        }
+
+        // Iterate through the array to check each element
+        for (final Object value : values) {
+            if (value == null) {
+                throw new IllegalArgumentException("The values array should not contain any null elements.");
+            }
+            if (value instanceof JSONObject) {
+                throw new IllegalArgumentException("The values array should not contain elements of type JSONObject.");
+            }
+        }
     }
 
     /**

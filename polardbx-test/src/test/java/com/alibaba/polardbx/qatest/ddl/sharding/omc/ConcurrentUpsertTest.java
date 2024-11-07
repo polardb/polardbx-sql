@@ -281,7 +281,7 @@ public class ConcurrentUpsertTest extends ConcurrentDMLBaseTest {
                 count, count, FILL_COUNT);
         Function<Integer, String> generator2 =
             (count) -> String.format(
-                "insert into %%s values(%d, %d + %d,null,null) on duplicate key update e=default(e),f=default(g)",
+                "insert into %%s values(%d, %d + %d,null,default) on duplicate key update e=default(e),f=default(g)",
                 count, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == 3 || colB == 4)

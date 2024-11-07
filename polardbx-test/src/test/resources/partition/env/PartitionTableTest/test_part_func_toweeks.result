@@ -32,9 +32,6 @@ d
 explain select * from w1 where d = '0000-01-01';
 Logical ExecutionPlan
 PhyTableOperation(tables="w1[p9]", sql="SELECT `w1`.`d` FROM ? AS `w1` WHERE (`w1`.`d` = ?)", params="0000-01-01")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 164ca609
 explain select * from w1 where d = '0000-01-02';
 Logical ExecutionPlan
 PhyTableOperation(tables="w1[p9]", sql="SELECT `w1`.`d` FROM ? AS `w1` WHERE (`w1`.`d` = ?)", params="0000-01-02")
@@ -155,9 +152,6 @@ explain select * from w4 where dt > '2021-12-31' order by dt;
 Logical ExecutionPlan
 MergeSort(sort="dt ASC")
   LogicalView(tables="w4[p1,p2,p3,...p128]", shardCount=128, sql="SELECT `dt` FROM `w4` AS `w4` WHERE (`dt` > ?) ORDER BY `dt`")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 23a70a5e
 explain select * from w4 where dt >= '2021-12-30' and dt < '2022-01-01' order by dt;
 Logical ExecutionPlan
 PhyTableOperation(tables="w4[p53]", sql="SELECT `w4`.`dt` FROM ? AS `w4` WHERE ((`w4`.`dt` >= ?) AND (`w4`.`dt` < ?)) ORDER BY `dt`", params="2022-01-01,2021-12-30")

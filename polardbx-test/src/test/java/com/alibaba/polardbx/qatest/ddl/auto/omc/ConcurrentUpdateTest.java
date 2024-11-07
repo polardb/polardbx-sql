@@ -1,12 +1,12 @@
 package com.alibaba.polardbx.qatest.ddl.auto.omc;
 
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Objects;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
@@ -416,5 +416,75 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
             1);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
             1);
+    }
+
+    @Test
+    public void singleChangeMultiWithUpdate() throws Exception {
+        String tableName = "omc_single_multi_with_update";
+        String colDef = "int default 3";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") single",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint default 4, change column c d char(10), change column d c char(10)";
+        String selectSql = "select * from %s order by a";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("update %%s set b=a+1,a=%d,b=a+1,b=b+1,c=a,d=b where a=%d", count, count);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("update %%s set e=a+1,a=%d,e=a+1,e=e+1,c=e,d=a where a=%d", count, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colB == colA + 2) && (Float.parseFloat(colD) == Float.parseFloat(colC) + 2);
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            true, false, 1, createSql);
+    }
+
+    @Test
+    public void broadcastChangeMultiWithUpdate() throws Exception {
+        String tableName = "omc_single_multi_with_update";
+        String colDef = "int default 3";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") broadcast",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint default 4, change column c d char(10), change column d c char(10)";
+        String selectSql = "select * from %s order by a";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("update %%s set b=a+1,a=%d,b=a+1,b=b+1,c=a,d=b where a=%d", count, count);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("update %%s set e=a+1,a=%d,e=a+1,e=e+1,c=e,d=a where a=%d", count, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colB == colA + 2) && (Float.parseFloat(colD) == Float.parseFloat(colC) + 2);
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            true, false, 1, createSql);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "双写对低精度数据做了四舍五入会导致切换前后表中的数据不一致， CDC忽略掉")
+    public void changeWithUpdate7() throws Exception {
+        String tableName = "omc_with_update_7";
+        String colDef = "float(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e decimal(9,3)";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("update %%s set b=%f where a=%d", count / 7.0, count);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("update %%s set e=%f where a=%d", count / 7.0, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
+            1, false, false, null);
     }
 }

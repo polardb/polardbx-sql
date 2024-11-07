@@ -59,6 +59,7 @@ import java.sql.SQLException;
 import java.sql.Wrapper;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -89,6 +90,8 @@ public class GsiBackfillManager {
         GmsSystemTables.FILE_STORAGE_BACKFILL_OBJECTS;
 
     private static final String SYSTABLE_PHYSICAL_BACKFILL_OBJECTS = GmsSystemTables.PHYSICAL_BACKFILL_OBJECTS;
+
+    private static final String SYSTABLE_IMPORT_TABLESPACE_INFO_STAT = GmsSystemTables.IMPORT_TABLESPACE_INFO_STAT;
 
     public static final String CREATE_GSI_BACKFILL_OBJECTS_TABLE = "CREATE TABLE IF NOT EXISTS `"
         + SYSTABLE_BACKFILL_OBJECTS
@@ -163,11 +166,18 @@ public class GsiBackfillManager {
                                     SQL_CLEAN_OUTDATED_PHYSICAL_BACKFILL_LOG)) {
                                     ps.execute();
                                 }
+
+                                final Map<Integer, ParameterContext> params = new HashMap<>();
+                                MetaDbUtil.setParameter(params.size() + 1, params, ParameterMethod.setLong,
+                                    System.currentTimeMillis() - TimeUnit.DAYS.toMillis(60));
+
+                                MetaDbUtil.delete(SQL_CLEAN_OUTDATED_IMPORT_TABLESPACE_INFO_STAT_LOG, params, conn);
+
                                 PhysicalBackfillUtils.destroyDataSources();
                             } catch (SQLException e) {
                                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE,
                                     e,
-                                    "clean outdated backfill log failed!");
+                                    "clean outdated backfill/import_tablespace log failed!");
                             }
                         });
                     } catch (Exception e) {
@@ -205,22 +215,27 @@ public class GsiBackfillManager {
     }
 
     public void initBackfillMeta(ExecutionContext ec, List<BackfillObjectRecord> initBackfillObjects) {
+        // insert logicalBfo for physicalBfo
+        //
         final BackfillObjectRecord bfo = initBackfillObjects.get(0);
         final BackfillObjectRecord logicalBfo = bfo.copy();
         logicalBfo.setPhysicalDb(null);
         logicalBfo.setPhysicalTable(null);
-        logicalBfo.setExtra("");
+        logicalBfo.setLastValue("0");
+        BackfillExtraFieldJSON extraJson = BackfillExtraFieldJSON.fromJson(bfo.extra);
+        extraJson.setLogical(true);
+        logicalBfo.setExtra(BackfillExtraFieldJSON.toJson(extraJson));
         initBackfillObjects.add(0, logicalBfo);
-
         insertBackfillMeta(ec, initBackfillObjects, true);
     }
 
-    public void initBackfillMeta(ExecutionContext ec, long backfillId, String schemaName, String tableName,
+    public void initBackfillMeta(ExecutionContext ec, long backfillId, long taskId, String schemaName, String tableName,
                                  String indexName, List<BackfillObjectRecord> positionMarks) {
 
         final List<BackfillObjectRecord> backfillObjectRecords = positionMarks.stream()
             .map(bfo -> new BackfillObjectRecord(-1,
                 backfillId,
+                taskId,
                 schemaName,
                 tableName,
                 schemaName,
@@ -243,12 +258,17 @@ public class GsiBackfillManager {
         final BackfillObjectRecord logicalBfo = bfo.copy();
         logicalBfo.setPhysicalDb(null);
         logicalBfo.setPhysicalTable(null);
+        BackfillExtraFieldJSON extraJson = BackfillExtraFieldJSON.fromJson(bfo.extra);
+        extraJson.setLogical(true);
+        logicalBfo.setExtra(BackfillExtraFieldJSON.toJson(extraJson));
         backfillObjectRecords.add(0, logicalBfo);
 
         insertBackfillMeta(ec, backfillObjectRecords, true);
     }
 
     public BackfillBean loadBackfillMeta(long backfillId) {
+        // TODO(yijin) assume that each reporter only process one logicalBfo
+        // what if each reporter process multiple logicalBfo
         List<BackfillObjectRecord> bfoList = queryBackfillObject(backfillId);
         if (CollectionUtils.isEmpty(bfoList)) {
             return BackfillBean.EMPTY;
@@ -256,7 +276,9 @@ public class GsiBackfillManager {
         BackfillObjectRecord logicalBfo = null;
         List<BackfillObjectRecord> physicalBfoList = new ArrayList<>(bfoList.size());
         for (BackfillObjectRecord e : bfoList) {
-            if (TStringUtil.isEmpty(e.getPhysicalDb())) {
+            // judge whether this is physical backfillObject
+            // for pk range, it's neccessary to make some mark
+            if (e.isLogicalBackfillObject()) {
                 logicalBfo = e;
             } else {
                 physicalBfoList.add(e);
@@ -269,6 +291,7 @@ public class GsiBackfillManager {
         BackfillRecord br = new BackfillRecord(
             logicalBfo.getId(),
             logicalBfo.getJobId(),
+            logicalBfo.getTaskId(),
             logicalBfo.getTableSchema(),
             logicalBfo.getTableName(),
             logicalBfo.getIndexSchema(),
@@ -327,6 +350,7 @@ public class GsiBackfillManager {
 
                 return new BackfillObjectRecord(bfo.id,
                     bfo.jobId,
+                    bfo.taskId,
                     bfo.tableSchema,
                     bfo.tableName,
                     bfo.indexSchema,
@@ -420,6 +444,7 @@ public class GsiBackfillManager {
 
         BackfillExtraFieldJSON extra = new BackfillExtraFieldJSON();
         extra.setProgress(progress);
+        extra.setLogical(true);
         String extraStr = BackfillExtraFieldJSON.toJson(extra);
         Map<Integer, ParameterContext> params = new HashMap<>();
         params.put(1, new ParameterContext(ParameterMethod.setString, new Object[] {1, progress}));
@@ -475,6 +500,10 @@ public class GsiBackfillManager {
 
     private void insertBackfillMeta(ExecutionContext ec,
                                     List<BackfillObjectRecord> backfillObjectRecords, boolean insertIgnore) {
+        // for logical pk range insertion, The backfillId would be different, because it's generated dynamic
+        // in each task. so we would always load an empty bean.
+        // to support continiously insertion in task, we need to keep every backfillId as same as before.
+        // and only sample for backfillId when there is no backfillBeanId.
         wrapWithTransaction(dataSource,
             (conn) -> {
                 try {
@@ -633,22 +662,22 @@ public class GsiBackfillManager {
 
     private static final String SQL_INSERT_BACKFILL_OBJECT = "INSERT INTO "
         + SYSTABLE_BACKFILL_OBJECTS
-        + "(JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,"
+        + "(JOB_ID,TASK_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,"
         + "INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA) "
-        + "VALUES(? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ?, ?, ?)";
+        + "VALUES(? , ?, ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ?, ?, ?)";
 
     private static final String SQL_INSERT_IGNORE_BACKFILL_OBJECT = "INSERT IGNORE INTO "
         + SYSTABLE_BACKFILL_OBJECTS
-        + "(JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,"
+        + "(JOB_ID,TASK_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,"
         + "INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA) "
-        + "VALUES(? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ?, ?, ?)";
+        + "VALUES(? , ?, ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ?, ?, ?)";
 
     private static final String SQL_SELECT_BACKFILL_OBJECT =
-        "SELECT ID,JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
+        "SELECT ID,JOB_ID,TASK_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
             + SYSTABLE_BACKFILL_OBJECTS + " WHERE JOB_ID = ? ";
 
     private static final String SQL_SELECT_BACKFILL_PROGRESS =
-        "SELECT ID,JOB_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
+        "SELECT ID,JOB_ID,TASK_ID,TABLE_SCHEMA,TABLE_NAME,INDEX_SCHEMA,INDEX_NAME,PHYSICAL_DB,PHYSICAL_TABLE,COLUMN_INDEX,PARAMETER_METHOD,`LAST_VALUE`,MAX_VALUE,STATUS,MESSAGE,SUCCESS_ROW_COUNT,START_TIME,END_TIME,EXTRA FROM "
             + SYSTABLE_BACKFILL_OBJECTS + " WHERE JOB_ID = ? AND PHYSICAL_DB IS NULL AND PHYSICAL_TABLE IS NULL";
 
     private static final String SQL_SELECT_BACKFILL_VIEW =
@@ -697,6 +726,10 @@ public class GsiBackfillManager {
     private static final String SQL_CLEAN_OUTDATED_PHYSICAL_BACKFILL_LOG = "DELETE FROM "
         + SYSTABLE_PHYSICAL_BACKFILL_OBJECTS
         + " WHERE DATE(END_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY ) AND DATE(START_TIME) < DATE_SUB( CURDATE(), INTERVAL 60 DAY )";
+
+    private static final String SQL_CLEAN_OUTDATED_IMPORT_TABLESPACE_INFO_STAT_LOG = "DELETE FROM "
+        + SYSTABLE_IMPORT_TABLESPACE_INFO_STAT
+        + " WHERE end_time <= ?";
 
     private static final String SQL_CLEAN_ALL = "DELETE FROM " + SYSTABLE_BACKFILL_OBJECTS + " WHERE TABLE_SCHEMA = ?";
 
@@ -757,7 +790,9 @@ public class GsiBackfillManager {
         public static final BackfillBean EMPTY = new BackfillBean();
 
         public final long id;
+        // actually taskId.
         public final long jobId;
+        public final long taskId;
         public final String tableSchema;
         public final String tableName;
         public final String indexSchema;
@@ -775,6 +810,7 @@ public class GsiBackfillManager {
         private BackfillBean() {
             this.id = -1;
             this.jobId = -1;
+            this.taskId = -1;
             this.tableSchema = null;
             this.tableName = null;
             this.indexSchema = null;
@@ -789,12 +825,13 @@ public class GsiBackfillManager {
             this.backfillObjects = null;
         }
 
-        public BackfillBean(long id, long jobId, String tableSchema, String tableName, String indexSchema,
+        public BackfillBean(long id, long jobId, long taskId, String tableSchema, String tableName, String indexSchema,
                             String indexName, String indexTableName, BackfillStatus status, String message,
                             String startTime, String endTime, String extra, Integer progress,
                             Map<BackfillObjectKey, List<BackfillObjectBean>> backfillObjects) {
             this.id = id;
             this.jobId = jobId;
+            this.taskId = taskId;
             this.tableSchema = tableSchema;
             this.tableName = tableName;
             this.indexSchema = indexSchema;
@@ -816,6 +853,7 @@ public class GsiBackfillManager {
                 .collect(Collectors.groupingBy(BackfillObjectBean::key));
             return new BackfillBean(bfRecord.id,
                 bfRecord.jobId,
+                bfRecord.taskId,
                 bfRecord.tableSchema,
                 bfRecord.tableName,
                 bfRecord.indexSchema,
@@ -847,6 +885,7 @@ public class GsiBackfillManager {
             return "BackfillBean{" +
                 "id=" + id +
                 ", jobId=" + jobId +
+                ", taskId=" + taskId +
                 ", tableSchema='" + tableSchema + '\'' +
                 ", tableName='" + tableName + '\'' +
                 ", indexSchema='" + indexSchema + '\'' +
@@ -910,11 +949,14 @@ public class GsiBackfillManager {
 
         public final long id;
         public final long jobId;
+        public final long taskId;
         public final String tableSchema;
         public final String tableName;
         public final String indexSchema;
         public final String indexName;
+        // this can be null, which represent the whole logical table
         public final String physicalDb;
+        // this can be null, which represent the whole logical table
         public final String physicalTable;
         public final long columnIndex;
         public final String parameterMethod;
@@ -932,6 +974,7 @@ public class GsiBackfillManager {
         private BackfillObjectBean() {
             this.id = -1;
             this.jobId = -1;
+            this.taskId = -1;
             this.tableSchema = null;
             this.tableName = null;
             this.indexSchema = null;
@@ -951,13 +994,15 @@ public class GsiBackfillManager {
             this.progress = 0;
         }
 
-        public BackfillObjectBean(long id, long jobId, String tableSchema, String tableName, String indexSchema,
+        public BackfillObjectBean(long id, long jobId, long taskId, String tableSchema, String tableName,
+                                  String indexSchema,
                                   String indexName, String physicalDb, String physicalTable, long columnIndex,
                                   String parameterMethod, String lastValue, String maxValue, BackfillStatus status,
                                   String message, long successRowCount, String startTime, String endTime,
                                   BackfillExtraFieldJSON extra, Integer progress) {
             this.id = id;
             this.jobId = jobId;
+            this.taskId = taskId;
             this.tableSchema = tableSchema;
             this.tableName = tableName;
             this.indexSchema = indexSchema;
@@ -995,6 +1040,7 @@ public class GsiBackfillManager {
 
             return new BackfillObjectBean(bfoRecord.id,
                 bfoRecord.jobId,
+                bfoRecord.taskId,
                 bfoRecord.tableSchema,
                 bfoRecord.tableName,
                 bfoRecord.indexSchema,
@@ -1015,6 +1061,8 @@ public class GsiBackfillManager {
         }
 
         public BackfillObjectKey key() {
+            // TODO(yijin-pass): reconstruct for pk range
+            // since each task only deal with one pk range, there are no need
             return new BackfillObjectKey(indexSchema, indexName, physicalDb, physicalTable);
         }
 
@@ -1031,6 +1079,7 @@ public class GsiBackfillManager {
             return "BackfillObjectBean{" +
                 "id=" + id +
                 ", jobId=" + jobId +
+                ", taskId=" + taskId +
                 ", tableSchema='" + tableSchema + '\'' +
                 ", tableName='" + tableName + '\'' +
                 ", indexSchema='" + indexSchema + '\'' +
@@ -1132,6 +1181,7 @@ public class GsiBackfillManager {
 
         public long id;
         public long jobId;
+        public long taskId;
         public String tableSchema;
         public String tableName;
         public String indexSchema;
@@ -1146,6 +1196,7 @@ public class GsiBackfillManager {
         public BackfillRecord() {
             this.id = -1;
             this.jobId = -1;
+            this.taskId = -1;
             this.tableSchema = null;
             this.tableName = null;
             this.indexSchema = null;
@@ -1158,11 +1209,13 @@ public class GsiBackfillManager {
             this.extra = null;
         }
 
-        public BackfillRecord(long id, long jobId, String tableSchema, String tableName, String indexSchema,
+        public BackfillRecord(long id, long jobId, long taskId, String tableSchema, String tableName,
+                              String indexSchema,
                               String indexName, String indexTableName, long status, String message, String startTime,
                               String endTime, String extra) {
             this.id = id;
             this.jobId = jobId;
+            this.taskId = taskId;
             this.tableSchema = tableSchema;
             this.tableName = tableName;
             this.indexSchema = indexSchema;
@@ -1179,6 +1232,7 @@ public class GsiBackfillManager {
         public BackfillRecord convert(ResultSet resultSet) throws SQLException {
             final long id = resultSet.getLong("ID");
             final long jobId = resultSet.getLong("JOB_ID");
+            final long taskId = resultSet.getLong("TASK_ID");
             final String tableSchema = resultSet.getString("TABLE_SCHEMA");
             final String tableName = resultSet.getString("TABLE_NAME");
             final String indexSchema = resultSet.getString("INDEX_SCHEMA");
@@ -1192,6 +1246,7 @@ public class GsiBackfillManager {
 
             return new BackfillRecord(id,
                 jobId,
+                taskId,
                 tableSchema,
                 tableName,
                 indexSchema,
@@ -1208,20 +1263,21 @@ public class GsiBackfillManager {
         public Map<Integer, ParameterContext> params() {
             final Map<Integer, ParameterContext> params = new HashMap<>();
             params.put(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, this.jobId}));
-            params.put(2, new ParameterContext(ParameterMethod.setString, new Object[] {2, this.tableSchema}));
-            params.put(3, new ParameterContext(ParameterMethod.setString, new Object[] {3, this.tableName}));
-            params.put(4, new ParameterContext(ParameterMethod.setString, new Object[] {4, this.indexSchema}));
-            params.put(5, new ParameterContext(ParameterMethod.setString, new Object[] {5, this.indexName}));
-            params.put(6, new ParameterContext(ParameterMethod.setString, new Object[] {6, this.indexTableName}));
-            params.put(7, new ParameterContext(ParameterMethod.setLong, new Object[] {7, this.status}));
-            params.put(8, new ParameterContext(ParameterMethod.setString, new Object[] {8, this.message}));
+            params.put(2, new ParameterContext(ParameterMethod.setLong, new Object[] {1, this.taskId}));
+            params.put(3, new ParameterContext(ParameterMethod.setString, new Object[] {2, this.tableSchema}));
+            params.put(4, new ParameterContext(ParameterMethod.setString, new Object[] {3, this.tableName}));
+            params.put(5, new ParameterContext(ParameterMethod.setString, new Object[] {4, this.indexSchema}));
+            params.put(6, new ParameterContext(ParameterMethod.setString, new Object[] {5, this.indexName}));
+            params.put(7, new ParameterContext(ParameterMethod.setString, new Object[] {6, this.indexTableName}));
+            params.put(8, new ParameterContext(ParameterMethod.setLong, new Object[] {7, this.status}));
+            params.put(9, new ParameterContext(ParameterMethod.setString, new Object[] {8, this.message}));
             // params.put(9, new ParameterContext(ParameterMethod.setString, new
             // Object[] {
             // 9, this.startTime }));
             // params.put(10, new ParameterContext(ParameterMethod.setString,
             // new Object[] {
             // 10, this.endTime }));
-            params.put(9, new ParameterContext(ParameterMethod.setString, new Object[] {9, this.extra}));
+            params.put(10, new ParameterContext(ParameterMethod.setString, new Object[] {9, this.extra}));
 
             return params;
         }
@@ -1245,6 +1301,14 @@ public class GsiBackfillManager {
 
         public void setJobId(long jobId) {
             this.jobId = jobId;
+        }
+
+        public long getTaskId() {
+            return taskId;
+        }
+
+        public void setTaskId(long taskId) {
+            this.taskId = taskId;
         }
 
         public String getTableSchema() {
@@ -1413,6 +1477,7 @@ public class GsiBackfillManager {
 
         private long id;
         private long jobId;
+        private long taskId;
         private String tableSchema;
         private String tableName;
         private String indexSchema;
@@ -1433,6 +1498,7 @@ public class GsiBackfillManager {
         public BackfillObjectRecord() {
             this.id = -1;
             this.jobId = -1;
+            this.taskId = -1;
             this.tableSchema = null;
             this.tableName = null;
             this.indexSchema = null;
@@ -1452,13 +1518,15 @@ public class GsiBackfillManager {
 
         }
 
-        public BackfillObjectRecord(long id, long jobId, String tableSchema, String tableName, String indexSchema,
+        public BackfillObjectRecord(long id, long jobId, long taskId, String tableSchema, String tableName,
+                                    String indexSchema,
                                     String indexName, String physicalDb, String physicalTable, long columnIndex,
                                     String parameterMethod, String lastValue, String maxValue, long status,
                                     String message, long successRowCount, String startTime, String endTime,
                                     String extra) {
             this.id = id;
             this.jobId = jobId;
+            this.taskId = taskId;
             this.tableSchema = tableSchema;
             this.tableName = tableName;
             this.indexSchema = indexSchema;
@@ -1481,6 +1549,7 @@ public class GsiBackfillManager {
             BackfillObjectRecord result = new BackfillObjectRecord();
             result.id = this.id;
             result.jobId = this.jobId;
+            result.taskId = this.taskId;
             result.tableSchema = this.tableSchema;
             result.tableName = this.tableName;
             result.indexSchema = this.indexSchema;
@@ -1504,6 +1573,7 @@ public class GsiBackfillManager {
         public BackfillObjectRecord convert(ResultSet resultSet) throws SQLException {
             final long id = resultSet.getLong("ID");
             final long jobId = resultSet.getLong("JOB_ID");
+            final long taskId = resultSet.getLong("TASK_ID");
             final String tableSchema = resultSet.getString("TABLE_SCHEMA");
             final String tableName = resultSet.getString("TABLE_NAME");
             final String indexSchema = resultSet.getString("INDEX_SCHEMA");
@@ -1523,6 +1593,7 @@ public class GsiBackfillManager {
 
             return new BackfillObjectRecord(id,
                 jobId,
+                taskId,
                 tableSchema,
                 tableName,
                 indexSchema,
@@ -1545,22 +1616,23 @@ public class GsiBackfillManager {
         public Map<Integer, ParameterContext> params() {
             final Map<Integer, ParameterContext> params = new HashMap<>();
             params.put(1, new ParameterContext(ParameterMethod.setLong, new Object[] {1, this.jobId}));
-            params.put(2, new ParameterContext(ParameterMethod.setString, new Object[] {2, this.tableSchema}));
-            params.put(3, new ParameterContext(ParameterMethod.setString, new Object[] {3, this.tableName}));
-            params.put(4, new ParameterContext(ParameterMethod.setString, new Object[] {4, this.indexSchema}));
-            params.put(5, new ParameterContext(ParameterMethod.setString, new Object[] {5, this.indexName}));
-            params.put(6, new ParameterContext(ParameterMethod.setString, new Object[] {6, this.physicalDb}));
-            params.put(7, new ParameterContext(ParameterMethod.setString, new Object[] {7, this.physicalTable}));
-            params.put(8, new ParameterContext(ParameterMethod.setLong, new Object[] {8, this.columnIndex}));
-            params.put(9, new ParameterContext(ParameterMethod.setString, new Object[] {9, this.parameterMethod}));
-            params.put(10, new ParameterContext(ParameterMethod.setString, new Object[] {10, this.lastValue}));
-            params.put(11, new ParameterContext(ParameterMethod.setString, new Object[] {11, this.maxValue}));
-            params.put(12, new ParameterContext(ParameterMethod.setLong, new Object[] {12, this.status}));
-            params.put(13, new ParameterContext(ParameterMethod.setString, new Object[] {13, this.message}));
-            params.put(14, new ParameterContext(ParameterMethod.setLong, new Object[] {14, this.successRowCount}));
-            params.put(15, new ParameterContext(ParameterMethod.setString, new Object[] {15, this.startTime}));
-            params.put(16, new ParameterContext(ParameterMethod.setString, new Object[] {16, this.endTime}));
-            params.put(17, new ParameterContext(ParameterMethod.setString, new Object[] {17, this.extra}));
+            params.put(2, new ParameterContext(ParameterMethod.setLong, new Object[] {2, this.taskId}));
+            params.put(3, new ParameterContext(ParameterMethod.setString, new Object[] {3, this.tableSchema}));
+            params.put(4, new ParameterContext(ParameterMethod.setString, new Object[] {4, this.tableName}));
+            params.put(5, new ParameterContext(ParameterMethod.setString, new Object[] {5, this.indexSchema}));
+            params.put(6, new ParameterContext(ParameterMethod.setString, new Object[] {6, this.indexName}));
+            params.put(7, new ParameterContext(ParameterMethod.setString, new Object[] {7, this.physicalDb}));
+            params.put(8, new ParameterContext(ParameterMethod.setString, new Object[] {8, this.physicalTable}));
+            params.put(9, new ParameterContext(ParameterMethod.setLong, new Object[] {9, this.columnIndex}));
+            params.put(10, new ParameterContext(ParameterMethod.setString, new Object[] {10, this.parameterMethod}));
+            params.put(11, new ParameterContext(ParameterMethod.setString, new Object[] {11, this.lastValue}));
+            params.put(12, new ParameterContext(ParameterMethod.setString, new Object[] {12, this.maxValue}));
+            params.put(13, new ParameterContext(ParameterMethod.setLong, new Object[] {13, this.status}));
+            params.put(14, new ParameterContext(ParameterMethod.setString, new Object[] {14, this.message}));
+            params.put(15, new ParameterContext(ParameterMethod.setLong, new Object[] {15, this.successRowCount}));
+            params.put(16, new ParameterContext(ParameterMethod.setString, new Object[] {16, this.startTime}));
+            params.put(17, new ParameterContext(ParameterMethod.setString, new Object[] {17, this.endTime}));
+            params.put(18, new ParameterContext(ParameterMethod.setString, new Object[] {18, this.extra}));
 
             return params;
         }
@@ -1568,6 +1640,10 @@ public class GsiBackfillManager {
         @Override
         public boolean isWrapperFor(Class<?> iface) {
             return BackfillObjectRecord.class.isAssignableFrom(iface);
+        }
+
+        public boolean isLogicalBackfillObject() {
+            return StringUtils.isEmpty(physicalDb) && BackfillExtraFieldJSON.fromJson(extra).getLogical();
         }
 
         public long getId() {
@@ -1584,6 +1660,14 @@ public class GsiBackfillManager {
 
         public void setJobId(long jobId) {
             this.jobId = jobId;
+        }
+
+        public long getTaskId() {
+            return taskId;
+        }
+
+        public void setTaskid(long taskId) {
+            this.taskId = taskId;
         }
 
         public String getTableSchema() {

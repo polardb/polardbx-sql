@@ -17,11 +17,9 @@
 package com.alibaba.polardbx.executor.vectorized.math;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.common.datatype.DecimalConverter;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.MathUtils;
 import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
@@ -36,9 +34,6 @@ import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionPriority;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
-import java.util.Arrays;
-
-import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
@@ -77,16 +72,16 @@ public class FastBetweenDecimalColLongConstLongConstVectorizedExpression extends
             if (left == 0) {
                 operand1WithScale = 0;
                 useOperand1WithScale = true;
-                return;
-            }
-            int scale = children[0].getOutputDataType().getScale();
-            if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
-                operand1WithScale = 0;
-                useOperand1WithScale = false;
             } else {
-                long power = DecimalTypeBase.POW_10[scale];
-                operand1WithScale = left * power;
-                useOperand1WithScale = !MathUtils.longMultiplyOverflow(left, power, operand1WithScale);
+                int scale = children[0].getOutputDataType().getScale();
+                if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
+                    operand1WithScale = 0;
+                    useOperand1WithScale = false;
+                } else {
+                    long power = DecimalTypeBase.POW_10[scale];
+                    operand1WithScale = left * power;
+                    useOperand1WithScale = !MathUtils.longMultiplyOverflow(left, power, operand1WithScale);
+                }
             }
         }
 
@@ -103,16 +98,16 @@ public class FastBetweenDecimalColLongConstLongConstVectorizedExpression extends
             if (right == 0) {
                 operand2WithScale = 0;
                 useOperand2WithScale = true;
-                return;
-            }
-            int scale = children[0].getOutputDataType().getScale();
-            if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
-                operand2WithScale = 0;
-                useOperand2WithScale = false;
             } else {
-                long power = DecimalTypeBase.POW_10[scale];
-                operand2WithScale = right * power;
-                useOperand2WithScale = !MathUtils.longMultiplyOverflow(right, power, operand2WithScale);
+                int scale = children[0].getOutputDataType().getScale();
+                if (scale < 0 || scale >= DecimalTypeBase.POW_10.length) {
+                    operand2WithScale = 0;
+                    useOperand2WithScale = false;
+                } else {
+                    long power = DecimalTypeBase.POW_10[scale];
+                    operand2WithScale = right * power;
+                    useOperand2WithScale = !MathUtils.longMultiplyOverflow(right, power, operand2WithScale);
+                }
             }
         }
     }

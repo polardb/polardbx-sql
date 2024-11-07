@@ -18,15 +18,15 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableAddPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupAddPartitionPreparedData;
@@ -59,6 +59,20 @@ public class LogicalAlterTableAddPartition extends BaseDdlOperation {
     public LogicalAlterTableAddPartition(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
+    }
+
+    @Override
+    public boolean isSupportedByCci(ExecutionContext ec) {
+        String schemaName = this.schemaName;
+        String tblName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            TableMeta tblMeta = ec.getSchemaManager(schemaName).getTable(tblName);
+            if (tblMeta.isColumnar()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -156,6 +170,12 @@ public class LogicalAlterTableAddPartition extends BaseDdlOperation {
 
     public static LogicalAlterTableAddPartition create(DDL ddl) {
         return new LogicalAlterTableAddPartition(ddl);
+    }
+
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getPreparedData()) {
+            getPreparedData().setDdlVersionId(ddlVersionId);
+        }
     }
 
 }

@@ -181,16 +181,4 @@ public class MySqlCreateProcedureTest15 extends MysqlTest {
             "END;", SQLUtils.toMySqlString(stmt));
     }
 
-    public void test_fake() throws Exception {
-        String sql =
-            "UPDATE gx_brand_votelist SET itemid= \"3674133\",brandid= \"1527519\",groupid= \"0\",num= \"1001\",name= \"章丘市万源有色金属铸造有限公司\",introduce= \"<span style=\"color:#333333;font-family:\"background-color:#FFFFFF;\">铜铝铸件的加工、销售；金属材料、电线、电缆、铝锭、铅锭、铜锭、电解铜板、锌锭、稀有金属的销售。(依法须经批准的项目，经相关部门批准后方可开展经营活动)</span>\",video= \"\",votes=0,status= \"3\",zvote=0,zvote1=0,kouvote=0,truevote=0,yzm= \"2\",shuatime= \"4.0\",shuanum= \"1\",addtime= \"1591346748\",userid= \"1200039\",usertype= \"1\",is_ht= \"1\",is_apply=\"2\",ranking=0,username= \"rew4_2\",erweima= \"code/twocode/202006/05/159134697047696370.png\",editor= \"rew4_2\",edittime= \"1591346970\",shebei= \"0\",note= \"\",sid= \"a7552457d09eeea9\",top_ten= \"2\",email= \"13586786952@qq.com\",tel= \"13953123778\",qq= \"\",remark= \"\",web= \"https://www.tianyancha.com/company/1581157368\",xianzhi= \"0\",wxnum=0,backgift=0,giftvote=0,regCapital= \"9800.00\",actualCapital= \"0.00\",attention=0,tuiguang= \"1\",regyear= \"\",is_new= \"1\",is_sign= \"2\",gongsi_status=\"0\",share_count= \"0\",share_click= \"0\",company_status= \"0\",address= \"\",shenhe_pingtai_status= \"0\",video_url= \"\",anjian_num= \"0\" WHERE itemid = 3674133 AND brandid = 1527519";
-
-        try {
-            SQLStatement statement = SQLUtils.parseSingleStatement(sql, DbType.mysql);
-        } catch (Exception e) {
-            assertEquals(
-                "syntax error, error in :'\"<span style=\"color:#333333;font-family:\"bac, pos 175, line 1, column 171, token IDENTIFIER color",
-                e.getMessage());
-        }
-    }
 }

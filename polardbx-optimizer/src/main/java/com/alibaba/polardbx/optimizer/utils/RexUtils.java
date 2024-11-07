@@ -275,27 +275,7 @@ public class RexUtils {
         TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
 
         // Handle default expr
-        if (tableMeta.hasDefaultExprColumn() && InstanceVersion.isMYSQL80()) {
-            final Function<RexNode, Object> evalFunc = getEvalFunc(ec);
-            for (int i = 0; i < insert.getDefaultExprColRexNodes().size(); i++) {
-                ColumnMeta columnMeta = insert.getDefaultExprColMetas().get(i);
-                RexNode rexNode = insert.getDefaultExprColRexNodes().get(i);
-                Object value = evalFunc.apply(rexNode);
-                if (value instanceof Slice) {
-                    if (isBinaryReturnType(rexNode)) {
-                        value = ((Slice) value).getBytes();
-                    } else {
-                        value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
-                    }
-                } else if (value instanceof ByteString) {
-                    value = ((ByteString) value).getBytes();
-                }
-                if (!columnMeta.isNullable() && value == null) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                        String.format("Column `%s` cannot be null", columnMeta.getName()));
-                }
-            }
-        }
+        handleDefaultExpr(tableMeta, insert, ec);
 
         // Handle generated column
         if (tableMeta.hasLogicalGeneratedColumn()) {
@@ -430,6 +410,36 @@ public class RexUtils {
 
             if (null != returnedLastInsertId) {
                 handlerParams.returnedLastInsertId = returnedLastInsertId;
+            }
+        }
+    }
+
+    public static void handleDefaultExpr(TableMeta tableMeta, LogicalInsert insert, ExecutionContext ec) {
+        if (tableMeta.hasDefaultExprColumn() && InstanceVersion.isMYSQL80()) {
+            final Function<RexNode, Object> evalFunc = getEvalFunc(ec);
+            for (int i = 0; i < insert.getDefaultExprColRexNodes().size(); i++) {
+                ColumnMeta columnMeta = insert.getDefaultExprColMetas().get(i);
+                RexNode rexNode = insert.getDefaultExprColRexNodes().get(i);
+                try {
+                    Object value = evalFunc.apply(rexNode);
+
+                    if (value instanceof Slice) {
+                        if (isBinaryReturnType(rexNode)) {
+                            value = ((Slice) value).getBytes();
+                        } else {
+                            value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+                        }
+                    } else if (value instanceof ByteString) {
+                        value = ((ByteString) value).getBytes();
+                    }
+                    if (!columnMeta.isNullable() && value == null) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                            String.format("Column `%s` cannot be null", columnMeta.getName()));
+                    }
+                } catch (UnsupportedOperationException e) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_FUNCTION_NOT_FOUND,
+                        "No match found for function signature " + ((RexCall) rexNode).getOperands().get(0).toString());
+                }
             }
         }
     }

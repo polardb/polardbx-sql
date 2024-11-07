@@ -71,6 +71,7 @@ import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -89,6 +90,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
@@ -161,15 +163,18 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         String sql;
         if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOGICAL_TABLE_META) ||
-            ConfigDataMode.isColumnarMode()) {
+            ConfigDataMode.isColumnarMode() || tableMeta.isColumnar()) {
             MySqlCreateTableStatement tableStatement = LogicalShowCreateTableHandler.fetchShowCreateTableFromMetaDb(
-                schemaName, tableName, executionContext);
+                schemaName, tableName, executionContext, tableMeta);
             sql = tableStatement.toString();
         } else {
             sql = fetchShowCreateTableFromPhy(schemaName, tableName, showCreateTable, show, executionContext);
             sql = LogicalShowCreateTableHandler.reorgLogicalColumnOrder(schemaName, tableName, sql);
         }
 
+        if (tableMeta.getTtlDefinitionInfo() != null) {
+            sql += tableMeta.getTtlDefinitionInfo().buildShowCreateTableOptions();
+        }
         StringBuilder partitionStr = new StringBuilder();
         TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();
         PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
@@ -342,6 +347,7 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 if (tableOption.getValue() == null || !tableOption.getValue().toString()
                     .equalsIgnoreCase(engine.name())) {
                     tableOption.setValue(new SQLCharExpr(engine.name()));
+
                 }
             }
 
@@ -464,10 +470,11 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         if (!tableMeta.isAutoPartition() || showCreateTable.isFull()) {
             sql = sql + partitionStr;
         }
+
         if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
             sql += "\n" + tableMeta.getLocalPartitionDefinitionInfo().toString();
         }
-
+        sql = sql + buildTtlTmpTableInfoIfNeed(schemaName, showCreateTable, partInfo);
         sql = sql + buildTableGroupInfo(schemaName, showCreateTable, partInfo);
         sql = tryAttachImplicitTableGroupInfo(executionContext, schemaName, tableName, sql);
 
@@ -494,6 +501,26 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         } else {
             return "";
         }
+    }
+
+    private String buildTtlTmpTableInfoIfNeed(String schemaName,
+                                              SqlShowCreateTable showCreateTable,
+                                              PartitionInfo partInfo) {
+        if (!showCreateTable.isFull()) {
+            return "";
+        }
+        String arcTableSchema = partInfo.getTableSchema();
+        String arcTableName = partInfo.getTableName();
+        TtlInfoRecord record = TtlUtil.fetchTtlDefinitionInfoByArcDbAndArcTb(arcTableSchema, arcTableName);
+        if (record == null) {
+            return "";
+        }
+        String arcTmpTableName = record.getArcTmpTblName();
+        String commentContent = "";
+        if (!StringUtils.isEmpty(arcTmpTableName)) {
+            commentContent = String.format("\n/* arc_tmp = %s */", SqlIdentifier.surroundWithBacktick(arcTmpTableName));
+        }
+        return commentContent;
     }
 
     private ArrayResultCursor showCreateView(String schemaName, String tableName, SqlShowCreateTable showCreateTable) {
@@ -669,15 +696,14 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 indeDef.setColumnar(indexMeta.columnarIndex);
                 if (full && indexMeta.columnarIndex) {
                     // set options
-                    Map<String, String> options = getColumnarIndexOptions(indexMeta.tableSchema, indexMeta.indexName);
-                    if (options != null) {
-                        indeDef.setDictionaryColumns(options.get(ColumnarTableOptions.DICTIONARY_COLUMNS));
-                    }
                     TablesAccessor tablesAccessor = new TablesAccessor();
                     String engine = getColumnarIndexEngine(schemaName, indexMeta.indexName, tablesAccessor);
                     if (engine != null) {
                         indeDef.setEngineName(new SQLIdentifierExpr(engine));
                     }
+
+                    // Other columnar options.
+                    indeDef.getIndexDefinition().addColumnarOption(indexMeta.columnarOptions.get());
                 }
 
                 if (!coveringColumns.isEmpty() || full || !meta.isAutoPartition()) {

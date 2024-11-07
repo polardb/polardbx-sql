@@ -38,6 +38,8 @@ public class DropDbInfo {
      */
     private boolean reservePhyDb = false;
 
+    private long versionId;
+
     public String getDbName() {
         return dbName;
     }
@@ -84,5 +86,13 @@ public class DropDbInfo {
 
     public void setReservePhyDb(boolean reservePhyDb) {
         this.reservePhyDb = reservePhyDb;
+    }
+
+    public long getVersionId() {
+        return versionId;
+    }
+
+    public void setVersionId(long versionId) {
+        this.versionId = versionId;
     }
 }

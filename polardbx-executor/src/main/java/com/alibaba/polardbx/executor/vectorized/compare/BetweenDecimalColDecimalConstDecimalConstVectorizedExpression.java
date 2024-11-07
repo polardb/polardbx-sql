@@ -79,6 +79,22 @@ public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression exten
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
+        if (operand1IsNull || operand2IsNull) {
+            boolean[] outputNulls = outputVectorSlot.nulls();
+            outputVectorSlot.setHasNull(true);
+            if (isSelectionInUse) {
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    outputNulls[j] = true;
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    outputNulls[i] = true;
+                }
+            }
+            return;
+        }
+
         long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         DecimalStructure leftDec;

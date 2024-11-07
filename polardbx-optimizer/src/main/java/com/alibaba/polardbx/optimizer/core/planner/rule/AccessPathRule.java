@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -84,6 +85,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.optimizer.index.IndexUtil.getForceIndex;
 
 public abstract class AccessPathRule extends RelOptRule {
 
@@ -188,8 +191,7 @@ public abstract class AccessPathRule extends RelOptRule {
                         new IndexScanVisitor(primaryTable, indexTable, call.builder());
                     final LogicalIndexScan logicalIndexScan =
                         new LogicalIndexScan(plan.accept(indexScanVisitor), indexTable, logicalView.getHints(),
-                            lockMode, logicalView.getFlashback());
-
+                            lockMode, logicalView.getFlashback(), logicalView.aggIsPushed());
                     logicalIndexScan.rebuildPartRoutingPlanInfo();
 
                     if (shouldPruneGsi(logicalIndexScan, mq, primaryCanUseIndex, logicalView)) {
@@ -393,17 +395,21 @@ public abstract class AccessPathRule extends RelOptRule {
     }
 
     public static List<String> getGsiNameList(LogicalView logicalView, ExecutionContext ec) {
+        if (logicalView.isFromForceIndex()) {
+            return null;
+        }
         final String schemaName = logicalView.getSchemaName();
         List<String> gsiPublishedNameList = null;
+        String logicalTableName = null;
+
         if (logicalView.getTableNames().size() == 1 && !logicalView.isSingleGroup()) {
             // do index selection for single logical table only
-            final String logicalTableName = logicalView.getLogicalTableName();
+            logicalTableName = logicalView.getLogicalTableName();
             gsiPublishedNameList = GlobalIndexMeta.getPublishedIndexNames(logicalTableName, schemaName, ec);
             gsiPublishedNameList = filterVisibleIndex(schemaName, logicalTableName, gsiPublishedNameList, ec);
         } else if (logicalView.getTableNames().size() > 1) {
             // do index selection for shard logical table with multi broadcast table
             List<String> tableNames = logicalView.getTableNames();
-            String logicalTableName = null;
             for (String tableName : tableNames) {
                 if (!ec.getSchemaManager(schemaName).getTddlRuleManager().isBroadCast(tableName)) {
                     if (logicalTableName == null) {
@@ -421,22 +427,50 @@ public abstract class AccessPathRule extends RelOptRule {
         }
 
         if (logicalView.getIndexNode() != null) {
-            gsiPublishedNameList = filterUseIgnoreIndex(schemaName, gsiPublishedNameList, logicalView.getIndexNode());
+            gsiPublishedNameList =
+                filterUseIgnoreIndex(schemaName, logicalTableName, gsiPublishedNameList, logicalView.getIndexNode(),
+                    ec);
+        }
+        if (ec.getIgnoredGsi() != null) {
+            gsiPublishedNameList =
+                gsiPublishedNameList.stream().filter(x -> !ec.getIgnoredGsi().contains(x)).collect(Collectors.toList());
         }
         return gsiPublishedNameList;
     }
 
-    public static List<String> filterUseIgnoreIndex(String schemaName, List<String> gsiNameList, SqlNode indexNode) {
+    public static List<String> filterUseIgnoreIndex(String schemaName, String logicalTableName,
+                                                    List<String> gsiNameList, SqlNode indexNode, ExecutionContext ec) {
         Set<String> gsiNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
         if (gsiNameList == null) {
             return new ArrayList<>();
         }
 
-        // force index(PRIMARY)
-        Set<String> gsiForceNameSet = IndexUtil.getForceIndex(indexNode);
-        if (gsiForceNameSet.size() == 1 && gsiForceNameSet.iterator().next().equalsIgnoreCase("PRIMARY")) {
-            return new ArrayList<>();
+        // force index gsi should be handled&remove in ToDrdsRelVisitor. force index only local index can be stayed
+        Set<String> forceIndex = getForceIndex(indexNode);
+        if (forceIndex.size() > 0) {
+            List<String> forceResult = new ArrayList<>();
+            // local index strategy: return all the gsi and primary table that contains this local index
+            String indexName = forceIndex.iterator().next();
+            indexName = SQLUtils.normalizeNoTrim(indexName);
+            if (GeneralUtil.isPrimary(indexName)) {
+                return forceResult;
+            }
+            TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
+
+            // ignore local index that not in main table
+            if (tableMeta.findLocalIndexByName(indexName) == null) {
+                return forceResult;
+            }
+
+            for (String gsiName : gsiNameList) {
+                TableMeta gsiTableMeta = ec.getSchemaManager(schemaName).getTable(gsiName);
+                if (gsiTableMeta != null && gsiTableMeta.findLocalIndexByName(indexName) != null) {
+                    forceResult.add(gsiName);
+                }
+            }
+
+            return forceResult;
         }
 
         gsiNameSet.addAll(gsiNameList);
@@ -534,7 +568,7 @@ public abstract class AccessPathRule extends RelOptRule {
 
             Set<String> useIndexNames = IndexUtil.getUseIndex(scan.getIndexNode());
             Set<String> ignoreIndexNames = IndexUtil.getIgnoreIndex(scan.getIndexNode());
-            Set<String> forceIndexNames = IndexUtil.getForceIndex(scan.getIndexNode());
+            Set<String> forceIndexNames = getForceIndex(scan.getIndexNode());
 
             Set<String> normalizedUseIndexNames = normalizeIndexNames(useIndexNames, tableName, schemaName,
                 PlannerContext.getPlannerContext(scan).getExecutionContext());
@@ -629,15 +663,60 @@ public abstract class AccessPathRule extends RelOptRule {
                 return super.visit(scan);
             }
 
-            final LogicalView primary = RelUtils.createLogicalView(scan, lockMode);
-            final LogicalTableScan indexTableScan =
-                LogicalTableScan.create(scan.getCluster(), this.indexTable, scan.getHints(), null, scan.getFlashback(),
+            SqlNode indexNode = scan.getIndexNode();
+            Pair<SqlNodeList, SqlNodeList> forceIndexAndOtherIndex = stripForceIndex(indexNode);
+            SqlNodeList force = forceIndexAndOtherIndex.getKey();
+            SqlNodeList otherIndex = forceIndexAndOtherIndex.getValue();
+
+            // use empty scan to build primary table
+            TableScan newScan =
+                LogicalTableScan.create(scan.getCluster(), primaryTable, scan.getHints(), otherIndex,
+                    scan.getFlashback(),
                     scan.getFlashbackOperator(),
+                    scan.getPartitions());
+
+            final LogicalView primary = RelUtils.createLogicalView(newScan, lockMode);
+
+            // use index hint to build index table
+            final LogicalTableScan indexTableScan =
+                LogicalTableScan.create(scan.getCluster(), this.indexTable, scan.getHints(), force,
+                    scan.getFlashback(), scan.getFlashbackOperator(),
                     null);
             final LogicalIndexScan index = new LogicalIndexScan(this.indexTable, indexTableScan, lockMode);
             index.setFlashback(scan.getFlashback());
             index.setFlashbackOperator(scan.getFlashbackOperator());
             return RelUtils.createTableLookup(primary, index, index.getTable());
+        }
+
+        /**
+         * Splits the input index node list into two lists: one containing forced indexes,
+         * and another containing non-forced ones.
+         *
+         * @param indexNode List of index nodes
+         * @return A pair of lists - the first contains forced indexes, the second has non-forced ones
+         */
+        private Pair<SqlNodeList, SqlNodeList> stripForceIndex(SqlNode indexNode) {
+            // Return nulls if the input is not a SqlNodeList instance
+            if (!(indexNode instanceof SqlNodeList)) {
+                return Pair.of(null, null);
+            }
+            // Initialize lists for forced and non-forced index hints
+            SqlNodeList forcePart = new SqlNodeList(SqlParserPos.ZERO);
+            SqlNodeList nonForcedHints = new SqlNodeList(SqlParserPos.ZERO);
+
+            final SqlNodeList indexNodeList = (SqlNodeList) indexNode;
+            for (SqlNode index : indexNodeList) {
+                if (index instanceof SqlIndexHint) {
+                    SqlIndexHint indexHint = (SqlIndexHint) index;
+                    if (indexHint.forceIndex()) {
+                        forcePart.add(index);
+                    } else {
+                        nonForcedHints.add(indexHint);
+                    }
+                }
+            }
+
+            return Pair.of(forcePart, nonForcedHints);
         }
     }
 

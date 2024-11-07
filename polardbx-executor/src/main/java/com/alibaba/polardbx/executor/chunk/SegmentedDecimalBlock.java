@@ -34,9 +34,13 @@ public interface SegmentedDecimalBlock {
 
     boolean isDecimal128();
 
+    long getLong(int position);
+
     long getDecimal128Low(int position);
 
     long getDecimal128High(int position);
+
+    int getScale();
 
     /**
      * State of decimal block

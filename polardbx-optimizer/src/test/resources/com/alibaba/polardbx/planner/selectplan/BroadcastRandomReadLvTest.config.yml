@@ -1,0 +1,8 @@
+ENABLE_AUTO_FORCE_INDEX:
+  false
+defaltxxAPPName.isNew:
+  false
+defaltxxAPPName.withSingleGroup:
+  true
+defaltxxAPPName.dbNumber:
+  2

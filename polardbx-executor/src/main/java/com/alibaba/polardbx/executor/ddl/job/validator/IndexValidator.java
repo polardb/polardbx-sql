@@ -91,6 +91,7 @@ public class IndexValidator {
     }
 
     public static void validateIndexExistence(String schemaName, String logicalTableName, String indexName) {
+        indexName = TddlSqlToRelConverter.unwrapGsiName(indexName);
         if (!checkIfIndexExists(schemaName, logicalTableName, indexName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 "Index '" + indexName + "' on table '" + logicalTableName + "' doesn't exist");
@@ -98,6 +99,7 @@ public class IndexValidator {
     }
 
     public static void validateIndexNonExistence(String schemaName, String logicalTableName, String indexName) {
+        indexName = TddlSqlToRelConverter.unwrapGsiName(indexName);
         if (checkIfIndexExists(schemaName, logicalTableName, indexName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 "Index '" + indexName + "' on table '" + logicalTableName + "' already exists");
@@ -124,13 +126,25 @@ public class IndexValidator {
         }
     }
 
+    /**
+     * 校验索引是否存在，要求 indexName 不能包含gsi的后缀
+     * @param schemaName
+     * @param logicalTableName
+     * @param indexName
+     * @return
+     */
     public static boolean checkIfIndexExists(String schemaName, String logicalTableName, String indexName) {
-        return new TableInfoManagerDelegate<Boolean>(new TableInfoManager()) {
-            @Override
-            protected Boolean invoke() {
-                return tableInfoManager.checkIfIndexExists(schemaName, logicalTableName, indexName);
-            }
-        }.execute();
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
+        if (tableMeta == null) {
+            return new TableInfoManagerDelegate<Boolean>(new TableInfoManager()) {
+                @Override
+                protected Boolean invoke() {
+                    return tableInfoManager.checkIfIndexExists(schemaName, logicalTableName, indexName);
+                }
+            }.execute();
+        }
+        return tableMeta.checkIndexNameExists(indexName);
     }
 
     public static boolean checkIfColumnarIndexExists(String schemaName, String logicalTableName) {

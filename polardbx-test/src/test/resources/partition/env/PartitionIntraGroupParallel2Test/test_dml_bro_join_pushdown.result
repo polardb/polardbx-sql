@@ -1,0 +1,51 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `my_bro_t1` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+CREATE TABLE `my_hash_t1` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 8;
+CREATE TABLE `my_hash_t2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 8;
+explain insert into my_hash_t2 select t1.a, t1.b from my_hash_t1 t1 join my_bro_t1 t2 on t1.b=t2.b;
+Logical ExecutionPlan
+LogicalInsert(table="my_hash_t2", columns=RecordType(BIGINT_UNSIGNED a, BIGINT_UNSIGNED b), mode=MULTI)
+  Gather(concurrent=true)
+    LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8],my_bro_t1", shardCount=8, sql="SELECT `my_hash_t1`.`a`, `my_hash_t1`.`b` FROM `my_hash_t1` AS `my_hash_t1` INNER JOIN `my_bro_t1` AS `my_bro_t1` ON (`my_hash_t1`.`b` = `my_bro_t1`.`b`)")
+explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8],my_bro_t1", shardCount=8, sql="SELECT `my_bro_t1`.`a` AS `a0`, `my_bro_t1`.`b` AS `b0`, `my_hash_t1`.`a`, `my_hash_t1`.`b` FROM `my_hash_t1` AS `my_hash_t1` INNER JOIN `my_bro_t1` AS `my_bro_t1` ON (`my_hash_t1`.`b` = `my_bro_t1`.`b`)")
+explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
+Logical ExecutionPlan
+BKAJoin(condition="b = b", type="inner")
+  LogicalView(tables="my_bro_t1", shardCount=0, sql="SELECT `a`, `b` FROM `my_bro_t1` AS `my_bro_t1` FOR UPDATE")
+  Gather(concurrent=true)
+    LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `a`, `b` FROM `my_hash_t1` AS `my_hash_t1` WHERE (`b` IN (...)) FOR UPDATE")
+set autocommit=false;
+select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
+a,b,a,b
+explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
+Logical ExecutionPlan
+BKAJoin(condition="b = b", type="inner")
+  LogicalView(tables="my_bro_t1", shardCount=0, sql="SELECT `a`, `b` FROM `my_bro_t1` AS `my_bro_t1` FOR UPDATE")
+  Gather(concurrent=true)
+    LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `a`, `b` FROM `my_hash_t1` AS `my_hash_t1` WHERE (`b` IN (...)) FOR UPDATE")
+explain insert into my_hash_t2 select t1.a, t1.b from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b;
+Logical ExecutionPlan
+LogicalInsert(table="my_hash_t2", columns=RecordType(BIGINT_UNSIGNED a, BIGINT_UNSIGNED b), mode=MULTI)
+  Project(a="a", b="b")
+    BKAJoin(condition="b = b", type="inner")
+      LogicalView(tables="my_bro_t1", shardCount=0, sql="SELECT `a`, `b` FROM `my_bro_t1` AS `my_bro_t1`")
+      Gather(concurrent=true)
+        LogicalView(tables="my_hash_t1[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `b` FROM `my_hash_t1` AS `my_hash_t1` WHERE (`b` IN (...))")
+rollback;

@@ -59,9 +59,22 @@ public class OptimizerAlertManager extends AbstractLifecycle {
      * core entry to log alert
      *
      * @param optimizerAlertType type of alerts
+     * @param ec Context need to print log
      * @return true if logTrace if printed
      */
     public boolean log(OptimizerAlertType optimizerAlertType, ExecutionContext ec) {
+        return log(optimizerAlertType, ec, null);
+    }
+
+    /**
+     * core entry to log alert
+     *
+     * @param optimizerAlertType type of alerts
+     * @param ec Context need to print log
+     * @param extra extra info to print log
+     * @return true if logTrace if printed
+     */
+    public boolean log(OptimizerAlertType optimizerAlertType, ExecutionContext ec, Object extra) {
         if (!DynamicConfig.getInstance().optimizerAlert()) {
             return false;
         }
@@ -74,7 +87,7 @@ public class OptimizerAlertManager extends AbstractLifecycle {
         if (!DynamicConfig.getInstance().optimizerAlertLog()) {
             return false;
         }
-        return logger.logDetail(ec);
+        return logger.logDetail(ec, extra);
     }
 
     synchronized public List<Pair<OptimizerAlertType, Long>> collectByScheduleJob() {
@@ -101,15 +114,15 @@ public class OptimizerAlertManager extends AbstractLifecycle {
             optimizerAlertLoggers = ImmutableMap.builder();
 
         optimizerAlertLoggers.put(OptimizerAlertType.BKA_TOO_MUCH, new OptimizerAlertLoggerBKAImpl());
-        optimizerAlertLoggers.put(OptimizerAlertType.XPLAN_SLOW, new OptimizerAlertLoggerXplanImpl());
-        optimizerAlertLoggers.put(OptimizerAlertType.PLAN_CACHE_FULL, new OptimizerAlertLoggerPlanCacheImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.TP_SLOW, new OptimizerAlertLoggerTpImpl());
+        optimizerAlertLoggers.put(OptimizerAlertType.SELECTIVITY_ERR, new OptimizerAlertLoggerSelectivityImpl());
+        optimizerAlertLoggers.put(OptimizerAlertType.SPM_ERR, new OptimizerAlertLoggerSpmImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_MISS, new OptimizerAlertLoggerStatisticImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.PRUNING_SLOW, new OptimizerAlertLoggerPruningSlowImpl());
         optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_JOB_INTERRUPT,
             new OptimizerAlertLoggerStatisticJobInterruptImpl());
-        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_INCONSISTENT,
-            new OptimizerAlertLoggerStatisticInconsistentImpl());
+//        optimizerAlertLoggers.put(OptimizerAlertType.STATISTIC_INCONSISTENT,
+//            new OptimizerAlertLoggerStatisticInconsistentImpl());
 
         return optimizerAlertLoggers.build();
     }

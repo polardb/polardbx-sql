@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 
 import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
+import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -231,35 +232,7 @@ public class StatisticUtils {
             return null;
         }
 
-        List<ColumnMeta> analyzeColumnList;
-        if (onlyAnalyzeColumnWithIndex) {
-            Map<String, ColumnMeta> columnMetaMap = new HashMap<>();
-            for (IndexMeta indexMeta : tableMeta.getIndexes()) {
-                for (ColumnMeta columnMeta : indexMeta.getKeyColumns()) {
-                    if (!isBinaryOrJsonColumn(columnMeta)) {
-                        columnMetaMap.put(columnMeta.getName().toLowerCase(), columnMeta);
-                    }
-                }
-            }
-
-            // gsi
-            Map<String, GsiMetaManager.GsiIndexMetaBean> gsiIndexMetaBeanMap = tableMeta.getGsiPublished();
-            if (gsiIndexMetaBeanMap != null) {
-                for (GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean : gsiIndexMetaBeanMap.values()) {
-                    for (GsiMetaManager.GsiIndexColumnMetaBean gsiIndexColumnMetaBean : gsiIndexMetaBean.indexColumns) {
-                        ColumnMeta columnMeta = tableMeta.getColumn(gsiIndexColumnMetaBean.columnName);
-                        columnMetaMap.put(columnMeta.getName().toLowerCase(), columnMeta);
-                    }
-
-                }
-            }
-
-            analyzeColumnList = columnMetaMap.entrySet().stream().map(x -> x.getValue()).collect(Collectors.toList());
-        } else {
-            analyzeColumnList =
-                tableMeta.getAllColumns().stream().filter(x -> !isBinaryOrJsonColumn(x)).collect(Collectors.toList());
-        }
-        return analyzeColumnList;
+        return tableMeta.getAllColumns().stream().filter(x -> !isBinaryOrJsonColumn(x)).collect(Collectors.toList());
     }
 
     /**
@@ -277,7 +250,7 @@ public class StatisticUtils {
     public static String buildColumnsName(List<String> cols, int index) {
         String[] orderStr = Arrays.copyOf(cols.toArray(new String[0]), index);
         Arrays.sort(orderStr);
-        return String.join(",", orderStr);
+        return String.join(",", orderStr).toLowerCase();
     }
 
     public static String buildSketchKey(String schemaName, String tableName, String columnNames) {

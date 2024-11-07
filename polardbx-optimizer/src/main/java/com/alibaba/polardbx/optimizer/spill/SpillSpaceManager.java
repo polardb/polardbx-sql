@@ -39,7 +39,7 @@ public class SpillSpaceManager extends SpillSpaceMonitor {
 
     private static final SpillSpaceMonitor INSTANCE = new SpillSpaceManager();
 
-    private SpillSpaceManager() {
+    protected SpillSpaceManager() {
         this.isSpillManager = true;
     }
 

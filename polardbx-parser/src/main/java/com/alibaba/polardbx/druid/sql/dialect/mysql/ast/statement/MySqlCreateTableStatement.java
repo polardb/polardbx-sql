@@ -25,6 +25,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLBinaryOpExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveDefinitionExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterCharacter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableAddIndex;
@@ -104,6 +105,62 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
             }
         }
     }
+
+    public SQLAssignItem getTtlDefinitionOption() {
+        SQLAssignItem ttlDefinitionOption = null;
+        for (int i = 0; i < tableOptions.size(); i++) {
+            SQLAssignItem assignItem = tableOptions.get(i);
+            SQLExpr val = assignItem.getValue();
+            if (val instanceof SQLTimeToLiveDefinitionExpr) {
+                ttlDefinitionOption = assignItem;
+                break;
+            }
+        }
+        return ttlDefinitionOption;
+    }
+
+    public void removeArchiveCciInfoForTtlDefinitionOptionIfNeed() {
+        SQLAssignItem ttlDefinitionOption = null;
+        for (int i = 0; i < tableOptions.size(); i++) {
+            SQLAssignItem assignItem = tableOptions.get(i);
+            SQLExpr val = assignItem.getValue();
+            if (val instanceof SQLTimeToLiveDefinitionExpr) {
+                ttlDefinitionOption = assignItem;
+                break;
+            }
+        }
+        if (ttlDefinitionOption == null) {
+            return;
+        }
+
+        SQLExpr ttlDefExprAst = ttlDefinitionOption.getValue();
+        SQLTimeToLiveDefinitionExpr ttlDefExpr = (SQLTimeToLiveDefinitionExpr) ttlDefExprAst;
+
+        SQLExpr arcSchemaExpr = ttlDefExpr.getArchiveTableSchemaExpr();
+        SQLExpr arcTblNameExpr = ttlDefExpr.getArchiveTableNameExpr();
+
+        ttlDefExpr.setTtlEnableExpr(null);
+        ttlDefExpr.setArchiveTableSchemaExpr(null);
+        ttlDefExpr.setArchiveTableNameExpr(null);
+
+        MySqlTableIndex targetArcCci = null;
+        int elementIdx = -1;
+        for (int i = 0; i < tableElementList.size(); i++) {
+            SQLTableElement element = tableElementList.get(i);
+            if (element instanceof MySqlTableIndex)  {
+                MySqlTableIndex idx = (MySqlTableIndex) element;
+                if (idx.isColumnar()) {
+                    targetArcCci = idx;
+                    elementIdx = i;
+                    break;
+                }
+            }
+        }
+        if (targetArcCci != null) {
+            tableElementList.remove(elementIdx);
+        }
+    }
+
 
     public List<SQLCommentHint> getHints() {
         return hints;

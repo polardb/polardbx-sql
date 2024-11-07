@@ -24,13 +24,16 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
+import org.weakref.jmx.internal.guava.collect.ImmutableList;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
@@ -67,7 +70,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     public void testTruncateBroadCastTable() {
         String tableName = schemaPrefix + testTableName + "_1";
         dropTableIfExists(tableName);
-        String sql = "create table " + tableName + "(id int, name varchar(20))broadcast";
+        String sql = "create table " + tableName + "(id int primary key auto_increment, name varchar(20))broadcast";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
@@ -78,9 +81,14 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 //        Assert.assertEquals(getNodeNum(tddlConnection), getExplainNum(sql));
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
-        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        sql = "insert into " + tableName + " (id, name) values (null, \"tom\"), (null, \"simi\") ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        nums = nums.stream().map(n -> n % 100).collect(Collectors.toList());
+        Assert.assertTrue(ImmutableList.of(1, 2).equals(nums));
+
         dropTableIfExists(tableName);
     }
 
@@ -91,7 +99,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     public void testTruncateSingleTable() {
         String tableName = schemaPrefix + testTableName + "_2";
         dropTableIfExists(tableName);
-        String sql = "create table " + tableName + " (id int, name varchar(20))";
+        String sql = "create table " + tableName + " (id int primary key auto_increment by group, name varchar(20))";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
@@ -102,9 +110,13 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        sql = "insert into " + tableName + " (id, name) values (null, \"tom\"), (null, \"simi\") ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        nums = nums.stream().map(n -> n % 100).collect(Collectors.toList());
+        Assert.assertTrue(ImmutableList.of(1, 2).equals(nums));
 
         dropTableIfExists(tableName);
 
@@ -117,7 +129,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     public void testTruncateShardTbTable() {
         String tableName = schemaPrefix + testTableName + "_3";
         dropTableIfExists(tableName);
-        String sql = "create table " + tableName + " (id int, name varchar(20)) tbpartition by hash(id) tbpartitions 2";
+        String sql = "create table " + tableName
+            + " (id int primary key auto_increment, name varchar(20)) tbpartition by hash(id) tbpartitions 2";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
@@ -129,9 +142,13 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        sql = "insert into " + tableName + " (id, name) values (null, \"tom\"), (null, \"simi\") ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        nums = nums.stream().map(n -> n % 100).collect(Collectors.toList());
+        Assert.assertTrue(ImmutableList.of(1, 2).equals(nums));
 
         dropTableIfExists(tableName);
     }
@@ -216,7 +233,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(indexTableName4);
 
         String sql = gsiDisableStorageCheckHint + "create table " + tableName
-            + " (id int primary key, "
+            + " (id int primary key auto_increment, "
             + "name varchar(20), "
             + "global index " + indexTableName1 + " (name) dbpartition by hash(name),"
             + "global unique index " + indexTableName2 + " (name) dbpartition by hash(name),"
@@ -251,14 +268,19 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 
         if (supportXA) {
             sql = "insert into " + tableName
-                + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+                + " (id, name) values (null, \"a\"), (null, \"b\") , (null, \"c\"), (null, \"d\"), (null, \"e\"), (null, \"f\"), (null, \"g\"), (null, \"h\")";
         } else {
             sql = gsiDisableStorageCheckHint + "insert into " + tableName
-                + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+                + " (id, name) values (null, \"a\"), (null, \"b\") , (null, \"c\"), (null, \"d\"), (null, \"e\"), (null, \"f\"), (null, \"g\"), (null, \"h\")";
         }
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
+
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        nums = nums.stream().map(n -> n % 100).collect(Collectors.toList());
+        Assert.assertTrue(ImmutableList.of(1, 2, 3, 4, 5, 6, 7, 8).equals(nums));
+
         checkGsi(tddlConnection, indexTableName1);
         checkGsi(tddlConnection, indexTableName2);
         checkGsi(tddlConnection, indexTableName3);
@@ -651,5 +673,93 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testTableWithRecycleBin() {
+        if (crossSchema) {
+            return;
+        }
+
+        String tableName = schemaPrefix + testTableName + "_13";
+        String createTable = "create table " + tableName
+            + " (a int,"
+            + " b int"
+            + ") dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+
+        String insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        assertSequenceStartValue(tableName);
+
+        String truncate = String.format("/*+TDDL:cmd_extra(ENABLE_RECYCLEBIN=true)*/truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        assertSequenceStartValue(tableName);
+
+        truncate = String.format("/*+TDDL:cmd_extra(ENABLE_RECYCLEBIN=true)*/truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        assertSequenceStartValue(tableName);
+
+        truncate = String.format("/*+TDDL:cmd_extra(ENABLE_RECYCLEBIN=true)*/truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        assertSequenceStartValue(tableName);
+    }
+
+    @Test
+    public void testTableWithRecycleBin2() {
+        if (crossSchema) {
+            return;
+        }
+
+        String tableName = schemaPrefix + testTableName + "_14";
+        String createTable = "create table " + tableName
+            + " (a int primary key,"
+            + " b int"
+            + ") dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
+
+        String insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        String truncate = String.format("/*+TDDL:cmd_extra(ENABLE_RECYCLEBIN=true)*/truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        truncate = String.format("/*+TDDL:cmd_extra(ENABLE_RECYCLEBIN=true)*/truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        truncate = String.format("/*+TDDL:cmd_extra(ENABLE_RECYCLEBIN=true)*/truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, truncate);
+
+        insert = String.format("insert into %s(a,b) values (1,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+    }
+
+    void assertSequenceStartValue(String tableName) {
+        String select = String.format("select _drds_implicit_id_ from %s", tableName);
+        try (ResultSet rs = JdbcUtil.executeQuery(select, tddlConnection)) {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getLong(1), 100001L);
+        } catch (SQLException e) {
+            Assert.fail();
+        }
     }
 }

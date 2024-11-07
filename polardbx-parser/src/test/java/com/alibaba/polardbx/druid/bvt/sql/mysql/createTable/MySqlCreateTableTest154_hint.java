@@ -48,8 +48,8 @@ public class MySqlCreateTableTest154_hint
                 "\t`title` varchar(200) DEFAULT NULL,\n" +
                 "\t`content` text,\n" +
                 "\tPRIMARY KEY (`id`),\n" +
-                "\tFULLTEXT KEY `ft_content` (`content`),\n" +
-                "\tFULLTEXT KEY `ft_title` (`title`)\n" +
+                "\tFULLTEXT KEY `ft_content` (`content`) /*!50100 WITH PARSER `ngram` */,\n" +
+                "\tFULLTEXT KEY `ft_title` (`title`) /*!50100 WITH PARSER `ngram` */\n" +
                 ") ENGINE = InnoDB AUTO_INCREMENT = 3 DEFAULT CHARSET = gb2312", stmt.toString());
 
         assertEquals("create table `ngram_2_t1_1` (\n" +
@@ -57,8 +57,8 @@ public class MySqlCreateTableTest154_hint
                 "\t`title` varchar(200) default null,\n" +
                 "\t`content` text,\n" +
                 "\tprimary key (`id`),\n" +
-                "\tfulltext key `ft_content` (`content`),\n" +
-                "\tfulltext key `ft_title` (`title`)\n" +
+                "\tfulltext key `ft_content` (`content`) /*!50100 WITH PARSER `ngram` */,\n" +
+                "\tfulltext key `ft_title` (`title`) /*!50100 WITH PARSER `ngram` */\n" +
                 ") engine = InnoDB auto_increment = 3 default charset = gb2312", stmt.toLowerCaseString());
 
     }

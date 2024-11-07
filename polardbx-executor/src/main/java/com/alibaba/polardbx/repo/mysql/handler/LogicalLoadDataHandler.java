@@ -151,7 +151,7 @@ public class LogicalLoadDataHandler extends LogicalInsertHandler {
                                 HandlerParams handlerParams) {
         LoadDataContext loadDataContext = executionContext.getLoadDataContext();
         String schemaName = executionContext.getSchemaName();
-        boolean hasIndex = GlobalIndexMeta.hasIndex(
+        boolean hasIndex = GlobalIndexMeta.hasGsi(
             logicalInsert.getLogicalTableName(), schemaName, executionContext);
         boolean ignoreIsSimpleInsert = loadDataContext.getParamManager().getBoolean(
             ConnectionParams.LOAD_DATA_IGNORE_IS_SIMPLE_INSERT);

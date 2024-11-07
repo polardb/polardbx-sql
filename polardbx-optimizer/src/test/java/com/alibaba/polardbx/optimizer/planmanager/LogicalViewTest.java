@@ -8,15 +8,14 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.clearspring.analytics.util.Lists;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.core.JoinRelType;
-import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
-import org.apache.calcite.rel.type.RelDataTypeImpl;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.junit.Test;
@@ -88,5 +87,15 @@ public class LogicalViewTest extends BaseRuleTest {
 
         checkSize = ossTableScanCopy.getColumnOrigins().size();
         Assert.assertTrue(size == checkSize);
+    }
+
+    @Test
+    public void testFlashBack() {
+        LogicalTableScan scan1 = LogicalTableScan.create(relOptCluster,
+            schema.getTableForMember(Arrays.asList("optest", "emp")));
+        org.junit.Assert.assertFalse(RelUtils.containFlashback(scan1));
+
+        scan1.setFlashback(relOptCluster.getRexBuilder().makeCall(SqlStdOperatorTable.CURRENT_TIMESTAMP));
+        org.junit.Assert.assertTrue(RelUtils.containFlashback(scan1));
     }
 }

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 
 import java.math.BigDecimal;
 
@@ -26,6 +27,21 @@ public class FloatType extends NumberType<Float> {
     private static final float MAX_VALUE = Float.MAX_VALUE;
     private static final BigDecimal MIN_VALUE_TO_DECIMAL = new BigDecimal(MIN_VALUE);
     private static final BigDecimal MAX_VALUE_TO_DECIMAL = new BigDecimal(MAX_VALUE);
+
+    private final int scale;
+
+    public FloatType() {
+        this(XResultUtil.DECIMAL_NOT_SPECIFIED);
+    }
+
+    public FloatType(int scale) {
+        this.scale = scale;
+    }
+
+    @Override
+    public int getScale() {
+        return scale;
+    }
 
     private final Calculator calculator = new AbstractCalculator() {
 

@@ -27,7 +27,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`x`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`x`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS #@#
@@ -47,7 +47,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`x`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY KEY(`seller_id`)
-		PARTITIONS 2
+		PARTITIONS 2 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS #@#
@@ -67,7 +67,7 @@ t_order_1,CREATE PARTITION TABLE `t_order_1` (
 	PRIMARY KEY (`_drds_implicit_id_`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`_drds_implicit_id_`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
 PARTITIONS #@#

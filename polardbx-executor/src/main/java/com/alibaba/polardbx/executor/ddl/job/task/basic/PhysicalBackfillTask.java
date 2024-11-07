@@ -24,8 +24,10 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillManager;
@@ -41,10 +43,10 @@ import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import com.mysql.cj.polarx.protobuf.PolarxPhysicalBackfill;
+import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
-import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -61,6 +63,13 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.CN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.CN_NETWORK;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_NETWORK;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_STORAGE;
+
 /**
  * Created by luoyanxin.
  *
@@ -68,12 +77,13 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Getter
 @TaskName(name = "PhysicalBackfillTask")
-public class PhysicalBackfillTask extends BaseDdlTask {
+public class PhysicalBackfillTask extends BaseDdlTask implements RemoteExecutableDdlTask {
 
     private final String schemaName;
     private final String logicalTableName;
     private final Long backfillId;// use the taskId of CloneTableDataFileTask
     private final long batchSize;
+    private final long dataSize;
 
     private final long parallelism;
     private final long minUpdateBatch;
@@ -103,6 +113,7 @@ public class PhysicalBackfillTask extends BaseDdlTask {
                                 Pair<String, String> sourceTargetDnId,
                                 Map<String, Pair<String, String>> storageInstAndUserInfos,
                                 long batchSize,
+                                long dataSize,
                                 long parallelism,
                                 long minUpdateBatch,
                                 boolean waitLsn,
@@ -117,6 +128,7 @@ public class PhysicalBackfillTask extends BaseDdlTask {
         this.sourceTargetDnId = sourceTargetDnId;
         this.storageInstAndUserInfos = storageInstAndUserInfos;
         this.batchSize = batchSize;
+        this.dataSize = dataSize;
         this.parallelism = Math.max(parallelism, 1);
         this.minUpdateBatch = minUpdateBatch;
         this.waitLsn = waitLsn;
@@ -129,7 +141,31 @@ public class PhysicalBackfillTask extends BaseDdlTask {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 "missing source-target group mapping entry");
         }
+        this.setResourceAcquired(buildResourceRequired(sourceTargetDnId, dataSize));
         backfillManager = new PhysicalBackfillManager(schemaName);
+    }
+
+    DdlEngineResources buildResourceRequired(Pair<String, String> sourceTargetDnId, long dataSize) {
+
+        String sourceDnId = sourceTargetDnId.getKey();
+        String targetDnId = sourceTargetDnId.getValue();
+        DdlEngineResources resourceRequired = new DdlEngineResources();
+        String owner = "PhysicalBackfill:" + logicalTableName + getPhysicalTableName();
+        resourceRequired.request(sourceDnId + DN_STORAGE, dataSize, owner);
+        resourceRequired.request(sourceDnId + DN_NETWORK, 33L, owner);
+        resourceRequired.request(sourceDnId + DN_CPU, 5L, owner);
+        resourceRequired.request(targetDnId + DN_STORAGE, dataSize, owner);
+        resourceRequired.request(targetDnId + DN_NETWORK, 33L, owner);
+        resourceRequired.request(targetDnId + DN_IO, 5L, owner);
+        resourceRequired.request(targetDnId + DN_CPU, 5L, owner);
+        resourceRequired.request(CN_NETWORK, 33L, owner);
+        resourceRequired.request(CN_CPU, 25L, owner);
+        return resourceRequired;
+    }
+
+    @Override
+    public DdlEngineResources getDdlEngineResources() {
+        return this.resourceAcquired;
     }
 
     @Override
@@ -251,7 +287,7 @@ public class PhysicalBackfillTask extends BaseDdlTask {
     @Override
     public String remark() {
         return "|physical backfill for table:" + physicalTableName + " from group:" + sourceTargetGroup.getKey()
-            + " to " + sourceTargetGroup.getValue();
+            + " to " + sourceTargetGroup.getValue() + " dataSize: " + DataSize.succinctBytes(dataSize);
     }
 
     public void doExtract(ExecutionContext ec, BatchConsumer batchConsumer) {

@@ -9,7 +9,7 @@ git checkout origin/xxx
 
 cd polardbx-test/src/test/java/com/alibaba/polardbx/transfer/
 
-docker build -t transfer-test:v1.0.0 . -f docker/Dockerfile
+docker build --network host -t transfer-test:v1.0.0 . -f docker/Dockerfile
 ```
 
 # 运行

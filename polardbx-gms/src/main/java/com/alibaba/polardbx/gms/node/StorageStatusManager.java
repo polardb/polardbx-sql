@@ -237,15 +237,7 @@ public class StorageStatusManager extends AbstractLifecycle {
                 activeSession = 0;
                 delaySecond = Integer.MAX_VALUE;
                 logger.warn("check slave status error for " + storageId, e);
-                                if (salveConn != null) {
-                                    try {
-                                        salveConn.close();
-                                        salveConn = null;
-                                    } catch (Throwable t) {
-                                        //ignore
-                                    }
-                                }
-                            }finally {
+            } finally {
                 if (salveConn != null) {
                     try {
                         salveConn.close();

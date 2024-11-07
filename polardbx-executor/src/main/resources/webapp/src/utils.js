@@ -296,6 +296,14 @@ export function getTaskIdSuffix(taskId: string): string
     return taskId.slice(taskId.indexOf('.') + 1, taskId.length)
 }
 
+export function getStagePipelineFromDriverId(driverId: string): string
+{
+    const parts = driverId.split('.');
+    const extracts = [parts[0], parts[2]];
+    const resultString = extracts.join('.');
+    return resultString
+}
+
 export function getFullSplitIdSuffix(driverId: string): string
 {
     return driverId.substring(driverId.indexOf('.') + 1)

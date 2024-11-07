@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.sync;
 import com.alibaba.polardbx.atom.CacheVariables;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.pl.ProcedureManager;
 import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
 import com.alibaba.polardbx.executor.utils.ReloadUtils;
@@ -86,9 +87,16 @@ public class ReloadSyncAction implements ISyncAction {
                 break;
 
             case COLUMNARMANAGER:
-                Optional
-                    .ofNullable(ExecutorContext.getContext(schemaName))
-                    .ifPresent(ExecutorContext::reloadColumnarManager);
+                ColumnarManager.getInstance().reload();
+                break;
+            case COLUMNARMANAGER_CACHE:
+                ColumnarManager.getInstance().reload(ColumnarManager.ReloadType.CACHE_ONLY);
+                break;
+            case COLUMNARMANAGER_SNAPSHOT:
+                ColumnarManager.getInstance().reload(ColumnarManager.ReloadType.SNAPSHOT_ONLY);
+                break;
+            case COLUMNARMANAGER_SCHEMA:
+                ColumnarManager.getInstance().reload(ColumnarManager.ReloadType.SCHEMA_ONLY);
                 break;
             default:
                 break;

@@ -6,6 +6,14 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.utils.GeneralUtil.formatSampleRate;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * @author fangwu
+ */
 public class GeneralUtilTest {
 
     @Test
@@ -30,5 +38,142 @@ public class GeneralUtilTest {
         Assert.assertTrue(
             result.get("catalog:gdcams_tp,mk_run_meter_day_energy,data_time,2023-12-07 00:00:00_2023-12-08 00:00:00\n"
                 + "action:datetimetypecompensation").equals("81892745"));
+    }
+
+    /**
+     * Checks if isPrimary returns false for an empty/null string.
+     */
+    @Test
+    public void testIsPrimaryEmptyString() {
+        assertFalse("An empty string should not be considered as primary", GeneralUtil.isPrimary(""));
+        assertFalse("An null should not be considered as primary", GeneralUtil.isPrimary(null));
+    }
+
+    /**
+     * Ensures isPrimary returns false with a string containing only whitespaces.
+     */
+    @Test
+    public void testIsPrimaryWhitespace() {
+        assertFalse("A string with only whitespace characters should not be considered as primary",
+            GeneralUtil.isPrimary("   "));
+    }
+
+    /**
+     * Validates isPrimary returns false for a non-primary string.
+     */
+    @Test
+    public void testIsPrimaryNonPrimaryString() {
+        assertFalse("A string other than 'primary' should not be considered as primary",
+            GeneralUtil.isPrimary("secondary"));
+    }
+
+    /**
+     * Tests isPrimary returning true for lowercase 'primary'.
+     */
+    @Test
+    public void testIsPrimaryLowerCasePrimary() {
+        assertTrue("Lowercase 'primary' should be recognized as primary",
+            GeneralUtil.isPrimary("primary".toLowerCase()));
+    }
+
+    /**
+     * Verifies isPrimary returns true for uppercase 'PRIMARY'.
+     */
+    @Test
+    public void testIsPrimaryUpperCasePrimary() {
+        assertTrue("Uppercase 'PRIMARY' should be recognized as primary", GeneralUtil.isPrimary("PRIMARY"));
+        assertTrue("mix case 'PriMArY' should be recognized as primary", GeneralUtil.isPrimary("PriMArY"));
+    }
+
+    @Test
+    public void testSampleStringNormalCase() {
+        float sampleRate = 0.5f;
+        String expectedOutput = "0.5";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+    }
+
+    @Test
+    public void testSampleStringSampleRateZero() {
+        float sampleRate = 0f;
+        String expectedOutput = "0.0";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+    }
+
+    @Test
+    public void testSampleStringSampleRateOne() {
+        float sampleRate = 1f;
+        String expectedOutput = "1.0";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+    }
+
+    @Test
+    public void testSampleStringSampleRateGreaterThanOne() {
+        float sampleRate = 1.5f;
+        String expectedOutput = "1.5";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+
+        sampleRate = 0.0002f;
+        expectedOutput = "0.0002";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+
+        sampleRate = 0.000000002f;
+        expectedOutput = "0.000000002";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+
+        sampleRate = 2.000000002f;
+        expectedOutput = "2.0";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+
+        sampleRate = 11.0023450002f;
+        expectedOutput = "11.002345";
+        assertEquals(expectedOutput, formatSampleRate(sampleRate));
+    }
+
+    @Test
+    public void testIsWithinPercentageEqualNumbers() {
+        // Design: Test when both numbers are equal.
+        assertEquals(true, GeneralUtil.isWithinPercentage(100, 100, 10));
+    }
+
+    @Test
+    public void testIsWithinPercentageExactMatch() {
+        // Design: Test when difference equals the threshold.
+        assertEquals(true, GeneralUtil.isWithinPercentage(100, 110, 10));
+    }
+
+    @Test
+    public void testIsWithinPercentageBelowThreshold() {
+        // Design: Test when difference is less than the threshold.
+        assertEquals(true, GeneralUtil.isWithinPercentage(100, 105, 10));
+    }
+
+    @Test
+    public void testIsWithinPercentageAboveThreshold() {
+        // Design: Test when difference is greater than the threshold.
+        assertEquals(false, GeneralUtil.isWithinPercentage(100, 115, 10));
+    }
+
+    @Test
+    public void testIsWithinPercentageZeroPercentage() {
+        // Design: Test with a zero percentage threshold.
+        assertEquals(true, GeneralUtil.isWithinPercentage(100, 100, 0));
+    }
+
+    @Test
+    public void testIsWithinPercentageNegativePercentage() {
+        // Design: Test with a negative percentage threshold (invalid input).
+        assertEquals(false, GeneralUtil.isWithinPercentage(100, 100, -10));
+    }
+
+    @Test
+    public void testIsWithinPercentageDecimalThreshold() {
+        // Design: Test with a decimal percentage threshold.
+        assertEquals(true, GeneralUtil.isWithinPercentage(100, 106, 6.1));
+    }
+
+    @Test
+    public void testIsWithinPercentageLargeNumbers() {
+        // Design: Test with large numbers to ensure correct calculation of threshold.
+        assertEquals(true, GeneralUtil.isWithinPercentage(1000000, 1000100, 0.1));
     }
 }

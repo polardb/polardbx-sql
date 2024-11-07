@@ -699,7 +699,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> tableGroupNames = validTgSet.stream().collect(Collectors.toList());
         tableGroupNames.sort(Comparator.comparingLong(key -> tgDataSize.get(key)).reversed());
         DataDistInfo dataDistInfo = DataDistInfo.fromSchemaAndInstMap(schemaName, storageInstMap, groupDetailMap);
-        List<PolicyDrainNode.MoveInfo> moves = new ArrayList<>();
+        List<PolicyPartitionBalance.MoveInfo> moves = new ArrayList<>();
         // 4.3 Compute PgMoveAction inside tg.
         for (int k = 0; k < tableGroupNames.size(); k++) {
 
@@ -752,7 +752,7 @@ public class PolicyDrainNode implements BalancePolicy {
 
                 for (int i = 0; i < N; i++) {
                     if (targetPlace[i] != originalPlace[i]) {
-                        moves.add(new PolicyDrainNode.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
+                        moves.add(new PolicyPartitionBalance.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
                             toRebalancePgMap.get(i).getTgName(), groupDetailMap.get(targetPlace[i]),
                             toRebalancePgMap.get(i).getDataRows(), toRebalancePgMap.get(i).getTotalDiskSize()));
                     }
@@ -1059,7 +1059,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> tableGroupNames = tgDataSize.keySet().stream().collect(Collectors.toList());
         tableGroupNames.sort(Comparator.comparingLong(key -> tgDataSize.get(key)).reversed());
         DataDistInfo dataDistInfo = DataDistInfo.fromSchemaAndInstMap(schemaName, storageInstMap, groupDetailMap);
-        List<PolicyDrainNode.MoveInfo> moves = new ArrayList<>();
+        List<PolicyPartitionBalance.MoveInfo> moves = new ArrayList<>();
         String dbLocality = LocalityManager.getInstance().getLocalityOfDb(schemaName).getLocality();
         // 3.2 compute move actions here.
         for (int k = 0; k < tableGroupNames.size(); k++) {
@@ -1153,7 +1153,7 @@ public class PolicyDrainNode implements BalancePolicy {
 
                     for (int i = 0; i < N; i++) {
                         if (targetPlace[i] != originalPlace[i]) {
-                            moves.add(new PolicyDrainNode.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
+                            moves.add(new PolicyPartitionBalance.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
                                 toRebalancePgMap.get(i).getTgName(), groupDetailMap.get(targetPlace[i]),
                                 toRebalancePgMap.get(i).getDataRows(), toRebalancePgMap.get(i).getTotalDiskSize()));
                         }
@@ -1166,7 +1166,7 @@ public class PolicyDrainNode implements BalancePolicy {
             // sort by dataSize desc.
 //        int toIndex = Math.min(options.maxActions * 20, moves.size());
 //        moves = moves.subList(0, toIndex);
-//        Map<String, List<PolicyDrainNode.MoveInfo>> movesGroupByTg = moves.stream().collect(
+//        Map<String, List<PolicyPartitionBalance.MoveInfo>> movesGroupByTg = moves.stream().collect(
 //            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
 //        );
         }
@@ -1433,7 +1433,7 @@ public class PolicyDrainNode implements BalancePolicy {
         List<String> tableGroupNames = validTgSet.stream().collect(Collectors.toList());
         tableGroupNames.sort(Comparator.comparingLong(key -> tgDataSize.get(key)).reversed());
         DataDistInfo dataDistInfo = DataDistInfo.fromSchemaAndInstMap(schemaName, storageInstMap, groupDetailMap);
-        List<PolicyDrainNode.MoveInfo> moves = new ArrayList<>();
+        List<PolicyPartitionBalance.MoveInfo> moves = new ArrayList<>();
         for (int k = 0; k < tableGroupNames.size(); k++) {
 
             String tgName = tableGroupNames.get(k);
@@ -1499,7 +1499,7 @@ public class PolicyDrainNode implements BalancePolicy {
 
                     for (int i = 0; i < N; i++) {
                         if (targetPlace[i] != originalPlace[i]) {
-                            moves.add(new PolicyDrainNode.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
+                            moves.add(new PolicyPartitionBalance.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
                                 toRebalancePgMap.get(i).getTgName(), groupDetailMap.get(targetPlace[i]),
                                 toRebalancePgMap.get(i).getDataRows(), toRebalancePgMap.get(i).getTotalDiskSize()));
                         }
@@ -1512,7 +1512,7 @@ public class PolicyDrainNode implements BalancePolicy {
             // sort by dataSize desc.
 //        int toIndex = Math.min(options.maxActions * 20, moves.size());
 //        moves = moves.subList(0, toIndex);
-//        Map<String, List<PolicyDrainNode.MoveInfo>> movesGroupByTg = moves.stream().collect(
+//        Map<String, List<PolicyPartitionBalance.MoveInfo>> movesGroupByTg = moves.stream().collect(
 //            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
 //        );
         }
@@ -1808,7 +1808,7 @@ public class PolicyDrainNode implements BalancePolicy {
             List<String> tableGroupNames = validTgSet.stream().collect(Collectors.toList());
             tableGroupNames.sort(Comparator.comparingLong(key -> tgDataSize.get(key)).reversed());
             DataDistInfo dataDistInfo = DataDistInfo.fromSchemaAndInstMap(schemaName, storageInstMap, groupDetailMap);
-            List<PolicyDrainNode.MoveInfo> moves = new ArrayList<>();
+            List<PolicyPartitionBalance.MoveInfo> moves = new ArrayList<>();
             for (int k = 0; k < tableGroupNames.size(); k++) {
 
                 String tgName = tableGroupNames.get(k);
@@ -1865,7 +1865,7 @@ public class PolicyDrainNode implements BalancePolicy {
 
                     for (int i = 0; i < N; i++) {
                         if (targetPlace[i] != originalPlace[i]) {
-                            moves.add(new PolicyDrainNode.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
+                            moves.add(new PolicyPartitionBalance.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
                                 toRebalancePgMap.get(i).getTgName(),
                                 groupDetailMap.get(targetPlace[i]),
                                 toRebalancePgMap.get(i).getDataRows(),
@@ -1882,70 +1882,20 @@ public class PolicyDrainNode implements BalancePolicy {
             moves.sort(Comparator.comparingLong(o -> -o.dataSize));
 //        int toIndex = Math.min(options.maxActions * 20, moves.size());
 //        moves = moves.subList(0, toIndex);
-//        Map<String, List<PolicyDrainNode.MoveInfo>> movesGroupByTg = moves.stream().collect(
-//            Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
-//        );
+            Map<String, List<PolicyPartitionBalance.MoveInfo>> movesGroupByTg = moves.stream().collect(
+                Collectors.groupingBy(o -> o.tgName, Collectors.mapping(o -> o, Collectors.toList()))
+            );
             long maxTaskUnitSize = ec.getParamManager().getLong(REBALANCE_MAX_UNIT_SIZE);
             if (maxTaskUnitSize < 1024) {
                 maxTaskUnitSize = options.maxTaskUnitSize;
             }
             List<BalanceAction> moveDataActions = new ArrayList<>();
-            for (int i = 0; i < moves.size(); ) {
-                Long sumMoveSizes = 0L;
-                int j = i;
-                int nextI;
-                for (; j < moves.size() && sumMoveSizes <= maxTaskUnitSize * 1024 * 1024; j++) {
-                    sumMoveSizes += moves.get(j).dataSize;
-                }
-                nextI = j;
-                Map<String, List<ActionMovePartition>> movePartitionActions =
-                    new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-//            Long finalSumMoveRows = sumMoveSizes;
-                GeneralUtil.emptyIfNull(moves.subList(i, nextI)).stream().collect(
-                    Collectors.groupingBy(o -> o.targetDn,
-                        Collectors.mapping(o -> o.partitionStat, Collectors.toList()))
-                ).forEach((toGroup, partitions) -> {
-                    for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions,
-                        toGroup, stats)) {
-//                    if (moveDataActions.size() >= options.maxActions) {
-//                        break;
-//                    }
-                        movePartitionActions.computeIfAbsent(act.getTableGroupName(), o -> new ArrayList<>())
-                            .add(act);
-                    }
-                });
-                if (!movePartitionActions.isEmpty()) {
-                    moveDataActions.add(new ActionMovePartitions(schemaName, movePartitionActions));
-                }
-                i = nextI;
+            for (String tgName : movesGroupByTg.keySet()) {
+                List<PolicyPartitionBalance.MoveInfo> movesGroup = movesGroupByTg.get(tgName);
+                List<ActionMovePartitions> movePartitionsList =
+                    PolicyPartitionBalance.shuffleToGroup(schemaName, movesGroup, maxTaskUnitSize, stats);
+                moveDataActions.addAll(movePartitionsList);
             }
-
-//        for (String tgName : movesGroupByTg.keySet()) {
-//            List<MoveInfo> movesOfTg = movesGroupByTg.get(tgName);
-//            movesOfTg.sort(Comparator.comparingLong(o -> -o.dataSize));
-//            for (int i = 0; i < movesOfTg.size(); ) {
-//                Long sumMoveRows = 0L;
-//                int j = i;
-//                int nextI;
-//                for (; j < movesOfTg.size() && sumMoveRows <= options.maxTaskUnitRows; j++) {
-//                    sumMoveRows += movesOfTg.get(j).tableRows;
-//                }
-//                nextI = j;
-//                GeneralUtil.emptyIfNull(movesOfTg.subList(i, nextI)).stream().collect(
-//                    Collectors.groupingBy(o -> o.targetDn,
-//                        Collectors.mapping(o -> o.partitionStat, Collectors.toList()))
-//                ).forEach((toGroup, partitions) -> {
-//                    for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schema, partitions,
-//                        toGroup, stats)) {
-//                        if (actions.size() >= options.maxActions) {
-//                            break;
-//                        }
-//                        actions.add(act);
-//                    }
-//                });
-//                i = nextI;
-//            }
-//        }
             String distLogInfo =
                 String.format("[schema %s] estimated data distribution: %s", schemaName,
                     JSON.toJSONString(dataDistInfo));
@@ -2299,24 +2249,6 @@ public class PolicyDrainNode implements BalancePolicy {
                 return true;
             }
             return false;
-        }
-    }
-
-    public class MoveInfo {
-        PartitionStat partitionStat;
-        String targetDn;
-
-        String tgName;
-        Long tableRows;
-        Long dataSize;
-
-        public MoveInfo(PartitionStat partitionStat, String tgName, String targetDn, Long tableRows,
-                        Long dataSize) {
-            this.partitionStat = partitionStat;
-            this.tgName = tgName;
-            this.targetDn = targetDn;
-            this.tableRows = tableRows;
-            this.dataSize = dataSize;
         }
     }
 

@@ -82,6 +82,13 @@ public class InsertGsiWithFuncTest extends GsiDMLTest {
         UNSUPPORTED_FUNCTION.add("SESSION_USER");
         UNSUPPORTED_FUNCTION.add("SYSTEM_USER");
         UNSUPPORTED_FUNCTION.add("TSO_TIMESTAMP");
+
+        // locking functions
+        UNSUPPORTED_FUNCTION.add("GET_LOCK");
+        UNSUPPORTED_FUNCTION.add("IS_FREE_LOCK");
+        UNSUPPORTED_FUNCTION.add("IS_USED_LOCK");
+        UNSUPPORTED_FUNCTION.add("RELEASE_ALL_LOCKS");
+        UNSUPPORTED_FUNCTION.add("RELEASE_LOCK");
     }
 
     @Parameterized.Parameters(name = "{index}:hint={0} table1={1} table2={2}")

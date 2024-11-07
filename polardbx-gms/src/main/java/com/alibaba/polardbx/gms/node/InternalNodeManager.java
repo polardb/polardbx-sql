@@ -29,33 +29,18 @@
  */
 package com.alibaba.polardbx.gms.node;
 
-import java.util.List;
 import java.util.Set;
 
 public interface InternalNodeManager {
 
-    /**
-     * @param slaveFirst true - 只读实例的节点优先
-     */
-    Set<InternalNode> getNodes(NodeState state, boolean slaveFirst);
-
     Node getCurrentNode();
-
-    Set<Node> getCoordinators();
 
     AllNodes getAllNodes();
 
-    void refreshNodes();
-
-    /**
-     * @param slaveFirst true - 只读实例的节点优先
-     */
-    List<Node> getAllWorkers(boolean slaveFirst);
-
-    List<Node> getAllCoordinators();
-
     void removeNode(NodeServer node, String schema);
 
-    void updateNodes(Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes, Set<InternalNode> inactiveNodes,
+    void updateNodes(Set<InternalNode> currentActiveNodes, Set<InternalNode> remoteActiveRowNodes,
+                     Set<InternalNode> remoteActiveColumnarNodes,
+                     Set<InternalNode> inactiveNodes,
                      Set<InternalNode> shuttingDownNodes);
 }

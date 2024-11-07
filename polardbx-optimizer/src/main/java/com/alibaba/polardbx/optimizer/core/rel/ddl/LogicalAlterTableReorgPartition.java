@@ -292,4 +292,9 @@ public class LogicalAlterTableReorgPartition extends BaseDdlOperation {
         return new LogicalAlterTableReorgPartition(ddl);
     }
 
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getPreparedData()) {
+            getPreparedData().setDdlVersionId(ddlVersionId);
+        }
+    }
 }

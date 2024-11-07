@@ -34,12 +34,11 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 import com.alibaba.polardbx.optimizer.core.datatype.SetType;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.orc.impl.TypeUtils;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -53,12 +52,13 @@ import static com.alibaba.polardbx.executor.archive.columns.ColumnProvider.longF
 public class RawOrcTypeCsvReader implements CSVFileReader {
 
     private int fieldNum;
-    private InputStream inputStream;
+    private FSDataInputStream inputStream;
     private List<ColumnMeta> columnMetas;
     private ByteCSVReader rowReader;
     private ExecutionContext context;
     private int chunkLimit;
     private int offset;
+    private int length;
     public static Charset DEFAULT_CHARSET = CharsetName.defaultCharset().toJavaCharset();
 
     @Override
@@ -67,18 +67,15 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
         this.chunkLimit = chunkLimit;
         this.context = context;
         this.fieldNum = columnMetas.size();
-        // synchronous reading
-        byte[] buffer;
-        if (offset == 0 && length == EOF) {
-            buffer = FileSystemUtils.readFullyFile(csvFileName, engine, true);
-        } else {
-            buffer = new byte[length];
-            FileSystemUtils.readFile(csvFileName, offset, length, buffer, engine, true);
-        }
 
-        this.inputStream = new ByteArrayInputStream(buffer);
+        this.inputStream = FileSystemUtils.openStreamFileWithBuffer(csvFileName, engine, true);
+        if (offset > 0) {
+            inputStream.seek(offset);
+        }
+        this.length = length == EOF ? Integer.MAX_VALUE : length;
+
         this.columnMetas = columnMetas;
-        this.rowReader = new ByteCSVReader(csvFileName, inputStream);
+        this.rowReader = new ByteCSVReader(csvFileName, inputStream, this.length);
         this.offset = offset;
     }
 
@@ -89,6 +86,7 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
 
     @Override
     public Chunk nextUntilPosition(long pos) {
+        long positionBound = Math.min(pos, offset + length);
         List<BlockBuilder> blockBuilders = this.columnMetas
             .stream()
             .map(ColumnMeta::getDataType)
@@ -96,8 +94,8 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
             .collect(Collectors.toList());
 
         int totalRow = 0;
-        while (offset + rowReader.position() < pos && rowReader.isReadable()) {
-            try {
+        try {
+            while (offset + rowReader.position() < positionBound && rowReader.isReadable()) {
                 CSVRow row = rowReader.nextRow();
 
                 // for each row, parse each column and append onto block-builder
@@ -112,10 +110,9 @@ public class RawOrcTypeCsvReader implements CSVFileReader {
                 if (++totalRow >= chunkLimit) {
                     return buildChunk(blockBuilders, totalRow);
                 }
-
-            } catch (IOException e) {
-                throw GeneralUtil.nestedException(e);
             }
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
         }
 
         // flush the remaining rows

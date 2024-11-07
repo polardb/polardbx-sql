@@ -44,6 +44,7 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
      */
     private List<PartitionGroupRecord> invisiblePartitionGroups;
     private boolean operateOnSubPartition;
+    private boolean columnarIndex;
 
     public String getTableGroupName() {
         return tableGroupName;
@@ -132,5 +133,13 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
 
     public void setOperateOnSubPartition(boolean operateOnSubPartition) {
         this.operateOnSubPartition = operateOnSubPartition;
+    }
+
+    public boolean isColumnarIndex() {
+        return this.columnarIndex;
+    }
+
+    public void setColumnarIndex(final boolean columnarIndex) {
+        this.columnarIndex = columnarIndex;
     }
 }

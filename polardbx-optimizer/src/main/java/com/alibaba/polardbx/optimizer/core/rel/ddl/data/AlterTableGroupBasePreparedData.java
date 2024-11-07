@@ -556,4 +556,5 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
         return TStringUtil.isEmpty(this.getTargetImplicitTableGroupName()) || (implicitTableGroupConfig != null
             && !implicitTableGroupConfig.isEmpty());
     }
+
 }

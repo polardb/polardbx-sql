@@ -26,7 +26,7 @@ import java.util.Properties;
 
 public class GmsSyncDataSource extends AbstractLifecycle {
 
-    private static final MessageFormat MYSQL_URL_FORMAT = new MessageFormat("jdbc:mysql://{0}:{1}/{2}");
+    private static final MessageFormat MYSQL_URL_FORMAT = new MessageFormat("jdbc:mysql://{0}:{1}/{2}?useSSL=false");
 
     private static final String SYNC_PASSWORD = "none";
     private static final String SYNC_DATABASE = "sync";

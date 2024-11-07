@@ -37,7 +37,7 @@ import java.util.Set;
  */
 public class LogicalShowLocalDeadlocksHandler extends HandlerCommon {
 
-    private final static String SHOW_ENGINE_INNODB_STATUS = "show engine innodb status";
+    public final static String SHOW_ENGINE_INNODB_STATUS = "show engine innodb status";
 
     public LogicalShowLocalDeadlocksHandler(IRepository repo) {
         super(repo);
@@ -54,18 +54,16 @@ public class LogicalShowLocalDeadlocksHandler extends HandlerCommon {
         Set<String> allDnId = ExecUtils.getAllDnStorageId();
 
         // 2. Query each DN for deadlock information, and add it to the result
-        generateDeadlockLogs(allDnId, executionContext, result);
+        generateDeadlockLogs(allDnId, result);
 
         return result;
     }
 
     /**
      * @param allDnId is a set of all dn's storage instance id
-     * @param executionContext is used for privilege check
      * @param result is updated in this method
      */
     private void generateDeadlockLogs(Set<String> allDnId,
-                                      ExecutionContext executionContext,
                                       ArrayResultCursor result) {
         for (String dnId : allDnId) {
             try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
@@ -81,7 +79,7 @@ public class LogicalShowLocalDeadlocksHandler extends HandlerCommon {
 
                         // Parse the {status} to get deadlock information,
                         final String deadlockLog =
-                            DeadlockParser.parseLocalDeadlock(status, executionContext);
+                            DeadlockParser.parseLocalDeadlock(status);
 
                         result.addRow(new Object[] {dnId, deadlockLog});
                     }

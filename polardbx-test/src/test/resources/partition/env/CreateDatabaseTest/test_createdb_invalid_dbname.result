@@ -1,0 +1,25 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $# forbidden #$
+create database `mysql`;
+forbidden
+## error_msg: $# forbidden #$
+create database if not exists `mysql`;
+forbidden
+## error_msg: $# forbidden #$
+create database `performance_schema` mode='auto';
+forbidden
+## error_msg: $# forbidden #$
+create database if not exists `performance_schema`  mode='auto';
+forbidden
+## error_msg: $# forbidden #$
+create database `__cdc__`  mode='auto';
+forbidden
+## error_msg: $# forbidden #$
+create database if not exists `__cdc__`  mode='auto';
+forbidden
+## error_msg: $# forbidden #$
+create database `metadb`  mode='auto';
+forbidden
+## error_msg: $# forbidden #$
+create database if not exists `metadb`  mode='auto';
+forbidden

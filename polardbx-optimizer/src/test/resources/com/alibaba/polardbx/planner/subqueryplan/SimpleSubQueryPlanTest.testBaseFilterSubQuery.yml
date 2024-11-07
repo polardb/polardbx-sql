@@ -391,3 +391,13 @@
       logicalview(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardcount=12, sql="select `pk` from `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` as `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
     gather(concurrent=true)
       logicalview(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardcount=12, sql="select `pk` from `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` as `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
+
+- sql: |
+    select sum(select sum(int_col1) from test_tb5 where id=t.id) as s1 from test_tb6 t join test_hash_tb2 t2 on t.name=t2.name;
+  plan: |
+    HashAgg(s1="SUM($f0)")
+      Project($f0="sum(int_col1)", cor=[$cor0])
+        BKAJoin(condition="name = name", type="inner")
+          LogicalView(tables="optest_0000.test_tb5,test_tb6", sql="SELECT `test_tb6`.`id`, `test_tb6`.`name`, `test_tb6`.`create_time`, `test_tb6`.`int_col1`, `test_tb6`.`int_col2`, `test_tb6`.`int_col3`, `test_tb6`.`int_col4`, `test_tb6`.`int_col5`, `test_tb6`.`int_col6`, `t0`.`sum(int_col1)`, `t0`.`id` AS `id0`, `t0`.`sum(int_col1)2` FROM (SELECT SUM(`int_col1`) AS `sum(int_col1)`, `id`, SUM(`int_col1`) AS `sum(int_col1)2` FROM `test_tb5` AS `test_tb5` GROUP BY `id`) AS `t0` RIGHT JOIN `test_tb6` AS `test_tb6` ON (`t0`.`id` = `test_tb6`.`id`)")
+          Gather(concurrent=true)
+            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`name` IN (...))")

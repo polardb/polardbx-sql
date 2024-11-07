@@ -39,8 +39,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.rpc.compatible.XPreparedStatement;
-import com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
@@ -48,6 +48,7 @@ import com.alibaba.polardbx.transaction.TransactionState;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
 import com.google.protobuf.ByteString;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
+import com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -82,8 +83,10 @@ import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID_
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID_V2;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID_V2_ARCHIVE;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SET_DISTRIBUTED_TRX_ID;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.TRX_LOG_SOCKET_TIMEOUT;
 import static com.alibaba.polardbx.common.utils.LockUtil.wrapWithInnodbLockWaitTimeout;
 import static com.alibaba.polardbx.common.utils.LockUtil.wrapWithLockWaitTimeout;
+import static com.alibaba.polardbx.common.utils.LockUtil.wrapWithSocketTimeout;
 
 public class GlobalTxLogManager extends AbstractLifecycle {
 
@@ -118,6 +121,10 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
+    public static String getCurrentServerAddr() {
+        return currentServerAddr;
+    }
+
     public void setTransactionExecutor(TransactionExecutor executor) {
         this.executor = executor;
     }
@@ -132,11 +139,11 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     public boolean appendTrxLog(long txid, TransactionType type, TransactionState state, ConnectionContext context,
                                 IConnection conn) throws SQLException {
         if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
-            append(txid, type, state, context, conn);
+            appendWithSocketTimeout(txid, type, state, context, conn);
             return false;
         } else {
             // Use 1 to represent XA transaction.
-            appendV2(txid, 1, conn);
+            appendV2WithSocketTimeout(txid, 1, conn);
             long lastLogTime = TransactionAttribute.LAST_LOG_TRX_LOG_V2.get();
             if (TransactionManager.shouldWriteEventLog(lastLogTime)
                 && TransactionAttribute.LAST_LOG_TRX_LOG_V2.compareAndSet(lastLogTime, System.nanoTime())) {
@@ -152,10 +159,10 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     public boolean appendTrxLog(long txid, TransactionType type, TransactionState state, ConnectionContext context,
                                 long commitTimestamp, IConnection conn) throws SQLException {
         if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
-            append(txid, type, state, context, commitTimestamp, conn);
+            appendWithSocketTimeout(txid, type, state, context, commitTimestamp, conn);
             return false;
         } else {
-            appendV2(txid, commitTimestamp, conn);
+            appendV2WithSocketTimeout(txid, commitTimestamp, conn);
             long lastLogTime = TransactionAttribute.LAST_LOG_TRX_LOG_V2.get();
             if (TransactionManager.shouldWriteEventLog(lastLogTime)
                 && TransactionAttribute.LAST_LOG_TRX_LOG_V2.compareAndSet(lastLogTime, System.nanoTime())) {
@@ -165,8 +172,16 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public static void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
-                              IConnection conn) throws SQLException {
+    public static void appendWithSocketTimeout(long txid, TransactionType type, TransactionState state,
+                                               ConnectionContext context, IConnection conn) throws SQLException {
+        wrapWithSocketTimeout(conn, TRX_LOG_SOCKET_TIMEOUT, TGroupDirectConnection.socketTimeoutExecutor, () -> {
+            append(txid, type, state, context, conn);
+            return null;
+        });
+    }
+
+    private static void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
+                               IConnection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(APPEND_TRX)) {
             if (ps.isWrapperFor(XPreparedStatement.class)) {
                 ps.unwrap(XPreparedStatement.class).setGalaxyDigest(APPEND_TRX_DIGEST);
@@ -181,8 +196,17 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public static void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
-                              long commitTimestamp, IConnection conn) throws SQLException {
+    public static void appendWithSocketTimeout(long txid, TransactionType type, TransactionState state,
+                                               ConnectionContext context,
+                                               long commitTimestamp, IConnection conn) throws SQLException {
+        wrapWithSocketTimeout(conn, TRX_LOG_SOCKET_TIMEOUT, TGroupDirectConnection.socketTimeoutExecutor, () -> {
+            append(txid, type, state, context, commitTimestamp, conn);
+            return null;
+        });
+    }
+
+    private static void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
+                               long commitTimestamp, IConnection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(TrxLogTableConstants.APPEND_TRX_WITH_TS)) {
             if (ps.isWrapperFor(XPreparedStatement.class)) {
                 ps.unwrap(XPreparedStatement.class).setGalaxyDigest(APPEND_TRX_WITH_TS_DIGEST);
@@ -198,15 +222,14 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public static void appendWithLockWaitTimeout(long txid, TransactionType type, TransactionState state,
-                                                 ConnectionContext context,
-                                                 IConnection conn) throws SQLException {
+    public static void appendWithTimeout(long txid, TransactionType type, TransactionState state,
+                                         ConnectionContext context, IConnection conn) throws SQLException {
         AtomicReference<SQLException> exception = new AtomicReference<>();
         wrapWithLockWaitTimeout(conn, 3, () -> {
             try {
                 wrapWithInnodbLockWaitTimeout(conn, 3, () -> {
                     try {
-                        append(txid, type, state, context, conn);
+                        appendWithSocketTimeout(txid, type, state, context, conn);
                     } catch (SQLException e) {
                         logger.error(e);
                         exception.set(e);
@@ -222,7 +245,15 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public static void appendV2(long txid, long commitTimestamp, IConnection conn) throws SQLException {
+    public static void appendV2WithSocketTimeout(long txid, long commitTimestamp, IConnection conn)
+        throws SQLException {
+        wrapWithSocketTimeout(conn, TRX_LOG_SOCKET_TIMEOUT, TGroupDirectConnection.socketTimeoutExecutor, () -> {
+            appendV2(txid, commitTimestamp, conn);
+            return null;
+        });
+    }
+
+    private static void appendV2(long txid, long commitTimestamp, IConnection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(TrxLogTableConstants.APPEND_TRX_V2)) {
             ps.setLong(1, txid);
             ps.setLong(2, commitTimestamp);
@@ -247,8 +278,8 @@ public class GlobalTxLogManager extends AbstractLifecycle {
             // First error in 10 min, reset err cnt.
             appendV2FailedCnt.set(0);
         }
-        // 10 err occurs in the last 10 min, switch to legacy method for safety.
-        if (appendV2FailedCnt.incrementAndGet() == 10) {
+        // 100 errors occur in the last 10 min, switch to legacy method for safety.
+        if (appendV2FailedCnt.incrementAndGet() == 100) {
             try {
                 if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
                     return;
@@ -268,14 +299,14 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         MetaDbUtil.setGlobal(properties);
     }
 
-    public static void appendV2WithLockWaitTimeout(long txid, long commitTimestamp, IConnection conn)
+    public static void appendV2WithTimeout(long txid, long commitTimestamp, IConnection conn)
         throws SQLException {
         AtomicReference<SQLException> exception = new AtomicReference<>();
         wrapWithLockWaitTimeout(conn, 3, () -> {
             try {
                 wrapWithInnodbLockWaitTimeout(conn, 3, () -> {
                     try {
-                        appendV2(txid, commitTimestamp, conn);
+                        appendV2WithSocketTimeout(txid, commitTimestamp, conn);
                     } catch (SQLException e) {
                         logger.error(e);
                         exception.set(e);
@@ -293,124 +324,10 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public GlobalTxLog get(String primaryGroup, XAUtils.XATransInfo transInfo, String schema) throws SQLException {
-        IDataSource dataSource = executor.getGroupExecutor(primaryGroup).getDataSource();
-        try (IConnection conn = dataSource.getConnection()) {
-            if (TransactionManager.getInstance(schema).support2pcOpt()) {
-                try (Statement stmt = conn.createStatement()) {
-                    ResultSet rs = stmt.executeQuery(String.format("call dbms_xa.find_by_xid('%s', '%s', 1)",
-                        transInfo.gtrid, XAUtils.toBqualString(primaryGroup, 0L)));
-                    if (rs.next()) {
-                        String status = rs.getString("Status");
-                        String tso = rs.getString("GCN");
-                        String csr = rs.getString("CSR");
-
-                        TransactionLogger.warn("Found 2pc opt trx log, status " + status + ", tso " + tso + ", csr " + csr
-                            + ", gtrid " + transInfo.gtrid + ", bqual " + transInfo.trimedBqual);
-
-                        if ("ATTACHED".equalsIgnoreCase(status)) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setGroup(primaryGroup);
-                            trans.setTxid(transInfo.transId);
-                            trans.setState(TransactionState.ATTACHED);
-                            return trans;
-                        } else if ("ROLLBACK".equalsIgnoreCase(status)) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setGroup(primaryGroup);
-                            trans.setTxid(transInfo.transId);
-                            trans.setState(TransactionState.ABORTED);
-                            return trans;
-                        } else if ("COMMIT".equalsIgnoreCase(status)) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setGroup(primaryGroup);
-                            trans.setTxid(transInfo.transId);
-                            if ("ASSIGNED_GCN".equalsIgnoreCase(csr)) {
-                                trans.setType(TransactionType.TSO);
-                                if (!"18446744073709551615".equals(tso)) {
-                                    trans.setCommitTimestamp(Long.valueOf(tso));
-                                }
-                            } else {
-                                trans.setType(TransactionType.XA);
-                            }
-                            trans.setState(TransactionState.SUCCEED);
-                            return trans;
-                        }
-                    }
-
-                    rs = stmt.executeQuery(String.format("call dbms_xa.find_by_xid('%s', '%s', 1)",
-                        transInfo.gtrid, XAUtils.toBqualString(primaryGroup)));
-                    if (rs.next()) {
-                        String status = rs.getString("Status");
-                        String tso = rs.getString("GCN");
-                        String csr = rs.getString("CSR");
-
-                        TransactionLogger.warn("Found 2pc opt trx log, status " + status + ", tso " + tso + ", csr " + csr
-                            + ", gtrid " + transInfo.gtrid + ", bqual " + transInfo.trimedBqual);
-
-                        if ("ATTACHED".equalsIgnoreCase(status)) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setGroup(primaryGroup);
-                            trans.setTxid(transInfo.transId);
-                            trans.setState(TransactionState.ATTACHED);
-                            return trans;
-                        } else if ("ROLLBACK".equalsIgnoreCase(status)) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setGroup(primaryGroup);
-                            trans.setTxid(transInfo.transId);
-                            trans.setState(TransactionState.ABORTED);
-                            return trans;
-                        } else if ("COMMIT".equalsIgnoreCase(status)) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setGroup(primaryGroup);
-                            trans.setTxid(transInfo.transId);
-                            if ("ASSIGNED_GCN".equalsIgnoreCase(csr)) {
-                                trans.setType(TransactionType.TSO);
-                                if (!"18446744073709551615".equals(tso)) {
-                                    trans.setCommitTimestamp(Long.valueOf(tso));
-                                }
-                            } else {
-                                trans.setType(TransactionType.XA);
-                            }
-                            trans.setState(TransactionState.SUCCEED);
-                            return trans;
-                        }
-                    }
-                }
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
-                if (ps.isWrapperFor(XPreparedStatement.class)) {
-                    ps.unwrap(XPreparedStatement.class).setGalaxyDigest(SELECT_BY_ID_DIGEST);
-                }
-                ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
-                ps.setLong(2, transInfo.transId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        GlobalTxLog trans = new GlobalTxLog();
-                        trans.setGroup(primaryGroup);
-                        trans.setTxid(transInfo.transId);
-                        trans.setType(TransactionType.valueOf(rs.getString(1)));
-                        trans.setState(TransactionState.valueOf(rs.getString(2)));
-                        trans.setServerAddr(rs.getString(3));
-                        trans.setContext(JSON.parseObject(rs.getString(4), ConnectionContext.class));
-                        long commitTimestamp = rs.getLong(5);
-                        if (commitTimestamp > 0) { // zero for NULL
-                            trans.setCommitTimestamp(commitTimestamp);
-                        }
-                        return trans;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    public GlobalTxLog get(String primaryGroup, long txid) throws SQLException {
+    public GlobalTxLog get(String primaryGroup, long txid, IConnection conn) throws SQLException {
         AtomicReference<SQLException> exception = new AtomicReference<>();
         AtomicReference<GlobalTxLog> trans = new AtomicReference<>();
-        IDataSource dataSource = executor.getGroupExecutor(primaryGroup).getDataSource();
-        try (IConnection conn = dataSource.getConnection();
-            PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
+        try (PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
             wrapWithLockWaitTimeout(conn, 3, () -> {
                 try {
                     if (ps.isWrapperFor(XPreparedStatement.class)) {
@@ -446,14 +363,29 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         return trans.get();
     }
 
+    public GlobalTxLog getWithTimeout(String primaryGroup, long txid) throws SQLException {
+        IDataSource dataSource = executor.getGroupExecutor(primaryGroup).getDataSource();
+        try (IConnection conn = dataSource.getConnection()) {
+            return wrapWithSocketTimeout(conn, TRX_LOG_SOCKET_TIMEOUT, TGroupDirectConnection.socketTimeoutExecutor,
+                () -> get(primaryGroup, txid, conn));
+        }
+    }
+
+    public static GlobalTxLog getV2WithTimeout(IDataSource dataSource, long txid, boolean dn57) throws SQLException {
+        try (DeferredConnection conn = new DeferredConnection(dataSource.getConnection(),
+            InstConfUtil.getBool(ConnectionParams.USING_RDS_RESULT_SKIP))) {
+            return wrapWithSocketTimeout(conn, TRX_LOG_SOCKET_TIMEOUT, TGroupDirectConnection.socketTimeoutExecutor,
+                () -> getV2(conn, txid, dn57));
+        }
+    }
+
     /**
      * Get trx log V2, either an async commit log, or a new trx log.
      */
-    public static GlobalTxLog getV2(IDataSource dataSource, long txid, boolean dn57) throws SQLException {
+    public static GlobalTxLog getV2(DeferredConnection conn, long txid, boolean dn57) throws SQLException {
         AtomicReference<SQLException> exception = new AtomicReference<>();
         AtomicReference<GlobalTxLog> trans = new AtomicReference<>();
-        try (DeferredConnection conn = new DeferredConnection(dataSource.getConnection(),
-            InstConfUtil.getBool(ConnectionParams.USING_RDS_RESULT_SKIP))) {
+        try {
             wrapWithLockWaitTimeout(conn, 3, () -> {
                 try (Statement stmt = conn.createStatement()) {
                     conn.executeLater("begin");
@@ -510,6 +442,8 @@ public class GlobalTxLogManager extends AbstractLifecycle {
                     }
                 }
             });
+        } catch (Throwable t) {
+            throw t;
         }
 
         // Re-throw error.
@@ -519,8 +453,19 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         return trans.get();
     }
 
-    public static int rotate(IDataSource dataSource, long beforeTxid, long nextTxid) {
+    public static int rotateWithTimeout(IDataSource dataSource, long beforeTxid, long nextTxid) {
         try (IConnection connection = dataSource.getConnection()) {
+            return wrapWithSocketTimeout(connection, TRX_LOG_SOCKET_TIMEOUT,
+                TGroupDirectConnection.socketTimeoutExecutor,
+                () -> rotate(connection, beforeTxid, nextTxid));
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG, e,
+                "Rotate global transaction log with " + beforeTxid + " failed");
+        }
+    }
+
+    public static int rotate(IConnection connection, long beforeTxid, long nextTxid) {
+        try {
             AtomicLong dropped = new AtomicLong();
             LockUtil.wrapWithLockWaitTimeout(connection, 10, () -> {
                 try (Statement stmt = connection.createStatement()) {
@@ -566,6 +511,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
                     TransactionLogger.error("Rotate global transaction log with " + beforeTxid + " failed", e);
                 }
             });
+
             return dropped.intValue();
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG, e,
@@ -574,15 +520,29 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     }
 
     public static void createTables(IDataSource dataSource, long initTxid, Set<String> dnSet) {
-        try (Connection conn = dataSource.getConnection();
-            Statement stmt = conn.createStatement()) {
-            String instanceId = ((TGroupDataSource) dataSource).getMasterSourceAddress();
-            if (dnSet.add(instanceId)) {
-                // One table only for each DN.
-                createGlobalTxLogTableV2(stmt);
+        AtomicReference<SQLException> exception = new AtomicReference<>(null);
+        try (Connection conn = dataSource.getConnection()) {
+            wrapWithSocketTimeout(conn, TRX_LOG_SOCKET_TIMEOUT, TGroupDirectConnection.socketTimeoutExecutor, () -> {
+                wrapWithLockWaitTimeout(conn, 10, () -> {
+                    String instanceId = ((TGroupDataSource) dataSource).getMasterSourceAddress();
+                    try (Statement stmt = conn.createStatement()) {
+                        if (dnSet.add(instanceId)) {
+                            // One table only for each DN.
+                            createGlobalTxLogTableV2(stmt);
+                        }
+                        createGlobalTxLogTable(stmt, initTxid);
+                        createRedoLogTable(stmt);
+                    } catch (SQLException t) {
+                        exception.set(t);
+                    }
+                });
+                return null;
+            });
+
+            if (null != exception.get()) {
+                // Rethrow exception.
+                throw exception.get();
             }
-            createGlobalTxLogTable(stmt, initTxid);
-            createRedoLogTable(stmt);
         } catch (SQLException ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG, ex,
                 "Failed to create transaction log tables: " + ex.getMessage());
@@ -592,7 +552,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     /**
      * Create DRDS_GLOBAL_TX_LOG table or alter the `TYPE` column of it
      */
-    private static void createGlobalTxLogTable(Statement stmt, long initTxid) throws SQLException {
+    protected static void createGlobalTxLogTable(Statement stmt, long initTxid) throws SQLException {
         boolean needCreate = false;
         boolean needAlterType = true;
         boolean needAddCommitTs = true;

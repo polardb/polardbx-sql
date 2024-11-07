@@ -55,6 +55,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -232,6 +233,11 @@ public class AsyncStripeLoader implements StripeLoader {
         // Column-level parallel data loading is only suitable for columns that size > 2MB in one stripe.
         // In some cases, we need merge all columns in one IO task.
 
+        if (rowGroupBitmaps != null && rowGroupBitmaps.values().stream().allMatch(AsyncStripeLoader::allFalse)) {
+            // Directly return empty map to avoid opening file.
+            return CompletableFuture.completedFuture(new HashMap<>());
+        }
+
         OrcIndex orcIndex = preheatFileMeta.getOrcIndex(
             stripeInformation.getStripeId()
         );
@@ -314,6 +320,12 @@ public class AsyncStripeLoader implements StripeLoader {
                                                              boolean[] targetRowGroups,
                                                              Supplier<Boolean> controller) {
         Preconditions.checkArgument(isOpened, "The stripe loader has not already been opened");
+
+        if (allFalse(targetRowGroups)) {
+            // Directly return empty map to avoid opening file.
+            return CompletableFuture.completedFuture(new HashMap<>());
+        }
+
         // Column-level parallel data loading is only suitable for columns that size > 2MB in one stripe.
         // In some cases, we need merge all columns in one IO task.
 
@@ -564,6 +576,18 @@ public class AsyncStripeLoader implements StripeLoader {
     @Override
     public void close() throws IOException {
         // nothing should be closed here.
+    }
+
+    public static boolean allFalse(boolean[] rowGroupIncluded) {
+        if (rowGroupIncluded != null) {
+            for (boolean b : rowGroupIncluded) {
+                if (b) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
 }

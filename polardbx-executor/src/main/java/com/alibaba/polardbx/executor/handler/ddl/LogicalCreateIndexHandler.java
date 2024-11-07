@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
@@ -90,14 +91,17 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         }
 
         boolean globalIndex = logicalCreateIndex.isClustered() || logicalCreateIndex.isGsi();
-        boolean expressionIndex = isExpressionIndex(logicalCreateIndex, executionContext);
+        //mysql 80支持函数索引，直接下推，不用改写成虚拟列+索引
+        boolean expressionIndex =
+            !InstanceVersion.isMYSQL80() && isExpressionIndex(logicalCreateIndex, executionContext);
         boolean isColumnar = logicalCreateIndex.isColumnar();
         final Long versionId = DdlUtils.generateVersionId(executionContext);
 
         if (isColumnar) {
             return buildCreateColumnarIndexJob(logicalCreateIndex, versionId, executionContext);
         } else if (expressionIndex) {
-            if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CREATE_EXPRESSION_INDEX)) {
+            if (!InstanceVersion.isMYSQL80() && !executionContext.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_CREATE_EXPRESSION_INDEX)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "create expression index is not enabled");
             }
 

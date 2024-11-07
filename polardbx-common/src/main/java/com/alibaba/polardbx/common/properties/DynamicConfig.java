@@ -22,8 +22,8 @@ import com.alibaba.fastjson.parser.Feature;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.statementsummary.StatementSummaryManager;
-import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -96,6 +96,9 @@ public class DynamicConfig {
             case ConnectionProperties.OPTIMIZER_ALERT_LOG_INTERVAL:
                 optimizerAlertLogInterval = parseValue(value, Long.class, 600000L);
                 break;
+            case ConnectionProperties.ENABLE_HOT_GSI_EVOLUTION:
+                enableHotGsiEvolution = parseValue(value, Boolean.class, true);
+                break;
             case ConnectionProperties.ENABLE_TP_SLOW_ALERT_THRESHOLD:
                 tpSlowAlertThreshold = parseValue(value, Integer.class, 10);
                 break;
@@ -123,6 +126,9 @@ public class DynamicConfig {
             case ConnectionProperties.ENABLE_FOLLOWER_READ:
                 supportFollowRead = parseValue(value, Boolean.class, false);
                 break;
+            case ConnectionProperties.ENABLE_SHARE_READVIEW_IN_RC:
+                enableShareReadviewInRc = parseValue(value, Boolean.class, false);
+                break;
             case ConnectionProperties.ENABLE_REMOTE_CONSUME_LOG:
                 enableRemoteConsumeLog = parseValue(value, Boolean.class, false);
                 break;
@@ -142,6 +148,17 @@ public class DynamicConfig {
 
             case ConnectionProperties.BLOCK_CACHE_MEMORY_SIZE_FACTOR:
                 blockCacheMemoryFactor = parseValue(value, Float.class, 0.6f);
+                break;
+            case ConnectionProperties.CN_DIV_PRECISION_INCREMENT:
+                cnDivPrecisionIncrement = parseValue(value, Integer.class, 4);
+                break;
+
+            case ConnectionProperties.PREHEATED_CACHE_MAX_ENTRIES:
+                preheatedCacheMaxEntries = parseValue(value, Long.class, 4096L);
+                break;
+
+            case ConnectionProperties.MPP_QUERY_RESULT_MAX_WAIT_IN_MILLIS:
+                mppQueryResultMaxWaitInMillis = parseValue(value, Long.class, 10L);
                 break;
 
             case ConnectionProperties.PURGE_HISTORY_MS: {
@@ -179,6 +196,24 @@ public class DynamicConfig {
 
             case ConnectionProperties.PLAN_CACHE_EXPIRE_TIME:
                 planCacheExpireTime = parseValue(value, Integer.class, 12 * 3600 * 1000);   // 12h
+                break;
+            case ConnectionProperties.ENABLE_COLUMNAR_PLAN_CACHE:
+                enableColumnarPlanCache = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_FLOATING_TYPE_PRECISION:
+                enableFloatingTypePrecision = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.DEADLOCK_DETECTION_80_FETCH_TRX_ROWS:
+                deadlockDetection80FetchTrxRows = parseValue(value, Long.class, 100_000L);
+                break;
+            case ConnectionProperties.DEADLOCK_DETECTION_DATA_LOCK_WAITS_THRESHOLD:
+                deadlockDetectionDataLockWaitsThreshold = parseValue(value, Long.class, 50_000L);
+                break;
+            case ConnectionProperties.DEADLOCK_DETECTION_SKIP_ROUND:
+                deadlockDetectionSkipRound = parseValue(value, Long.class, 10L);
+                break;
+            case ConnectionProperties.MAX_KEEP_DEADLOCK_LOGS:
+                maxKeepDeadlockLogs = parseValue(value, Long.class, 100L);
                 break;
             case ConnectionProperties.ENABLE_EXTREME_PERFORMANCE:
                 enableExtremePerformance = parseValue(value, Boolean.class, true);
@@ -291,6 +326,18 @@ public class DynamicConfig {
             case ConnectionProperties.ENABLE_X_PROTO_OPT_FOR_AUTO_SP:
                 xProtoOptForAutoSp = parseValue(value, Boolean.class, false);
                 break;
+            case ConnectionProperties.CHECK_CCI_TASK_CHECKPOINT_LIMIT:
+                checkCciCheckpointLimit = parseValue(value, Long.class, 1L);
+                break;
+            case ConnectionProperties.SKIP_CHECK_CCI_SCHEDULE_JOB:
+                skipCheckCciScheduleJob = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_AUTO_GEN_COLUMNAR_SNAPSHOT:
+                enableAutoGenColumnarSnapshot = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.AUTO_GEN_COLUMNAR_SNAPSHOT_PARALLELISM:
+                autoGenColumnarSnapshotParallelism = parseValue(value, Integer.class, 4);
+                break;
             case ConnectionProperties.DATABASE_DEFAULT_SINGLE:
                 databaseDefaultSingle = parseValue(value, Boolean.class, false);
                 break;
@@ -349,14 +396,29 @@ public class DynamicConfig {
             case ConnectionProperties.INSTANCE_READ_ONLY:
                 instanceReadOnly = parseValue(value, Boolean.class, false);
                 break;
-            case ConnectionProperties.MIN_SNAPSHOT_KEEP_TIME:
-                minSnapshotKeepTime = parseValue(value, Integer.class, 5 * 60 * 1000);
-                break;
-            case ConnectionProperties.FORBID_AUTO_COMMIT_TRX:
-                forbidAutoCommitTrx = parseValue(value, Boolean.class, false);
-                break;
             case ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE:
                 errorCodeMapping = initErrorCodeMapping(value);
+                break;
+            case ConnectionProperties.ENABLE_ACCURATE_INFO_SCHEMA_TABLES:
+                enableAccurateInfoSchemaTables = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_SYNC_POINT:
+                enableSyncPoint = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.SYNC_POINT_TASK_INTERVAL:
+                syncPointTaskInterval = parseValue(value, Integer.class, 5000);
+                break;
+            case ConnectionProperties.DISABLE_LEGACY_VARIABLE:
+                disableLegacyVariable = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.CCI_INCREMENTAL_CHECK_PARALLELISM:
+                cciIncrementalCheckParallelism = parseValue(value, Integer.class, 8);
+                break;
+            case ConnectionProperties.CCI_INCREMENTAL_CHECK_BATCH_SIZE:
+                cciIncrementalCheckBatchSize = parseValue(value, Integer.class, 128);
+                break;
+            case ConnectionProperties.ENABLE_COLUMNAR_DEBUG:
+                enableColumnarDebug = parseValue(value, Boolean.class, false);
                 break;
             case ConnectionProperties.PRUNING_TIME_WARNING_THRESHOLD:
                 pruningTimeWarningThreshold = parseValue(value, Long.class, 500L);
@@ -370,8 +432,14 @@ public class DynamicConfig {
             case ConnectionProperties.ENABLE_MQ_CACHE_COST_BY_THREAD:
                 enableMQCacheByThread = parseValue(value, Boolean.class, true);
                 break;
+            case ConnectionProperties.NDV_ALIKE_PRECENTAGE_THRESHOLD:
+                ndvAlikePercentageThreshold = parseValue(value, Long.class, 10L);
+                break;
             case ConnectionProperties.ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX:
                 enableUseKeyForAllLocalIndex = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_PARAM_TYPE_CHANGE:
+                enableChangeParamTypeByMeta = parseValue(value, Boolean.class, false);
                 break;
             case TddlConstants.BLACK_LIST_CONF:
                 String blockLists = parseValue(value, String.class, "");
@@ -386,7 +454,206 @@ public class DynamicConfig {
                 }
                 blackListConf = tempBlackList;
                 break;
+            case ConnectionProperties.ALLOW_COLUMNAR_BIND_MASTER:
+                columnarBindMaster = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.SHOW_COLUMNAR_STATUS_USE_SUB_QUERY:
+                showColumnarStatusUseSubQuery = parseValue(value, Boolean.class, false);
+                break;
 
+            case ConnectionProperties.OSS_STREAM_BUFFER_SIZE:
+                ossStreamBufferSize = parseValue(value, Integer.class, 8192);
+                break;
+
+            case ConnectionProperties.TTL_GLOBAL_SELECT_WORKER_COUNT: {
+                ttlGlobalSelectWorkerCount = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_GLOBAL_SELECT_WORKER_COUNT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_GLOBAL_DELETE_WORKER_COUNT: {
+                ttlGlobalDeleteWorkerCount = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_GLOBAL_DELETE_WORKER_COUNT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_TMP_TBL_MAX_DATA_LENGTH: {
+                ttlTmpTableMaxDataLength = parseValue(value, Long.class,
+                    Long.valueOf(ConnectionParams.TTL_TMP_TBL_MAX_DATA_LENGTH.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_TBL_MAX_DATA_FREE_PERCENT: {
+                ttlTmpTableMaxDataFreePercent = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_TBL_MAX_DATA_FREE_PERCENT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME: {
+                ttlIntraTaskInterruptionMaxWaitTime = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME: {
+                ttlIntraTaskMonitorEachRoundWaitTime = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB: {
+                ttlEnableAutoOptimizeTableInTtlJob = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING: {
+                ttlEnableAutoExecOptimizeTableAfterArchiving = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_SCHEDULED_JOB_MAX_PARALLELISM: {
+                ttlScheduledJobMaxParallelism = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_SCHEDULED_JOB_MAX_PARALLELISM.getDefault()));
+
+            }
+            break;
+
+            case ConnectionProperties.TTL_JOB_DEFAULT_BATCH_SIZE: {
+                ttlJobDefaultBatchSize = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_JOB_DEFAULT_BATCH_SIZE.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_CLEANUP_BOUND_INTERVAL_COUNT: {
+                ttlCleanupBoundIntervalCount = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_CLEANUP_BOUND_INTERVAL_COUNT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_STOP_ALL_JOB_SCHEDULING: {
+                ttlStopAllJobScheduling = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_STOP_ALL_JOB_SCHEDULING.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_USE_ARCHIVE_TRANS_POLICY: {
+                ttlUseArchiveTransPolicy = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_USE_ARCHIVE_TRANS_POLICY.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_SELECT_MERGE_UNION_SIZE: {
+                ttlSelectMergeUnionSize = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_SELECT_MERGE_UNION_SIZE.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_SELECT_MERGE_CONCURRENT: {
+                ttlSelectMergeConcurrent = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_SELECT_MERGE_CONCURRENT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_SELECT_STMT_HINT: {
+                ttlSelectStmtHint = parseValue(value, String.class,
+                    String.valueOf(ConnectionParams.TTL_SELECT_STMT_HINT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_DELETE_STMT_HINT: {
+                ttlDeleteStmtHint = parseValue(value, String.class,
+                    String.valueOf(ConnectionParams.TTL_DELETE_STMT_HINT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_INSERT_STMT_HINT: {
+                ttlInsertStmtHint = parseValue(value, String.class,
+                    String.valueOf(ConnectionParams.TTL_INSERT_STMT_HINT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_OPTIMIZE_TABLE_STMT_HINT: {
+                ttlOptimizeTableStmtHint = parseValue(value, String.class,
+                    String.valueOf(ConnectionParams.TTL_OPTIMIZE_TABLE_STMT_HINT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_ALTER_ADD_PART_STMT_HINT: {
+                ttlAlterTableAddPartsStmtHint = parseValue(value, String.class,
+                    String.valueOf(ConnectionParams.TTL_ALTER_ADD_PART_STMT_HINT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DQL_CONN: {
+                ttlGroupParallelismOnDqlConn = parseValue(value, Long.class,
+                    Long.valueOf(ConnectionParams.TTL_GROUP_PARALLELISM_ON_DQL_CONN.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_GROUP_PARALLELISM_ON_DML_CONN: {
+                ttlGroupParallelismOnDmlConn = parseValue(value, Long.class,
+                    Long.valueOf(ConnectionParams.TTL_GROUP_PARALLELISM_ON_DML_CONN.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING: {
+                ttlAddMaxValPartOnCciCreating = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS: {
+                ttlMaxWaitAcquireRatePermitsPeriods = parseValue(value, Long.class,
+                    Long.valueOf(ConnectionParams.TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT: {
+                ttlEnableCleanupRowsSpeedLimit = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN: {
+                ttlCleanupRowsSpeedLimitEachDn = parseValue(value, Long.class,
+                    Long.valueOf(ConnectionParams.TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB: {
+                ttlIgnoreMaintainWindowInDdlJob = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_GLOBAL_WORKER_DN_RATIO: {
+                ttlGlobalWorkerDnRatio = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_GLOBAL_WORKER_DN_RATIO.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT: {
+                ttlDefaultArcPreAllocateCount = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT: {
+                ttlDefaultArcPostAllocateCount = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI: {
+                ttlEnableAutoAddPartsForArcCci = parseValue(value, Boolean.class,
+                    Boolean.valueOf(ConnectionParams.TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI.getDefault()));
+            }
+            break;
+
+            case ConnectionProperties.WAIT_FOR_COLUMNAR_COMMIT_MS:
+                waitForColumnarCommitMS = parseValue(value, Long.class, 60000L);
             default:
                 FileConfig.getInstance().loadValue(logger, key, value);
                 break;
@@ -403,7 +670,7 @@ public class DynamicConfig {
     }
 
     private static final long xprotoMaxDnConcurrentDefault =
-        parseValue(ConnectionParams.XPROTO_MAX_DN_CONCURRENT.getDefault(), Long.class, 500L);
+        parseValue(ConnectionParams.XPROTO_MAX_DN_CONCURRENT.getDefault(), Long.class, 2000L);
     private volatile long xprotoMaxDnConcurrent = xprotoMaxDnConcurrentDefault;
 
     public long getXprotoMaxDnConcurrent() {
@@ -411,7 +678,7 @@ public class DynamicConfig {
     }
 
     private static final long xprotoMaxDnWaitConnectionDefault =
-        parseValue(ConnectionParams.XPROTO_MAX_DN_WAIT_CONNECTION.getDefault(), Long.class, 100L);
+        parseValue(ConnectionParams.XPROTO_MAX_DN_WAIT_CONNECTION.getDefault(), Long.class, 2000L);
     private volatile long xprotoMaxDnWaitConnection = xprotoMaxDnWaitConnectionDefault;
 
     public long getXprotoMaxDnWaitConnection() {
@@ -472,6 +739,30 @@ public class DynamicConfig {
         parseValue(ConnectionParams.BLOCK_CACHE_MEMORY_SIZE_FACTOR.getDefault(), Float.class, 0.6f);
     private volatile float blockCacheMemoryFactor = blockCacheMemoryFactorDefault;
 
+    private static final long preheatedCacheMaxEntriesDefault =
+        parseValue(ConnectionParams.PREHEATED_CACHE_MAX_ENTRIES.getDefault(), Long.class, 4096L);
+    private volatile long preheatedCacheMaxEntries = preheatedCacheMaxEntriesDefault;
+
+    private static final long mppQueryResultMaxWaitInMillisDefault =
+        parseValue(ConnectionParams.MPP_QUERY_RESULT_MAX_WAIT_IN_MILLIS.getDefault(), Long.class, 10L);
+    private volatile long mppQueryResultMaxWaitInMillis = mppQueryResultMaxWaitInMillisDefault;
+
+    public long getMppQueryResultMaxWaitInMillis() {
+        return mppQueryResultMaxWaitInMillis;
+    }
+
+    public long getPreheatedCacheMaxEntries() {
+        return preheatedCacheMaxEntries;
+    }
+
+    private static final int cnDivPrecisionIncrementDefault =
+        parseValue(ConnectionParams.CN_DIV_PRECISION_INCREMENT.getDefault(), Integer.class, 4);
+    private volatile int cnDivPrecisionIncrement = cnDivPrecisionIncrementDefault;
+
+    public int getCnDivPrecisionIncrement() {
+        return cnDivPrecisionIncrement;
+    }
+
     public float getBlockCacheMemoryFactor() {
         return blockCacheMemoryFactor;
     }
@@ -507,6 +798,12 @@ public class DynamicConfig {
 
     public long getOptimizerAlertLogInterval() {
         return optimizerAlertLogInterval;
+    }
+
+    private volatile boolean enableHotGsiEvolution = true;
+
+    public boolean enableHotGsiEvolution() {
+        return enableHotGsiEvolution;
     }
 
     private volatile int tpSlowAlertThreshold = 10;
@@ -579,6 +876,42 @@ public class DynamicConfig {
 
     public int planCacheExpireTime() {
         return planCacheExpireTime;
+    }
+
+    private volatile boolean enableColumnarPlanCache = true;
+
+    public boolean colPlanCache() {
+        return enableColumnarPlanCache;
+    }
+
+    private volatile boolean enableFloatingTypePrecision = true;
+
+    public boolean isEnableFloatingTypePrecision() {
+        return enableFloatingTypePrecision;
+    }
+
+    private volatile long deadlockDetection80FetchTrxRows = 100_000L;
+
+    public long getDeadlockDetection80FetchTrxRows() {
+        return deadlockDetection80FetchTrxRows;
+    }
+
+    private volatile long deadlockDetectionDataLockWaitsThreshold = 50_000L;
+
+    public long getDeadlockDetectionDataLockWaitsThreshold() {
+        return deadlockDetectionDataLockWaitsThreshold;
+    }
+
+    private volatile long deadlockDetectionSkipRound = 10L;
+
+    public long getDeadlockDetectionSkipRound() {
+        return deadlockDetectionSkipRound;
+    }
+
+    private volatile long maxKeepDeadlockLogs = 100L;
+
+    public long getMaxKeepDeadlockLogs() {
+        return maxKeepDeadlockLogs;
     }
 
     private static final int maxPartitionColumnCountDefault =
@@ -705,6 +1038,12 @@ public class DynamicConfig {
         return supportFollowRead;
     }
 
+    private volatile boolean enableShareReadviewInRc = false;
+
+    public boolean isEnableShareReadviewInRc() {
+        return enableShareReadviewInRc;
+    }
+
     /**
      * Slow transaction threshold, unit: microsecond, default 3s.
      */
@@ -751,6 +1090,30 @@ public class DynamicConfig {
 
     public boolean enableXProtoOptForAutoSp() {
         return xProtoOptForAutoSp;
+    }
+
+    private volatile long checkCciCheckpointLimit = 1;
+
+    public long getCheckCciCheckpointLimit() {
+        return checkCciCheckpointLimit;
+    }
+
+    private volatile boolean skipCheckCciScheduleJob = false;
+
+    public boolean isSkipCheckCciScheduleJob() {
+        return skipCheckCciScheduleJob;
+    }
+
+    private volatile boolean enableAutoGenColumnarSnapshot = true;
+
+    public boolean isEnableAutoGenColumnarSnapshot() {
+        return enableAutoGenColumnarSnapshot;
+    }
+
+    private volatile int autoGenColumnarSnapshotParallelism = 4;
+
+    public int getAutoGenColumnarSnapshotParallelism() {
+        return autoGenColumnarSnapshotParallelism;
     }
 
     private volatile boolean enableRemoteConsumeLog = false;
@@ -807,6 +1170,16 @@ public class DynamicConfig {
 
     public void setSupportSingleDbMultiTbs(boolean supportSingleDbMultiTbs) {
         this.supportSingleDbMultiTbs = supportSingleDbMultiTbs;
+    }
+
+    private volatile boolean enableChangeParamTypeByMeta = false;
+
+    public boolean isEnableChangeParamTypeByMeta() {
+        return enableChangeParamTypeByMeta;
+    }
+
+    public void setEnableChangeParamTypeByMeta(boolean enableChangeParamTypeByMeta) {
+        this.enableChangeParamTypeByMeta = enableChangeParamTypeByMeta;
     }
 
     public boolean isSupportRemoveDdl() {
@@ -867,6 +1240,12 @@ public class DynamicConfig {
         this.columnarOssDirectory = columnarOssDirectory;
     }
 
+    int ossStreamBufferSize = 8192;
+
+    public int getOssStreamBufferSize() {
+        return ossStreamBufferSize;
+    }
+
     /**
      * Default 60s.
      */
@@ -918,20 +1297,7 @@ public class DynamicConfig {
         return instanceReadOnly;
     }
 
-    // 5 min.
-    private volatile long minSnapshotKeepTime = 5 * 60 * 1000;
-
-    public long getMinSnapshotKeepTime() {
-        return minSnapshotKeepTime;
-    }
-
-    private volatile boolean forbidAutoCommitTrx = false;
-
     private volatile Map<Integer, Integer> errorCodeMapping = new HashMap<>();
-
-    public boolean isForbidAutoCommitTrx() {
-        return forbidAutoCommitTrx;
-    }
 
     public Map<Integer, Integer> getErrorCodeMapping() {
         return errorCodeMapping;
@@ -948,6 +1314,12 @@ public class DynamicConfig {
         return new HashMap<>();
     }
 
+    private volatile boolean enableAccurateInfoSchemaTables = false;
+
+    public boolean isEnableAccurateInfoSchemaTables() {
+        return enableAccurateInfoSchemaTables;
+    }
+
     private boolean enableUseKeyForAllLocalIndex =
         Boolean.valueOf(ConnectionParams.ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX.getDefault());
 
@@ -955,11 +1327,57 @@ public class DynamicConfig {
         return enableUseKeyForAllLocalIndex;
     }
 
+    private volatile boolean enableSyncPoint = false;
+
+    public boolean isEnableSyncPoint() {
+        return enableSyncPoint;
+    }
+
+    /**
+     * Default 5 * 60 * 1000 ms.
+     */
+    private volatile long syncPointTaskInterval = 5 * 60 * 1000;
+
+    public long getSyncPointTaskInterval() {
+        return syncPointTaskInterval;
+    }
+
+    private volatile boolean disableLegacyVariable = true;
+
+    public boolean isDisableLegacyVariable() {
+        return disableLegacyVariable;
+    }
+
+    private volatile int cciIncrementalCheckParallelism = 8;
+
+    public int getCciIncrementalCheckParallelism() {
+        return cciIncrementalCheckParallelism;
+    }
+
+    private volatile int cciIncrementalCheckBatchSize = 128;
+
+    public int getCciIncrementalCheckBatchSize() {
+        return cciIncrementalCheckBatchSize;
+    }
+
+    private volatile boolean enableColumnarDebug = false;
+
+    public boolean isEnableColumnarDebug() {
+        return enableColumnarDebug;
+    }
+
     // pruning warning threshold in microsecond
     private volatile long pruningTimeWarningThreshold = 500;
 
     public long getPruningTimeWarningThreshold() {
         return pruningTimeWarningThreshold;
+    }
+
+    // ndv alike percentage threshold
+    private volatile long ndvAlikePercentageThreshold = 10L;
+
+    public long getNdvAlikePercentageThreshold() {
+        return ndvAlikePercentageThreshold;
     }
 
     private volatile boolean enablePruningIn = true;
@@ -974,10 +1392,259 @@ public class DynamicConfig {
         return enablePruningInDml;
     }
 
+    private volatile boolean columnarBindMaster = false;
+
+    public boolean allowColumnarBindMaster() {
+        return columnarBindMaster;
+    }
+
+    private volatile boolean existColumnarNodes = false;
+
+    public void existColumnarNodes(boolean enable) {
+        this.existColumnarNodes = enable;
+    }
+
+    public boolean existColumnarNodes() {
+        return existColumnarNodes;
+    }
+
     private volatile List<String> blackListConf = new ArrayList<>();
 
     public List<String> getBlacklistConf() {
         return blackListConf;
+    }
+
+    private volatile boolean showColumnarStatusUseSubQuery =
+        Boolean.parseBoolean(ConnectionParams.SHOW_COLUMNAR_STATUS_USE_SUB_QUERY.getDefault());
+
+    public boolean isShowColumnarStatusUseSubQuery() {
+        return showColumnarStatusUseSubQuery;
+    }
+
+    public volatile int ttlGlobalSelectWorkerCount =
+        Integer.valueOf(ConnectionParams.TTL_GLOBAL_SELECT_WORKER_COUNT.getDefault());
+
+    public volatile int ttlGlobalDeleteWorkerCount =
+        Integer.valueOf(ConnectionParams.TTL_GLOBAL_DELETE_WORKER_COUNT.getDefault());
+
+    public volatile long ttlTmpTableMaxDataLength =
+        Long.valueOf(ConnectionParams.TTL_TMP_TBL_MAX_DATA_LENGTH.getDefault());
+
+    public volatile int ttlTmpTableMaxDataFreePercent =
+        Integer.valueOf(ConnectionParams.TTL_TBL_MAX_DATA_FREE_PERCENT.getDefault());
+    ;
+
+    public volatile int ttlIntraTaskInterruptionMaxWaitTime =
+        Integer.valueOf(ConnectionParams.TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME.getDefault());
+
+    public volatile int ttlIntraTaskMonitorEachRoundWaitTime =
+        Integer.valueOf(ConnectionParams.TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME.getDefault());
+
+    public volatile int ttlScheduledJobMaxParallelism =
+        Integer.valueOf(ConnectionParams.TTL_SCHEDULED_JOB_MAX_PARALLELISM.getDefault());
+    ;
+
+    public volatile boolean ttlEnableAutoOptimizeTableInTtlJob =
+        Boolean.valueOf(ConnectionParams.TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB.getDefault());
+
+    public volatile boolean ttlEnableAutoExecOptimizeTableAfterArchiving =
+        Boolean.valueOf(ConnectionParams.TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING.getDefault());
+    ;
+    public volatile int ttlJobDefaultBatchSize =
+        Integer.valueOf(ConnectionParams.TTL_JOB_DEFAULT_BATCH_SIZE.getDefault());
+
+    public volatile int ttlCleanupBoundIntervalCount =
+        Integer.valueOf(ConnectionParams.TTL_CLEANUP_BOUND_INTERVAL_COUNT.getDefault());
+
+    public volatile boolean ttlStopAllJobScheduling =
+        Boolean.valueOf(ConnectionParams.TTL_STOP_ALL_JOB_SCHEDULING.getDefault());
+
+    public volatile boolean ttlUseArchiveTransPolicy =
+        Boolean.valueOf(ConnectionParams.TTL_USE_ARCHIVE_TRANS_POLICY.getDefault());
+
+    public volatile int ttlSelectMergeUnionSize =
+        Integer.valueOf(ConnectionParams.TTL_SELECT_MERGE_UNION_SIZE.getDefault());
+
+    public volatile boolean ttlSelectMergeConcurrent =
+        Boolean.valueOf(ConnectionParams.TTL_SELECT_MERGE_CONCURRENT.getDefault());
+
+    public volatile String ttlSelectStmtHint =
+        String.valueOf(ConnectionParams.TTL_SELECT_STMT_HINT.getDefault());
+
+    public volatile String ttlDeleteStmtHint =
+        String.valueOf(ConnectionParams.TTL_DELETE_STMT_HINT.getDefault());
+
+    public volatile String ttlInsertStmtHint =
+        String.valueOf(ConnectionParams.TTL_INSERT_STMT_HINT.getDefault());
+
+    public volatile String ttlOptimizeTableStmtHint =
+        String.valueOf(ConnectionParams.TTL_OPTIMIZE_TABLE_STMT_HINT.getDefault());
+
+    public volatile String ttlAlterTableAddPartsStmtHint =
+        String.valueOf(ConnectionParams.TTL_ALTER_ADD_PART_STMT_HINT.getDefault());
+
+    public volatile Long ttlGroupParallelismOnDqlConn =
+        Long.valueOf(ConnectionParams.TTL_GROUP_PARALLELISM_ON_DQL_CONN.getDefault());
+
+    public volatile Long ttlGroupParallelismOnDmlConn =
+        Long.valueOf(ConnectionParams.TTL_GROUP_PARALLELISM_ON_DML_CONN.getDefault());
+
+    public volatile Boolean ttlAddMaxValPartOnCciCreating =
+        Boolean.valueOf(ConnectionParams.TTL_ADD_MAXVAL_PART_ON_CCI_CREATING.getDefault());
+
+    public volatile Long ttlMaxWaitAcquireRatePermitsPeriods =
+        Long.valueOf(ConnectionParams.TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS.getDefault());
+
+    public volatile Boolean ttlEnableCleanupRowsSpeedLimit =
+        Boolean.valueOf(ConnectionParams.TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT.getDefault());
+
+    public volatile Long ttlCleanupRowsSpeedLimitEachDn =
+        Long.valueOf(ConnectionParams.TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN.getDefault());
+
+    public volatile Boolean ttlIgnoreMaintainWindowInDdlJob =
+        Boolean.valueOf(ConnectionParams.TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB.getDefault());
+
+    public volatile int ttlGlobalWorkerDnRatio =
+        Integer.valueOf(ConnectionParams.TTL_GLOBAL_WORKER_DN_RATIO.getDefault());
+
+    public volatile int ttlDefaultArcPreAllocateCount =
+        Integer.valueOf(ConnectionParams.TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT.getDefault());
+
+    public volatile int ttlDefaultArcPostAllocateCount =
+        Integer.valueOf(ConnectionParams.TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT.getDefault());
+
+    public volatile boolean ttlEnableAutoAddPartsForArcCci =
+        Boolean.valueOf(ConnectionParams.TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI.getDefault());
+
+    public int getTtlGlobalDeleteWorkerCount() {
+        return ttlGlobalDeleteWorkerCount;
+    }
+
+    public long getTtlTmpTableMaxDataLength() {
+        return ttlTmpTableMaxDataLength;
+    }
+
+    public int getTtlTmpTableMaxDataFreePercent() {
+        return ttlTmpTableMaxDataFreePercent;
+    }
+
+    public int getTtlIntraTaskInterruptionMaxWaitTime() {
+        return ttlIntraTaskInterruptionMaxWaitTime;
+    }
+
+    public int getTtlScheduledJobMaxParallelism() {
+        return ttlScheduledJobMaxParallelism;
+    }
+
+    public boolean isTtlEnableAutoOptimizeTableInTtlJob() {
+        return ttlEnableAutoOptimizeTableInTtlJob;
+    }
+
+    public boolean isTtlEnableAutoExecOptimizeTableAfterArchiving() {
+        return ttlEnableAutoExecOptimizeTableAfterArchiving;
+    }
+
+    public int getTtlIntraTaskMonitorEachRoundWaitTime() {
+        return ttlIntraTaskMonitorEachRoundWaitTime;
+    }
+
+    public int getTtlJobDefaultBatchSize() {
+        return ttlJobDefaultBatchSize;
+    }
+
+    public int getTtlCleanupBoundIntervalCount() {
+        return ttlCleanupBoundIntervalCount;
+    }
+
+    public boolean isTtlStopAllJobScheduling() {
+        return ttlStopAllJobScheduling;
+    }
+
+    public boolean isTtlUseArchiveTransPolicy() {
+        return ttlUseArchiveTransPolicy;
+    }
+
+    public int getTtlSelectMergeUnionSize() {
+        return ttlSelectMergeUnionSize;
+    }
+
+    public boolean isTtlSelectMergeConcurrent() {
+        return ttlSelectMergeConcurrent;
+    }
+
+    public String getTtlSelectStmtHint() {
+        return ttlSelectStmtHint;
+    }
+
+    public String getTtlDeleteStmtHint() {
+        return ttlDeleteStmtHint;
+    }
+
+    public String getTtlInsertStmtHint() {
+        return ttlInsertStmtHint;
+    }
+
+    public Long getTtlGroupParallelismOnDmlConn() {
+        return ttlGroupParallelismOnDmlConn;
+    }
+
+    public Long getTtlGroupParallelismOnDqlConn() {
+        return ttlGroupParallelismOnDqlConn;
+    }
+
+    public String getTtlOptimizeTableStmtHint() {
+        return ttlOptimizeTableStmtHint;
+    }
+
+    public String getTtlAlterTableAddPartsStmtHint() {
+        return ttlAlterTableAddPartsStmtHint;
+    }
+
+    public Boolean getTtlAddMaxValPartOnCciCreating() {
+        return ttlAddMaxValPartOnCciCreating;
+    }
+
+    public Long getTtlCleanupRowsSpeedLimitEachDn() {
+        return ttlCleanupRowsSpeedLimitEachDn;
+    }
+
+    public Boolean getTtlEnableCleanupRowsSpeedLimit() {
+        return ttlEnableCleanupRowsSpeedLimit;
+    }
+
+    public Long getTtlMaxWaitAcquireRatePermitsPeriods() {
+        return ttlMaxWaitAcquireRatePermitsPeriods;
+    }
+
+    public Boolean getTtlIgnoreMaintainWindowInDdlJob() {
+        return ttlIgnoreMaintainWindowInDdlJob;
+    }
+
+    public int getTtlGlobalSelectWorkerCount() {
+        return ttlGlobalSelectWorkerCount;
+    }
+
+    public int getTtlGlobalWorkerDnRatio() {
+        return ttlGlobalWorkerDnRatio;
+    }
+
+    public int getTtlDefaultArcPreAllocateCount() {
+        return ttlDefaultArcPreAllocateCount;
+    }
+
+    public int getTtlDefaultArcPostAllocateCount() {
+        return ttlDefaultArcPostAllocateCount;
+    }
+
+    public boolean getTtlEnableAutoAddPartsForArcCci() {
+        return ttlEnableAutoAddPartsForArcCci;
+    }
+
+    private volatile long waitForColumnarCommitMS =
+        Long.parseLong(ConnectionParams.WAIT_FOR_COLUMNAR_COMMIT_MS.getDefault());
+
+    public long getWaitForColumnarCommitMS() {
+        return waitForColumnarCommitMS;
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {
@@ -1003,4 +1670,5 @@ public class DynamicConfig {
     }
 
     private static final DynamicConfig instance = new DynamicConfig();
+
 }

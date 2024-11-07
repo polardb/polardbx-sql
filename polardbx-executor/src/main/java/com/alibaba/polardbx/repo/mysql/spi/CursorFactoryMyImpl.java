@@ -45,7 +45,7 @@ public class CursorFactoryMyImpl implements ICursorFactory {
             } else if (SqlKind.DML.contains(tableOperate.getKind())) {
                 if (executionContext.useReturning()) {
                     return new MyPhyTableModifyReturningCursor(executionContext, (BaseTableOperation) tableOperate,
-                        repo);
+                        repo, 0, null, null);
                 } else {
                     return new MyPhyTableModifyCursor(executionContext, (BaseTableOperation) tableOperate, repo);
                 }

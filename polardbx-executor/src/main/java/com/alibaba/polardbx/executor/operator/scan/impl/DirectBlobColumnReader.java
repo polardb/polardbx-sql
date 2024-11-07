@@ -454,10 +454,15 @@ public class DirectBlobColumnReader extends AbstractColumnReader {
     }
 
     private byte[] readBytes(long length) throws IOException {
-        byte[] bytes = new byte[(int) length];
-        int read = dataStream.read(bytes);
-        if (read == -1) {
-            throw new IOException("Failed to read blob with length: " + length);
+        int len = (int) length;
+        int n = 0;
+        byte[] bytes = new byte[len];
+        while (n < len) {
+            int count = dataStream.read(bytes, n, len - n);
+            if (count < 0) {
+                throw new IOException("Failed to read blob with length: " + length);
+            }
+            n += count;
         }
         return bytes;
     }

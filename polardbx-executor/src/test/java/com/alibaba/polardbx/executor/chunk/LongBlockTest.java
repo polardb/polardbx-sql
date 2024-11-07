@@ -83,4 +83,67 @@ public class LongBlockTest extends BaseBlockTest {
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
     }
+
+    @Test
+    public void testNotSupportedOperation() {
+        LongBlock longBlock = LongBlock.of(1L, 2L, 3L, 4L);
+        expectUnsupportedException(() -> longBlock.getByte(0));
+        expectUnsupportedException(() -> longBlock.getShort(0));
+        expectUnsupportedException(() -> longBlock.getDouble(0));
+        expectUnsupportedException(() -> longBlock.getFloat(0));
+        expectUnsupportedException(() -> longBlock.getTimestamp(0));
+        expectUnsupportedException(() -> longBlock.getDate(0));
+        expectUnsupportedException(() -> longBlock.getTime(0));
+        expectUnsupportedException(() -> longBlock.getString(0));
+        expectUnsupportedException(() -> longBlock.getDecimal(0));
+        expectUnsupportedException(() -> longBlock.getBigInteger(0));
+        expectUnsupportedException(() -> longBlock.getBoolean(0));
+        expectUnsupportedException(() -> longBlock.getByteArray(0));
+        expectUnsupportedException(() -> longBlock.getBlob(0));
+        expectUnsupportedException(() -> longBlock.getClob(0));
+    }
+
+    @Test
+    public void testBuilderNotSupportedOperation() {
+        LongBlockBuilder longBlockBuilder = new LongBlockBuilder(4);
+        expectUnsupportedException(() -> longBlockBuilder.writeByte((byte) 0));
+        expectUnsupportedException(() -> longBlockBuilder.writeShort((short) 0));
+        expectUnsupportedException(() -> longBlockBuilder.writeDouble(0D));
+        expectUnsupportedException(() -> longBlockBuilder.writeFloat(0F));
+        expectUnsupportedException(() -> longBlockBuilder.writeTimestamp(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeDate(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeTime(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeString(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeDecimal(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeBigInteger(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeBoolean(true));
+        expectUnsupportedException(() -> longBlockBuilder.writeByteArray(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeBlob(null));
+        expectUnsupportedException(() -> longBlockBuilder.writeClob(null));
+    }
+
+    @Test
+    public void illegalCastTest() {
+        LongBlock longBlock = new LongBlock(new LongType(), 1024);
+        try {
+            longBlock.cast(ShortBlock.class);
+        } catch (Exception e) {
+            Assert.assertTrue(e.getMessage().contains("failed to cast"));
+        }
+    }
+
+    private void expectUnsupportedException(FunctionInterface notSupportedFunc) {
+        try {
+            notSupportedFunc.execute();
+            Assert.fail("Expect not supported");
+        } catch (Exception e) {
+            Assert.assertTrue(e instanceof UnsupportedOperationException);
+            Assert.assertTrue(e.getMessage().contains(LongBlock.class.getName()));
+        }
+    }
+
+    @FunctionalInterface
+    interface FunctionInterface {
+        void execute();
+    }
 }

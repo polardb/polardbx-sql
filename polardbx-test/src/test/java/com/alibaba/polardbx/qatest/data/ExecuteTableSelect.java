@@ -94,6 +94,18 @@ public class ExecuteTableSelect {
 
     }
 
+    /**
+     * 查询一张表，多库多表和广播表模式
+     */
+    public static String[][] selectBaseOneTableBradcastAndMutilDbMutilTb() {
+
+        String[][] object = {
+            {"select_base_one_" + ExecuteTableName.MUlTI_DB_MUTIL_TB_SUFFIX},
+            {"select_base_one_" + ExecuteTableName.BROADCAST_TB_SUFFIX}};
+        return object;
+
+    }
+
     // where 条件限定了只能路由到一个分库，用于此类情况的测试
     public static String[][] autoTableWithWhere() {
         String[][] object = {

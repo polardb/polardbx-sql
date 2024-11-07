@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.utils.transaction;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.mock.MockStatus;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -46,8 +47,12 @@ public class TransactionUtils {
 
     static {
         try {
-            fetchAllTransSyncActionClass =
-                Class.forName("com.alibaba.polardbx.transaction.sync.FetchAllTransSyncAction");
+            if (MockStatus.isMock()) {
+                fetchAllTransSyncActionClass = null;
+            } else {
+                fetchAllTransSyncActionClass =
+                    Class.forName("com.alibaba.polardbx.transaction.sync.FetchAllTransSyncAction");
+            }
         } catch (ClassNotFoundException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
@@ -78,26 +83,33 @@ public class TransactionUtils {
             final List<List<Map<String, Object>>> results =
                 SyncManagerHelper.sync(fetchAllTransSyncAction, schemaName, SyncScope.CURRENT_ONLY);
 
-            for (final List<Map<String, Object>> result : results) {
-                if (result == null) {
-                    continue;
-                }
-                for (final Map<String, Object> row : result) {
-                    final Long transId = (Long) row.get("TRANS_ID");
-                    final String group = (String) row.get("GROUP");
-                    final Long connId = (Long) row.get("CONN_ID");
-                    final Long frontendConnId = (Long) row.get("FRONTEND_CONN_ID");
-                    final Long startTime = (Long) row.get("START_TIME");
-                    final String sql = (String) row.get("SQL");
-
-                    final GroupConnPair groupConnPair = new GroupConnPair(group, connId);
-                    lookupSet.addNewTransaction(groupConnPair, transId);
-                    lookupSet.updateTransaction(transId, frontendConnId, sql, startTime);
-                }
-            }
+            updateTrxLookupSet(results, lookupSet);
         }
 
         return lookupSet;
+    }
+
+    public static void updateTrxLookupSet(List<List<Map<String, Object>>> results, TrxLookupSet lookupSet) {
+        for (final List<Map<String, Object>> result : results) {
+            if (result == null) {
+                continue;
+            }
+            for (final Map<String, Object> row : result) {
+                final Long transId = (Long) row.get("TRANS_ID");
+                final String group = (String) row.get("GROUP");
+                final long connId = (Long) row.get("CONN_ID");
+                final long frontendConnId = (Long) row.get("FRONTEND_CONN_ID");
+                final Long startTime = (Long) row.get("START_TIME");
+                final String sql = (String) row.get("SQL");
+                Boolean ddl = (Boolean) row.get("DDL");
+                if (null == ddl) {
+                    ddl = false;
+                }
+                final GroupConnPair entry = new GroupConnPair(group, connId);
+                lookupSet.addNewTransaction(entry, transId);
+                lookupSet.updateTransaction(transId, frontendConnId, sql, startTime, ddl);
+            }
+        }
     }
 
     /**

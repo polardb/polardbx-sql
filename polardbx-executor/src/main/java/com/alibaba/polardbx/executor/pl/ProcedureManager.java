@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.ProcedureAccessor;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureDefinitionRecord;
 import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureMetaRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -44,7 +45,7 @@ import java.util.TreeMap;
 public class ProcedureManager {
     private static final Logger logger = LoggerFactory.getLogger(ProcedureManager.class);
 
-    public static ProcedureManager INSTANCE = new ProcedureManager();
+    private volatile static ProcedureManager INSTANCE;
 
     /**
      * schema -> procedure name -> create procedure content
@@ -57,11 +58,18 @@ public class ProcedureManager {
     long usedSpace = 0;
 
     public static ProcedureManager getInstance() {
+        if (INSTANCE == null) {
+            synchronized (ProcedureManager.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = new ProcedureManager();
+                    INSTANCE.initProcedures();
+                }
+            }
+        }
         return INSTANCE;
     }
 
     private ProcedureManager() {
-        initProcedures();
     }
 
     public synchronized void register(String schema, String procedureName) {
@@ -148,6 +156,9 @@ public class ProcedureManager {
     }
 
     private synchronized void initProcedures() {
+        if (MetaDbDataSource.getInstance() == null) {
+            return;
+        }
         try (Connection connection = MetaDbUtil.getConnection()) {
             ProcedureAccessor accessor = new ProcedureAccessor();
             accessor.setConnection(connection);
@@ -221,5 +232,9 @@ public class ProcedureManager {
 
     public synchronized long getTotalSize() {
         return totalSpace;
+    }
+
+    public synchronized long getProcedureSize() {
+        return procedures.values().stream().mapToLong(Map::size).sum();
     }
 }

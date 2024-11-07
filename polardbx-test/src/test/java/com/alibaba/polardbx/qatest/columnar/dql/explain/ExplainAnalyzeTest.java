@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.columnar.dql.explain;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.qatest.ColumnarIgnore;
 import com.alibaba.polardbx.qatest.columnar.dql.ColumnarReadBaseTestCase;
 import com.alibaba.polardbx.qatest.columnar.dql.ColumnarUtils;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
@@ -27,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+@ColumnarIgnore // close #58321033
 public class ExplainAnalyzeTest extends ColumnarReadBaseTestCase {
 
     private static final List<String> TABLES = new ArrayList<>();

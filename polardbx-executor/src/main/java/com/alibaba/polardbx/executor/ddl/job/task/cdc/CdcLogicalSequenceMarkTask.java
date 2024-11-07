@@ -64,7 +64,7 @@ public class CdcLogicalSequenceMarkTask extends BaseDdlTask {
     private void mark4LogicalSequence(ExecutionContext executionContext, SqlKind sqlKind, String schemaName,
                                       String sequenceName, String ddlSql) {
         CdcManagerHelper.getInstance()
-            .notifyDdlNew(
+            .notifySequenceDdl(
                 schemaName,
                 sequenceName,
                 sqlKind.name(),

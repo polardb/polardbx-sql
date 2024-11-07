@@ -31,12 +31,14 @@ import com.alibaba.polardbx.druid.util.lang.Consumer;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.trx.TrxLogStatusAccessor;
 import com.alibaba.polardbx.gms.metadb.trx.TrxLogStatusRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -48,6 +50,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -57,11 +60,13 @@ import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.CREATE_GLOBAL
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.DROP_GLOBAL_TX_TABLE_V2_ARCHIVE;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.DROP_GLOBAL_TX_TABLE_V2_TMP;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.FORCE_RENAME_GLOBAL_TX_TABLE_V2;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.QUERY_TABLE_ROWS_TX_TABLE_V2;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_MAX_TX_ID_IN_ARCHIVE;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_TABLE_ROWS_V2;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SET_DISTRIBUTED_TRX_ID;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SHOW_ALL_GLOBAL_TX_TABLE_V2;
 import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SWITCH_GLOBAL_TX_TABLE_V2;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.TRX_LOG_SOCKET_TIMEOUT;
 import static com.alibaba.polardbx.common.utils.LockUtil.wrapWithLockWaitTimeout;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.scanRecoveredTrans;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_TRX_LOG_TB_FAILED_BEFORE_CREATE_TMP;
@@ -79,7 +84,7 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 public class CleanLogTableTask {
     private static final Logger logger = LoggerFactory.getLogger(CleanLogTableTask.class);
 
-    public static long run(boolean force, StringBuilder remark) throws SQLException {
+    public static long run(boolean force, StringBuffer remark) throws SQLException {
         Set<String> dnIds = new HashSet<>();
         Set<String> addresses = new HashSet<>();
         for (StorageInstHaContext ctx : StorageHaManager.getInstance().getMasterStorageList()) {
@@ -131,6 +136,13 @@ public class CleanLogTableTask {
                         if (!force && lastUpdate + minuteToMillis > currentTime) {
                             updateRemark = false;
                             remark.append("Not in expected time, wait for next round. ");
+                            return -1;
+                        }
+
+                        // Check if we should clean trx log.
+                        if (!force && !shouldCleanTrxLog(dnIds, lastUpdate, currentTime)) {
+                            updateRemark = false;
+                            remark.append("Too few records, no need to clean. ");
                             return -1;
                         }
 
@@ -222,12 +234,55 @@ public class CleanLogTableTask {
         return purged.get();
     }
 
+    /**
+     * Clean trx log table if :
+     * 1. Some trx log table contains more than 100k rows.
+     * 2. It has been more than 1 day since last clean, and we are in maintenance window.
+     */
+    protected static boolean shouldCleanTrxLog(Set<String> dnIds, long lastUpdate, long currentTime) {
+        if ((lastUpdate + 24 * 60 * 60 * 1000 < currentTime) && InstConfUtil.isInMaintenanceTimeWindow()) {
+            return true;
+        }
+        ConcurrentLinkedQueue<Exception> exceptions = new ConcurrentLinkedQueue<>();
+        AtomicBoolean shouldClean = new AtomicBoolean(false);
+        Collection<Future> futures = forEachDn(dnIds, (dnId) -> {
+            try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
+                Statement stmt = conn.createStatement()) {
+                conn.setNetworkTimeout(TGroupDirectConnection.socketTimeoutExecutor, TRX_LOG_SOCKET_TIMEOUT);
+                wrapWithLockWaitTimeout(conn, 3, () -> {
+                    try {
+                        ResultSet rs = stmt.executeQuery(QUERY_TABLE_ROWS_TX_TABLE_V2);
+                        while (rs.next()) {
+                            int rows = rs.getInt(1);
+                            if (rows > 100_000) {
+                                shouldClean.set(true);
+                            }
+                        }
+                    } catch (Exception e) {
+                        EventLogger.log(EventType.TRX_LOG_ERR,
+                            "Error during creating tmp table, caused by " + e.getMessage());
+                        exceptions.offer(e);
+                    }
+                });
+            } catch (Exception e) {
+                exceptions.offer(e);
+            }
+        });
+
+        AsyncUtils.waitAll(futures);
+
+        exceptions.forEach(logger::error);
+
+        return shouldClean.get();
+    }
+
     private static void createTmpTable(Set<String> dnIds) {
         ConcurrentLinkedQueue<Exception> exceptions = new ConcurrentLinkedQueue<>();
         AtomicBoolean lock = new AtomicBoolean(false);
         Collection<Future> futures = forEachDn(dnIds, (dnId) -> {
             try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
                 Statement stmt = conn.createStatement()) {
+                conn.setNetworkTimeout(TGroupDirectConnection.socketTimeoutExecutor, TRX_LOG_SOCKET_TIMEOUT);
                 wrapWithLockWaitTimeout(conn, 3, () -> {
                     try {
                         if (FailPoint.isKeyEnable(FP_TRX_LOG_TB_FAILED_DURING_CREATE_TMP)
@@ -258,7 +313,7 @@ public class CleanLogTableTask {
         }
     }
 
-    private static void switchTables(Set<String> dnIds, StringBuilder remark) {
+    private static void switchTables(Set<String> dnIds, StringBuffer remark) {
         /*
         Normal procedure:
         A -> {A, tmp} -> {B, A} -> A
@@ -339,7 +394,7 @@ public class CleanLogTableTask {
         }
     }
 
-    private static void dropTable(Set<String> dnIds, StringBuilder remark, AtomicLong purged) {
+    private static void dropTable(Set<String> dnIds, StringBuffer remark, AtomicLong purged) {
         // Check support async commit variables.
         boolean dn57 = ExecutorContext.getContext(CDC_DB_NAME).getStorageInfoManager().supportAsyncCommit();
         // Max time 4 * 5 = 20s
@@ -488,6 +543,7 @@ public class CleanLogTableTask {
                                                 Consumer<Statement> task) {
         try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
             Statement stmt = conn.createStatement()) {
+            conn.setNetworkTimeout(TGroupDirectConnection.socketTimeoutExecutor, TRX_LOG_SOCKET_TIMEOUT);
             wrapWithLockWaitTimeout(conn, 3, () -> task.accept(stmt));
         } catch (SQLException e) {
             exceptions.offer(e);

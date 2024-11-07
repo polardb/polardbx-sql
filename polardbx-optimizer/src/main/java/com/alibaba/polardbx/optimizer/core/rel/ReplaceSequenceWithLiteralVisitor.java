@@ -646,17 +646,8 @@ public class ReplaceSequenceWithLiteralVisitor extends SqlShuttle {
         final Map<Integer, ParameterContext> curParams = parameterSettings.getCurrentParameter();
 
         final int dynamicParamIndex = dynamicParam.getIndex();
-        if (dynamicParam instanceof SqlSequenceParam) {
-            Long nextVal = assignImplicitValue(true);
-            // use setObject1 instead of oldPc.getParameterMethod, because
-            // the method is 'setString' when users inserts '0'.
-            ParameterContext newPc = new ParameterContext(ParameterMethod.setObject1, new Object[] {
-                dynamicParamIndex + 1, nextVal});
-            curParams.put(dynamicParamIndex + 1, newPc);
-        }
-
-        ParameterContext oldPc = curParams.get(dynamicParamIndex + 1);
-        Object autoIncValue = oldPc.getValue();
+        final ParameterContext oldPc = curParams.get(dynamicParamIndex + 1);
+        final Object autoIncValue = oldPc.getValue();
         final Long newValue = RexUtils.valueOfObject1(autoIncValue);
 
         // if NO_AUTO_VALUE_ON_ZERO is set, last_insert_id and returned_last_insert_id won't change.

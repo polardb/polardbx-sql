@@ -36,12 +36,16 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
@@ -89,6 +93,10 @@ public class LogicalShowCreateTableHandler extends HandlerCommon {
     }
 
     public static String reorgLogicalColumnOrder(String schemaName, String logicalTableName, String sql) {
+        if (!ConfigDataMode.isPolarDbX()) {
+            return sql;
+        }
+
         // Always show columns in logical column order no matter what the mode.
         List<ColumnsRecord> logicalColumnsInOrder =
             ResultSetHelper.fetchLogicalColumnsInOrder(schemaName, logicalTableName);
@@ -137,7 +145,8 @@ public class LogicalShowCreateTableHandler extends HandlerCommon {
     }
 
     public static MySqlCreateTableStatement fetchShowCreateTableFromMetaDb(String schemaName, String tableName,
-                                                                           ExecutionContext executionContext) {
+                                                                           ExecutionContext executionContext,
+                                                                           TableMeta tableMeta) {
         final MySqlCreateTableStatement createTableStmt = new MySqlCreateTableStatement();
         createTableStmt.setTableName(tableName);
         // Always show columns in logical column order no matter what the mode.

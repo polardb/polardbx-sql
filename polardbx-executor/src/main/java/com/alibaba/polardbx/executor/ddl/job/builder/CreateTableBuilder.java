@@ -194,7 +194,7 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
             false,
             sqlTemplate.getAutoIncrement(),
             null,
-            sqlTemplate.getLocalPartition(),
+            null,
             null,
             null,
             sqlTemplate.getLocalPartitionSuffix()

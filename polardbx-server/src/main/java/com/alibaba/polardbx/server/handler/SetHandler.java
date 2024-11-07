@@ -19,6 +19,8 @@ package com.alibaba.polardbx.server.handler;
 import com.alibaba.polardbx.PolarPrivileges;
 import com.alibaba.polardbx.atom.CacheVariables;
 import com.alibaba.polardbx.common.SQLMode;
+import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.constants.ServerVariables;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
@@ -43,12 +45,18 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.balancer.BalanceOptions;
 import com.alibaba.polardbx.executor.balancer.Balancer;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.sync.FailPointClearSyncAction;
+import com.alibaba.polardbx.executor.sync.FailPointDisableSyncAction;
+import com.alibaba.polardbx.executor.sync.FailPointEnableSyncAction;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.cdc.CdcConfigAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -56,6 +64,7 @@ import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.ActiveRoles;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
@@ -129,6 +138,7 @@ public final class SetHandler {
     static Object RETURN_VALUE = new Object();
 
     private static final String cdcVariablePrefix = "cdc_";
+    private static final long UNSIGNED_INT_32_MAX = 0xFFFFFFFFL;
 
     /**
      * @return true:no error packet
@@ -167,7 +177,8 @@ public final class SetHandler {
                         //FailPoint command, only works in java -ea mode
                         if (FailPoint.isAssertEnable() && StringUtils.startsWith(lowerCaseKey, SET_PREFIX)
                             && StringUtils.length(lowerCaseKey) >= 3) {
-                            FailPoint.enable(lowerCaseKey, value);
+                            SyncManagerHelper.syncWithDefaultDB(new FailPointEnableSyncAction(lowerCaseKey, value),
+                                SyncScope.ALL);
                             c.getUserDefVariables().put(FP_SHOW, FailPoint.show());
                         }
                     } else if (oriValue instanceof SqlNumericLiteral) {
@@ -177,7 +188,7 @@ public final class SetHandler {
                         c.getUserDefVariables().put(lowerCaseKey, RelUtils.booleanValue(oriValue));
                         //FailPoint command, only works in java -ea mode
                         if (FailPoint.isAssertEnable() && StringUtils.equalsIgnoreCase(lowerCaseKey, FP_CLEAR)) {
-                            FailPoint.clear();
+                            SyncManagerHelper.syncWithDefaultDB(new FailPointClearSyncAction(), SyncScope.ALL);
                             c.getUserDefVariables().put(FP_SHOW, FailPoint.show());
                         }
                     } else if (oriValue instanceof SqlLiteral
@@ -186,7 +197,8 @@ public final class SetHandler {
                         c.getUserDefVariables().remove(lowerCaseKey);
                         //FailPoint command, only works in java -ea mode
                         if (FailPoint.isAssertEnable() && StringUtils.startsWith(lowerCaseKey, SET_PREFIX)) {
-                            FailPoint.disable(lowerCaseKey);
+                            SyncManagerHelper.syncWithDefaultDB(new FailPointDisableSyncAction(lowerCaseKey),
+                                SyncScope.ALL);
                             c.getUserDefVariables().put(FP_SHOW, FailPoint.show());
                         }
                     } else if (oriValue instanceof SqlUserDefVar) {
@@ -228,6 +240,12 @@ public final class SetHandler {
                     final SqlSystemVar key = (SqlSystemVar) variable.getKey();
                     if (c.getTddlConnection() == null) {
                         c.initTddlConnection();
+                    }
+
+                    if (ServerVariables.isVariablesBlackList(key.getName())) {
+                        c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET,
+                            "The variable '" + key.getName() + "' is no supported setting");
+                        return false;
                     }
 
                     boolean enableSetGlobal = true;
@@ -327,9 +345,38 @@ public final class SetHandler {
                         // ignore update不带主键就会报错
                     } else if ("NET_WRITE_TIMEOUT".equalsIgnoreCase(key.getName())) {
                         // ignore超时参数,规避DRDS数据导出时,服务端主动关闭连接
-                    } else if ("SQL_LOG_BIN".equalsIgnoreCase(key.getName())) {
-                        // ignore SQL_LOG_BIN，MySQL
-                        // Dump会加入这种语句，下面的MySQL未必有权限
+                    } else if (ICdcManager.SQL_LOG_BIN.equalsIgnoreCase(key.getName())) {
+                        if (key.getScope() != null && key.getScope().name().equalsIgnoreCase("global")) {
+                            if (inProcedureCall) {
+                                throw new RuntimeException("not support set global sql_log_bin");
+                            }
+                            c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET,
+                                "not support set global sql_log_bin");
+                            return false;
+                        }
+                        try {
+                            Boolean v;
+                            String value = StringUtils.lowerCase(oriValue.toString());
+                            if (StringUtils.equals(value, "on")) {
+                                v = true;
+                            } else if (StringUtils.equals(value, "off")) {
+                                v = false;
+                            } else {
+                                v = BooleanUtils.toBoolean(value, "true", "false");
+                            }
+                            if (v == null) {
+                                throw new RuntimeException(
+                                    "Variable 'sql_log_bin' can't be set to the value of " + oriValue);
+                            }
+                            c.getExtraServerVariables().put(ICdcManager.SQL_LOG_BIN, v);
+                        } catch (Exception | Error e) {
+                            if (inProcedureCall) {
+                                throw new RuntimeException("Incorrect argument type to variable 'sql_log_bin'");
+                            }
+                            c.writeErrMessage(ErrorCode.ER_WRONG_TYPE_FOR_VAR,
+                                "Incorrect argument type to variable 'sql_log_bin'");
+                            return false;
+                        }
                     } else if ("TIMESTAMP".equalsIgnoreCase(key.getName())) {
                         // ignore max_statement_time for 2.0
                     } else if ("MAX_STATEMENT_TIME".equalsIgnoreCase(key.getName())) {
@@ -692,9 +739,12 @@ public final class SetHandler {
                             return false;
                         }
                         try {
-                            int v = c.getVarIntegerValue(oriValue);
+                            long v = c.getVarLongValue(oriValue);
                             if (v <= 0) {
-                                throw new RuntimeException("polardbx_server_id can`t be less than zero.");
+                                throw new RuntimeException("polardbx_server_id can`t be equal or smaller than zero.");
+                            }
+                            if (v > UNSIGNED_INT_32_MAX) {
+                                throw new RuntimeException("polardbx_server_id can`t be bigger than UNSIGNED_INT_MAX.");
                             }
                             c.getExtraServerVariables().put("polardbx_server_id", v);
                         } catch (Exception | Error e) {
@@ -707,12 +757,24 @@ public final class SetHandler {
                         }
                     } else if ("time_zone".equalsIgnoreCase(key.getName())) {
                         //在内部添加到customizeVar中
-                        c.setTimeZone(c.getVarStringValue(oriValue));
-                        Object parserValue = parserValue(oriValue, key, c);
+                        String parserValue = String.valueOf(parserValue(oriValue, key, c));
+                        c.setTimeZone(parserValue);
                         if (parserValue == RETURN_VALUE) {
                             return true;
                         } else if (parserValue != IGNORE_VALUE) {
                             c.getServerVariables().put(key.getName().toLowerCase(), parserValue);
+                        }
+                        if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                            globalCnVariables.add(new Pair<String, String>(ConnectionProperties.LOGICAL_DB_TIME_ZONE,
+                                parserValue));
+                        }
+                    } else if (ConnectionProperties.LOGICAL_DB_TIME_ZONE.equalsIgnoreCase(key.getName())) {
+                        //在内部添加到customizeVar中
+                        String parserValue = String.valueOf(parserValue(oriValue, key, c));
+                        c.setTimeZone(parserValue);
+                        if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                            globalCnVariables.add(new Pair<String, String>(ConnectionProperties.LOGICAL_DB_TIME_ZONE,
+                                parserValue));
                         }
                     } else if (ConnectionProperties.SUPPORT_INSTANT_ADD_COLUMN.equalsIgnoreCase(key.getName())) {
                         String value = StringUtils.strip(c.getVarStringValue(oriValue), "'\"");
@@ -1069,7 +1131,43 @@ public final class SetHandler {
                         if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
                             globalCnVariables.add(new Pair<String, String>(key.getName(), Boolean.toString(enable)));
                         }
+                    } else if (ConnectionProperties.ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX
+                        .equalsIgnoreCase(key.getName())) {
+                        boolean enable = Boolean.parseBoolean(parserValue(oriValue, key, c).toString());
+                        c.getConnectionVariables()
+                            .put(ConnectionProperties.ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX, enable);
+                        if (enable) {
+                            c.getConnectionVariables().put(ConnectionProperties.ENABLE_XA_TSO, true);
+                            c.getConnectionVariables().put(ConnectionProperties.ENABLE_1PC_OPT, false);
+                            c.getConnectionVariables().put(ConnectionProperties.FORBID_AUTO_COMMIT_TRX, true);
+                            c.getConnectionVariables().put(ConnectionProperties.COMPLEX_DML_WITH_TRX, true);
+                        } else {
+                            c.getConnectionVariables().put(ConnectionProperties.ENABLE_1PC_OPT, true);
+                            c.getConnectionVariables().put(ConnectionProperties.FORBID_AUTO_COMMIT_TRX, false);
+                            c.getConnectionVariables().put(ConnectionProperties.COMPLEX_DML_WITH_TRX, false);
+                        }
+                        if (enableSetGlobal && (key.getScope() == VariableScope.GLOBAL)) {
+                            globalCnVariables.add(new Pair<>(key.getName(), Boolean.toString(enable)));
+                            if (enable) {
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.ENABLE_XA_TSO, Boolean.toString(true)));
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.ENABLE_1PC_OPT, Boolean.toString(false)));
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.FORBID_AUTO_COMMIT_TRX, Boolean.toString(true)));
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.COMPLEX_DML_WITH_TRX, Boolean.toString(true)));
+                            } else {
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.ENABLE_1PC_OPT, Boolean.toString(true)));
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.FORBID_AUTO_COMMIT_TRX, Boolean.toString(false)));
+                                globalCnVariables.add(
+                                    new Pair<>(ConnectionProperties.COMPLEX_DML_WITH_TRX, Boolean.toString(false)));
+                            }
+                        }
                     } else if (!isCnVariable(key.getName())) {
+                        // Processing DN variables.
                         if (!ServerVariables.isWritable(key.getName())) {
                             if (enableSetGlobal && key.getScope() == org.apache.calcite.sql.VariableScope.GLOBAL) {
                                 //ignore
@@ -1145,6 +1243,7 @@ public final class SetHandler {
                             }
                         }
                     } else {
+                        // Processing CN session/global variables.
                         Object parserValue = parserValue(oriValue, key, c);
                         if (parserValue == RETURN_VALUE) {
                             return true;
@@ -1388,7 +1487,7 @@ public final class SetHandler {
     }
 
     // return value demonstrates whether write packet
-    private static boolean handleGlobalVariable(ServerConnection c, List<Pair<String, String>> globalCNVariableList,
+    protected static boolean handleGlobalVariable(ServerConnection c, List<Pair<String, String>> globalCNVariableList,
                                                 List<Pair<SqlNode, SqlNode>> globalDNVariableList,
                                                 List<Pair<String, String>> globalCdcVariableList) {
 
@@ -1447,7 +1546,7 @@ public final class SetHandler {
             String systemVarValue = c.getVarStringValue(variable.getValue());
 
             try {
-                if (ServerVariables.isGlobalBanned(systemVarName) || ServerVariables.isGlobalBlackList(systemVarName)) {
+                if (ServerVariables.isGlobalBanned(systemVarName)) {
                     c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET,
                         "The global variable '" + systemVarName + "' is no supported setting using SET GLOBAL");
                     return true;
@@ -1479,6 +1578,13 @@ public final class SetHandler {
                 c.initTddlConnection();
             }
             TConnection conn = c.getTddlConnection();
+            if (InstConfUtil.getValBool(TddlConstants.ENABLE_STRICT_SET_GLOBAL)) {
+
+                c.writeErrMessage(ErrorCode.ER_GLOBAL_VARIABLE, "User " + c.getUser() +
+                    "is not allowed to execute set global ");
+                return true;
+            }
+
             String msg = "User " + c.getUser()
                 + " trying to execute set global, which will be ignored";
             if (conn != null && conn.getExecutionContext() != null) {
@@ -1490,9 +1596,13 @@ public final class SetHandler {
             return false;
         }
 
+        boolean needSyncCnProps = false;
+        boolean needSyncCdcVarProps = false;
+        boolean needSyncDnVarProps = false;
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             VariableConfigAccessor variableConfigAccessor = new VariableConfigAccessor();
             InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
+            metaDbConn.setAutoCommit(false);
             variableConfigAccessor.setConnection(metaDbConn);
             instConfigAccessor.setConnection(metaDbConn);
             if (!GeneralUtil.isEmpty(dnVariableAssignmentList)) {
@@ -1516,10 +1626,12 @@ public final class SetHandler {
                 variableConfigAccessor.updateParamsValue(dnProps, InstIdUtil.getInstId());
                 CacheVariables.invalidateAll();
                 // FIXME: refresh cache when using X-Protocol
+                needSyncDnVarProps = true;
             }
 
             if (!GeneralUtil.isEmpty(cnProps)) {
                 instConfigAccessor.updateInstConfigValue(InstIdUtil.getInstId(), cnProps);
+                needSyncCnProps = true;
             }
 
             if (!GeneralUtil.isEmpty(globalCdcVariableList)) {
@@ -1530,6 +1642,43 @@ public final class SetHandler {
                 CdcConfigAccessor accessor = new CdcConfigAccessor();
                 accessor.setConnection(metaDbConn);
                 accessor.updateInstConfigValue(cdcProps);
+                needSyncCdcVarProps = true;
+            }
+
+            /**
+             * Commit all the modified variables config for metadb
+             */
+            metaDbConn.commit();
+
+            String instId = InstIdUtil.getInstId();
+            if (needSyncCnProps) {
+                try {
+                    String cnConfigDataId = MetaDbDataIdBuilder.getInstConfigDataId(instId);
+                    MetaDbConfigManager.getInstance().sync(cnConfigDataId);
+                } catch (Throwable t) {
+                    logger.warn(String.format("Failed to sync set variables for cn vars, err msg is ", t.getMessage()),
+                        t);
+                }
+            }
+
+            if (needSyncDnVarProps) {
+                try {
+                    String dnConfigDataId = MetaDbDataIdBuilder.getVariableConfigDataId(instId);
+                    MetaDbConfigManager.getInstance().sync(dnConfigDataId);
+                } catch (Throwable t) {
+                    logger.warn(String.format("Failed to sync set variables for dn vars, err msg is ", t.getMessage()),
+                        t);
+                }
+            }
+
+            if (needSyncCdcVarProps) {
+                try {
+                    String cdcConfigDataId = MetaDbDataIdBuilder.getCdcSystemConfigDataId();
+                    MetaDbConfigManager.getInstance().sync(cdcConfigDataId);
+                } catch (Throwable t) {
+                    logger.warn(String.format("Failed to sync set variables for cdc vars, err msg is ", t.getMessage()),
+                        t);
+                }
             }
 
             return false;
@@ -1805,7 +1954,7 @@ public final class SetHandler {
                 oriValue));
     }
 
-    private static boolean isIgnoreSettingNoTransaction(ServerConnection c) {
+    protected static boolean isIgnoreSettingNoTransaction(ServerConnection c) {
         // Session variable.
         Object sessionVar = c.getConnectionVariables()
             .get(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION);
@@ -1813,9 +1962,15 @@ public final class SetHandler {
             return Boolean.parseBoolean((String) sessionVar);
         }
 
-        if (null != c.getExecutionContext()) {
+        ExecutionContext ec = c.getExecutionContext();
+        if (null != ec
+            && null != ec.getParamManager()
+            && null != ec.getParamManager().getProps()
+            && !ec.getParamManager().getProps().isEmpty()
+            && ec.getParamManager().getProps()
+            .containsKey(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION)) {
             // Hint setting or global variable.
-            return c.getExecutionContext().isIgnoreSettingNoTransaction();
+            return ec.isIgnoreSettingNoTransaction();
         } else {
             // c.executionContext is null before executing any DQL/DML,
             // so use global value.

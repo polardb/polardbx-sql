@@ -32,41 +32,35 @@ package com.alibaba.polardbx.gms.node;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static java.util.Objects.requireNonNull;
-
 public class AllNodes {
+
+    protected static final Logger logger = LoggerFactory.getLogger(AllNodes.class);
+
     private Set<InternalNode> activeNodes;
-    private Set<InternalNode> otherActiveNodes;
+    private Set<InternalNode> otherActiveRowNodes;
+    private Set<InternalNode> otherActiveColumnarNodes;
     private Set<InternalNode> inactiveNodes;
     private Set<InternalNode> shuttingDownNodes;
 
-    private int activeHashcode;
-
-    public static final AllNodes EMPTY = new AllNodes(null, null, null, -1);
-
-    public AllNodes(Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes, Set<InternalNode> inactiveNodes,
-                    Set<InternalNode> shuttingDownNodes) {
-        this.activeNodes = new HashSet<>(requireNonNull(activeNodes, "activeNodes is null"));
-        this.otherActiveNodes = new HashSet<>(requireNonNull(otherActiveNodes, "activeNodes is null"));
-        this.inactiveNodes = new HashSet<>(requireNonNull(inactiveNodes, "inactiveNodes is null"));
-        this.shuttingDownNodes = new HashSet<>(requireNonNull(shuttingDownNodes, "shuttingDownNodes is null"));
-    }
+    public static final AllNodes EMPTY =
+        new AllNodes(ImmutableSet.of(), ImmutableSet.of(), ImmutableSet.of(), ImmutableSet.of(), ImmutableSet.of());
 
     @JsonCreator
     public AllNodes(@JsonProperty("activeNodes") Set<InternalNode> activeNodes,
+                    @JsonProperty("otherActiveNodes") Set<InternalNode> otherActiveNodes,
+                    @JsonProperty("otherActiveColumnarNodes") Set<InternalNode> otherActiveColumnarNodes,
                     @JsonProperty("inactiveNodes") Set<InternalNode> inactiveNodes,
-                    @JsonProperty("shuttingDownNodes") Set<InternalNode> shuttingDownNodes,
-                    @JsonProperty("activeHashcode") int activeHashcode) {
-        this.activeNodes = activeNodes;
-        this.inactiveNodes = inactiveNodes;
-        this.shuttingDownNodes = shuttingDownNodes;
-        this.activeHashcode = activeHashcode;
+                    @JsonProperty("shuttingDownNodes") Set<InternalNode> shuttingDownNodes) {
+        updateActiveNodes(activeNodes, otherActiveNodes, otherActiveColumnarNodes, inactiveNodes, shuttingDownNodes);
     }
 
     @JsonProperty
@@ -75,8 +69,13 @@ public class AllNodes {
     }
 
     @JsonIgnore
-    public Set<InternalNode> getOtherActiveNodes() {
-        return otherActiveNodes;
+    public Set<InternalNode> getOtherActiveRowNodes() {
+        return otherActiveRowNodes;
+    }
+
+    @JsonIgnore
+    public Set<InternalNode> getOtherActiveColumnarNodes() {
+        return otherActiveColumnarNodes;
     }
 
     @JsonProperty
@@ -89,56 +88,64 @@ public class AllNodes {
         return shuttingDownNodes;
     }
 
-    @JsonProperty
-    public int getActiveHashcode() {
-        return activeHashcode;
+    public void updateActiveNodes(Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes, Set<InternalNode>
+        otherActiveColumnarNodes, Set<InternalNode> inactiveNodes, Set<InternalNode> shuttingDownNodes) {
+        this.activeNodes = new HashSet<>(activeNodes);
+        this.otherActiveRowNodes = new HashSet<>(otherActiveNodes);
+        this.otherActiveColumnarNodes = new HashSet<>(otherActiveColumnarNodes);
+        this.inactiveNodes = new HashSet<>(inactiveNodes);
+        this.shuttingDownNodes = new HashSet<>(shuttingDownNodes);
     }
 
-    public void setActiveNodes(Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes) {
-        this.activeNodes = new HashSet<>(requireNonNull(activeNodes, "activeNodes is null"));
-        this.otherActiveNodes = otherActiveNodes;
-    }
-
-    public void setInactiveNodes(Set<InternalNode> inactiveNodes) {
-        this.inactiveNodes = inactiveNodes;
-    }
-
-    public void setShuttingDownNodes(Set<InternalNode> shuttingDownNodes) {
-        this.shuttingDownNodes = shuttingDownNodes;
-    }
-
-    public void setActiveHashcode(int activeHashcode) {
-        this.activeHashcode = activeHashcode;
-    }
-
-    public List<Node> getAllWorkers(boolean slaveFirst) {
-        List<Node> workers = new ArrayList<>();
-        if (slaveFirst && otherActiveNodes != null && !otherActiveNodes.isEmpty()) {
-            for (Node node : otherActiveNodes) {
+    public List<InternalNode> getAllWorkers(MppScope scope) {
+        List<InternalNode> workers = new ArrayList<>();
+        switch (scope) {
+        case SLAVE:
+            for (InternalNode node : otherActiveRowNodes) {
                 if (node.isWorker()) {
                     workers.add(node);
                 }
             }
-        } else {
-            for (Node node : activeNodes) {
+            break;
+        case COLUMNAR:
+            for (InternalNode node : otherActiveColumnarNodes) {
                 if (node.isWorker()) {
                     workers.add(node);
                 }
             }
-        }
-
-        /*
-        for (Node node : inactiveNodes) {
-            if (node.isWorker()) {
-                workers.add(node);
+            break;
+        case CURRENT:
+            for (InternalNode node : activeNodes) {
+                if (node.isWorker()) {
+                    workers.add(node);
+                }
             }
-        }
-        for (Node node : shuttingDownNodes) {
-            if (node.isWorker()) {
-                workers.add(node);
+            break;
+        case ALL:
+            for (InternalNode node : otherActiveColumnarNodes) {
+                if (node.isWorker()) {
+                    workers.add(node);
+                }
             }
+            for (InternalNode node : otherActiveRowNodes) {
+                if (node.isWorker()) {
+                    workers.add(node);
+                }
+            }
+            for (InternalNode node : activeNodes) {
+                if (node.isWorker()) {
+                    workers.add(node);
+                }
+            }
+            break;
+        default:
+            for (InternalNode node : activeNodes) {
+                if (node.isWorker()) {
+                    workers.add(node);
+                }
+            }
+            break;
         }
-         */
         return workers;
     }
 
@@ -151,4 +158,5 @@ public class AllNodes {
         }
         return coordinators;
     }
+
 }

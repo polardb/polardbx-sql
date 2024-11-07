@@ -19,17 +19,18 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableMergePartitionPreparedData;
@@ -50,7 +51,6 @@ import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -70,6 +70,20 @@ public class LogicalAlterTableMergePartition extends BaseDdlOperation {
     public LogicalAlterTableMergePartition(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
+    }
+
+    @Override
+    public boolean isSupportedByCci(ExecutionContext ec) {
+        String schemaName = this.schemaName;
+        String tblName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            TableMeta tblMeta = ec.getSchemaManager(schemaName).getTable(tblName);
+            if (tblMeta.isColumnar()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -256,4 +270,9 @@ public class LogicalAlterTableMergePartition extends BaseDdlOperation {
         return new LogicalAlterTableMergePartition(ddl);
     }
 
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getPreparedData()) {
+            getPreparedData().setDdlVersionId(ddlVersionId);
+        }
+    }
 }

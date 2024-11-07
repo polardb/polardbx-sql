@@ -82,6 +82,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -1078,39 +1080,103 @@ public class BuildPlanUtils {
         return result;
     }
 
-    public static boolean checkAllUpdatedSkRefAfterValue(List<String> updateColumnList, Set<String> partitionKeys,
+    public static boolean checkAllUpdatedSkRefAfterValue(List<String> updateColumnList,
+                                                         TreeMap<String, TreeSet<String>> tablePartitionKeyMap,
+                                                         Map<String, Map<String, Set<String>>> tableUkMapWithoutImplicitPk,
                                                          LogicalInsert logicalInsert) {
         if (logicalInsert.isSourceSelect()) {
             return false;
         }
 
-        int refCnt = 0;
+        final TreeMap<String, TreeSet<String>> updatedWithAfterValueTableColumnMap =
+            new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
         for (int i = 0; i < updateColumnList.size(); i++) {
-            String columnName = updateColumnList.get(i);
-            if (partitionKeys.contains(updateColumnList.get(i))) {
-                refCnt++;
-                try {
-                    RexCall rexCall =
-                        (RexCall) ((RexCall) logicalInsert.getDuplicateKeyUpdateList().get(i)).getOperands().get(1);
-                    SqlOperator op = rexCall.getOperator();
-                    if (!"VALUES".equalsIgnoreCase(op.getName())) {
+            final String columnName = updateColumnList.get(i);
+            for (Map.Entry<String, TreeSet<String>> entry : tablePartitionKeyMap.entrySet()) {
+                final String tableName = entry.getKey();
+                final TreeSet<String> partitionKeySet = entry.getValue();
+                final TreeSet<String> updatedWithAfterValueColumnSet = updatedWithAfterValueTableColumnMap
+                    .computeIfAbsent(tableName, (k) -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER));
+                if (partitionKeySet.contains(columnName)) {
+                    try {
+                        final RexNode rexNode =
+                            ((RexCall) logicalInsert.getDuplicateKeyUpdateList().get(i)).getOperands().get(1);
+
+                        RexInputRef inputRef = null;
+                        if (rexNode instanceof RexInputRef) {
+                            // update with before value
+                            // all uk contains this column, so that before and after value must be same
+                            inputRef = (RexInputRef) rexNode;
+                            final Map<String, Set<String>> ukColumnSet = tableUkMapWithoutImplicitPk.get(tableName);
+                            // check uk with target column name
+                            if (ukColumnSet.values().stream().anyMatch(ukColumn -> !ukColumn.contains(columnName))) {
+                                return false;
+                            }
+                        } else {
+                            RexCall rexCall =
+                                (RexCall) ((RexCall) logicalInsert.getDuplicateKeyUpdateList().get(i)).getOperands()
+                                    .get(1);
+                            SqlOperator op = rexCall.getOperator();
+                            if (!"VALUES".equalsIgnoreCase(op.getName())) {
+                                return false;
+                            }
+                            RexNode operand = rexCall.getOperands().get(0);
+                            inputRef = (RexInputRef) operand;
+                        }
+
+                        // check source column equals target column
+                        String refColumnName =
+                            logicalInsert.getInsertRowType().getFieldNames().get(inputRef.getIndex());
+                        if (!refColumnName.equalsIgnoreCase(columnName)) {
+                            return false;
+                        }
+                    } catch (Throwable e) {
+                        // If it's not values(col), just return false
                         return false;
                     }
-                    RexNode operand = rexCall.getOperands().get(0);
-                    RexInputRef inputRef = (RexInputRef) operand;
-                    String refColumnName = logicalInsert.getInsertRowType().getFieldNames().get(inputRef.getIndex());
-                    if (!refColumnName.equalsIgnoreCase(columnName)) {
-                        return false;
-                    }
-                } catch (Throwable e) {
-                    // If it's not values(col), just return false
+
+                    updatedWithAfterValueColumnSet.add(columnName);
+                }
+            }
+        }
+
+        /*
+         *  Check for situation like below:
+         *
+         *  CREATE TABLE `t1_upsert` (
+         *         `ID` varchar(32) NOT NULL ,
+         *         `XX_DATE` date NOT NULL,
+         *         PRIMARY KEY (`ID`),
+         * ) dbpartition by UNI_HASH(`id`) tbpartition by DD(`xx_date`) tbpartitions 31
+         *
+         * explain insert into t1_upsert(id, xx_date)
+         *   values (1, "2024-01-27 00:00:00.0")
+         *   on duplicate key update xx_date=values(xx_date);
+         *
+         * We should push down the UPSERT
+         */
+        for (Map.Entry<String, TreeSet<String>> entry : tablePartitionKeyMap.entrySet()) {
+            final String tableName = entry.getKey();
+            final TreeSet<String> partitionKeySet = entry.getValue();
+            final TreeSet<String> updatedWithAfterValueColumnSet = updatedWithAfterValueTableColumnMap
+                .computeIfAbsent(tableName, (k) -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER));
+            final Map<String, Set<String>> ukColumnSet = tableUkMapWithoutImplicitPk.get(tableName);
+            for (String sk : partitionKeySet) {
+                // If uk conflict happens, means the after value of uk column is duplicated with the before value
+                // So that, the partition result does not change. The UPSERT can pushdown.
+                final boolean updatedWithAfterValue = updatedWithAfterValueColumnSet.contains(sk)
+                    || ukColumnSet.values().stream().allMatch(ukColumn -> ukColumn.contains(sk));
+
+                // Otherwise, UPSERT can not pushdown
+                if (!updatedWithAfterValue) {
                     return false;
                 }
             }
         }
 
         // Need to make sure all partition key ref to after value
-        return refCnt == partitionKeys.size();
+        return true;
     }
 
     public static boolean checkAllUpdatedSkRefBeforeValue(List<String> updateColumnList, Set<String> partitionKeys,

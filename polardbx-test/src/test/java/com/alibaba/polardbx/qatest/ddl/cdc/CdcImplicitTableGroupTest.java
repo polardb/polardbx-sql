@@ -912,6 +912,48 @@ public class CdcImplicitTableGroupTest extends CdcBaseTest {
         implicitTableGroupChecker.checkSql(schemaName, "t_auto_partition", markSql, defTg12);
         Assert.assertEquals(1, defTg11.size());
         replaySqlList.add(markSql);
+
+        String createTable4RemovePartition1 =
+            "create table t1(a int, b bigint, c int, index i1(b)) partition by key(a) partitions 2";
+        stmt.execute(createTable4RemovePartition1);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t1");
+        replaySqlList.add(markSql);
+
+        String createTable4RemovePartition2 =
+            "create table t2(a int, b bigint, c int, index i1(a)) partition by key(a) partitions 2";
+        stmt.execute(createTable4RemovePartition2);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t2");
+        replaySqlList.add(markSql);
+
+        String createTable4RemovePartition3 =
+            "create table t3(a int, b bigint, c int, index i1(a), primary key(a)) partition by key(a) partitions 2";
+        stmt.execute(createTable4RemovePartition3);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t3");
+        replaySqlList.add(markSql);
+
+        String alterTable4RemovePartition1 = "alter table t1 remove partitioning";
+        stmt.execute(alterTable4RemovePartition1);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t1");
+        Set<String> tgRemove1 = new HashSet<>();
+        implicitTableGroupChecker.checkSql(schemaName, "t1", markSql, tgRemove1);
+        Assert.assertEquals(1, tgRemove1.size());
+        replaySqlList.add(markSql);
+
+        String alterTable4RemovePartition2 = "alter table t2 remove partitioning";
+        stmt.execute(alterTable4RemovePartition2);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t2");
+        Set<String> tgRemove2 = new HashSet<>();
+        implicitTableGroupChecker.checkSql(schemaName, "t2", markSql, tgRemove2);
+        Assert.assertEquals(2, tgRemove2.size());
+        replaySqlList.add(markSql);
+
+        String alterTable4RemovePartition3 = "alter table t3 remove partitioning";
+        stmt.execute(alterTable4RemovePartition3);
+        markSql = getMarkSqlForImplicitTableGroup(schemaName, "t3");
+        Set<String> tgRemove3 = new HashSet<>();
+        implicitTableGroupChecker.checkSql(schemaName, "t3", markSql, tgRemove3);
+        Assert.assertEquals(1, tgRemove3.size());
+        replaySqlList.add(markSql);
     }
 
     private void executeAndCheckCreateIndexMulti(Statement stmt, String schemaName, String tableName1,

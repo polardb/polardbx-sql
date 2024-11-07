@@ -40,8 +40,10 @@ import org.apache.calcite.util.Pair;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -114,8 +116,6 @@ public enum ExecutionStrategy {
         final boolean withGsi = !gsiMetas.isEmpty();
         final boolean allGsiPublished = GlobalIndexMeta.isAllGsiPublished(gsiMetas, context);
 
-        final boolean onlineModifyColumn = TableColumnUtils.isModifying(primaryTable, ec);
-
         // Unique key detail
         final List<List<String>> uniqueKeys = GlobalIndexMeta.getUniqueKeys(targetTable, schema, true, tm -> true, ec);
         final boolean withoutPkAndUk = uniqueKeys.isEmpty() || uniqueKeys.get(0).isEmpty();
@@ -167,10 +167,17 @@ public enum ExecutionStrategy {
         if (insert.isUpsert()) {
             final List<String> updateCols = buildUpdateColumnList(insert);
 
+            final Map<String, Map<String, Set<String>>> tableUkMapWithoutImplicitPk =
+                GlobalIndexMeta.getTableUkMapWithoutImplicitPk(targetTable, schema, true, ec, null);
+
+            final TreeMap<String, TreeSet<String>> partitionKeyMap =
+                GlobalIndexMeta.getPartitionKeyMap(targetTable, schema, ec);
+
             // If all sharding columns in update list referencing same column in after value
             // e.g. insert into t1(a,b,c) values (1,2,3) on duplicate key update a=values(a),b=values(b),c=values(c)
-            final boolean allUpdatedSkRefValue = checkAllUpdatedSkRefAfterValue(updateCols, partitionKeys, insert)
-                || checkAllUpdatedSkRefBeforeValue(updateCols, partitionKeys, insert);
+            final boolean allUpdatedSkRefValue =
+                checkAllUpdatedSkRefAfterValue(updateCols, partitionKeyMap, tableUkMapWithoutImplicitPk, insert)
+                    || checkAllUpdatedSkRefBeforeValue(updateCols, partitionKeys, insert);
 
             final boolean modifyPartitionKey =
                 updateCols.stream().anyMatch(partitionKeys::contains) && !withoutPkAndUk && !allUpdatedSkRefValue;
@@ -205,8 +212,6 @@ public enum ExecutionStrategy {
         }
 
         final boolean doMultiWrite = isBroadcast || withGsi || multiWriteForReplication;
-        // Do not push down when modify column for now
-        canPush = canPush && !onlineModifyColumn;
         canPush = canPush && (!primaryKeyCheck || pushablePrimaryKeyCheck);
         canPush = canPush && (!foreignKeyChecks || pushableFkCheck);
 

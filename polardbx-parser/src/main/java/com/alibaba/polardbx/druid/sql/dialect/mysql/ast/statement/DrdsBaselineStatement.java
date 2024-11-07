@@ -38,6 +38,8 @@ public class DrdsBaselineStatement extends MySqlStatementImpl implements SQLStat
 
     private SQLStatement subStatement;
 
+    private String targetSql;
+
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
         visitor.endVisit(this);
@@ -78,5 +80,13 @@ public class DrdsBaselineStatement extends MySqlStatementImpl implements SQLStat
     @Override
     public SqlType getSqlType() {
         return null;
+    }
+
+    public String getTargetSql() {
+        return targetSql;
+    }
+
+    public void setTargetSql(String targetSql) {
+        this.targetSql = targetSql;
     }
 }

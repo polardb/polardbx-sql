@@ -39,6 +39,7 @@ public class LogicalDropViewHandler extends LogicalCommonDdlHandler {
 
     @Override
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+
         return new DropViewJobFactory((LogicalDropView) logicalDdlPlan).create();
     }
 }

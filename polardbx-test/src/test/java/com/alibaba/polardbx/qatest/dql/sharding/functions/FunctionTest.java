@@ -42,6 +42,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.assertContentL
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentLengthSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameStringIgnoreCaseAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 
 /**
  * Created by chuanqin on 17/12/6.
@@ -217,6 +218,13 @@ public class FunctionTest extends ReadBaseTestCase {
     }
 
     @Test
+    public void toBase64BlobTest() {
+        String sql = String.format("/*+ TDDL: ENABLE_PUSH_PROJECT=false*/ "
+            + "select to_base64(blob_test) from %s order by pk;", baseOneTableName);
+        selectOrderAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
     @Ignore
     public void bitAndTest() throws Exception {
         String sql = "select bit_and(pk) from " + baseOneTableName + " group by pk order by pk limit 10";
@@ -366,7 +374,10 @@ public class FunctionTest extends ReadBaseTestCase {
             + "    STR_TO_DATE('Mayy 1, 2013', '%M %d, %Y') d,\n"
             + "    STR_TO_DATE('9', '%m'),\n"
             + "    STR_TO_DATE('9', '%s') e,\n"
-            + "    STR_TO_DATE('9/2001', '%i/%Y') f;\n";
+            + "    STR_TO_DATE('9/2001', '%i/%Y') f,\n"
+            + "    STR_TO_DATE('2020-08-01 00:00:00','%Y-%m-%d %T') g,\n"
+            + "    STR_TO_DATE('Monday 7th November 2022 13:45:30','%W %D %M %Y %T') h,\n"
+            + "    STR_TO_DATE('01:02:03 PM', '%r') i;\n";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 

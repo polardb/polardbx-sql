@@ -28,11 +28,6 @@ import com.alibaba.polardbx.common.constants.CpuStatAttribute;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.constants.ServerVariables;
 import com.alibaba.polardbx.common.encdb.EncdbException;
-import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
-import com.alibaba.polardbx.gms.metadb.encdb.EncdbKeyManager;
-import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
-import com.alibaba.polardbx.server.encdb.EncdbRuleSpreader;
-import com.alibaba.polardbx.server.encdb.EncdbSessionState;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlException;
@@ -58,7 +53,6 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.common.utils.logger.Level;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
@@ -75,9 +69,10 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.server.lock.LockingFunctionManager;
-import com.alibaba.polardbx.gms.metadb.encdb.EncdbRuleManager;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.encdb.EncdbKeyManager;
+import com.alibaba.polardbx.gms.metadb.encdb.EncdbRuleManager;
 import com.alibaba.polardbx.gms.privilege.ActiveRoles;
 import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
@@ -137,6 +132,7 @@ import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.optimizer.planmanager.StatementMap;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
 import com.alibaba.polardbx.optimizer.statis.XplanStat;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -149,14 +145,16 @@ import com.alibaba.polardbx.rpc.cdc.DumpRequest;
 import com.alibaba.polardbx.rpc.cdc.DumpStream;
 import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
 import com.alibaba.polardbx.server.conn.ResultSetCachedObj;
+import com.alibaba.polardbx.server.encdb.EncdbRuleSpreader;
+import com.alibaba.polardbx.server.encdb.EncdbServer;
+import com.alibaba.polardbx.server.encdb.EncdbSessionState;
 import com.alibaba.polardbx.server.executor.utils.BinaryResultSetUtil;
 import com.alibaba.polardbx.server.executor.utils.MysqlDefs;
 import com.alibaba.polardbx.server.executor.utils.ResultSetUtil;
 import com.alibaba.polardbx.server.handler.ServerLoadDataHandler;
+import com.alibaba.polardbx.server.lock.LockingFunctionManager;
 import com.alibaba.polardbx.server.mock.MockExecutor;
 import com.alibaba.polardbx.server.response.Ping;
-import com.alibaba.polardbx.server.encdb.EncdbResultSet;
-import com.alibaba.polardbx.server.encdb.EncdbServer;
 import com.alibaba.polardbx.server.session.ServerSession;
 import com.alibaba.polardbx.server.ugly.hint.EagleeyeTestHintParser;
 import com.alibaba.polardbx.server.util.LogUtils;
@@ -165,6 +163,7 @@ import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.stats.MatrixStatistics;
+import com.alibaba.polardbx.transaction.DeadlockManager;
 import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.XATsoTransaction;
 import com.google.common.base.Preconditions;
@@ -493,6 +492,16 @@ public final class ServerConnection extends FrontendConnection implements Resche
             value = Integer.parseInt(String.valueOf(this.getVarValueBySqlNode(oriValue)));
         } else {
             value = RelUtils.integerValue((SqlLiteral) oriValue);
+        }
+        return value;
+    }
+
+    public Long getVarLongValue(SqlNode oriValue) {
+        long value;
+        if (oriValue instanceof SqlUserDefVar || oriValue instanceof SqlSystemVar) {
+            value = Long.parseLong(String.valueOf(this.getVarValueBySqlNode(oriValue)));
+        } else {
+            value = RelUtils.longValue(oriValue);
         }
         return value;
     }
@@ -1114,7 +1123,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
      */
     public synchronized boolean innerExecute(ByteString sql, List<Pair<Integer, ParameterContext>> params,
                                              QueryResultHandler handler, LoadDataContext dataContext) {
-
         ByteString realSql = dataContext != null ? ByteString.from(dataContext.getLoadDataSql()) : sql;
         long statExecCpuNano = 0;
         if (MetricLevel.isSQLMetricEnabled(RuntimeStat.getMetricLevel())) {
@@ -1194,6 +1202,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 ec.setPrivilegeContext(ec.getPreparedStmtCache().getPrivilegeContext());
             }
             ec.setLoadDataContext(dataContext);
+            ec.setUserSql(true);
             beforeExecution();
 
             // Set cursor-fetch mode.
@@ -1256,7 +1265,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     EncdbRuleSpreader.maySpreadEncRules(ec);//encdb
                 } else {
                     rs = stmt.getResultSet();
-                    rs = mayMatchEncRule(rs, ec);//encdb
                     handler.sendSelectResult(rs, rowCount,
                         ec.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
                     conn.setFoundRows(rowCount.get());
@@ -1347,6 +1355,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     logger.error("Failed to close TStatement", e);
                 }
             }
+        }
+
+        if (null != ec && null != conn.getTrx() && ec.isFlashbackArea()) {
+            // Clear session variables here.
+            conn.getTrx().clearFlashbackArea();
         }
 
         if (null != ec && null != conn.getTrx()) {
@@ -1458,42 +1471,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
             releaseAutoSavepoint();
             return true;
         }
-    }
-
-    private ResultSet mayMatchEncRule(ResultSet rs, ExecutionContext ec) throws SQLException {
-        if (InstConfUtil.getBool(ConnectionParams.ENABLE_ENCDB)) {
-            ExecutionPlan executionPlan = ec.getFinalPlan();
-
-            if (executionPlan.isExplain()) {
-                return rs;
-            }
-
-            if (executionPlan.getTableSet() != null &&
-                !EncdbRuleManager.getInstance().getRuleMatchTree().fastMatch(executionPlan.getTableSet(), schema)) {
-                return rs;
-            }
-
-            if (!executionPlan.getAst().isA(SqlKind.QUERY)) {
-                return rs;
-            }
-
-            if (executionPlan.getOriginColumnNames() == null) {
-                executionPlan.setOriginColumnNames(CalciteUtils.buildOriginColumnNames(executionPlan.getPlan()));
-            }
-
-            //检查是否有对当前用户匹配的加密列
-            PolarAccount account = PolarAccount.newBuilder().setUsername(user).setHost(host).build();
-            boolean[] colEncBitmap = EncdbRuleManager.getInstance().getRuleMatchTree()
-                .getColumnEncBitmap(executionPlan.getOriginColumnNames(), account);
-
-            if (colEncBitmap != null) {
-                if (rs.getMetaData().getColumnCount() == colEncBitmap.length) {
-                    return new EncdbResultSet(rs, colEncBitmap, getEncdbSessionState());
-                }
-                logger.warn("result set is inconsistent with column encryption bitmap, then give up encryption");
-            }
-        }
-        return rs;
     }
 
     private void releaseAutoSavepoint() {
@@ -1873,7 +1850,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
         metrics.examinedRowCount = XplanStat.getExaminedRowCount(ec.getXplanStat());
 
         metrics.errorCode = errorCode;
-        metrics.useColumnar = ec.getFinalPlan() != null && ec.getFinalPlan().isUseColumnar();
+        metrics.useColumnar = ec.isUseColumnar();
 
         if (runtimeStat != null) {
             runtimeStat.setFinishExecution(true);
@@ -1894,10 +1871,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
             getStatistics().tpLoad++;
             OptimizerAlertUtil.tpAlert(ec, (finishFetchSqlRsNano - getLastActiveTime()) / 1e6);
         }
-        OptimizerAlertUtil.xplanAlert(
-            ec,
-            (finishFetchSqlRsNano - getLastActiveTime()) / 1e6,
-            lastAffectedRows);
         if (ExecUtils.isMppMode(ec)) {
             getStatistics().cluster++;
         } else {
@@ -2217,6 +2190,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 // Handle deadlock error.
                 // Prevent this transaction from committing.
                 trx.setCrucialError(ERR_TRANS_DEADLOCK, t.getMessage());
+
+                DeadlockManager.recordLocalDeadlock(t.getMessage());
 
                 // Rollback this trx.
                 try {
@@ -3147,13 +3122,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
         return StringUtils.endsWith(user.toUpperCase(), "_RO");
     }
 
-    public boolean isCurrentUserAdministrator() {
-        return isAdministrator(getUser());
-    }
-
     /**
      * 判断给定用户是否为管理员账号, 也称为读写账号: 即具有所有权限点和授权选项的用户. 注意: 一个数据库只能有一个管理员账号.
      */
+    @Deprecated
     public boolean isAdministrator(String user) {
         String schema = getSchema();
         if (user == null || schema == null) {
@@ -3162,6 +3134,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
         return TStringUtil.equals(user, schema);
     }
 
+    /**
+     * Do not call  {@link #isGod()}, {@link #isSuperUser()}, {@link #isSuperUserOrAllPrivileges()}
+     * in the core code path when executing SQLs due to performance issues.
+     */
     public boolean isGod() {
         updatePrivilegeContext();
         if (null != conn && null != conn.getExecutionContext()) {
@@ -3184,17 +3160,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
             return conn.getExecutionContext().isSuperUserOrAllPrivileges();
         }
         return false;
-    }
-
-    /**
-     * 判断给定用户是否为系统账号 老的DRDS权限系统设计中有两个系统账号, 读写账号: 用户名和数据库名一致 只读账号: 数据库名加_RO或_ro后缀
-     */
-    public boolean isSystemAccount(String user) {
-        return isAdministrator(user) || isReadOnlyAccount(user);
-    }
-
-    public boolean isCurrentUserSystemAccount() {
-        return isSystemAccount(getUser());
     }
 
     @Override

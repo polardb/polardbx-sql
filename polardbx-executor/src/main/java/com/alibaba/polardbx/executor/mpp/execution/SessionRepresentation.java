@@ -73,7 +73,7 @@ public class SessionRepresentation {
     private WorkloadType workloadType;
     private boolean omitTso;
     private boolean lizard1PC;
-    private ColumnarTracer columnarTracer;
+    private boolean useColumnarTracer;
 
     /**
      * 暂时只增加polardbx_server_id参数，避免长度增加较多；后续如有需要可以再修改
@@ -109,7 +109,7 @@ public class SessionRepresentation {
         @JsonProperty("dnLsnMap") Map<String, Long> dnLsnMap,
         @JsonProperty("omitTso") boolean omitTso,
         @JsonProperty("lizard1PC") boolean lizard1PC,
-        @JsonProperty("columnarTracer") ColumnarTracer columnarTracer,
+        @JsonProperty("useColumnarTracer") boolean useColumnarTracer,
         @JsonProperty("workloadType") WorkloadType workloadType,
         @JsonProperty("extraServerVariables") Map<String, Object> extraServerVariables) {
         this.traceId = traceId;
@@ -139,7 +139,7 @@ public class SessionRepresentation {
         this.dnLsnMap = dnLsnMap;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
-        this.columnarTracer = columnarTracer;
+        this.useColumnarTracer = useColumnarTracer;
         this.workloadType = workloadType;
         this.extraServerVariables = extraServerVariables;
     }
@@ -172,7 +172,7 @@ public class SessionRepresentation {
         Map<String, Long> dnLsnMap,
         boolean omitTso,
         boolean lizard1PC,
-        ColumnarTracer columnarTracer,
+        boolean useColumnarTracer,
         WorkloadType workloadType,
         Map<String, Object> extraServerVariables) {
         this.traceId = traceId;
@@ -203,7 +203,7 @@ public class SessionRepresentation {
         this.workloadType = workloadType;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
-        this.columnarTracer = columnarTracer;
+        this.useColumnarTracer = useColumnarTracer;
         this.extraServerVariables = extraServerVariables;
     }
 
@@ -352,6 +352,11 @@ public class SessionRepresentation {
         return extraServerVariables;
     }
 
+    @JsonProperty
+    public boolean getUseColumnarTracer() {
+        return useColumnarTracer;
+    }
+
     @Override
     public String toString() {
         return MoreObjects.toStringHelper(this)
@@ -366,7 +371,7 @@ public class SessionRepresentation {
             .toString();
     }
 
-    public Session toSession(TaskId taskId, QueryContext queryContext, long trxId) {
+    public Session toSession(TaskId taskId, QueryContext queryContext, long trxId, ColumnarTracer columnarTracer) {
         ExecutionContext ec = TaskResource.getDrdsContextHandler().makeExecutionContext(schema, hintCmds, txIsolation);
         ec.setTxId(trxId);
         if (tsoTimeStamp > 0 || omitTso) {
@@ -459,13 +464,5 @@ public class SessionRepresentation {
         ec.setExtraServerVariables(extraServerVariables);
 
         return new Session(taskId.getStageId(), ec);
-    }
-
-    public ColumnarTracer getColumnarTracer() {
-        return columnarTracer;
-    }
-
-    public void setColumnarTracer(ColumnarTracer columnarTracer) {
-        this.columnarTracer = columnarTracer;
     }
 }

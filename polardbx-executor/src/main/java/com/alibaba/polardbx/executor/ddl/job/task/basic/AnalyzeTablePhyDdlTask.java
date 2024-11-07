@@ -96,11 +96,6 @@ public class AnalyzeTablePhyDdlTask extends BaseDdlTask {
             retUseHll.add(executionContext.getParamManager().getBoolean(ENABLE_HLL) && SchemaMetaUtil
                 .checkSupportHll(schemaName));
 
-            if (OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(table) == null) {
-                logger.warn(
-                    "no table rule for logicalTableName = " + table + ", analyze this table as the single table!");
-            }
-
             forceAnalyzeColumnsDdl(schemaName, table, retMsg, executionContext);
 
             // refresh plan cache

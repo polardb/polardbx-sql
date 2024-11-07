@@ -19,6 +19,8 @@ package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionGlobalIndexBuilder;
@@ -31,6 +33,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMeta
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterGsiAddLocalIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPreValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
@@ -39,17 +42,24 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupsSyncTask
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
+import com.alibaba.polardbx.executor.ddl.twophase.DnStats;
+import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.node.GmsNodeManager;
+import com.alibaba.polardbx.gms.node.StorageStatusManager;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Lists;
+import io.airlift.slice.DataSize;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang3.StringUtils;
 
@@ -62,8 +72,10 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.columnAst2nameStr;
+import static com.alibaba.polardbx.executor.gsi.GsiUtils.getAvaliableNodeNum;
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.DELETE_ONLY;
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.WRITE_ONLY;
+import static io.airlift.slice.DataSize.*;
 import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
 /**
@@ -83,6 +95,8 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
 
     public CreatePartitionGsiJobFactory(CreateGlobalIndexPreparedData globalIndexPreparedData,
                                         PhysicalPlanData physicalPlanData,
+                                        PhysicalPlanData physicalPlanDataForLocalIndex,
+                                        Boolean create4CreateTableWithGsi,
                                         ExecutionContext executionContext) {
         super(
             globalIndexPreparedData.getSchemaName(),
@@ -102,12 +116,17 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
             globalIndexPreparedData.getIndexTablePreparedData() != null ?
                 globalIndexPreparedData.getIndexTablePreparedData().getSpecialDefaultValueFlags() :
                 new TreeMap<>(String.CASE_INSENSITIVE_ORDER),
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_BY_PK_RANGE),
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_BY_PARTITION),
             physicalPlanData,
+            physicalPlanDataForLocalIndex,
+            create4CreateTableWithGsi,
             globalIndexPreparedData.getAddedForeignKeys(),
             executionContext
         );
         this.tableGroupAlignWithTargetTable = globalIndexPreparedData.getTableGroupAlignWithTargetTable();
         this.globalIndexPreparedData = globalIndexPreparedData;
+        this.gsiCdcMark = !globalIndexPreparedData.isRepartition();
     }
 
     @Override
@@ -186,55 +205,105 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     physicalPlanData.getTableGroupConfig());
             CreateGsiValidateTask validateTask =
                 new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName, tableGroupIds,
-                    physicalPlanData.getTableGroupConfig());
+                    physicalPlanData.getTableGroupConfig(), removePartitioning, false);
 
             List<String> columns = columnAst2nameStr(this.columns);
             List<String> coverings = columnAst2nameStr(this.coverings);
 
-            Map<String, String> columnMapping = backfillColumnMap == null ? null :
-                backfillColumnMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+            Map<String, String> columnMapping = omcColumnMap == null ? null :
+                omcColumnMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
             final String finalStatus =
                 executionContext.getParamManager().getString(ConnectionParams.GSI_FINAL_STATUS_DEBUG);
+            Boolean buildLocalIndexLater =
+                executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BUILD_LOCAL_INDEX_LATER);
+            int gsiMaxParallelism = executionContext.getParamManager().getInt(ConnectionParams.GSI_JOB_MAX_PARALLELISM);
             final boolean stayAtDeleteOnly = StringUtils.equalsIgnoreCase(DELETE_ONLY.name(), finalStatus);
             final boolean stayAtWriteOnly = StringUtils.equalsIgnoreCase(WRITE_ONLY.name(), finalStatus);
 
             List<DdlTask> bringUpGsi = null;
+            ExecutableDdlJob bringUpGsiDdlJob = new ExecutableDdlJob();
             if (useChangeSet) {
                 // online modify column
                 bringUpGsi = GsiTaskFactory.addGlobalIndexTasksChangeSet(
                     schemaName,
                     primaryTableName,
-                    oldIndexName,
+                    backfillSourceTableName,
                     indexTableName,
                     stayAtDeleteOnly,
                     stayAtWriteOnly,
                     stayAtBackFill,
-                    virtualColumnMap,
-                    backfillColumnMap,
+                    srcVirtualColumnMap,
+                    dstVirtualColumnMap,
+                    dstColumnNewDefinitions,
                     modifyStringColumns,
                     onlineModifyColumn,
                     mirrorCopy,
                     physicalPlanData,
                     globalIndexPreparedData.getIndexPartitionInfo()
                 );
-            } else if (needOnlineSchemaChange) {
+            } else if (needOnlineSchemaChange && (splitByPkRange || splitByPartition)) {
                 TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
-                boolean repartition = globalIndexPreparedData.isRepartition();
-                bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
+                ParamManager pm = executionContext.getParamManager();
+                boolean enableSample = pm.getBoolean(ConnectionParams.ENABLE_INNODB_BTREE_SAMPLING);
+                String maxPkRangeSizeStr = pm.getString(ConnectionParams.BACKFILL_MAX_PK_RANGE_SIZE);
+                String maxTaskPkRangeSizeStr = pm.getString(ConnectionParams.BACKFILL_MAX_TASK_PK_RANGE_SIZE);
+                long maxPkRangeSize = convertToByte(maxPkRangeSizeStr);
+                long maxTaskPkRangeSize = convertToByte(maxTaskPkRangeSizeStr);
+                long maxSampleRows = pm.getLong(ConnectionParams.BACKFILL_MAX_SAMPLE_ROWS);
+                long maxPkRangeSampleRows = pm.getLong(ConnectionParams.BACKFILL_MAX_SAMPLE_ROWS_FOR_PK_RANGE);
+                int cpuAcquired = pm.getInt(ConnectionParams.GSI_PK_RANGE_CPU_ACQUIRE);
+                int maxNodeNum = getAvaliableNodeNum(schemaName, primaryTableName, executionContext);
+                // if you use pk range, then control the concurrency by cpuAcquired.
+                gsiMaxParallelism = Math.floorDiv(100, cpuAcquired) * maxNodeNum;
+                GsiChecker.Params params = GsiChecker.Params.buildFromExecutionContext(executionContext);
+                bringUpGsiDdlJob = GsiTaskFactory.addGlobalIndexTasks(
                     schemaName,
                     primaryTableName,
-                    oldIndexName,
+                    backfillSourceTableName,
                     indexTableName,
                     stayAtDeleteOnly,
                     stayAtWriteOnly,
                     stayAtBackFill,
-                    virtualColumnMap,
+                    srcVirtualColumnMap,
                     null,
                     modifyStringColumns,
                     physicalPlanData,
+                    physicalPlanDataForLocalIndex,
                     tableMeta,
-                    repartition,
+                    gsiCdcMark,
+                    onlineModifyColumn,
+                    mirrorCopy,
+                    executionContext.getOriginSql(),
+                    params,
+                    splitByPkRange,
+                    splitByPartition,
+                    enableSample,
+                    maxTaskPkRangeSize,
+                    maxPkRangeSize,
+                    maxSampleRows,
+                    maxPkRangeSampleRows,
+                    gsiMaxParallelism,
+                    cpuAcquired
+                );
+                physicalPlanDataForLocalIndex = null;
+            } else if (needOnlineSchemaChange) {
+                TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+                bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
+                    schemaName,
+                    primaryTableName,
+                    backfillSourceTableName,
+                    indexTableName,
+                    stayAtDeleteOnly,
+                    stayAtWriteOnly,
+                    stayAtBackFill,
+                    srcVirtualColumnMap,
+                    dstVirtualColumnMap,
+                    dstColumnNewDefinitions,
+                    modifyStringColumns,
+                    physicalPlanData,
+                    tableMeta,
+                    gsiCdcMark,
                     onlineModifyColumn,
                     mirrorCopy,
                     executionContext.getOriginSql()
@@ -251,8 +320,9 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
             CreateTableAddTablesPartitionInfoMetaTask createTableAddTablesPartitionInfoMetaTask =
                 new CreateTableAddTablesPartitionInfoMetaTask(schemaName, indexTableName,
                     physicalPlanData.isTemporary(),
-                    physicalPlanData.getTableGroupConfig(), null, tableGroupAlignWithTargetTable, primaryTableName,
-                    null, false, globalIndexPreparedData.isWithImplicitTableGroup(), autoCreateTg);
+                    physicalPlanData.getTableGroupConfig(), null, null, tableGroupAlignWithTargetTable,
+                    globalIndexPreparedData.isWithImplicitTableGroup(), false, primaryTableName,
+                    null, false, autoCreateTg);
             CreateTableAddTablesMetaTask addTablesMetaTask =
                 new CreateTableAddTablesMetaTask(
                     schemaName,
@@ -292,6 +362,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                     addNewColumns
                 );
             addIndexMetaTask = (GsiInsertIndexMetaTask) addIndexMetaTask.onExceptionTryRecoveryThenRollback();
+            final ExecutableDdlJob4CreatePartitionGsi result = new ExecutableDdlJob4CreatePartitionGsi();
 
             List<DdlTask> taskList = new ArrayList<>();
             //1. validate
@@ -312,22 +383,38 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
             taskList.add(addIndexMetaTask);
 //        taskList.add(new GsiSyncTask(schemaName, primaryTableName, indexTableName));
             //3.2 gsi status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> PUBLIC
-            taskList.addAll(bringUpGsi);
+            result.addSequentialTasks(taskList);
+            if (splitByPkRange || splitByPartition) {
+                result.combineTasks(bringUpGsiDdlJob);
+                result.addTaskRelationship(taskList.get(taskList.size() - 1), bringUpGsiDdlJob.getHead());
+                taskList = new ArrayList<>();
+            } else {
+                taskList = new ArrayList<>();
+                taskList.addAll(bringUpGsi);
+            }
 
+            if (buildLocalIndexLater && physicalPlanDataForLocalIndex != null) {
+                AlterGsiAddLocalIndexTask alterGsiPhyTable =
+                    new AlterGsiAddLocalIndexTask(schemaName, primaryTableName, indexTableName,
+                        physicalPlanDataForLocalIndex);
+                taskList.add(alterGsiPhyTable);
+            }
             DdlTask tableSyncTask = new TableSyncTask(schemaName, indexTableName);
             taskList.add(tableSyncTask);
 
             Map<String, TableMeta> tableMetaMap = executionContext.getSchemaManager().getCache();
-            if (unique && !clusteredIndex && tableMetaMap != null
+            boolean ugsiWithPk =
+                executionContext.getParamManager().getBoolean(ConnectionParams.UNIQUE_GSI_WITH_PRIMARY_KEY);
+            if (unique && !ugsiWithPk && !clusteredIndex && tableMetaMap != null
                 && tableMetaMap.containsKey(primaryTableName.toLowerCase())) {
                 // only create ugsi (not contains clustered ugsi)
                 // create table with ugsi will not arrive here
                 taskList.add(generateDropLocalIndexJob());
             }
 
-            final ExecutableDdlJob4CreatePartitionGsi result = new ExecutableDdlJob4CreatePartitionGsi();
-            result.addSequentialTasks(taskList);
-            //todo delete me
+            for (int i = 0; i < taskList.size(); i++) {
+                result.appendTask(taskList.get(i));
+            }
             result.labelAsHead(validateTask);
             result.labelAsTail(tableSyncTask);
 
@@ -338,9 +425,14 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
             result.setCreateTableShowTableMetaTask(showTableMetaTask);
             result.setGsiInsertIndexMetaTask(addIndexMetaTask);
             result.setCreateGsiPhyDdlTask(createGsiPhyDdlTask);
-            result.setLastUpdateGsiStatusTask(bringUpGsi.get(bringUpGsi.size() - 1));
+            if (bringUpGsi != null) {
+                result.setLastUpdateGsiStatusTask(bringUpGsi.get(bringUpGsi.size() - 1));
+            } else {
+                result.setLastUpdateGsiStatusTask(bringUpGsiDdlJob.getTail());
+            }
 
             result.setLastTask(tableSyncTask);
+            result.setMaxParallelism(gsiMaxParallelism);
 
             return result;
         }
@@ -430,8 +522,13 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
         DdlPhyPlanBuilder builder =
             CreateGlobalIndexBuilder.create(ddl, globalIndexPreparedData, null, executionContext).build();
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();
+        PhysicalPlanData physicalPlanDataForLocalIndex = null;
+        if (builder.getPhysicalPlansForLocalIndex() != null) {
+            physicalPlanDataForLocalIndex = builder.genPhysicalPlanData(false, true);
+        }
 
-        return CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, executionContext).create();
+        return CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, physicalPlanDataForLocalIndex,
+            executionContext).create();
     }
 
     public static ExecutableDdlJob create4CreateTableWithGsi(@Deprecated DDL ddl,
@@ -447,6 +544,8 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
         CreateGsiJobFactory gsiJobFactory = new CreatePartitionGsiJobFactory(
             globalIndexPreparedData,
             physicalPlanData,
+            null,
+            true,
             ec
         );
         gsiJobFactory.needOnlineSchemaChange = false;
@@ -463,4 +562,6 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
         }
         return ret;
     }
+
+
 }

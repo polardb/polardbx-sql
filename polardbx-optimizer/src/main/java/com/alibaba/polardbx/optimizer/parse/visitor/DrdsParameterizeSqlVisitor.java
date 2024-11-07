@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.parse.visitor;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLOver;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLAllColumnExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
@@ -41,9 +42,12 @@ import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
+import com.alibaba.polardbx.druid.util.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.LastInsertId;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime.Now;
+import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.PreparedParamRef;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.util.NlsString;
@@ -276,7 +280,7 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
         return false;
     }
 
-    private void visitPreparedParam(SQLVariantRefExpr x) {
+    protected void visitPreparedParam(SQLVariantRefExpr x) {
         if (parameters != null) {
             parameters.add(new PreparedParamRef(x.getIndex()));
         }
@@ -332,7 +336,9 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
             } else if (expr instanceof SQLIdentifierExpr) {
                 aliasNew = ((SQLIdentifierExpr) expr).getName();
             } else {
-                aliasNew = quoteString(SQLUtils.toMySqlString(expr));
+                SQLUtils.FormatOption option = new SQLUtils.FormatOption(SqlParameterizeUtils.parameterizeFeatures);
+                option.setUppCase(isUppCase());
+                aliasNew = quoteString(SQLUtils.toMySqlString(expr, option));
             }
             this.print0(aliasNew);
         }
@@ -555,5 +561,10 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
         boolean visit = super.visit(x);
         this.parameterized = parameterized;
         return visit;
+    }
+
+    @Override
+    public void postVisit(SQLObject x) {
+        // do nothing
     }
 }

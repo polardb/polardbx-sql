@@ -1,0 +1,47 @@
+SQL:
+  - sql: |
+      select 1 from customer;
+    plan: |
+      ap
+  - sql: |
+      /*+TDDL:cmd_extra(workload_type=tp)*/select 1 from customer;
+    plan: |
+      tp
+  - sql: |
+      /*+TDDL:cmd_extra(workload_type=null)*/select 1 from customer;
+    plan: |
+      ap
+  - sql: |
+      select 1 from customer where c_custkey=1;
+    plan: |
+      ap
+  - sql: |
+        /*+TDDL:cmd_extra(workload_type="")*/select 1 from customer where c_custkey=1;
+    plan: |
+      ap
+  - sql: |
+        /*+TDDL:cmd_extra(workload_type=tp)*/select 1 from customer where c_custkey=1;
+    plan: |
+      tp
+  - sql: |
+        /*+TDDL:cmd_extra(workload_type=ap)*/select 1 from customer where c_custkey=1;
+    plan: |
+      ap
+  - sql: |
+       /*+TDDL:cmd_extra(workload_type=tp)*/select 1 from customer force index(customer_col_index);
+    plan: |
+      tp
+DDL:
+  customer:
+    CREATE TABLE IF NOT EXISTS `customer` (  `c_custkey` int(11) NOT NULL,  `c_name` varchar(25) NOT NULL,  `c_address` varchar(40) NOT NULL,  `c_nationkey` int(11) NOT NULL,  `c_phone` varchar(15) NOT NULL,  `c_acctbal` decimal(15, 2) NOT NULL,  `c_mktsegment` varchar(10) NOT NULL,  `c_comment` varchar(117) NOT NULL,  PRIMARY KEY (`c_custkey`),  CLUSTERED COLUMNAR INDEX `customer_col_index`(`c_custkey`) PARTITION BY HASH (`c_custkey`) PARTITIONS 96 ) ENGINE = InnoDB DEFAULT CHARSET = latin1 PARTITION BY KEY (`c_custkey`) PARTITIONS 128;
+STATISTICS:
+  customer:
+    168648768
+CONFIG:
+  ENABLE_MPP:
+    true
+  ENABLE_COLUMNAR_OPTIMIZER:
+    true
+  defaltxxAPPName.isNew:
+    true
+

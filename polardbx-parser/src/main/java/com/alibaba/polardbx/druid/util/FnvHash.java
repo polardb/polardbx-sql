@@ -824,6 +824,8 @@ public final class FnvHash {
         long DATABASES = fnv1a_64_lower("DATABASES");
         long COLUMNS = fnv1a_64_lower("COLUMNS");
         long DICTIONARY_COLUMNS = fnv1a_64_lower("DICTIONARY_COLUMNS");
+        long COLUMNAR_OPTIONS = fnv1a_64_lower("COLUMNAR_OPTIONS");
+        long COLUMNAR_OPTION = fnv1a_64_lower("COLUMNAR_OPTION");
         long PROCESS = fnv1a_64_lower("PROCESS");
         long PROCESSLIST = fnv1a_64_lower("PROCESSLIST");
         long MPP = fnv1a_64_lower("MPP");
@@ -1174,6 +1176,18 @@ public final class FnvHash {
         long _GB18030 = fnv1a_64_lower("_GB18030");
 
         long JOINGROUP = fnv1a_64_lower("JOINGROUP");
+
+        long TTL = fnv1a_64_lower("TTL");
+        long TTL_DEFINITION = fnv1a_64_lower("TTL_DEFINITION");
+        long TTL_ENABLE = fnv1a_64_lower("TTL_ENABLE");
+        long TTL_EXPR = fnv1a_64_lower("TTL_EXPR");
+        long TTL_JOB = fnv1a_64_lower("TTL_JOB");
+        long TTL_FILTER = fnv1a_64_lower("TTL_FILTER");
+        long ARCHIVE_TYPE = fnv1a_64_lower("ARCHIVE_TYPE");
+        long ARCHIVE_TABLE_SCHEMA = fnv1a_64_lower("ARCHIVE_TABLE_SCHEMA");
+        long ARCHIVE_TABLE_NAME = fnv1a_64_lower("ARCHIVE_TABLE_NAME");
+        long ARCHIVE_TABLE_PRE_ALLOCATE = fnv1a_64_lower("ARCHIVE_TABLE_PRE_ALLOCATE");
+        long ARCHIVE_TABLE_POST_ALLOCATE = fnv1a_64_lower("ARCHIVE_TABLE_POST_ALLOCATE");
 
         Set<Long> MYSQL_CHARACTER_SETS = ImmutableSet.of(
             _BIG5, _DEC8, _CP850, _HP8, _KOI8R, _LATIN1, _LATIN2, _SWE7, _ASCII, _UJIS, _SJIS, _HEBREW, _TIS620,

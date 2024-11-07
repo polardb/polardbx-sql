@@ -386,6 +386,16 @@ if [ -f $pidfile ] ; then
     exit 1
 fi
 
+# -1: jvm not support
+# 0: disable
+# 1: <= 64G mode
+# 2: > 64G mode
+jvmElasticHeapSupport=`$JAVA -XX:+PrintFlagsFinal -version 2> /dev/null | grep ElasticHeapMinHeapSize`
+elasticHeapMode=0
+if [ x"$jvmElasticHeapSupport" == "x" ]; then
+  elasticHeapMode=-1
+fi
+
 str=`file -L $JAVA | grep 64-bit`
 if [ -n "$str" ]; then
     freecount=`free -m | grep 'Mem' |awk '{print $2}'`
@@ -398,27 +408,63 @@ if [ -n "$str" ]; then
         freecount=`expr $memory / 1024 / 1024`
     fi
 
-    if [ $freecount -ge 131072 ] ; then
-        JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g"
-    elif [ $freecount -ge 65536 ] ; then
-        JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
-    elif [ $freecount -ge 32768  ] ; then
-        JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g"
-    elif [ $freecount -ge 16384  ] ; then
-        JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g"
-    elif [ $freecount -ge 8192 ] ; then
-        JAVA_OPTS="-server -Xms4g -Xmx4g "
-    elif [ $freecount -ge 4096 ] ; then
-        JAVA_OPTS="-server -Xms2g -Xmx2g "
-    elif [ $freecount -ge 2048 ] ; then
-        JAVA_OPTS="-server -Xms1024m -Xmx1024m "
-    elif [ $freecount -ge 1024 ] ; then
-        JAVA_OPTS="-server -Xms512m -Xmx512m "
-    elif [ $freecount -ge 512 ] ; then
-        JAVA_OPTS="-server -Xms256m -Xmx256m "
-    elif [ $freecount -ge 256 ] ; then
-        JAVA_OPTS="-server -Xms128m -Xmx128m "
+    if [ $elasticHeapMode -ge 0 ]; then
+        if [ $freecount -ge 131072 ] ; then
+            JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g "
+            elasticHeapMode=2
+        elif [ $freecount -ge 65536 ] ; then
+            JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g "
+            elasticHeapMode=1
+        elif [ $freecount -ge 32768  ] ; then
+            JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g "
+            elasticHeapMode=1
+        elif [ $freecount -ge 16384  ] ; then
+            JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g "
+            elasticHeapMode=1
+        elif [ $freecount -ge 8192 ] ; then
+            JAVA_OPTS="-server -Xms4g -Xmx4g "
+            elasticHeapMode=1
+        elif [ $freecount -ge 4096 ] ; then
+            JAVA_OPTS="-server -Xms2g -Xmx2g "
+            elasticHeapMode=1
+        elif [ $freecount -ge 2048 ] ; then
+            JAVA_OPTS="-server -Xms1024m -Xmx1024m "
+            elasticHeapMode=0
+        elif [ $freecount -ge 1024 ] ; then
+            JAVA_OPTS="-server -Xms512m -Xmx512m "
+            elasticHeapMode=0
+        elif [ $freecount -ge 512 ] ; then
+            JAVA_OPTS="-server -Xms256m -Xmx256m "
+            elasticHeapMode=0
+        elif [ $freecount -ge 256 ] ; then
+            JAVA_OPTS="-server -Xms128m -Xmx128m "
+            elasticHeapMode=0
+        fi
+    else
+        # do not support elasticHeap
+        if [ $freecount -ge 131072 ] ; then
+            JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g"
+        elif [ $freecount -ge 65536 ] ; then
+            JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
+        elif [ $freecount -ge 32768  ] ; then
+            JAVA_OPTS="-server -Xms24g -Xmx24g -XX:MaxDirectMemorySize=6g"
+        elif [ $freecount -ge 16384  ] ; then
+            JAVA_OPTS="-server -Xms10g -Xmx10g -XX:MaxDirectMemorySize=3g"
+        elif [ $freecount -ge 8192 ] ; then
+            JAVA_OPTS="-server -Xms4g -Xmx4g "
+        elif [ $freecount -ge 4096 ] ; then
+            JAVA_OPTS="-server -Xms2g -Xmx2g "
+        elif [ $freecount -ge 2048 ] ; then
+            JAVA_OPTS="-server -Xms1024m -Xmx1024m "
+        elif [ $freecount -ge 1024 ] ; then
+            JAVA_OPTS="-server -Xms512m -Xmx512m "
+        elif [ $freecount -ge 512 ] ; then
+            JAVA_OPTS="-server -Xms256m -Xmx256m "
+        elif [ $freecount -ge 256 ] ; then
+            JAVA_OPTS="-server -Xms128m -Xmx128m "
+        fi
     fi
+
 else
 	echo "not support 32-bit java startup"
 	exit
@@ -427,11 +473,31 @@ fi
 #2.6.32-220.23.2.al.ali1.1.alios6.x86_64 not support Wisp2
 if [ "$wisp" == "wisp" ] && [ "$KERNEL_VERSION" != "2.6.32-220.23.2.al.ali1.1.alios6.x86_64" ]; then
     JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2 -Dio.grpc.netty.shaded.io.netty.transport.noNative=true -Dio.netty.transport.noNative=true"
+    JAVA_OPTS="$JAVA_OPTS -XX:+UnlockExperimentalVMOptions -XX:+UseWisp2"
+
+fi
+
+#disable netty-native in order to support Wisp2
+TDDL_OPTS=" $TDDL_OPTS -Dio.grpc.netty.shaded.io.netty.transport.noNative=true -Dio.netty.transport.noNative=true"
+#disable logback in Wisp2
+TDDL_OPTS=" $TDDL_OPTS -Dcom.alibaba.wisp.threadAsWisp.black=name:logback-*"
+
+if [ "$cgroup" == "cgroup" ] ; then
+    JAVA_OPTS="$JAVA_OPTS -XX:+MultiTenant -XX:+TenantCpuThrottling -XX:+TenantCpuAccounting"
+    TDDL_OPTS=" $TDDL_OPTS -Dcom.alibaba.polardbx.cgroup=true -Dcom.alibaba.wisp.threadAsWisp.black=name:ap-processor-*;logback-*"
+    echo "jgroup path=$JGROUP, dockerId=$dockerId"
+
+    if [ x"$dockerId" != "x" ]; then
+        JAVA_OPTS="$JAVA_OPTS -Dcom.alibaba.tenant.jgroup.rootGroup=docker/$dockerId"
+        sudo $JGROUP -u admin -g admin -r docker/$dockerId
+    else
+        sudo $JGROUP -u admin -g admin
+    fi
 fi
 
 # in docker container, limit cpu cores
 if [ x"$cpu_cores" != "x" ]; then
-    JAVA_OPTS="$JAVA_OPTS -XX:ActiveProcessorCount=$cpu_cores"
+    JAVA_OPTS="$JAVA_OPTS -XX:ActiveProcessorCount=$cpu_cores -XX:ParallelGCThreads=$cpu_cores"
 fi
 
 #https://workitem.aone.alibaba-inc.com/req/33334239
@@ -445,8 +511,6 @@ else
   JAVA_OPTS="$JAVA_OPTS -XX:+UseFastAccessorMethods"
 fi
 
-# For CMS and ParNew
-#JAVA_OPTS="$JAVA_OPTS -XX:SurvivorRatio=10 -XX:+UseParNewGC -XX:+UseConcMarkSweepGC -XX:+CMSParallelRemarkEnabled -XX:+UseCMSCompactAtFullCollection -XX:+UseCMSInitiatingOccupancyOnly -XX:CMSInitiatingOccupancyFraction=75"
 # For G1
 JAVA_OPTS="$JAVA_OPTS -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -XX:+UseGCOverheadLimit -XX:+ExplicitGCInvokesConcurrent "
 
@@ -468,7 +532,6 @@ else
   JAVA_OPTS="$JAVA_OPTS -XX:+PrintGCDateStamps -XX:+PrintGCApplicationStoppedTime"
 fi
 JAVA_OPTS=" $JAVA_OPTS -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=$base_log  -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=$base_log/hs_err_pid%p.log"
-# JAVA_OPTS=" $JAVA_OPTS -XX:+UseWisp2"
 TDDL_OPTS=" $TDDL_OPTS -Dlogback.configurationFile=$logback_configurationFile -Dtddl.conf=$tddl_conf"
 
 if [ -e $tddl_conf -a -e $logback_configurationFile ]

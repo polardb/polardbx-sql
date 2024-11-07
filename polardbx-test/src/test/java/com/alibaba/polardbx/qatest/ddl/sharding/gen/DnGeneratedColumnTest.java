@@ -250,7 +250,7 @@ public class DnGeneratedColumnTest extends DDLBaseNewDBTestCase {
                 .get();
 
         String tddlSql = String.format(
-            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=false)*/ %s to '%s'",
+            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=false)*/ %s to '%s'",
             srcGroup, dstStorageId);
         JdbcUtil.executeUpdateSuccess(conn, tddlSql);
 
@@ -302,7 +302,7 @@ public class DnGeneratedColumnTest extends DDLBaseNewDBTestCase {
                 .get();
 
         String tddlSql = String.format(
-            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=true)*/ %s to '%s'",
+            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SPHYSICAL_BACKFILL_ENABLE=false, CALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=true)*/ %s to '%s'",
             srcGroup, dstStorageId);
         JdbcUtil.executeUpdateSuccess(conn, tddlSql);
 
@@ -512,6 +512,9 @@ public class DnGeneratedColumnTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableUniqueIndexFailed() throws SQLException {
+        if (isMySQL80()) {
+            return;
+        }
         String tableName = "dn_gen_col_alter_unique_fail";
         String createTable =
             String.format("create table %s (a int primary key, b int, c int as (a+b) stored, d int)", tableName);

@@ -34,6 +34,7 @@ import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionRegistry;
 import com.alibaba.polardbx.executor.vectorized.compare.FastInVectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.compare.FastNotInVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.metadata.ArgumentInfo;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionConstructor;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionMode;
@@ -118,7 +119,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
     private final static RelDataTypeFactory TYPE_FACTORY =
         new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     private final static RexBuilder REX_BUILDER = new RexBuilder(TYPE_FACTORY);
-    private static final int MAX_CODEGEN_IN_NUMS = 100;
+    private static final int MAX_VARCHAR_CODEGEN_IN_NUMS = 100;
     private static final String CAST_TO_DECIMAL = "CastToDecimal";
     private static final String CAST_TO_UNSIGNED = "CastToUnsigned";
     private static final String CAST_TO_SIGNED = "CastToSigned";
@@ -148,6 +149,9 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
 
     private final boolean fallback;
     private final boolean enableCSE;
+
+    private final boolean enableDrdsTypeSystem;
+
     private int currentOutputIndex;
     private ExprContextProvider contextProvider;
 
@@ -166,6 +170,8 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
         this.allowConstantFold =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_EXPRESSION_CONSTANT_FOLD);
         this.expressionRewriter = new ExpressionRewriter(executionContext);
+        this.enableDrdsTypeSystem =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DRDS_TYPE_SYSTEM);
     }
 
     private static boolean isSpecialFunction(RexCall call) {
@@ -300,14 +306,14 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             allowConstantFold = false;
         }
 
-        // for constant expression (not row-expression!)
-        if (allowConstantFold
-            && RexUtil.isConstant(call)
-            && !(call.op instanceof SqlRowOperator)) {
-            return doConstantFold(call);
+        // for constant expression
+        RexCall rewrittenCall = call;
+        if (allowConstantFold) {
+            rewrittenCall = expressionRewriter.rewriteConstFold(rewrittenCall);
         }
 
-        RexCall rewrittenCall = rewrite(call, false);
+        // normal rewrite for other function.
+        rewrittenCall = rewrite(rewrittenCall, false);
         if (isInConstCall(rewrittenCall)) {
             Optional<VectorizedExpression> expression = createInVecExpr(rewrittenCall);
             if (expression.isPresent()) {
@@ -315,7 +321,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
             }
         }
 
-        if (!fallback && !isSpecialFunction(call)) {
+        if (!fallback && !isSpecialFunction(rewrittenCall)) {
             Optional<VectorizedExpression> expression = createVectorizedExpression(rewrittenCall);
             if (expression.isPresent()) {
                 return expression.get();
@@ -326,20 +332,33 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
         return createGeneralVectorizedExpression(call);
     }
 
+    /**
+     * Including IN and NOT_IN
+     */
     private Optional<VectorizedExpression> createInVecExpr(RexCall call) {
         try {
-            ExpressionConstructor<FastInVectorizedExpression> constructor =
-                ExpressionConstructor.of(FastInVectorizedExpression.class);
+            ExpressionConstructor<?> constructor;
+            if (call.op == SqlStdOperatorTable.IN) {
+                constructor = ExpressionConstructor.of(FastInVectorizedExpression.class);
+            } else if (call.op == SqlStdOperatorTable.NOT_IN) {
+                constructor = ExpressionConstructor.of(FastNotInVectorizedExpression.class);
+            } else {
+                // should not reach here
+                return Optional.empty();
+            }
+
             int outputIndex = -1;
             boolean isInFilterMode = isInFilterMode(call);
             DataType<?> dataType = getOutputDataType(call);
 
+            boolean enableInAutoTypeConvert = executionContext.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_IN_VEC_AUTO_TYPE);
             VectorizedExpression[] children = new VectorizedExpression[2];
             RexNode rexNode = call.operands.get(0);
             RexNode literalNode1 = call.operands.get(1);
             children[0] = rexNode.accept(this);
             outputIndex = addOutput(DataTypeUtil.calciteToDrdsType(literalNode1.getType()));
-            children[1] = InValuesVectorizedExpression.from(call.operands, outputIndex);
+            children[1] = InValuesVectorizedExpression.from(call.operands, outputIndex, enableInAutoTypeConvert);
 
             if (!isInFilterMode) {
                 outputIndex = addOutput(dataType);
@@ -362,32 +381,34 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
      * check all in values are constants and of same datatype
      */
     private boolean isInConstCall(RexCall call) {
-        if (call.op != SqlStdOperatorTable.IN) {
-            return false;
-        }
-
-        if (call.operands.size() <= MAX_CODEGEN_IN_NUMS + 1) {
-            // use old code path
+        if (call.op != SqlStdOperatorTable.IN &&
+            call.op != SqlStdOperatorTable.NOT_IN) {
             return false;
         }
 
         SqlTypeName typeName = null;
-        for (int i = 1; i < call.operands.size(); i++) {
+        for (int i = 0; i < call.operands.size(); i++) {
             RexNode rexNode = call.operands.get(i);
+            if (i == 0 && rexNode instanceof RexInputRef) {
+                // only support one column in (const ...) now
+                continue;
+            }
             if (!(rexNode instanceof RexLiteral)) {
                 return false;
             }
+            SqlTypeName currentTypeName = ((RexLiteral) rexNode).getTypeName();
             if (typeName == null) {
-                typeName = ((RexLiteral) rexNode).getTypeName();
+                typeName = currentTypeName;
             } else {
-                if (typeName != ((RexLiteral) rexNode).getTypeName()) {
+                // allow NULL values
+                if (typeName != currentTypeName && currentTypeName != SqlTypeName.NULL) {
                     return false;
                 }
             }
         }
 
         if (typeName == SqlTypeName.CHAR || typeName == SqlTypeName.VARCHAR) {
-            // FastInVectorizedExpression does not support collation compare
+            // does not support collation compare in fast path
             boolean compatible = executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE);
             return !compatible;
         }
@@ -396,7 +417,7 @@ public class Rex2VectorizedExpressionVisitor extends RexVisitorImpl<VectorizedEx
 
     @Override
     public VectorizedExpression visitFieldAccess(RexFieldAccess fieldAccess) {
-        throw new IllegalArgumentException("Correlated variable not supported in vectorized expression!");
+        throw new IllegalArgumentException("Correlated variable is not supported in vectorized expression!");
     }
 
     @Override

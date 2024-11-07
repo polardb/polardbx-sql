@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.executor.vectorized;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -34,36 +37,76 @@ import java.util.Set;
  */
 public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
 
+    private static final Logger logger = LoggerFactory.getLogger(InValuesVectorizedExpression.class);
+
     private final int operandCount;
-    private final InValueSet inValueSet;
+    private InValueSet inValueSet;
     private boolean hasNull;
+    private boolean allNull;
 
-    public InValuesVectorizedExpression(DataType<?> dataType, List<RexNode> rexLiteralList, int outputIndex) {
-        super(dataType, outputIndex, new VectorizedExpression[0]);
+    public InValuesVectorizedExpression(DataType colDataType, DataType<?> inDataType,
+                                        List<RexNode> rexLiteralList, int outputIndex, boolean autoTypeConvert) {
+        super(inDataType, outputIndex, new VectorizedExpression[0]);
         this.operandCount = rexLiteralList.size() - 1;
-        this.inValueSet = new InValueSet(dataType, operandCount);
+        InValueSet inValueSet = null;
         this.hasNull = false;
+        this.allNull = true;
 
+        if (autoTypeConvert && shouldBeConverted(inDataType, colDataType)) {
+            try {
+                // try converting string into number for better performance
+                inValueSet = new InValueSet(colDataType, operandCount);
+                for (int operandIndex = 1; operandIndex <= operandCount; operandIndex++) {
+                    Object value = ((RexLiteral) rexLiteralList.get(operandIndex)).getValue3();
+                    Object convertedValue = colDataType.convertFrom(value);
+                    if (convertedValue == null) {
+                        this.hasNull = true;
+                    } else {
+                        this.allNull = false;
+                        inValueSet.add(convertedValue);
+                    }
+                }
+                this.inValueSet = inValueSet;
+                return;
+            } catch (Exception e) {
+                logger.warn(e.getMessage());
+            }
+        }
+
+        inValueSet = new InValueSet(inDataType, operandCount);
         for (int operandIndex = 1; operandIndex <= operandCount; operandIndex++) {
             Object value = ((RexLiteral) rexLiteralList.get(operandIndex)).getValue3();
-            Object convertedValue = dataType.convertFrom(value);
+            Object convertedValue = inDataType.convertFrom(value);
             if (convertedValue == null) {
-                hasNull = true;
+                this.hasNull = true;
             } else {
+                this.allNull = false;
                 inValueSet.add(convertedValue);
             }
         }
+
+        this.inValueSet = inValueSet;
+    }
+
+    private boolean shouldBeConverted(DataType<?> inDataType, DataType colDataType) {
+        return DataTypeUtil.anyMatchSemantically(inDataType, DataTypes.CharType, DataTypes.VarcharType) &&
+            DataTypeUtil.anyMatchSemantically(colDataType, DataTypes.IntegerType, DataTypes.LongType);
+    }
+
+    public static InValuesVectorizedExpression from(List<RexNode> rexLiteralList, int outputIndex) {
+        return from(rexLiteralList, outputIndex, false);
     }
 
     /**
-     * @param rexLiteralList start from index1
+     * @param rexLiteralList start from index:1
      */
-    public static InValuesVectorizedExpression from(List<RexNode> rexLiteralList, int outputIndex) {
+    public static InValuesVectorizedExpression from(List<RexNode> rexLiteralList, int outputIndex, boolean autoTypeConvert) {
         Preconditions.checkArgument(rexLiteralList.size() > 1,
             "Illegal in values, list size: " + rexLiteralList.size());
+        DataType colDataType = new Field(rexLiteralList.get(0).getType()).getDataType();
         RexLiteral rexLiteral = (RexLiteral) rexLiteralList.get(1);
         Field field = new Field(rexLiteral.getType());
-        return new InValuesVectorizedExpression(field.getDataType(), rexLiteralList, outputIndex);
+        return new InValuesVectorizedExpression(colDataType, field.getDataType(), rexLiteralList, outputIndex, autoTypeConvert);
     }
 
     public int getOperandCount() {
@@ -75,7 +118,11 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
     }
 
     public boolean hasNull() {
-        return hasNull;
+        return this.hasNull;
+    }
+
+    public boolean allNull() {
+        return this.allNull;
     }
 
     @Override
@@ -108,12 +155,12 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
             }
         }
 
-        private SetType getSetType(DataType<?> dataType) {
-            if (dataType == DataTypes.LongType) {
-                return SetType.LONG;
-            }
+        static SetType getSetType(DataType<?> dataType) {
             if (dataType == DataTypes.IntegerType) {
                 return SetType.INT;
+            }
+            if (dataType == DataTypes.LongType) {
+                return SetType.LONG;
             }
             return SetType.OTHERS;
         }
@@ -181,6 +228,10 @@ public class InValuesVectorizedExpression extends AbstractVectorizedExpression {
             default:
                 throw new UnsupportedOperationException("Unsupported in value set type: " + setType);
             }
+        }
+
+        public DataType getDataType() {
+            return dataType;
         }
 
         enum SetType {

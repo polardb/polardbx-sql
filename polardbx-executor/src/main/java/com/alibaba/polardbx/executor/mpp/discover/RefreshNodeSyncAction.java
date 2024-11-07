@@ -18,7 +18,7 @@ package com.alibaba.polardbx.executor.mpp.discover;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.gms.node.NodeStatusManager;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 
@@ -41,7 +41,7 @@ public class RefreshNodeSyncAction implements IGmsSyncAction {
 
     @Override
     public Object sync() {
-        NodeStatusManager manager = ExecUtils.getStatusManager(schemaName);
+        NodeStatusManager manager = ServiceProvider.getInstance().getServer().getStatusManager();
         if (manager != null) {
             manager.refreshNode();
             logger.info("refreshAllNode end");

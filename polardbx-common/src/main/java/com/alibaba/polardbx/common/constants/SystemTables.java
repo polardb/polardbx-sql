@@ -75,6 +75,19 @@ public class SystemTables {
     public static final String DRDS_SYSTABLE_VIEW = "__drds__systable__view__";
     public static final String DRDS_SYSTEM_SCALEOUT_OUTLINE = "__drds__systable__scaleout__outline__";
     public static final String DRDS_SYSTEM_SCALEOUT_BACKFILL_OBJECTS = "__drds__systable__scaleout__backfill_objects__";
+    public static final String DRDS_SYSTABLE_SCALEOUT_CHECKER_REPORTS = "__drds__systable__scaleout_checker_reports__";
+
+    //record all nodes for mpp
+    public static final String DRDS_NODEINFO_TABLE_NAME = "__drds__nodestatus__";
+
+
+    // Sync point table.
+    public static final String POLARDBX_SYNC_POINT_TB = "__polardbx_sync_point__";
+
+    //~----------- Depreciated Tables -----------
+
+    public static final String DRDS__SYSTEM__OUTLINE = "__drds__system__outline__";
+    public static final String DRDS_SYSTEM_FAILED_DDL = "__drds__system__failed__ddl__";
 
     static {
         Set<String> systemTableSet = new HashSet<>();
@@ -106,6 +119,10 @@ public class SystemTables {
         register(systemTableSet, DRDS_SYSTEM_SCALEOUT_BACKFILL_OBJECTS);
         register(systemTableSet, DRDS_SYSTABLE_VIEW);
         register(systemTableSet, DRDS_SYSTABLE_LOCKING_FUNCTION);
+        register(systemTableSet, POLARDBX_GLOBAL_TX_LOG_TABLE_PREFIX);
+        register(systemTableSet, POLARDBX_GLOBAL_TX_LOG_TABLE_ARCHIVE_TABLE);
+        register(systemTableSet, POLARDBX_SYNC_POINT_TB);
+
         try {
             // magic number 512
             // Test after adding SystemTables

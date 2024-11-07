@@ -148,7 +148,7 @@ public class CloneTableDataFileTaskTest {
             CloneTableDataFileTask task =
                 spy(new CloneTableDataFileTask("schema", "t1", Pair.of("d1_p00000", "d1_p00000_group"),
                     Pair.of("d1_p00001", "d1_p00001_group"), "t1_za6v_00000", ImmutableList.of(""), "dn0",
-                    Pair.of("26.12.155.86", 31159), list, 1000L,
+                    Pair.of("26.12.155.86", 31159), list, 1000L, 0l,
                     encrypted));
             task.setTaskId(1L);
 

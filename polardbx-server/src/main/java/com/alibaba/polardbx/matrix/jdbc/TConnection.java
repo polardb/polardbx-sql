@@ -18,6 +18,7 @@ package com.alibaba.polardbx.matrix.jdbc;
 
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.TrxIdGenerator;
+import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -27,7 +28,6 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
-import com.alibaba.polardbx.server.lock.LockingFunctionManager;
 import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.logical.ITPrepareStatement;
 import com.alibaba.polardbx.common.logical.ITStatement;
@@ -59,9 +59,10 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
-import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
@@ -80,6 +81,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.MultiDdlContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
@@ -104,14 +106,15 @@ import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.InventoryMode;
 import com.alibaba.polardbx.repo.mysql.cursor.ResultSetCursor;
+import com.alibaba.polardbx.server.lock.LockingFunctionManager;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.transaction.trx.ITsoTransaction;
 import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
+import com.alibaba.polardbx.transaction.trx.TsoTransaction;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.sql.OptimizerHint;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlCreateIndex;
@@ -140,7 +143,10 @@ import java.util.concurrent.locks.ReentrantLock;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.druid.sql.ast.SqlType.isDDL;
 import static com.alibaba.polardbx.druid.sql.ast.SqlType.isDML;
+import static com.alibaba.polardbx.druid.util.ByteStringUtil.findTraceIndex;
+import static com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil.changeParameterTypeByTableMetadata;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.DDL_STATEMENT;
+import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.DML_STATEMENT;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MDL_REQUIRED_POLARDBX;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MODIFY_TABLE;
 import static org.apache.calcite.sql.OptimizerHint.COMMIT_ON_SUCCESS;
@@ -230,6 +236,11 @@ public class TConnection implements ITConnection {
      */
     private LockingFunctionHandle lockHandle;
     private String traceId;
+    /**
+     * 如果是tso事务，保存commit tso
+     */
+    private long commitTso = -1L;
+
     /**
      * 事务级别
      */
@@ -361,7 +372,8 @@ public class TConnection implements ITConnection {
             if (trace > 0) {
                 sql = sql.slice(trace);
                 this.tracer = new SQLTracer();
-                this.columnarTracer = new ColumnarTracer();
+                InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
+                this.columnarTracer = new ColumnarTracer(manager.getCurrentNode().getHostPort());
                 executionContext.setEnableTrace(true);
             } else if (executionContext.getLoadDataContext() != null && executionContext.getLoadDataContext()
                 .getParamManager()
@@ -417,9 +429,9 @@ public class TConnection implements ITConnection {
             String groupHint = GroupHintParser.extractTDDLGroupHint(sql);
             if (StringUtils.isNotEmpty(groupHint)) {
                 OptimizerContext.getContext(executionContext.getSchemaName()).getStatistics().hintCount++;
-
-                sql = GroupHintParser.removeTddlGroupHint(sql);
                 executionContext.setGroupHint(GroupHintParser.buildTddlGroupHint(groupHint));
+
+                transformGroupIndexHintToMasterSlave(groupHint, extraCmd);
             } else {
                 executionContext.setGroupHint(null);
             }
@@ -444,6 +456,8 @@ public class TConnection implements ITConnection {
             executionContext.setModifySelectParallel(false);
             executionContext.setTimeZone(this.logicalTimeZone);
             executionContext.getPrivilegeVerifyItems().clear();
+            executionContext.setStorageInfoSupplier(
+                (schema) -> ExecutorContext.getContext(schema).getStorageInfoManager().getMergedStorageInfo());
             if (executionContext.isInternalSystemSql()) {
                 /**
                  * When the sql is labeled as internal system sql of drds, the
@@ -572,6 +586,29 @@ public class TConnection implements ITConnection {
     }
 
     /**
+     * Transforms a group index hint into Master/Slave connection properties.
+     *
+     * @param groupHint The group index hint string, e.g., "groupindex:0" or "groupindex:1".
+     * @param extraCmd A map to store additional commands, including connection properties.
+     */
+    protected static void transformGroupIndexHintToMasterSlave(String groupHint, Map<String, Object> extraCmd) {
+        // Check for non-null parameters
+        if (groupHint == null || extraCmd == null) {
+            return;
+        }
+
+        switch (groupHint.toLowerCase()) {
+        case "groupindex:0":
+            extraCmd.put(ConnectionProperties.MASTER, Boolean.TRUE);
+            break;
+        case "groupindex:1":
+            extraCmd.put(ConnectionProperties.SLAVE, Boolean.TRUE);
+            break;
+        default:
+        }
+    }
+
+    /**
      * Separate execute(sql, ec) into two parts: plan and execute. If it's
      * writing into broadcast table and has no transaction, a new transaction
      * will be open.
@@ -587,10 +624,12 @@ public class TConnection implements ITConnection {
 
         final Parameters originParams = executionContext.getParams().clone();
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
+        if (!executionContext.isFlashbackArea()) {
+            executionContext.setFlashbackArea(plan.isFlashbackArea());
+        }
 
         databaseReadOnlyCheck(plan);
         instanceReadOnlyCheck();
-
         // [mysql behavior]
         // comment can be executed, sql example :  "-- I can execute"
         if (plan == null) {
@@ -694,6 +733,8 @@ public class TConnection implements ITConnection {
         }
 
         // Trx object SHOULD NOT be changed from here.
+        checkSqlLogBinXForbiddenAutoCommit();
+
         trx.setMdlWaitTime(mdlWaitTime);
         if (0 == trx.getStartTimeInMs()) {
             trx.setStartTimeInMs(executionContext.getLogicalSqlStartTimeInMs());
@@ -723,6 +764,9 @@ public class TConnection implements ITConnection {
 
         executionContext.setXplanStat(plan.isForbidXplan());
         executionContext.setFinalPlan(plan);
+
+        changeParameterTypeByTableMetadata(executionContext, plan);
+
         if (!executionContext.isExecutingPreparedStmt()) {
             PolarPrivilegeUtils.checkPrivilege(plan, executionContext);
             PolarPrivilegeUtils.checkLBACColumnAccess(plan, executionContext);
@@ -851,9 +895,11 @@ public class TConnection implements ITConnection {
             // only deal with plan not null and not direct sharding point select
             RelNode plan = executionPlan.getPlan();
             PlannerContext plannerContext = PlannerContext.getPlannerContext(plan);
+
             BaselineInfo baselineInfo = plannerContext.getBaselineInfo();
             PlanInfo planInfo = plannerContext.getPlanInfo();
             if (planInfo != null && baselineInfo != null) {
+                PlanCache.getInstance().xplanFeedBack(executionPlan, executionContext);
                 synchronized (baselineInfo) {
                     PlanManager.getInstance().doEvolution(executionContext.getSchemaName(), baselineInfo, planInfo,
                         lastExecuteUnixTime, executionTimeInSeconds, ec, ex);
@@ -932,6 +978,12 @@ public class TConnection implements ITConnection {
      * @return is transaction policy updated
      */
     private boolean updateTransactionAndConcurrentPolicyForDml(ExecutionPlan plan, ExecutionContext ec) {
+        if (isAutoCommit && ec.isForbidAutoCommitTrx() && plan.is(DML_STATEMENT)) {
+            // Init a non-autocommit trx for DML.
+            ITransaction trx = forceInitTransaction(ec, false, true);
+            ec.setTransaction(trx);
+            return true;
+        }
 
         final BitSet properties = plan.getPlanProperties();
         final boolean currentModifyBroadcast = properties.get(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
@@ -999,7 +1051,8 @@ public class TConnection implements ITConnection {
         ITransactionPolicy policy = ITransactionPolicy.of(policyName);
         if (null != policy) {
             final boolean isDistributedTransaction =
-                policy.getTransactionType(false, false).isA(TransactionClass.DISTRIBUTED_TRANSACTION);
+                policy.getTransactionType(false, false, false, false)
+                    .isA(TransactionClass.DISTRIBUTED_TRANSACTION);
             if (!isDistributedTransaction) {
                 ec.getExtraCmds().put(ConnectionProperties.TRANSACTION_POLICY, null);
             }
@@ -1017,8 +1070,8 @@ public class TConnection implements ITConnection {
      *
      * @return is transaction policy updated
      */
-    private boolean updateTransactionAndConcurrentPolicyForColumnar(ExecutionPlan plan, ExecutionContext ec) {
-        if (!plan.isUseColumnar()) {
+    private boolean updateTransactionAndConcurrentPolicyForColumnar(ExecutionContext ec) {
+        if (!ec.isUseColumnar()) {
             return false;
         }
 
@@ -1034,7 +1087,7 @@ public class TConnection implements ITConnection {
      * @return is transaction policy updated
      */
     private boolean updateTransactionAndConcurrentPolicy(ExecutionPlan plan, ExecutionContext ec) {
-        if (updateTransactionAndConcurrentPolicyForColumnar(plan, ec)) {
+        if (updateTransactionAndConcurrentPolicyForColumnar(ec)) {
             return true;
         }
 
@@ -1115,6 +1168,18 @@ public class TConnection implements ITConnection {
         return 0;
     }
 
+    private void checkSqlLogBinXForbiddenAutoCommit() {
+        Object sqlLoginBin = executionContext.getExtraServerVariables().get(ICdcManager.SQL_LOG_BIN);
+        if (sqlLoginBin != null && !(Boolean) sqlLoginBin) {
+            boolean isDML = isDML(executionContext.getSqlType());
+            if (this.isAutoCommit && isDML) {
+                throw new TddlRuntimeException(ErrorCode.ERR_SQL_LOG_BIN_NOT_SUPPORT_AUTO_COMMIT,
+                    "sql_log_bin_x not support auto commit transaction!");
+            }
+            this.trxPolicy = TransactionAttribute.DEFAULT_IGNORE_BINLOG_TRANSACTION;
+        }
+    }
+
     private boolean instanceReadOnly() {
 //        Object val = DynamicConfig.getInstance().isInstanceReadOnly();
 //        if (val != null) {
@@ -1154,9 +1219,11 @@ public class TConnection implements ITConnection {
     }
 
     //when database status is readOnly, we forbid all dml sql
-    private void databaseReadOnlyCheck(final ExecutionPlan plan) {
-        boolean isDML = isDML(executionContext.getSqlType());
-        boolean isDDL = isDDL(executionContext.getSqlType());
+    public void databaseReadOnlyCheck(final ExecutionPlan plan) {
+        final SqlNode sqlNode = plan.getAst();
+
+        boolean isDML = sqlNode != null && SqlKind.DML.contains(sqlNode.getKind());
+        boolean isDDL = sqlNode != null && SqlKind.DDL.contains(sqlNode.getKind());
         if (!isDML && !isDDL) {
             return;
         }
@@ -1397,6 +1464,9 @@ public class TConnection implements ITConnection {
             try {
                 // 事务结束,清理事务内容
                 this.trx.commit();
+                if (this.trx instanceof TsoTransaction) {
+                    commitTso = ((TsoTransaction) this.trx).getCommitTso();
+                }
             } catch (Throwable e) {
                 // 增加打印事务异常日志
                 logger.error(e);
@@ -1739,6 +1809,11 @@ public class TConnection implements ITConnection {
     }
 
     private void beginTransaction() {
+        Object sqlLoginBin = executionContext.getExtraServerVariables().get(ICdcManager.SQL_LOG_BIN);
+        if (sqlLoginBin != null && !(Boolean) sqlLoginBin) {
+            // 这里先设置一下事务策略，checkSqlLogBinXForbiddenAutoCommit方法会判断是否需要限制autocommit
+            this.trxPolicy = TransactionAttribute.DEFAULT_IGNORE_BINLOG_TRANSACTION;
+        }
         beginTransaction(this.isAutoCommit);
     }
 
@@ -1765,7 +1840,7 @@ public class TConnection implements ITConnection {
             boolean readOnly =
                 this.readOnly || (ConfigDataMode.isReadOnlyMode() && executionContext.getParamManager().getBoolean(
                     ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ));
-            TransactionClass trxConfig = trxPolicy.getTransactionType(autoCommit, readOnly);
+            TransactionClass trxConfig = trxPolicy.getTransactionType(autoCommit, readOnly, false, false);
             if (logicalTimeZone != null) {
                 setTimeZoneVariable(serverVariables);
             }
@@ -1787,6 +1862,11 @@ public class TConnection implements ITConnection {
     }
 
     private ITransaction forceInitTransaction(ExecutionContext executionContext, boolean isColumnarRead) {
+        return forceInitTransaction(executionContext, isColumnarRead, false);
+    }
+
+    private ITransaction forceInitTransaction(ExecutionContext executionContext, boolean isColumnarRead,
+                                              boolean isForbidAutocommitTrx) {
         lock.lock();
 
         try {
@@ -1811,7 +1891,7 @@ public class TConnection implements ITConnection {
                 }
 
                 trxConfig = trxPolicy.getTransactionType(false, executionContext.isReadOnly(),
-                    isSingleShard);
+                    isSingleShard, isForbidAutocommitTrx);
             } else {
                 trxConfig = TransactionClass.COLUMNAR_READ_ONLY_TRANSACTION;
             }
@@ -2241,5 +2321,9 @@ public class TConnection implements ITConnection {
     @Override
     public boolean isMppConnection() {
         return false;
+    }
+
+    public long getCommitTso() {
+        return commitTso;
     }
 }

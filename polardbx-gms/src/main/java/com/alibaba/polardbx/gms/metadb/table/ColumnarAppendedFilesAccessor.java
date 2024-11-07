@@ -28,9 +28,12 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.COLUMNAR_APPENDED_FILES;
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.COLUMNAR_TABLE_MAPPING;
@@ -57,12 +60,6 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
             + "a.`append_offset`, a.`append_length`, a.`total_rows`, a.`create_time`, a.`update_time` "
             + "from " + COLUMNAR_APPENDED_FILES_TABLE + " a join " + COLUMNAR_TABLE_MAPPING_TABLE
             + " b on a.logical_table=b.table_id ";
-
-    /**
-     * The parameters must be consistent with ColumnarCheckpointsRecord.buildInsertParams()
-     */
-    private static final String QUERY_BY_TSO_AND_SCHEMA =
-        QUERY_APEENED_FILES_RECORD + "where `checkpoint_tso` = ? and b.`table_schema` = ?";
 
     /**
      * The parameters must be consistent with ColumnarCheckpointsRecord.buildInsertParams()
@@ -115,8 +112,15 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
     private static final String DELETE_BY_SCHEMA_AND_TABLE = "delete from " + COLUMNAR_APPENDED_FILES_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? ";
 
+    private static final String DELETE_BY_SCHEMA_AND_TABLE_LIMIT = "delete from " + COLUMNAR_APPENDED_FILES_TABLE
+        + " where `logical_schema` = ? and `logical_table` = ? limit ? ";
+
     private static final String DELETE_BY_SCHEMA_AND_TABLE_AND_PART = "delete from " + COLUMNAR_APPENDED_FILES_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? and `part_name` = ?";
+
+    private static final String DELETE_BY_SCHEMA_AND_TABLE_AND_FILE_NAME =
+        "delete from " + COLUMNAR_APPENDED_FILES_TABLE
+            + " where `logical_schema` = ? and `logical_table` = ? and `file_name` = ?";
 
     /**
      * For PK index log, meta and locks.
@@ -138,6 +142,9 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
         + " where `logical_schema` = ? and `logical_table` = ? and `part_name` = ? and `file_type` = ? and `engine` = ?"
         + " for update";
 
+    private static final String QUERY_ALL_BY_FILE_TYPE = "select * from " + COLUMNAR_APPENDED_FILES_TABLE
+        + " where `file_type` = ?";
+
     private static final String UPDATE_FOR_APPEND = "update " + COLUMNAR_APPENDED_FILES_TABLE
         + " set `checkpoint_tso` = ?, `file_length` = ?, `append_offset` = ?, `append_length` = ?, `total_rows` = ?"
         + " where `id` = ?";
@@ -155,6 +162,13 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
     private static final String DELETE_BT_TABLE_AND_TYPE = "delete from " + COLUMNAR_APPENDED_FILES_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? and `file_type` = ? and `engine` = ?";
 
+    private static final String DELETE_BY_TSO_AND_FILE_TYPE = "delete from " + COLUMNAR_APPENDED_FILES_TABLE
+        + " where `checkpoint_tso` > ? and `file_type` in ('csv', 'del', 'set') ";
+
+    private static final String DELETE_BY_CHECKPOINT_TSO = "delete from " + COLUMNAR_APPENDED_FILES_TABLE
+        + " where `checkpoint_tso` = ? ";
+
+    //join 方式
     private static final String SELECT_CSV_DEL_LAST_APPEND_BY_TSO = "select\n"
         + "    a.* \n"
         + " from \n"
@@ -182,9 +196,92 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
         + COLUMNAR_APPENDED_FILES_TABLE
         + "        where\n"
         + "            `checkpoint_tso` <= ? \n"
-        + "            and `logical_schema` = ? \n"
-        + "            and `logical_table` = ? \n"
-        + "            and `file_type` in ('csv', 'del')\n"
+        + "        group by\n"
+        + "            `file_name`\n"
+        + "    ) la, \n"
+        + COLUMNAR_APPENDED_FILES_TABLE + " a \n"
+        + " where\n"
+        + "    f.`file_name` = la.`file_name`\n"
+        + "    and f.`file_name` = a.`file_name`\n"
+        + "    and la.`append_tso` = a.`checkpoint_tso`\n"
+        + "    order by a.`checkpoint_tso` desc;";
+
+    //子查询方式
+    private static final String SELECT_CSV_DEL_LAST_APPEND_BY_TSO_SUB_QUERY = "select\n"
+        + " a.* \n"
+        + "from\n"
+        + "  (\n"
+        + "    select\n"
+        + "      `file_name`,\n"
+        + "      (\n"
+        + "        select\n"
+        + "          max(`checkpoint_tso`)\n"
+        + "        from \n"
+        + COLUMNAR_APPENDED_FILES_TABLE
+        + "        where\n"
+        + "          `checkpoint_tso` <= ? \n"
+        + "          and file_name = files.file_name\n"
+        + "      ) as `append_tso`\n"
+        + "    from \n"
+        + FILES_TABLE
+        + "    where\n"
+        + "      `commit_ts` <=  ? \n"
+        + "      and (\n"
+        + "        `remove_ts` is null\n"
+        + "        or `remove_ts` > ? \n"
+        + "      )\n"
+        + "      and `logical_schema_name` = ? \n"
+        + "      and `logical_table_name` = ? \n"
+        + "      and `file_type` = 'TABLE_FILE'\n"
+        + "      and RIGHT(`file_name`, 3) IN ('csv', 'del')\n"
+        + "  ) f,\n"
+        + COLUMNAR_APPENDED_FILES_TABLE
+        + " as a where\n"
+        + "  f.`file_name` = a.`file_name`\n"
+        + "  and f.`append_tso` = a.`checkpoint_tso`\n"
+        + "order by\n"
+        + "  a.`checkpoint_tso` desc;";
+
+    private static final String QUERY_BY_FILE_NAMES_AND_TSO_RANGE = "select * from " + COLUMNAR_APPENDED_FILES_TABLE
+        + " where `file_name` in (%s) and `checkpoint_tso` > %s and `checkpoint_tso` <= %s";
+
+    private static final String QUERY_BY_FILE_NAMES_AND_TSO = "SELECT * FROM " + COLUMNAR_APPENDED_FILES_TABLE + " a"
+        + " JOIN ("
+        + " SELECT `file_name`,"
+        + " MAX(`checkpoint_tso`) AS checkpoint_tso"
+        + " FROM " + COLUMNAR_APPENDED_FILES_TABLE
+        + " WHERE `file_name` in (%s)"
+        + " AND `checkpoint_tso` <= %s "
+        + " GROUP BY `file_name` "
+        + ") b ON a.file_name = b.file_name "
+        + " AND a.checkpoint_tso = b.checkpoint_tso";
+
+    //获取所有追加写文件，
+    private static final String SELECT_CSV_DEL_SET_LAST_APPEND_BY_START_TSO_AND_END_TSO = "select\n"
+        + "    a.* \n"
+        + " from \n"
+        + "    (\n"
+        + "        select\n"
+        + "            `file_name`\n"
+        + "        from \n"
+        + FILES_TABLE
+        + "        where \n"
+        + "            `commit_ts` <= ? \n"
+        + "            and (\n"
+        + "                `remove_ts` is null\n"
+        + "                or `remove_ts` >= ? \n"
+        + "            )\n"
+        + "            and `file_type` = 'TABLE_FILE'\n"
+        + "            and RIGHT(`file_name`, 3) IN ('csv', 'del', 'set')\n"
+        + "    ) f,\n"
+        + "    (\n"
+        + "        select\n"
+        + "            `file_name`,\n"
+        + "            max(`checkpoint_tso`) as `append_tso`\n"
+        + "        from\n"
+        + COLUMNAR_APPENDED_FILES_TABLE
+        + "        where\n"
+        + "            `checkpoint_tso` <= ? \n"
         + "        group by\n"
         + "            `file_name`\n"
         + "    ) la, \n"
@@ -228,26 +325,6 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, partName);
 
             return MetaDbUtil.query(QUERY_GREATER_THAN_OR_EQUAL_TO_TSO, params, ColumnarAppendedFilesRecord.class,
-                connection);
-        } catch (Exception e) {
-            LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
-                COLUMNAR_APPENDED_FILES_TABLE,
-                e.getMessage());
-        }
-    }
-
-    /**
-     * Query all appended files whose tso is equal to given tso with logical schema.
-     */
-    public List<ColumnarAppendedFilesRecord> queryByTsoAndSchema(
-        long latestTso, String logicalSchema) {
-        try {
-            Map<Integer, ParameterContext> params = new HashMap<>(2);
-            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, latestTso);
-            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalSchema);
-
-            return MetaDbUtil.query(QUERY_BY_TSO_AND_SCHEMA, params, ColumnarAppendedFilesRecord.class,
                 connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
@@ -459,11 +536,47 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, tableId);
             MetaDbUtil.setParameter(5, params, ParameterMethod.setLong, tso);
-            MetaDbUtil.setParameter(6, params, ParameterMethod.setString, schemaName);
-            MetaDbUtil.setParameter(7, params, ParameterMethod.setString, tableId);
 
             return MetaDbUtil.query(SELECT_CSV_DEL_LAST_APPEND_BY_TSO, params, ColumnarAppendedFilesRecord.class,
                 connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarAppendedFilesRecord> queryLastValidAppendByTsoAndTableIdSubQuery(long tso, String schemaName,
+                                                                                         String tableId) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(8);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, tso);
+            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(5, params, ParameterMethod.setString, tableId);
+
+            return MetaDbUtil.query(SELECT_CSV_DEL_LAST_APPEND_BY_TSO_SUB_QUERY, params,
+                ColumnarAppendedFilesRecord.class,
+                connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarAppendedFilesRecord> queryLastValidAppendByStartTsoAndEndTso(long startTso, long endTso) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, endTso);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, startTso);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, endTso);
+
+            return MetaDbUtil.query(SELECT_CSV_DEL_SET_LAST_APPEND_BY_START_TSO_AND_END_TSO, params,
+                ColumnarAppendedFilesRecord.class, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
@@ -499,6 +612,20 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(5, params, ParameterMethod.setString, engine);
 
             return MetaDbUtil.query(LOCK_FOR_INIT, params, ColumnarAppendedFilesRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarAppendedFilesRecord> queryFilesByFileType(String fileType) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(1);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, fileType);
+
+            return MetaDbUtil.query(QUERY_ALL_BY_FILE_TYPE, params, ColumnarAppendedFilesRecord.class, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
@@ -653,6 +780,23 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
         }
     }
 
+    public int deleteLimit(String logicalSchema, String logicalTable, long limit) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTable);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, limit);
+
+            DdlMetaLogUtil.logSql(DELETE_BY_SCHEMA_AND_TABLE_LIMIT, params);
+            return MetaDbUtil.delete(DELETE_BY_SCHEMA_AND_TABLE_LIMIT, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
     public int delete(String logicalSchema, String logicalTable, String partName) {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>(3);
@@ -669,4 +813,87 @@ public class ColumnarAppendedFilesAccessor extends AbstractAccessor {
                 e.getMessage());
         }
     }
+
+    public int deleteByTableAndFileName(String logicalSchema, String logicalTable, String fileName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, logicalTable);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setString, fileName);
+
+            DdlMetaLogUtil.logSql(DELETE_BY_SCHEMA_AND_TABLE_AND_FILE_NAME, params);
+            return MetaDbUtil.delete(DELETE_BY_SCHEMA_AND_TABLE_AND_FILE_NAME, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarAppendedFilesRecord> queryByFileNamesAndTsoRange(Collection<String> files,
+                                                                         long tso0, long tso1) {
+        try {
+            if (files.isEmpty()) {
+                return Collections.emptyList();
+            }
+            String inFileNames = files.stream().map(s -> "'" + s + "'").collect(Collectors.joining(","));
+            String sql = String.format(QUERY_BY_FILE_NAMES_AND_TSO_RANGE, inFileNames, tso0, tso1);
+            DdlMetaLogUtil.logSql(sql);
+            return MetaDbUtil.query(sql, null, ColumnarAppendedFilesRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarAppendedFilesRecord> queryByFileNamesAndTso(Collection<String> files, long tso) {
+        try {
+            if (files.isEmpty()) {
+                return Collections.emptyList();
+            }
+            String inFileNames = files.stream().map(s -> "'" + s + "'").collect(Collectors.joining(","));
+            String sql = String.format(QUERY_BY_FILE_NAMES_AND_TSO, inFileNames, tso);
+            DdlMetaLogUtil.logSql(sql);
+            return MetaDbUtil.query(sql, null, ColumnarAppendedFilesRecord.class, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int deleteByTso(long tso) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(1);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+
+            DdlMetaLogUtil.logSql(DELETE_BY_TSO_AND_FILE_TYPE, params);
+            return MetaDbUtil.delete(DELETE_BY_TSO_AND_FILE_TYPE, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int deleteByEqualTso(long tso) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(1);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tso);
+
+            DdlMetaLogUtil.logSql(DELETE_BY_CHECKPOINT_TSO, params);
+            return MetaDbUtil.delete(DELETE_BY_CHECKPOINT_TSO, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_APPENDED_FILES_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_APPENDED_FILES_TABLE,
+                e.getMessage());
+        }
+    }
+
 }

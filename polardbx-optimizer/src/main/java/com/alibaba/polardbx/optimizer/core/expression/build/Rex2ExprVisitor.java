@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.expression.build;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
@@ -83,15 +84,21 @@ public class Rex2ExprVisitor extends RexVisitorImpl<IExpression> {
     protected List<DynamicParamExpression> dynamicExpressions = null;
     protected List<RexCall> bloomFilters = null;
     protected ExprContextProvider contextProvider;
+    protected boolean enableDrdsTypeSystem = false;
 
     public Rex2ExprVisitor(ExecutionContext executionContext) {
         super(false);
         this.contextProvider = new ExprContextProvider(executionContext);
+        this.enableDrdsTypeSystem = executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DRDS_TYPE_SYSTEM);
     }
 
     public Rex2ExprVisitor(ExprContextProvider contextHolder) {
         super(false);
         this.contextProvider = contextHolder;
+        if (contextHolder != null && contextHolder.getContext() != null) {
+            this.enableDrdsTypeSystem = contextHolder.getContext()
+                .getParamManager().getBoolean(ConnectionParams.ENABLE_DRDS_TYPE_SYSTEM);
+        }
     }
 
     public void setDynamicExpressions(List<DynamicParamExpression> dynamicExpressions) {

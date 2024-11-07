@@ -77,6 +77,7 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
                     final String isRebuildAtLoad = DataTypes.StringType.convertFrom(row.get("IS_REBUILD_AT_LOAD"));
                     final String hint = DataTypes.StringType.convertFrom(row.get("HINT"));
                     final String usePostPlanner = DataTypes.StringType.convertFrom(row.get("USE_POST_PLANNER"));
+                    final String hotEvolved = DataTypes.StringType.convertFrom(row.get("HOT_EVOLVED"));
 
                     cursor.addRow(new Object[] {
                         host,
@@ -98,7 +99,8 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
                         externalizedPlan,
                         isRebuildAtLoad,
                         hint,
-                        usePostPlanner
+                        usePostPlanner,
+                        hotEvolved
                     });
                 }
             }

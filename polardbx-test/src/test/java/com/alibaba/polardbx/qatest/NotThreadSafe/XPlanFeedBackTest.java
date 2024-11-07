@@ -40,6 +40,12 @@ public class XPlanFeedBackTest extends DDLBaseNewDBTestCase {
         "set " + ConnectionProperties.ENABLE_XPLAN_FEEDBACK + "= true";
     private static final String DISABLE_XPLAN_FEEDBACK =
         "set " + ConnectionProperties.ENABLE_XPLAN_FEEDBACK + "= false";
+
+    private static final String DISABLE_DIRECT_PLAN =
+        "set " + ConnectionProperties.ENABLE_DIRECT_PLAN + "= false";
+    private static final String DISABLE_POST_PLANNER =
+        "set " + ConnectionProperties.ENABLE_POST_PLANNER + "= false";
+
     private static final String ANALYZE_TEMPLATE = "analyze table {0}";
 
     private static final String SK_SQL = "select * from {0} where x = 1";
@@ -180,6 +186,74 @@ public class XPlanFeedBackTest extends DDLBaseNewDBTestCase {
             throw new RuntimeException(e);
         } finally {
             JdbcUtil.executeSuccess(tddlConnection, ENABLE_XPLAN_FEEDBACK);
+        }
+    }
+
+    @Test
+    public void testFeedBackSpm() {
+        if (isMySQL80()) {
+            return;
+        }
+        JdbcUtil.executeSuccess(tddlConnection, CLEAR_CACHE);
+        JdbcUtil.executeSuccess(tddlConnection, CLEAR_SPM);
+
+        // try feedback
+        try (Connection conn = getPolardbxConnection()) {
+            JdbcUtil.executeSuccess(conn, ENABLE_XPLAN_FEEDBACK);
+            JdbcUtil.executeSuccess(conn, DISABLE_DIRECT_PLAN);
+            JdbcUtil.executeSuccess(conn, DISABLE_POST_PLANNER);
+            JdbcUtil.executeSuccess(conn,
+                "baseline add sql /*+TDDL:cmd_extra()*/ " + MessageFormat.format(SK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn,
+                "baseline add sql /*+TDDL:cmd_extra()*/ " + MessageFormat.format(PK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn,
+                "baseline add sql /*+TDDL:cmd_extra()*/ " + MessageFormat.format(SK_PK_SQL, XPLAN_TABLE));
+            assertExplainExecute(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE), true);
+            assertExplainExecute(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE), true);
+
+            // mock feedback
+            JdbcUtil.executeSuccess(conn, "set " + ConnectionProperties.XPLAN_MAX_SCAN_ROWS + "= 0");
+            JdbcUtil.executeSuccess(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn, "set " + ConnectionProperties.XPLAN_MAX_SCAN_ROWS + "= 1000");
+
+            // xplan should be closed
+            assertExplainExecute(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE), false);
+
+            // disable feedback
+            JdbcUtil.executeSuccess(conn, DISABLE_XPLAN_FEEDBACK);
+            assertExplainExecute(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE), true);
+            assertExplainExecute(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE), true);
+
+            // enable ENABLE_XPLAN_FEEDBACK again
+            JdbcUtil.executeSuccess(conn, ENABLE_XPLAN_FEEDBACK);
+            assertExplainExecute(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE), false);
+
+            // clear plancache and execute sql again
+            JdbcUtil.executeSuccess(conn, CLEAR_CACHE);
+            assertExplainExecute(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE), true);
+            assertExplainExecute(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE), true);
+            JdbcUtil.executeSuccess(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE));
+            JdbcUtil.executeSuccess(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE));
+
+            // no feedback should happen
+            assertExplainExecute(conn, MessageFormat.format(SK_SQL, XPLAN_TABLE), true);
+            assertExplainExecute(conn, MessageFormat.format(PK_SQL, XPLAN_TABLE), false);
+            assertExplainExecute(conn, MessageFormat.format(SK_PK_SQL, XPLAN_TABLE), true);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            JdbcUtil.executeSuccess(tddlConnection, CLEAR_CACHE);
+            JdbcUtil.executeSuccess(tddlConnection, CLEAR_SPM);
         }
     }
 

@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
+import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
@@ -68,6 +70,7 @@ public class RefreshTopologyfinalTask extends BaseGmsTask {
                 FailPoint.injectRandomSuspendFromHint(executionContext);
             }
         }
+        DdlEngineScheduler.refreshResourceToAllocate();
     }
 
     @Override

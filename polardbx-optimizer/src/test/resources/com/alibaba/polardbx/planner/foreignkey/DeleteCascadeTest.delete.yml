@@ -2,10 +2,8 @@
     delete from test_hash_ta where id = 1;
 
   plan: |
-
     logicalmodify(type="delete", tables="optest.test_hash_ta")
-      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `school`, `create_time` from `test_hash_ta` as `test_hash_ta` where (`id` = ?) for update")
-
+      logicalview(tables="optest_0001.test_hash_ta", sql="select `id`, `name`, `school`, `create_time` from `test_hash_ta` as `test_hash_ta` force index(`primary`) where (`id` = ?) for update")
 - sql: |
     delete from test_hash_ta where name = 'test';
 
@@ -35,10 +33,8 @@
     delete from test_hash_single_1 where id = 1;
 
   plan: |
-
     logicalmodify(type="delete", tables="optest.test_hash_single_1")
-      logicalview(tables="optest_0000.test_hash_single_1", sql="select `id`, `name`, `create_time` from `test_hash_single_1` as `test_hash_single_1` where (`id` = ?) for update")
-
+      logicalview(tables="optest_0000.test_hash_single_1", sql="select `id`, `name`, `create_time` from `test_hash_single_1` as `test_hash_single_1` force index(`primary`) where (`id` = ?) for update")
 - sql: |
     delete from test_hash_single_1 where name = 'test';
 

@@ -39,96 +39,137 @@ public class ReplicaParserTest {
             ExecutionContext ec = new ExecutionContext();
             visitor = new FastSqlToCalciteNodeVisitor(context, ec);
 
+            boolean runIntoException = false;
+
             try {
                 visitor.visit(Mockito.mock(MySqlChangeMasterStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlChangeReplicationFilterStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlStartSlaveStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlStopSlaveStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlResetSlaveStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlShowSlaveStatusStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLResetReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLContinueReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLCancelReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLPauseReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLStartReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLShowReplicaCheckProgressStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLShowReplicaCheckDiffStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("replica is not support yet"));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
         }
     }
 
@@ -146,75 +187,107 @@ public class ReplicaParserTest {
             ContextParameters context = new ContextParameters(false);
             visitor = new FastSqlToCalciteNodeVisitor(context, mockEc);
 
+            boolean runIntoException = false;
+
             try {
                 visitor.visit(Mockito.mock(MySqlChangeMasterStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlChangeReplicationFilterStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlStartSlaveStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlStopSlaveStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(MySqlResetSlaveStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLResetReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLContinueReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLCancelReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLPauseReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
 
             try {
                 visitor.visit(Mockito.mock(SQLStartReplicaCheckTableStatement.class));
             } catch (Exception e) {
                 Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
+                runIntoException = true;
             }
+            Assert.assertTrue(runIntoException);
+            runIntoException = false;
         }
     }
 
@@ -253,73 +326,65 @@ public class ReplicaParserTest {
             ContextParameters context = new ContextParameters(false);
             visitor = new FastSqlToCalciteNodeVisitor(context, mockEc);
 
+            boolean runIntoException = false;
+
             try {
                 visitor.visit(Mockito.mock(MySqlChangeMasterStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(MySqlChangeReplicationFilterStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(MySqlStartSlaveStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(MySqlStopSlaveStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(MySqlResetSlaveStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLResetReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLContinueReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLCancelReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLPauseReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 
             try {
                 visitor.visit(Mockito.mock(SQLStartReplicaCheckTableStatement.class));
             } catch (Exception e) {
-                Assert.assertTrue(e instanceof TddlRuntimeException);
                 Assert.assertTrue(!e.getMessage().contains("User testUser@'testHost' does not have 'GOD' privilege. "));
             }
 

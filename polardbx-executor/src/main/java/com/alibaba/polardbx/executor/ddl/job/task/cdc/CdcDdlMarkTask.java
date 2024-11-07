@@ -30,7 +30,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewSta
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
-import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CciSchemaEvolutionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -65,13 +65,15 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PAR
 @TaskName(name = "CdcDdlMarkTask")
 @Getter
 @Setter
-public class CdcDdlMarkTask extends BaseDdlTask {
+public class CdcDdlMarkTask extends BaseCdcTask {
 
     private final PhysicalPlanData physicalPlanData;
     private final Long versionId;
 
     private boolean useOriginalDDl;
     private boolean foreignKeys;
+    private boolean isCci = false;
+
     /**
      * For statement like CREATE TABLE with CCI,
      * the original ddl statement will be normalized
@@ -109,6 +111,11 @@ public class CdcDdlMarkTask extends BaseDdlTask {
 
         if (CBOUtil.isGsi(schemaName, physicalPlanData.getLogicalTableName())) {
             // gsi task should use CdcGsiDdlMarkTask
+            return;
+        }
+
+        if (executionContext.getDdlContext().isSkipSubJobCdcMark()) {
+            // 跳过子任务 cdc 打标
             return;
         }
 
@@ -151,6 +158,9 @@ public class CdcDdlMarkTask extends BaseDdlTask {
         }
         if (foreignKeys) {
             executionContext.getExtraCmds().put(ICdcManager.FOREIGN_KEYS_DDL, "true");
+        }
+        if (isCci) {
+            executionContext.getExtraCmds().put(ICdcManager.CDC_IS_CCI, true);
         }
         if (CdcMarkUtil.isVersionIdInitialized(versionId)) {
             CdcMarkUtil.useDdlVersionId(executionContext, versionId);

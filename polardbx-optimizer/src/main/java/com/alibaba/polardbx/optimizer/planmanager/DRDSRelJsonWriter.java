@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.optimizer.planmanager.DRDSRelJsonReader.ARGS_KEY;
+
 /**
  * Callback for a relational expression to dump itself as JSON.
  */
@@ -80,6 +82,19 @@ public class DRDSRelJsonWriter extends RelJsonWriter {
         previousId = id;
     }
 
+    @Override
+    public String asString() {
+        final Map<String, Object> map = jsonBuilder.map();
+        map.put("rels", relList);
+        if (plannerContext != null) {
+            map.put(ARGS_KEY, plannerContext.encodeExtendedParametersToJson());
+        }
+        return jsonBuilder.toJsonString(map);
+    }
+
+    public void setPlannerContext(PlannerContext plannerContext) {
+        this.plannerContext = plannerContext;
+    }
 }
 
 // End RelJsonWriter.java

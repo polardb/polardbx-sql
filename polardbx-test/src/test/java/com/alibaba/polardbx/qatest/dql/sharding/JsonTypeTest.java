@@ -34,6 +34,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentIgnoreJsonFormatSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectErrorAssert;
 
 /**
  * @author wuheng.zxy 2016-4-17 上午10:45:30
@@ -324,6 +325,46 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
         String sql = "select  JSON_CONTAINS('{\"a\": 1, \"b\": 2, \"c\": {\"d\": 4}}', '1', '$.a') from "
             + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        //normal
+        sql = "select JSON_CONTAINS(CAST(1 AS JSON),CAST(2 AS JSON)),\n"
+            + "       JSON_CONTAINS(CAST(1.2 AS JSON),CAST(2.1 AS JSON)),\n"
+            + "       JSON_CONTAINS(CAST(FALSE AS JSON),CAST(TRUE AS JSON)),\n"
+            + "       JSON_CONTAINS(CAST((2 - 1) AS JSON),CAST((1 + 2) AS JSON)),\n"
+            + "       JSON_CONTAINS(CAST('null' AS JSON),CAST('null' AS JSON)),\n"
+            + "       JSON_CONTAINS(CAST('{\\\"white\\\":2}' AS JSON), CAST('{\\\"black\\\":1}' AS JSON));";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        //quote
+        sql = "select JSON_CONTAINS(JSON_QUOTE('<a>white</a>'),JSON_QUOTE('<a>black</a>')),\n"
+            + "       JSON_CONTAINS(JSON_QUOTE('white'),JSON_QUOTE('black')),\n"
+            + "       JSON_CONTAINS(JSON_QUOTE('white'),JSON_QUOTE('black'));";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        //arrays
+        sql = "select JSON_CONTAINS(JSON_ARRAY(3,4),JSON_ARRAY(1,2)),\n"
+            + "       JSON_CONTAINS(JSON_ARRAY(3,4), CAST('{\"3\": 4}' as JSON)),\n"
+            + "       JSON_CONTAINS(JSON_ARRAY(3,4), JSON_ARRAY(3)),\n"
+            + "       JSON_CONTAINS(JSON_ARRAY(3,4), JSON_ARRAY(3,4,5)),\n"
+            + "       JSON_CONTAINS(JSON_ARRAY(3,FALSE,'white'),JSON_ARRAY(1,TRUE,'black')),\n"
+            + "       JSON_CONTAINS(JSON_ARRAY(CAST('{\\\"white\\\":2}' AS JSON)), JSON_ARRAY(CAST('{\\\"black\\\":1}' AS JSON)));";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        //objects
+        sql = "select JSON_CONTAINS(JSON_OBJECT('second',2),JSON_OBJECT('first',1)),\n"
+            + "       JSON_CONTAINS(JSON_OBJECT('second',2),JSON_OBJECT('second',1)),\n"
+            + "       JSON_CONTAINS(JSON_OBJECT('second',2),JSON_OBJECT('second',2)),\n"
+            + "       JSON_CONTAINS(CAST('{\"a\":1, \"b\": {\"c\": 3}}' as JSON), CAST('{\"c\":3}' as JSON)),\n"
+            + "       JSON_CONTAINS(CAST('{\"a\":1, \"b\": {\"c\": 3}, \"c\": 3}' as JSON), CAST('{\"c\":3}' as JSON)),\n"
+            + "       JSON_CONTAINS(JSON_OBJECT('second',CAST('{\\\"white\\\":2}' AS JSON)), JSON_OBJECT('first',CAST('{\\\"black\\\":1}' AS JSON)));";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        //funcions
+        sql = "select JSON_CONTAINS(json_quote(concat('foo','bar')),json_quote(concat('foo','bar'))),\n"
+            + "       JSON_CONTAINS(CAST(2 AS JSON),CAST(1 AS JSON)),\n"
+            + "       JSON_CONTAINS(JSON_QUOTE('bar'),JSON_QUOTE('foo')),\n"
+            + "       JSON_CONTAINS(CAST('{\\\"white\\\":2}' AS JSON), CAST('{\\\"black\\\":1}' AS JSON));";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
     @Test
@@ -331,6 +372,96 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
         String sql = "select  JSON_CONTAINS_PATH('{\"a\": 1, \"b\": 2, \"c\": {\"d\": 4}}', 'one', '$.a', '$.e') from "
             + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testJsonOverlaps() throws SQLException {
+        if (isMySQL80()) {
+            //normal
+            String sql = "select JSON_OVERLAPS(CAST(1 AS JSON),CAST(2 AS JSON)),\n"
+                + "       JSON_OVERLAPS(CAST(1.2 AS JSON),CAST(2.1 AS JSON)),\n"
+                + "       JSON_OVERLAPS(CAST(FALSE AS JSON),CAST(TRUE AS JSON)),\n"
+                + "       JSON_OVERLAPS(CAST((2 - 1) AS JSON),CAST((1 + 2) AS JSON)),\n"
+                + "       JSON_OVERLAPS(CAST('null' AS JSON),CAST('null' AS JSON)),\n"
+                + "       JSON_OVERLAPS(CAST('{\\\"white\\\":2}' AS JSON), CAST('{\\\"black\\\":1}' AS JSON));";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            //quote
+            sql = "select JSON_OVERLAPS(JSON_QUOTE('<a>white</a>'),JSON_QUOTE('<a>black</a>')),\n"
+                + "       JSON_OVERLAPS(JSON_QUOTE('white'),JSON_QUOTE('black')),\n"
+                + "       JSON_OVERLAPS(JSON_QUOTE('white'),JSON_QUOTE('black'));";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            //arrays
+            sql = "select JSON_OVERLAPS(JSON_ARRAY(3,4),JSON_ARRAY(1,2)),\n"
+                + "       JSON_OVERLAPS(JSON_ARRAY(3,4), CAST('{\"3\": 4}' as JSON)),\n"
+                + "       JSON_OVERLAPS(JSON_ARRAY(3,4), JSON_ARRAY(3)),\n"
+                + "       JSON_OVERLAPS(JSON_ARRAY(3,4), JSON_ARRAY(3,4,5)),\n"
+                + "       JSON_OVERLAPS(JSON_ARRAY(3,FALSE,'white'),JSON_ARRAY(1,TRUE,'black')),\n"
+                + "       JSON_OVERLAPS(JSON_ARRAY(CAST('{\\\"white\\\":2}' AS JSON)), JSON_ARRAY(CAST('{\\\"black\\\":1}' AS JSON)));";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            //objects
+            sql = "select JSON_OVERLAPS(JSON_OBJECT('second',2),JSON_OBJECT('first',1)),\n"
+                + "       JSON_OVERLAPS(JSON_OBJECT('second',2),JSON_OBJECT('second',1)),\n"
+                + "       JSON_OVERLAPS(JSON_OBJECT('second',2),JSON_OBJECT('second',2)),\n"
+                + "       JSON_OVERLAPS(CAST('{\"a\":1, \"b\": {\"c\": 3}}' as JSON), CAST('{\"c\":3}' as JSON)),\n"
+                + "       JSON_OVERLAPS(CAST('{\"a\":1, \"b\": {\"c\": 3}, \"c\": 3}' as JSON), CAST('{\"c\":3}' as JSON)),\n"
+                + "       JSON_OVERLAPS(CAST('{\"a\":1, \"b\": {\"c\": 3}, \"d\": 3}' as JSON), CAST('{\"b\": {\"c\": 2}}' as JSON)),\n"
+                + "       JSON_OVERLAPS(JSON_OBJECT('second',CAST('{\\\"white\\\":2}' AS JSON)), JSON_OBJECT('first',CAST('{\\\"black\\\":1}' AS JSON)));";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            //funcions
+            sql = "select JSON_OVERLAPS(json_quote(concat('foo','bar')),json_quote(concat('foo','bar'))),\n"
+                + "       JSON_OVERLAPS(CAST(2 AS JSON),CAST(1 AS JSON)),\n"
+                + "       JSON_OVERLAPS(JSON_QUOTE('bar'),JSON_QUOTE('foo')),\n"
+                + "       JSON_OVERLAPS(CAST('{\\\"white\\\":2}' AS JSON), CAST('{\\\"black\\\":1}' AS JSON));";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            //copy from mysql
+            sql = "select json_overlaps(cast('[1,2,3]' as json), cast('[3,4,5]' as json)),\n"
+                + "       json_overlaps(cast('[1,2,3]' as json), cast('[4,4,5]' as json)),\n"
+                + "       json_overlaps(cast('[1,2,3]' as json), cast('[4,5]' as json)),\n"
+                + "       json_overlaps(cast('[1,2]' as json), cast('[3,4,5]' as json)),\n"
+                + "       json_overlaps(cast('[1,2]' as json), cast('[2,4,5]' as json)),\n"
+                + "       json_overlaps(cast('1' as json), cast('[3,4,5]' as json)),\n"
+                + "       json_overlaps(cast('[3,4,5]' as json), cast('1' as json)),\n"
+                + "       json_overlaps(cast('[3,4,{\"a\":5}]' as json), cast('{\"a\":5}' as json)),\n"
+                + "       json_overlaps(cast('{\"a\":1, \"b\":2}' as json), cast('{\"a\":1,\"c\":3}' as json)),\n"
+                + "       json_overlaps(cast('{\"a\":1, \"b\":2}' as json), cast('{\"a\":2,\"c\":3}' as json)),\n"
+                + "       json_overlaps(cast('{\"a\":1, \"b\":null}' as json), cast('{\"a\":2,\"c\":3}' as json)),\n"
+                + "       json_overlaps(cast('{\"a\":1, \"b\":2}' as json), cast('{\"a\":null, \"c\":3}' as json)),\n"
+                + "       json_overlaps('null','[null]'),\n"
+                + "       json_overlaps('1234',NULL);";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            sql = "select json_overlaps('2','[2,3,4]'),\n"
+                + "       json_overlaps('null',NULL),\n"
+                + "       json_overlaps('[{\"a\":1}]', '{\"a\":1}') as c1,\n"
+                + "       json_overlaps('[{\"a\":1}]', '[{\"a\":1}]') as c2,\n"
+                + "       json_overlaps('[{}]', '{}') as c1,\n"
+                + "       json_overlaps('{}', '[{}]') as c1,\n"
+                + "       json_overlaps('[{}]', '{\"a\":1, \"b\":2}') as c1,\n"
+                + "       json_overlaps('[{}]', '1') as c1,\n"
+                + "       json_overlaps(\"1\",\"1\") as c1,\n"
+                + "       json_overlaps(\"true\",\"false\") as c1,\n"
+                + "       json_overlaps(\"null\",\"null\") as c1,\n"
+                + "       json_overlaps(\"123\",'{\"asd\":123}') as c1;";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            sql = "select json_overlaps('123',NULL);";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            sql = "select json_overlaps(NULL, '123');";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+            sql = "select json_overlaps('asdasd',NULL);";
+            selectErrorAssert(sql, null, mysqlConnection, "Invalid JSON text");
+            selectErrorAssert(sql, null, tddlConnection, "Invalid JSON text");
+
+            sql = "select json_overlaps(NULL, 'asdasd');";
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        }
     }
 
     @Test

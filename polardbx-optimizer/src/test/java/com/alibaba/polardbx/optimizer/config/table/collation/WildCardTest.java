@@ -24,6 +24,14 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class WildCardTest {
+
+    enum LikeType {
+        PREFIX,
+        SUFFIX,
+        MIDDLE,
+        OTHERS
+    }
+
     private static final CollationHandler COLLATION_HANDLER =
         CharsetFactory.DEFAULT_CHARSET_HANDLER.getCollationHandler();
     private static final Slice CHECK_STR =
@@ -31,6 +39,7 @@ public class WildCardTest {
 
             "CAAAACCACTATGAGATATCATCTCACACCAGTTAGAATGGCAATCATTAAAAAGTCAGGAAACAACAGGTGCTGGAGAGGATGCGGAGAAATAGGAACAC");
     private static final String[] MATCHED = {
+        // MIDDLE_MATCHED
         "%CAAAACCACTATGAGATATCATCTCACACCAGTTA%",
         "%AAAACCACTATGAGATATCATCTCACACCAGTTAG%",
         "%AAAACCACTATGAGATATCATCTCACACCAGTTAG%",
@@ -75,41 +84,72 @@ public class WildCardTest {
         "%GAATGGCAATCATTAAAAAGTCAGGAAACAACAGG%",
         "%AATGGCAATCATTAAAAAGTCAGGAAACAACAGGT%",
         "%ATGGCAATCATTAAAAAGTCAGGAAACAACAGGTG%",
-        "%TGGCAATCATTAAAAAGTCAGGAAACAACAGGTGC%",
-        "%GCAATCATTAAAAAGTCAGGAAACAACAGGTGCTG%",
-        "%CAATCATTAAAAAGTCAGGAAACAACAGGTGCTGG%",
-        "%AATCATTAAAAAGTCAGGAAACAACAGGTGCTGGA%",
-        "%ATCATTAAAAAGTCAGGAAACAACAGGTGCTGGAG%",
-        "%TCATTAAAAAGTCAGGAAACAACAGGTGCTGGAGA%",
-        "%CATTAAAAAGTCAGGAAACAACAGGTGCTGGAGAG%",
-        "%ATTAAAAAGTCAGGAAACAACAGGTGCTGGAGAGG%",
-        "%TTAAAAAGTCAGGAAACAACAGGTGCTGGAGAGGA%",
-        "%TAAAAAGTCAGGAAACAACAGGTGCTGGAGAGGAT%",
-        "%AAAAAGTCAGGAAACAACAGGTGCTGGAGAGGATG%",
-        "%AAAAGTCAGGAAACAACAGGTGCTGGAGAGGATGC%",
-        "%AAAGTCAGGAAACAACAGGTGCTGGAGAGGATGCG%",
-        "%AAGTCAGGAAACAACAGGTGCTGGAGAGGATGCGG%",
-        "%AGTCAGGAAACAACAGGTGCTGGAGAGGATGCGGA%",
-        "%GTCAGGAAACAACAGGTGCTGGAGAGGATGCGGAG%",
-        "%TCAGGAAACAACAGGTGCTGGAGAGGATGCGGAGA%",
-        "%CAGGAAACAACAGGTGCTGGAGAGGATGCGGAGAA%",
-        "%AGGAAACAACAGGTGCTGGAGAGGATGCGGAGAAA%",
-        "%GGAAACAACAGGTGCTGGAGAGGATGCGGAGAAAT%",
-        "%GAAACAACAGGTGCTGGAGAGGATGCGGAGAAATA%",
-        "%AAACAACAGGTGCTGGAGAGGATGCGGAGAAATAG%",
-        "%AACAACAGGTGCTGGAGAGGATGCGGAGAAATAGG%",
-        "%ACAACAGGTGCTGGAGAGGATGCGGAGAAATAGGA%",
-        "%CAACAGGTGCTGGAGAGGATGCGGAGAAATAGGAA%",
-        "%AACAGGTGCTGGAGAGGATGCGGAGAAATAGGAAC%",
-        "%ACAGGTGCTGGAGAGGATGCGGAGAAATAGGAACA%",
-        "%CAGGTGCTGGAGAGGATGCGGAGAAATAGGAACAC%",
+        "%TGGCAATCATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%GCAATCATTAAAAAGTCAGGAAACAACAGGTGC%",
+        "%CAATCATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%AATCATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%ATCATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%TCATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%CATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%ATTAAAAAGTCAGGAAACAACAGGTG%",
+        "%TTAAAAAGTCAGGAAACAACAGGTG%",
+        "%TAAAAAGTCAGGAAACAACAGGTG%",
+        "%AAAAAGTCAGGAAACAACAGGTG%",
+        "%AAAAGTCAGGAAACAACAGGTG%",
+        "%AAAGTCAGGAAACAACAGGTG%",
+        "%AAGTCAGGAAACAACAGGTG%",
+        "%AGTCAGGAAACAACAGGTG%",
+        "%GTCAGGAAACAACAGGTGC%",
+        "%TCAGGAAACAACAGGTGC%",
+        "%CAGGAAACAACAGGTGC%",
+        "%AGGAAACAACAGGTGC%",
+        "%GGAAACAACAGGTGC%",
+        "%GAAACAACAGG%",
+        "%AAACAACAG%",
+        "%AACAACAGG%",
+        "%ACAACA%",
+        "%CAACA%",
+        "%AAC%",
+        "%AC%",
+        "%C%",
+
+        // PREFIX_MATCHED
+        "CA%",
+        "CAA%",
+        "CAAA%",
+        "CAAAA%",
+        "CAAAAC%",
+        "CAAAACC%",
+        "CAAAACCA%",
+        "CAAAACCAC%",
+        "CAAAACCACT%",
+        "CAAAACCACTA%",
+
+        // SUFFIX_MATCHED
+        "%C",
+        "%AC",
+        "%CAC",
+        "%ACAC",
+        "%AACAC",
+        "%GAACAC",
+        "%GGAACAC",
+        "%AGGAACAC",
+        "%TAGGAACAC",
+        "%ATAGGAACAC",
+
+        // others
         "%",
+        "%%",
+        "%%%",
         "_%_",
         "%_%",
+        "%__%",
+        "%__%_%",
         "%CAGGTG%GAACA_%",
     };
 
     private static final String[] UNMATCHED = {
+        // MIDDLE_UNMATCHED
         "%ATTGACCACACTCTACTATAGAGTATCACCAAAAC%",
         "%GATTGACCACACTCTACTATAGAGTATCACCAAAA%",
         "%AGATTGACCACACTCTACTATAGAGTATCACCAAA%",
@@ -176,7 +216,37 @@ public class WildCardTest {
         "%AAGGATAAAGAGGCGTAGGAGAGGTCGTGGACAAC%",
         "%CAAGGATAAAGAGGCGTAGGAGAGGTCGTGGACAA%",
         "%ACAAGGATAAAGAGGCGTAGGAGAGGTCGTGGACA%",
-        "%CACAAGGATAAAGAGGCGTAGGAGAGGTCGTGGAC%"
+        "%CACAAGGATAAAGAGGCGTAGGAGAGGTCGTGGAC%",
+
+        // PREFIX_UNMATCHED
+        "CT%",
+        "CCA%",
+        "CGAA%",
+        "CACAA%",
+        "CATAAC%",
+        "CATAACC%",
+        "CACAACCA%",
+        "CAGAACCAC%",
+        "CACAACCACT%",
+        "CAATACCACTA%",
+
+        // SUFFIX_UNMATCHED
+        "%G",
+        "%AG",
+        "%CAG",
+        "%ACGC",
+        "%AGCAC",
+        "%GCACAC",
+        "%GCAACAC",
+        "%ACGAACAC",
+        "%TTGGAACAC",
+        "%AGAGGAACAC",
+
+        // others
+        "_",
+        "__",
+        "___",
+        "%CAG_G%GAACA_%",
     };
 
     @Test
@@ -210,70 +280,93 @@ public class WildCardTest {
 
     @Test
     public void testLatin1BinContains() {
-        CollationHandler collationHandler = CollationHandlers.COLLATION_HANDLER_LATIN1_BIN;
+        Latin1BinCollationHandler collationHandler =
+            (Latin1BinCollationHandler) CollationHandlers.COLLATION_HANDLER_LATIN1_BIN;
+        String pattern;
         for (String matched : MATCHED) {
-            if (isContains(matched)) {
-                String pattern = matched.substring(1, matched.length() - 1);
-                int[] lps = computeLPSArray(Slices.utf8Slice(pattern).getBytes());
+            switch (getLikeType(matched)) {
+            case PREFIX:
+                pattern = matched.substring(0, matched.length() - 1);
                 Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
-                    collationHandler.containsCompare(CHECK_STR, pattern.getBytes(), lps));
-            } else {
+                    collationHandler.startsWith(CHECK_STR, pattern.getBytes()));
+                break;
+            case SUFFIX:
+                pattern = matched.substring(1);
+                Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
+                    collationHandler.endsWith(CHECK_STR, pattern.getBytes()));
+                break;
+            case MIDDLE:
+                pattern = matched.substring(1, matched.length() - 1);
+                Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
+                    collationHandler.contains(CHECK_STR, pattern.getBytes()));
+                break;
+            case OTHERS:
                 Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
                     collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
+                break;
             }
         }
 
         for (String unmatched : UNMATCHED) {
-            if (isContains(unmatched)) {
-                String pattern = unmatched.substring(1, unmatched.length() - 1);
-                int[] lps = computeLPSArray(Slices.utf8Slice(pattern).getBytes());
+            switch (getLikeType(unmatched)) {
+            case PREFIX:
+                pattern = unmatched.substring(0, unmatched.length() - 1);
                 Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
-                    collationHandler.containsCompare(CHECK_STR, pattern.getBytes(), lps));
-            } else {
+                    collationHandler.startsWith(CHECK_STR, pattern.getBytes()));
+                break;
+            case SUFFIX:
+                pattern = unmatched.substring(1);
+                Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
+                    collationHandler.endsWith(CHECK_STR, pattern.getBytes()));
+                break;
+            case MIDDLE:
+                pattern = unmatched.substring(1, unmatched.length() - 1);
+                Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
+                    collationHandler.contains(CHECK_STR, pattern.getBytes()));
+                break;
+            case OTHERS:
                 Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
                     collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));
+                break;
             }
         }
     }
 
-    public static int[] computeLPSArray(byte[] pattern) {
-        int[] lps = new int[pattern.length];
-        int length = 0;
-        lps[0] = 0;
-        int i = 1;
-
-        while (i < pattern.length) {
-            if (pattern[i] == pattern[length]) {
-                length++;
-                lps[i] = length;
-                i++;
-            } else {
-                if (length != 0) {
-                    length = lps[length - 1];
-                } else {
-                    lps[i] = length;
-                    i++;
-                }
-            }
-        }
-        return lps;
-    }
-
-    private boolean isContains(String pattern) {
-        if (pattern == null || pattern.length() < 2) {
-            return false;
+    private LikeType getLikeType(String pattern) {
+        if (pattern == null) {
+            return LikeType.OTHERS;
         }
         byte[] bytes = pattern.getBytes();
-        if (bytes[0] == CollationHandler.WILD_MANY && bytes[bytes.length - 1] == CollationHandler.WILD_MANY) {
+        if (bytes.length >= 2 && bytes[0] == CollationHandler.WILD_MANY
+            && bytes[bytes.length - 1] == CollationHandler.WILD_MANY) {
             for (int i = 1; i < bytes.length - 1; i++) {
                 if (bytes[i] == CollationHandler.WILD_MANY || bytes[i] == CollationHandler.WILD_ONE) {
                     // no % _ in the middle
-                    return false;
+                    return LikeType.OTHERS;
                 }
             }
-            return true;
+            return LikeType.MIDDLE;
         }
-        return false;
+
+        if (bytes.length >= 1 && bytes[0] == CollationHandler.WILD_MANY) {
+            for (int i = 1; i < bytes.length; i++) {
+                if (bytes[i] == CollationHandler.WILD_MANY || bytes[i] == CollationHandler.WILD_ONE) {
+                    // no % _ after the first one
+                    return LikeType.OTHERS;
+                }
+            }
+            return LikeType.SUFFIX;
+        }
+        if (bytes.length >= 1 && bytes[bytes.length - 1] == CollationHandler.WILD_MANY) {
+            for (int i = 0; i < bytes.length - 1; i++) {
+                if (bytes[i] == CollationHandler.WILD_MANY || bytes[i] == CollationHandler.WILD_ONE) {
+                    // no % _ before the last one
+                    return LikeType.OTHERS;
+                }
+            }
+            return LikeType.PREFIX;
+        }
+        return LikeType.OTHERS;
     }
 
     /**

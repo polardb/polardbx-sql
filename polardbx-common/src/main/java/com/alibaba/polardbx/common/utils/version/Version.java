@@ -35,7 +35,7 @@ public final class Version {
     }
 
     // TODO get product version from config property
-    public static final String PRODUCT_VERSION = "2.4.0";
+    public static final String PRODUCT_VERSION = "2.5.0";
 
     private static final Logger logger = LoggerFactory.getLogger(Version.class);
     private static final Package myPackage = VersionAnnotation.class.getPackage();
@@ -55,14 +55,14 @@ public final class Version {
                 return;
             }
             try {
-
+                // 可能有误判，跳过检测
                 boolean versionCheck = true;
                 if (System.getProperty("tddl.version.check") != null) {
                     versionCheck = Boolean.valueOf(System.getProperty("tddl.version.check"));
 
                 }
 
-
+                // 检查下sequence包
                 Version.checkDuplicate("com/taobao/tddl/client/sequence/impl/GroupSequenceDao.class",
                     true && versionCheck);
                 validVersion("polardbx-executor",
@@ -75,15 +75,18 @@ public final class Version {
                     "com/alibaba/polardbx/sequence/impl/SimpleSequenceDao.class",
                     VERSION,
                     false);
-
+                // 检查下经常性冲突的两个包
                 Version.checkDuplicate("com/alibaba/druid/pool/DruidDataSource.class", true && versionCheck);
                 validVersion("druid", "com/alibaba/druid/pool/DruidDataSource.class", "1.0.15", true && versionCheck);
+                Version.checkDuplicate("com/taobao/diamond/client/Diamond.class", true && versionCheck);
+                validVersion("diamond-client", "com/taobao/diamond/client/Diamond.class", "3.6.8",
+                    true && versionCheck);
                 Version.checkDuplicate("com/google/common/collect/MapMaker.class", false);
                 validVersion("guava", "com/google/common/collect/MapMaker.class", "15.0", false);
-
+                // 检查下mysql driver
                 Version.checkDuplicate("com/mysql/jdbc/Driver.class", true && versionCheck);
                 validVersion("mysql-connector-java", "com/mysql/jdbc/Driver.class", "5.1.26", true && versionCheck);
-
+                // 检查是否存在多logger
                 Version.checkDuplicate("org/slf4j/impl/StaticLoggerBinder.class", false);
             } finally {
                 versionChecked = true;
@@ -95,6 +98,9 @@ public final class Version {
         return VERSION;
     }
 
+    /**
+     * Returns the detail version info
+     */
     public static String getBuildVersion() {
         Package myPackage = VersionAnnotation.class.getPackage();
         VersionAnnotation va = myPackage.getAnnotation(VersionAnnotation.class);
@@ -112,20 +118,20 @@ public final class Version {
 
     public static String getVersion(Class<?> cls, String defaultVersion) {
         if (va != null) {
-
+            // 如果version不是空字符,那就直接以这个为准
             if (StringUtils.isNotEmpty(va.version()) && !defaultVersion.equals(va.version())) {
                 return va.version();
             }
         }
 
         try {
-
+            // 首先查找MANIFEST.MF规范中的版本号
             String version = cls.getPackage().getImplementationVersion();
             if (version == null || version.length() == 0) {
                 version = cls.getPackage().getSpecificationVersion();
             }
             if (version == null || version.length() == 0) {
-
+                // 如果规范中没有版本号，基于jar包名获取版本号
                 CodeSource codeSource = cls.getProtectionDomain().getCodeSource();
                 if (codeSource == null) {
                     logger.info("No codeSource for class " + cls.getName() + " when getVersion, use default version "
@@ -137,18 +143,21 @@ public final class Version {
             }
 
             if (checkVersionNecessary(version)) {
-
+                // 返回版本号，如果为空返回缺省版本号
                 return version == null || version.length() == 0 ? defaultVersion : version;
             } else {
                 return defaultVersion;
             }
-        } catch (Throwable e) {
-
+        } catch (Throwable e) { // 防御性容错
+            // 忽略异常，返回缺省版本号
             logger.error("return default version, ignore exception " + e.getMessage(), e);
             return defaultVersion;
         }
     }
 
+    /**
+     * 检查下对应class path的版本，是否>minVersion
+     */
     public static boolean validVersion(String name, String path, String minVersion, boolean failOnError) {
         try {
             if (minVersion == null) {
@@ -185,7 +194,7 @@ public final class Version {
             }
         } catch (TddlRuntimeException e) {
             throw e;
-        } catch (Throwable e) {
+        } catch (Throwable e) { // 防御性容错
             logger.error(e.getMessage(), e);
         }
 
@@ -202,7 +211,7 @@ public final class Version {
 
     public static boolean checkDuplicate(String path, boolean failOnError) {
         try {
-
+            // 在ClassPath搜文件
             Enumeration<URL> urls = Version.class.getClassLoader().getResources(path);
             Set<String> files = new HashSet<String>();
             while (urls.hasMoreElements()) {
@@ -215,6 +224,7 @@ public final class Version {
                 }
             }
 
+            // 如果有多个，就表示重复
             if (files.size() > 1) {
                 try {
                     throw new TddlRuntimeException(ErrorCode.ERR_DUPLICATED_CLASS,
@@ -233,13 +243,16 @@ public final class Version {
             }
         } catch (TddlRuntimeException e) {
             throw e;
-        } catch (Throwable e) {
+        } catch (Throwable e) { // 防御性容错
             logger.error(e.getMessage(), e);
         }
 
         return false;
     }
 
+    /**
+     * 根据jar包的路径，找到对应的版本号
+     */
     public static String getVersionByPath(String file) {
         if (file != null && file.length() > 0 && StringUtils.contains(file, ".jar")) {
             int index = StringUtils.lastIndexOf(file, ".jar");

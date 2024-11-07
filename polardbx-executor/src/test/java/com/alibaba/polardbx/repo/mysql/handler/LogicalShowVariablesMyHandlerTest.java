@@ -1,5 +1,7 @@
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.IConnection;
@@ -9,8 +11,11 @@ import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.logical.ITPrepareStatement;
 import com.alibaba.polardbx.common.logical.ITStatement;
 import com.alibaba.polardbx.common.type.TransactionType;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransactionManagerUtil;
@@ -23,12 +28,17 @@ import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.lang.reflect.Field;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class LogicalShowVariablesMyHandlerTest {
     private MockedStatic<MetaDbInstConfigManager> mockMetaDbInstConfigManager;
@@ -46,6 +56,12 @@ public class LogicalShowVariablesMyHandlerTest {
         LogicalShowVariablesMyHandler handler = new LogicalShowVariablesMyHandler(repository);
         TreeMap<String, Object> variables = new TreeMap<>();
 
+        ExecutorContext executorContext = mock(ExecutorContext.class);
+        ExecutorContext.setContext("polardbx", executorContext);
+        ITransactionManager transactionManager = mock(ITransactionManager.class);
+        when(executorContext.getTransactionManager()).thenReturn(transactionManager);
+        when(transactionManager.supportXaTso()).thenReturn(true);
+
         ExecutionContext executionContext = new ExecutionContext();
         ITConnection mockTConnection = new MockTConnection();
         executionContext.setConnection(mockTConnection);
@@ -60,7 +76,7 @@ public class LogicalShowVariablesMyHandlerTest {
         handler.collectCnVariables(variables, executionContext);
         for (Map.Entry<String, Object> kv : variables.entrySet()) {
             if ("enable_auto_commit_tso".equalsIgnoreCase(kv.getKey())) {
-                Assert.assertEquals(true, kv.getValue());
+                Assert.assertEquals(false, kv.getValue());
             }
             if ("enable_auto_savepoint".equalsIgnoreCase(kv.getKey())) {
                 Assert.assertEquals(true, kv.getValue());
@@ -79,6 +95,50 @@ public class LogicalShowVariablesMyHandlerTest {
             }
             if ("trx_class".equalsIgnoreCase(kv.getKey())) {
                 Assert.assertTrue("MockTransaction".equalsIgnoreCase((String) kv.getValue()));
+            }
+        }
+    }
+
+    @Test
+    public void showSqlLogBinVariablesTest() throws NoSuchFieldException, IllegalAccessException {
+        MyRepository repository = new MyRepository();
+        LogicalShowVariablesMyHandler handler = new LogicalShowVariablesMyHandler(repository);
+        TreeMap<String, Object> variables = new TreeMap<>();
+
+        ExecutorContext executorContext = mock(ExecutorContext.class);
+        ExecutorContext.setContext("polardbx", executorContext);
+        ITransactionManager transactionManager = mock(ITransactionManager.class);
+        when(executorContext.getTransactionManager()).thenReturn(transactionManager);
+        when(transactionManager.supportXaTso()).thenReturn(true);
+        ExecutionContext executionContext = new ExecutionContext();
+        ITConnection mockTConnection = new MockTConnection();
+        executionContext.setConnection(mockTConnection);
+        Map<String, Object> extraServerVariables = new HashMap<>();
+        SequenceManagerProxy proxy = mock(SequenceManagerProxy.class);
+        when(proxy.areAllSequencesSameType("polardbx",
+            new SequenceAttribute.Type[] {SequenceAttribute.Type.GROUP, SequenceAttribute.Type.TIME})).thenReturn(true);
+        Field instaceField = SequenceManagerProxy.class.getDeclaredField("instance");
+        instaceField.setAccessible(true);
+        instaceField.set(null, proxy);
+
+        executionContext.setExtraServerVariables(extraServerVariables);
+        executionContext.setSchemaName("polardbx");
+        // Default value.
+        handler.updateReturnVariables(variables, executionContext);
+        for (Map.Entry<String, Object> kv : variables.entrySet()) {
+            if ("sql_log_bin_x".equalsIgnoreCase(kv.getKey())) {
+                Assert.assertEquals("ON", kv.getValue());
+            }
+        }
+
+        extraServerVariables.put(ICdcManager.SQL_LOG_BIN, false);
+        executionContext.setExtraServerVariables(extraServerVariables);
+        executionContext.setSchemaName("polardbx");
+        // Default value.
+        handler.updateReturnVariables(variables, executionContext);
+        for (Map.Entry<String, Object> kv : variables.entrySet()) {
+            if ("sql_log_bin_x".equalsIgnoreCase(kv.getKey())) {
+                Assert.assertEquals("OFF", kv.getValue());
             }
         }
     }

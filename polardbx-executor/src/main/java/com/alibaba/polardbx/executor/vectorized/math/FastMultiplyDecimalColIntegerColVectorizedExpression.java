@@ -95,7 +95,12 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
             }
         }
 
-        doNormalMul(batchSize, isSelectionInUse, sel, leftInputVectorSlot, rightInputVectorSlot, outputVectorSlot);
+        if (!isRightUnsigned) {
+            doNormalMul(batchSize, isSelectionInUse, sel, leftInputVectorSlot, rightInputVectorSlot, outputVectorSlot);
+        } else {
+            doNormalMulUnsigned(batchSize, isSelectionInUse, sel, leftInputVectorSlot, rightInputVectorSlot,
+                outputVectorSlot);
+        }
     }
 
     private boolean checkResultScale(int scale, int outputVectorSlotScale) {
@@ -232,13 +237,13 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
             }
             if (decimal64 == 1) {
                 outputDecimal128Low[i] = multiplier;
-                outputDecimal128High[i] = multiplier >= 0 ? 0 : 1;
+                outputDecimal128High[i] = multiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (decimal64 == -1) {
                 long negMultiplier = -((long) multiplier);
                 outputDecimal128Low[i] = negMultiplier;
-                outputDecimal128High[i] = negMultiplier >= 0 ? 0 : 1;
+                outputDecimal128High[i] = negMultiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (multiplier == 1) {
@@ -302,13 +307,13 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
             }
             if (decimal64 == 1) {
                 outputDecimal128Low[j] = multiplier;
-                outputDecimal128High[j] = multiplier >= 0 ? 0 : 1;
+                outputDecimal128High[j] = multiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (decimal64 == -1) {
                 long negMultiplier = -((long) multiplier);
                 outputDecimal128Low[j] = negMultiplier;
-                outputDecimal128High[j] = negMultiplier >= 0 ? 0 : 1;
+                outputDecimal128High[j] = negMultiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (multiplier == 1) {
@@ -358,7 +363,7 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
                                     long[] outputDecimal128High) {
         for (int i = 0; i < batchSize; i++) {
             long decimal64 = leftArray[i];
-            int multiplier = rightArray[i];
+            long multiplier = rightArray[i] & 0xFFFFFFFFL;
 
             if (decimal64 == 0 || multiplier == 0) {
                 outputDecimal128Low[i] = 0;
@@ -367,13 +372,13 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
             }
             if (decimal64 == 1) {
                 outputDecimal128Low[i] = multiplier;
-                outputDecimal128High[i] = multiplier >= 0 ? 0 : 1;
+                outputDecimal128High[i] = multiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (decimal64 == -1) {
                 long negMultiplier = -((long) multiplier);
                 outputDecimal128Low[i] = negMultiplier;
-                outputDecimal128High[i] = negMultiplier >= 0 ? 0 : 1;
+                outputDecimal128High[i] = negMultiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (multiplier == 1) {
@@ -426,13 +431,13 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
             }
             if (decimal64 == 1) {
                 outputDecimal128Low[j] = multiplier;
-                outputDecimal128High[j] = multiplier >= 0 ? 0 : 1;
+                outputDecimal128High[j] = multiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (decimal64 == -1) {
                 long negMultiplier = -((long) multiplier);
                 outputDecimal128Low[j] = negMultiplier;
-                outputDecimal128High[j] = negMultiplier >= 0 ? 0 : 1;
+                outputDecimal128High[j] = negMultiplier >= 0 ? 0 : -1;
                 continue;
             }
             if (multiplier == 1) {
@@ -610,7 +615,7 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
             if (multiplier == 1) {
                 outputDecimal128Low[j] = decimal128Low;
                 outputDecimal128High[j] = decimal128High;
-                return true;
+                continue;
             }
             if (multiplier == -1) {
                 outputDecimal128Low[j] = ~decimal128Low + 1;
@@ -618,7 +623,7 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
                 if (outputDecimal128Low[j] == 0) {
                     outputDecimal128High[j] += 1;
                 }
-                return true;
+                continue;
             }
 
             boolean positive;
@@ -807,7 +812,7 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
                 leftDec = new DecimalStructure((leftInputVectorSlot).getRegion(j, cachedSlice));
 
                 // fetch right decimal value
-                DecimalConverter.longToDecimal(array2[j], rightDec, isRightUnsigned);
+                DecimalConverter.longToDecimal(array2[j], rightDec);
 
                 // do operator
                 FastDecimalUtils.mul(leftDec, rightDec, toValue);
@@ -827,7 +832,63 @@ public class FastMultiplyDecimalColIntegerColVectorizedExpression extends Abstra
                 leftDec = new DecimalStructure((leftInputVectorSlot).getRegion(i, cachedSlice));
 
                 // fetch right decimal value
-                DecimalConverter.longToDecimal(array2[i], rightDec, isRightUnsigned);
+                DecimalConverter.longToDecimal(array2[i], rightDec);
+
+                // do operator
+                FastDecimalUtils.mul(leftDec, rightDec, toValue);
+            }
+        }
+        outputVectorSlot.setFullState();
+    }
+
+    private void doNormalMulUnsigned(int batchSize, boolean isSelectionInUse, int[] sel,
+                                     DecimalBlock leftInputVectorSlot,
+                                     IntegerBlock rightInputVectorSlot, DecimalBlock outputVectorSlot) {
+        DecimalStructure leftDec;
+        DecimalStructure rightDec = new DecimalStructure();
+        // use cached slice
+        Slice cachedSlice = leftInputVectorSlot.allocCachedSlice();
+
+        int[] array2 = rightInputVectorSlot.intArray();
+        Slice output = outputVectorSlot.getMemorySegments();
+
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
+                int fromIndex = j * DECIMAL_MEMORY_SIZE;
+
+                // wrap memory in specified position
+                Slice decimalMemorySegment = output.slice(fromIndex, DECIMAL_MEMORY_SIZE);
+                DecimalStructure toValue = new DecimalStructure(decimalMemorySegment);
+
+                // do reset
+                rightDec.reset();
+
+                // fetch left decimal value
+                leftDec = new DecimalStructure((leftInputVectorSlot).getRegion(j, cachedSlice));
+
+                // fetch right decimal value
+                DecimalConverter.longToDecimal(array2[j] & 0xFFFFFFFFL, rightDec);
+
+                // do operator
+                FastDecimalUtils.mul(leftDec, rightDec, toValue);
+            }
+        } else {
+            for (int i = 0; i < batchSize; i++) {
+                int fromIndex = i * DECIMAL_MEMORY_SIZE;
+
+                // wrap memory in specified position
+                Slice decimalMemorySegment = output.slice(fromIndex, DECIMAL_MEMORY_SIZE);
+                DecimalStructure toValue = new DecimalStructure(decimalMemorySegment);
+
+                // do reset
+                rightDec.reset();
+
+                // fetch left decimal value
+                leftDec = new DecimalStructure((leftInputVectorSlot).getRegion(i, cachedSlice));
+
+                // fetch right decimal value
+                DecimalConverter.longToDecimal(array2[i] & 0xFFFFFFFFL, rightDec);
 
                 // do operator
                 FastDecimalUtils.mul(leftDec, rightDec, toValue);

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionStat;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableMovePartitionBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AnalyzePhyTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DdlBackfillCostRecordTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.ImportTableSpaceDdlNormalTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
@@ -336,7 +337,8 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         executableDdlJob.labelAsHead(validateTask);
 
         List<DdlTask> bringUpAlterTableGroupTasks =
-            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null, taskType, executionContext);
+            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null, taskType,
+                preparedData.getDdlVersionId(), executionContext);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
@@ -400,7 +402,8 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
         executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
 
         SyncLsnTask syncLsnTask = null;
-        int parallelism = ScaleOutUtils.getTableGroupTaskParallelism(executionContext);
+        int pipelineSize = ScaleOutUtils.getTaskPipelineSize(executionContext);
+
         Queue<DdlTask> leavePipeLineQueue = new LinkedList<>();
 
         if (preparedData.isUsePhysicalBackfill()) {
@@ -417,13 +420,14 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                     DbTopologyManager.getStorageInstIdByGroupName(schemaName, groupName));
             }
 
-            syncLsnTask =
-                new SyncLsnTask(schemaName, sourceGroupAndStorageIdMap, targetGroupAndStorageIdMap);
-            executableDdlJob.addTask(syncLsnTask);
+            if (GeneralUtil.isNotEmpty(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
+                syncLsnTask = new SyncLsnTask(schemaName, sourceGroupAndStorageIdMap, targetGroupAndStorageIdMap);
+                executableDdlJob.addTask(syncLsnTask);
+            }
 
             for (List<DdlTask> pipeLine : GeneralUtil.emptyIfNull(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
                 DdlTask parentLeaveNode;
-                if (leavePipeLineQueue.size() < parallelism) {
+                if (leavePipeLineQueue.size() < pipelineSize) {
                     parentLeaveNode = syncLsnTask;
                 } else {
                     parentLeaveNode = leavePipeLineQueue.poll();
@@ -455,9 +459,13 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                     executableDdlJob.addTaskRelationship(pipeLine.get(i),
                         importTableSpaceDdlNormalTask);
                 }
-                executableDdlJob.addTaskRelationship(importTableSpaceDdlNormalTask,
+
+                AnalyzePhyTableTask analyzePhyTableTask = new AnalyzePhyTableTask(schemaName, tarGroupKey,
+                    phyTableName);
+                executableDdlJob.addTaskRelationship(importTableSpaceDdlNormalTask, analyzePhyTableTask);
+                executableDdlJob.addTaskRelationship(analyzePhyTableTask,
                     subTaskJobFactory.getBackfillTaskEdgeNodes().get(1));
-                leavePipeLineQueue.add(importTableSpaceDdlNormalTask);
+                leavePipeLineQueue.add(analyzePhyTableTask);
             }
 
         }
@@ -477,7 +485,8 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
             0) instanceof PauseCurrentJobTask)) {
             DdlTask dropUselessTableTask =
                 ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, preparedData.getTableName(),
-                    sourceTablesTopology.get(preparedData.getTableName()), executionContext);
+                    sourceTablesTopology.get(preparedData.getTableName()),
+                    targetTablesTopology.get(preparedData.getTableName()), executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
             executableDdlJob.labelAsTail(dropUselessTableTask);
             executableDdlJob.addTaskRelationship(

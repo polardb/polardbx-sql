@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -25,20 +26,23 @@ import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.plan.volcano.RelSubset;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.RelFactories;
+import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
 import org.apache.calcite.rex.RexBuilder;
-import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.tools.RelBuilderFactory;
+import org.apache.calcite.util.Util;
 
 import java.util.List;
 import java.util.Set;
@@ -102,9 +106,15 @@ public class JoinAggToJoinAggSemiJoinRule extends RelOptRule {
             return null;
         }
 
-        List<Integer> groupBy = agg.getGroupSet().toList();
-        // build semi join
+        RelNode copiedRight;
+        try {
+            copiedRight = join.getRight().accept(new RelCopied());
+        } catch (Util.FoundOne e) {
+            return null;
+        }
 
+        // build semi join
+        List<Integer> groupBy = agg.getGroupSet().toList();
         List<RexNode> semiConditions = Lists.newArrayList();
         RexBuilder rexBuilder = join.getCluster().getRexBuilder();
 
@@ -114,7 +124,7 @@ public class JoinAggToJoinAggSemiJoinRule extends RelOptRule {
             RexNode leftRex = rexBuilder.makeInputRef(agg.getInput().getRowType().getFieldList().get(leftKey).getType(),
                 leftKey);
             RexNode rightRex =
-                rexBuilder.makeInputRef(join.getRight().getRowType().getFieldList().get(rightKey).getType(),
+                rexBuilder.makeInputRef(copiedRight.getRowType().getFieldList().get(rightKey).getType(),
                     rightKey + agg.getInput().getRowType().getFieldCount());
             semiConditions.add(rexBuilder.makeCall(filterNulls.get(i) ?
                     SqlStdOperatorTable.EQUALS : SqlStdOperatorTable.IS_NOT_DISTINCT_FROM,
@@ -122,7 +132,7 @@ public class JoinAggToJoinAggSemiJoinRule extends RelOptRule {
         }
 
         relBuilder.push(agg.getInput());
-        relBuilder.push(join.getRight());
+        relBuilder.push(copiedRight);
         LogicalSemiJoin semiJoin = (LogicalSemiJoin) relBuilder.logicalSemiJoin(semiConditions,
             SqlStdOperatorTable.EQUALS,
             JoinRelType.SEMI,
@@ -147,4 +157,22 @@ public class JoinAggToJoinAggSemiJoinRule extends RelOptRule {
         return newJoin;
     }
 
+    static class RelCopied extends RelShuttleImpl {
+        public RelNode visit(RelNode relNode) {
+            if (relNode instanceof RelSubset) {
+                if (((RelSubset) relNode).getOriginal() == null) {
+                    throw Util.FoundOne.NULL;
+                }
+                return ((RelSubset) relNode).getOriginal().accept(this);
+            }
+            return visitChildren(relNode);
+        }
+
+        public RelNode visit(TableScan scan) {
+            if (scan instanceof LogicalView) {
+                return ((LogicalView) scan).copy(scan.getTraitSet());
+            }
+            throw Util.FoundOne.NULL;
+        }
+    }
 }

@@ -17,14 +17,13 @@
 package com.alibaba.polardbx.optimizer.optimizeralert;
 
 public enum OptimizerAlertType {
-
     BKA_TOO_MUCH,
-
-    XPLAN_SLOW,
 
     TP_SLOW,
 
-    PLAN_CACHE_FULL,
+    SELECTIVITY_ERR,
+
+    SPM_ERR,
 
     STATISTIC_MISS,
 

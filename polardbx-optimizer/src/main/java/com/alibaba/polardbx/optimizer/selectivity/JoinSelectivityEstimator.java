@@ -40,7 +40,7 @@ public class JoinSelectivityEstimator extends AbstractSelectivityEstimator {
     private final int leftBound;
 
     public JoinSelectivityEstimator(Join join, RelMetadataQuery metadataQuery) {
-        super(metadataQuery, join.getCluster().getRexBuilder());
+        super(metadataQuery, join.getCluster().getRexBuilder(), PlannerContext.getPlannerContext(join));
         this.join = join;
         this.leftRowCount = metadataQuery.getRowCount(join.getLeft());
         this.rightRowCount = metadataQuery.getRowCount(join.getRight());
@@ -107,15 +107,22 @@ public class JoinSelectivityEstimator extends AbstractSelectivityEstimator {
             return null;
         }
 
+        Double minSelectivity = null;
         // unique column
-        if (metadataQuery.areColumnsUnique(join.getLeft(), ImmutableBitSet.of(leftIndexes))) {
-            return 1.0 / leftRowCount;
+        Boolean leftUnique = metadataQuery.areColumnsUnique(join.getLeft(), ImmutableBitSet.of(leftIndexes));
+        if (leftUnique != null && leftUnique) {
+            minSelectivity = 1.0 / leftRowCount;
         }
 
-        if (metadataQuery.areColumnsUnique(join.getRight(), ImmutableBitSet.of(rightIndexes))) {
-            return 1.0 / rightRowCount;
+        Boolean rightUnique = metadataQuery.areColumnsUnique(join.getRight(), ImmutableBitSet.of(rightIndexes));
+        if (rightUnique != null && rightUnique) {
+            if (minSelectivity == null) {
+                minSelectivity = 1.0 / rightRowCount;
+            } else {
+                minSelectivity = Math.min(minSelectivity, 1.0 / rightRowCount);
+            }
         }
-        return null;
+        return minSelectivity;
     }
 
     private double estimateEqualSelectivity(RexCall call) {

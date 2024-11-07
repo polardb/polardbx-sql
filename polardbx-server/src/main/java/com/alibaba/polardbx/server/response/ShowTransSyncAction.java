@@ -90,7 +90,10 @@ public class ShowTransSyncAction implements ISyncAction {
             if (transaction.isBegun() && !transaction.isClosed()) {
                 final BaseTransaction tx = (BaseTransaction) transaction;
                 final String transId = Long.toHexString(tx.getId());
-                final String type = tx.getTransactionClass().toString();
+                String type = tx.getClass().getSimpleName();
+                if (null != type && type.endsWith("Transaction")) {
+                    type = type.substring(0, type.length() - "Transaction".length());
+                }
                 final long duration = currentTimeMs - tx.getStartTimeInMs();
                 final String state = transaction.getState().toString();
                 final long processId;

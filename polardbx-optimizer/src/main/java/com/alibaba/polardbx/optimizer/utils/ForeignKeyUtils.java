@@ -456,7 +456,7 @@ public class ForeignKeyUtils {
                 refColIndex.add(updateColumns.indexOf(columnName));
             }
         }
-        ;
+
         for (List<Object> row : values) {
             List<Object> updateValue = new ArrayList<>();
             for (Integer colIndex : refColIndex) {

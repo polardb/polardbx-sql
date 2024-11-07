@@ -49,14 +49,18 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Lists;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -243,12 +247,14 @@ public class CreatePartitionTableJobFactory extends CreateTableJobFactory {
             LocalPartitionDefinitionInfo localPartitionDefinitionInfo = preparedData.getLocalPartitionDefinitionInfo();
             boolean autoCreateTg =
                 executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_AUTO_CREATE_TABLEGROUP);
+            TtlDefinitionInfo ttlDefinitionInfo = preparedData.getTtlDefinitionInfo();
 
             CreateTableAddTablesPartitionInfoMetaTask addPartitionInfoTask =
                 new CreateTableAddTablesPartitionInfoMetaTask(schemaName, logicalTableName,
                     physicalPlanData.isTemporary(),
-                    physicalPlanData.getTableGroupConfig(), localPartitionDefinitionInfo, null, null,
-                    joinGroup, false, preparedData.isWithImplicitTableGroup(), autoCreateTg);
+                    physicalPlanData.getTableGroupConfig(), localPartitionDefinitionInfo, ttlDefinitionInfo, null,
+                    preparedData.isWithImplicitTableGroup(), false, null,
+                    joinGroup, false, autoCreateTg);
 
             CreateTablePhyDdlTask phyDdlTask =
                 new CreateTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);

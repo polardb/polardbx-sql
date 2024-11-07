@@ -98,6 +98,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 
+import static com.alibaba.polardbx.druid.sql.parser.SQLParserFeature.UpperCaseAgg;
 import static com.alibaba.polardbx.druid.util.FnvHash.fnv1a_64_lower;
 
 public class SQLUtils {

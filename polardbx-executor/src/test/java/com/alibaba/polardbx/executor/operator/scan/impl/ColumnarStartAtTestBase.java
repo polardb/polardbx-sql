@@ -62,7 +62,8 @@ public class ColumnarStartAtTestBase {
     protected OrcIndex orcIndex;
     protected AsyncStripeLoader stripeLoader;
     protected boolean[] rowGroupIncluded;
-    private boolean[] columnIncluded;
+    protected boolean[] columnIncluded;
+    protected OrcProto.ColumnEncoding[] encodings;
 
     public ColumnarStartAtTestBase(String orcFileName, int columnId, int stripeId) throws IOException {
         this.orcFileName = orcFileName;
@@ -138,7 +139,7 @@ public class ColumnarStartAtTestBase {
         maxDiskRangeChunkLimit = OrcConf.ORC_MAX_DISK_RANGE_CHUNK_LIMIT.getInt(configuration);
         maxMergeDistance = OrcConf.MAX_MERGE_DISTANCE.getLong(configuration);
 
-        OrcProto.ColumnEncoding[] encodings = StaticStripePlanner.buildEncodings(
+        encodings = StaticStripePlanner.buildEncodings(
             encryption, columnIncluded, preheatFileMeta.getStripeFooter(stripeId)
         );
 

@@ -1,0 +1,25 @@
+DROP DATABASE IF EXISTS d_single_part_ddl;
+CREATE DATABASE d_single_part_ddl MODE 'auto';
+USE d_single_part_ddl;
+DROP TABLE IF EXISTS test_single_change_column1;
+CREATE TABLE test_single_change_column1 (
+	c1 int,
+	c2 double,
+	c3 varchar(10),
+	c4 varchar(40)
+);
+ALTER TABLE test_single_change_column1
+	ADD LOCAL INDEX i_c1c2 (c1, C2);
+ALTER TABLE test_single_change_column1
+	CHANGE COLUMN c1 C7 int AFTER C3;
+ALTER TABLE test_single_change_column1
+	MODIFY COLUMN C4 varchar(60);
+ALTER TABLE test_single_change_column1
+	ADD COLUMN C5 varchar(60) AFTER C2;
+ALTER TABLE test_single_change_column1
+	RENAME INDEX i_C1c2 TO i_c1c5;
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/CHECK TABLE test_single_change_column1;
+Table,Op,Msg_type,Msg_text
+d_single_part_ddl.test_single_change_column1:Topology,check,status,OK
+d_single_part_ddl.test_single_change_column1:Columns,check,status,OK
+test_single_change_column1.i_c1c5:Local Index,check,status,OK

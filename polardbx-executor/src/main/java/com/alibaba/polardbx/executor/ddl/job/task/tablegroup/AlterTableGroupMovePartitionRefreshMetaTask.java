@@ -23,7 +23,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetaAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
@@ -48,8 +47,8 @@ import java.util.TreeMap;
 public class AlterTableGroupMovePartitionRefreshMetaTask extends AlterTableGroupRefreshMetaBaseTask {
 
     @JSONCreator
-    public AlterTableGroupMovePartitionRefreshMetaTask(String schemaName, String tableGroupName) {
-        super(schemaName, tableGroupName);
+    public AlterTableGroupMovePartitionRefreshMetaTask(String schemaName, String tableGroupName, Long versionId) {
+        super(schemaName, tableGroupName, versionId);
     }
 
     /**

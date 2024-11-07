@@ -95,10 +95,8 @@ Project(id="id", sid="sid")
 ## route: p8
 explain select id from ch_t1_u_o where order_id in (111234);
 Logical ExecutionPlan
-PhyTableOperation(tables="ch_t1_u_o[p8]", sql="SELECT `ch_t1_u_o`.`id` AS `id` FROM ? AS `ch_t1_u_o` WHERE (`ch_t1_u_o`.`order_id` IN (?))", params="Raw(111234)")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 9df7bc31
+Gather(concurrent=true)
+  LogicalView(tables="ch_t1_u_o[p8]", sql="SELECT `id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`order_id` IN(?))")
 ## route: p3,p5,p7
 select user_id from ch_t2_u_o where user_id in (123456, 123458, 123459) order by user_id;
 user_id

@@ -741,34 +741,34 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("explain alter table %s modify column b bigint," + USE_OMC_ALGORITHM, tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column b bigint not null," + USE_OMC_ALGORITHM, tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column b bigint not null default 123," + USE_OMC_ALGORITHM,
             tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column c bigint," + USE_OMC_ALGORITHM, tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column c bigint not null," + USE_OMC_ALGORITHM, tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column c bigint not null default 123," + USE_OMC_ALGORITHM,
             tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column d bigint," + USE_OMC_ALGORITHM, tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column d bigint not null," + USE_OMC_ALGORITHM, tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
 
         sql = String.format("explain alter table %s modify column d bigint not null default 123," + USE_OMC_ALGORITHM,
             tableName);
-        checkExplainCount(sql, 5);
+        checkExplainCount(sql, 7);
     }
 
     public void checkExplainCount(String sql, int expected) {
@@ -830,6 +830,51 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
             throw new RuntimeException("", e);
         } finally {
             JdbcUtil.close(rs1);
+        }
+    }
+
+    @Test
+    public void testOnlineModifyColumnWithAutoIncrement() {
+        String tableName = "omc_auto_increment" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b int ) partition by hash(a) partitions 3", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column a bigint auto_increment," + USE_OMC_ALGORITHM, tableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Missing sequence");
+
+        sql = String.format("CREATE SEQUENCE `AUTO_SEQ_%s`", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column a bigint auto_increment," + USE_OMC_ALGORITHM, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s(b) values (null),(null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testOnlineModifyColumnWithNullAble() {
+        String tableName = "omc_nullable" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql =
+            String.format(
+                "create table %s (a int primary key auto_increment, b varchar(10)) partition by hash(a) partitions 3",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        String sqlMode = JdbcUtil.getSqlMode(tddlConnection);
+        try {
+            setSqlMode("", tddlConnection);
+
+            sql = String.format("insert into table %s(b) values (null),(null),(\"123\")", tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+            sql = String.format("alter table %s modify column b varchar(10) not null," + USE_OMC_ALGORITHM, tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        } finally {
+            setSqlMode(sqlMode, tddlConnection);
         }
     }
 }

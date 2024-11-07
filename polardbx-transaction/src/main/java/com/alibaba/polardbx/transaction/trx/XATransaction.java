@@ -25,11 +25,11 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionState;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
 import com.alibaba.polardbx.transaction.jdbc.SavePoint;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
 
@@ -52,6 +52,10 @@ public class XATransaction extends ShareReadViewTransaction {
 
     public XATransaction(ExecutionContext executionContext, TransactionManager manager) {
         super(executionContext, manager);
+        if (executionContext.isEnableExternalConsistencyForWriteTrx() && executionContext.isUserSql()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
+                "Should not create XATransaction when ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX is true");
+        }
     }
 
     @Override

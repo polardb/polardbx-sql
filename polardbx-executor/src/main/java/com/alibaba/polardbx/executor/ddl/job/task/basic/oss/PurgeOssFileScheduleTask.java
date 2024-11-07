@@ -72,9 +72,9 @@ public class PurgeOssFileScheduleTask {
                 List<ScheduledJobsRecord> scheduledJobsRecordList =
                     scheduledJobsAccessor.query(DefaultDbSchema.NAME, "purge_oss_file_schedule_task");
                 if (scheduledJobsRecordList.isEmpty()) {
-                    TableMetaChanger.replaceScheduledJob(metaDbConnection, scheduledJobsRecord);
+                    TableMetaChanger.addScheduledJob(metaDbConnection, scheduledJobsRecord);
                 } else if (!scheduledJobsRecordList.get(0).getScheduleExpr().equalsIgnoreCase(cronExpr)) {
-                    TableMetaChanger.replaceScheduledJob(metaDbConnection, scheduledJobsRecord);
+                    TableMetaChanger.updateScheduledJob(metaDbConnection, scheduledJobsRecord);
                 }
             } catch (Throwable t) {
                 throw new TddlNestableRuntimeException(t);

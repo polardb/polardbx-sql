@@ -146,6 +146,18 @@ public class TGroupDirectConnection implements IConnection {
     }
 
     @Override
+    public IConnection enableFlashbackArea(boolean enable) throws SQLException {
+        if (enable) {
+            if (this.isWrapperFor(XConnection.class) && this.unwrap(XConnection.class).supportFlashbackArea()) {
+                this.unwrap(XConnection.class).setLazyFlashbackArea();
+            } else {
+                this.executeLater("SET query_via_flashback_area = 1");
+            }
+        }
+        return this;
+    }
+
+    @Override
     public void setEncoding(String encoding) throws SQLException {
         this.encoding = encoding;
         if (!ConfigDataMode.isFastMock() && StringUtils.isNotEmpty(encoding)) {

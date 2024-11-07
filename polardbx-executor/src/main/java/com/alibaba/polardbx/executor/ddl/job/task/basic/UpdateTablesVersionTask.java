@@ -49,7 +49,7 @@ public class UpdateTablesVersionTask extends BaseGmsTask {
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        FailPoint.injectExceptionFromHintWithKeyEnable(FP_UPDATE_TABLES_VERSION_ERROR, executionContext);
+        FailPoint.injectExceptionFromHintWithKeyEnableCheck(FP_UPDATE_TABLES_VERSION_ERROR, executionContext);
 
         updateTablesVersion(metaDbConnection);
     }

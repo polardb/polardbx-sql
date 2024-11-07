@@ -18,29 +18,40 @@ package com.alibaba.polardbx.optimizer.statis;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.Maps;
 
 import java.util.Collection;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author fangwu
  */
 public class ColumnarTracer {
 
-    private Map<String, ColumnarPruneRecord> pruneRecordMap = Maps.newConcurrentMap();
+    /**
+     * note: we need to specify the map type here, because Map<String, ColumnarPruneRecord> pruneRecordMap =
+     * Maps.newConcurrentMap(); will be incorrectly parsed to LinkedHashMap in jackson
+     */
+    private ConcurrentHashMap<String, ColumnarPruneRecord> pruneRecordMap = new ConcurrentHashMap<>();
+    private String instanceId = "default";
 
+    //only for test
     public ColumnarTracer() {
+    }
 
+    public ColumnarTracer(String instanceId) {
+        this.instanceId = instanceId;
     }
 
     @JsonCreator
-    public ColumnarTracer(@JsonProperty("pruneRecordMap") Map<String, ColumnarPruneRecord> pruneRecordMap) {
+    public ColumnarTracer(
+        @JsonProperty("pruneRecordMap") ConcurrentHashMap<String, ColumnarPruneRecord> pruneRecordMap,
+        @JsonProperty("instanceId") String instanceId) {
+        this.instanceId = instanceId;
         this.pruneRecordMap = pruneRecordMap;
     }
 
     public void tracePruneInit(String table, String filter, long initTime) {
-        pruneRecordMap.compute(table + "_" + filter,
+        pruneRecordMap.compute(getTracerKey(table, filter),
             (s, columnarPruneRecord) -> {
                 if (columnarPruneRecord == null) {
                     columnarPruneRecord = new ColumnarPruneRecord(table, filter);
@@ -52,7 +63,7 @@ public class ColumnarTracer {
     }
 
     public void tracePruneTime(String table, String filter, long pruneTime) {
-        pruneRecordMap.compute(table + "_" + filter,
+        pruneRecordMap.compute(getTracerKey(table, filter),
             (s, columnarPruneRecord) -> {
                 if (columnarPruneRecord == null) {
                     columnarPruneRecord = new ColumnarPruneRecord(table, filter);
@@ -64,7 +75,7 @@ public class ColumnarTracer {
     }
 
     public void tracePruneResult(String table, String filter, int fileNum, int stripeNum, int rgNum, int rgLeftNum) {
-        pruneRecordMap.compute(table + "_" + filter,
+        pruneRecordMap.compute(getTracerKey(table, filter),
             (s, columnarPruneRecord) -> {
                 if (columnarPruneRecord == null) {
                     columnarPruneRecord = new ColumnarPruneRecord(table, filter);
@@ -79,7 +90,7 @@ public class ColumnarTracer {
 
     public void tracePruneIndex(String table, String filter, int sortKeyPruneNum, int zoneMapPruneNum,
                                 int bitMapPruneNum) {
-        pruneRecordMap.compute(table + "_" + filter,
+        pruneRecordMap.compute(getTracerKey(table, filter),
             (s, columnarPruneRecord) -> {
                 if (columnarPruneRecord == null) {
                     columnarPruneRecord = new ColumnarPruneRecord(table, filter);
@@ -91,18 +102,59 @@ public class ColumnarTracer {
             });
     }
 
+    //merge slave instance ColumnarTracer to master instance
+    public void mergeColumnarTracer(ColumnarTracer right) {
+        if (right == null || right.getPruneRecordMap() == null) {
+            return;
+        }
+
+        right.getPruneRecordMap().forEach((key, rightRecord) -> {
+            pruneRecordMap.merge(key, rightRecord, (leftRecord, newRecord) -> {
+                if (leftRecord == null) {
+                    return newRecord;
+                }
+
+                leftRecord.initIndexTime.addAndGet(newRecord.initIndexTime.get());
+                leftRecord.indexPruneTime.addAndGet(newRecord.indexPruneTime.get());
+                leftRecord.fileNum.addAndGet(newRecord.fileNum.get());
+                leftRecord.stripeNum.addAndGet(newRecord.stripeNum.get());
+                leftRecord.rgNum.addAndGet(newRecord.rgNum.get());
+                leftRecord.rgLeftNum.addAndGet(newRecord.rgLeftNum.get());
+                leftRecord.sortKeyPruneNum.addAndGet(newRecord.sortKeyPruneNum.get());
+                leftRecord.zoneMapPruneNum.addAndGet(newRecord.zoneMapPruneNum.get());
+                leftRecord.bitMapPruneNum.addAndGet(newRecord.bitMapPruneNum.get());
+
+                return leftRecord;
+            });
+        });
+    }
+
+    public String getTracerKey(String tableName, String filter) {
+        return instanceId + "_" + tableName + "_" + filter;
+    }
+
     public Collection<ColumnarPruneRecord> pruneRecords() {
         return this.pruneRecordMap.values();
     }
 
     @JsonProperty
-    public Map<String, ColumnarPruneRecord> getPruneRecordMap() {
+    public ConcurrentHashMap<String, ColumnarPruneRecord> getPruneRecordMap() {
         return pruneRecordMap;
     }
 
     @JsonProperty
     public void setPruneRecordMap(
-        Map<String, ColumnarPruneRecord> pruneRecordMap) {
+        ConcurrentHashMap<String, ColumnarPruneRecord> pruneRecordMap) {
         this.pruneRecordMap = pruneRecordMap;
+    }
+
+    @JsonProperty
+    public String getInstanceId() {
+        return instanceId;
+    }
+
+    @JsonProperty
+    public void setInstanceId(String instanceId) {
+        this.instanceId = instanceId;
     }
 }

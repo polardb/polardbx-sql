@@ -87,6 +87,7 @@ import org.apache.calcite.rex.RexSequenceParam;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.util.mapping.Mappings;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -717,7 +718,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
         if (!insert.getClass().isAssignableFrom(LogicalInsert.class) || !insert.isSourceSelect()) {
             return insert;
         }
-        final boolean hasIndex = GlobalIndexMeta.hasIndex(
+        final boolean hasIndex = GlobalIndexMeta.hasGsi(
             insert.getLogicalTableName(), insert.getSchemaName(), ec);
         final boolean gsiConcurrentWrite =
             ec.getParamManager().getBoolean(ConnectionParams.GSI_CONCURRENT_WRITE_OPTIMIZE);
@@ -825,9 +826,8 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             insertIgnore.getTableUkMap()
                 .entrySet()
                 .stream()
-                .filter(
-                    e -> writableIndexTables.contains(e.getKey().toUpperCase()) || primaryTableName.equalsIgnoreCase(
-                        e.getKey()))
+                .filter(e -> writableIndexTables.contains(e.getKey().toUpperCase())
+                    || primaryTableName.equalsIgnoreCase(e.getKey()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
         // Map uk to tables, must be exact match for uk
@@ -854,19 +854,112 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                     .collect(Collectors.toList()));
         }
 
-        for (Map.Entry<Integer, List<String>> e : ukAllTableMap.entrySet()) {
-            List<String> tableNames = e.getValue();
-            List<String> uniqueKey = uniqueKeys.get(e.getKey());
-            boolean isPrimary = uniqueKey.containsAll(primaryKey) && primaryKey.containsAll(uniqueKey);
+        // Best table for all uk is the table contains all uk columns
+        // and every uk contains all partition columns of this table
+        final Map<String, List<List<String>>> bestTableUkMap = findBestTableForAllUk(ukAllTableMap,
+            uniqueKeys,
+            primaryKey,
+            schemaName,
+            primaryTableName,
+            executionContext);
 
-            // PK must be searched on primary table
-            String ukTargetTable = isPrimary ? primaryTableName :
-                getUkTargetTable(schemaName, primaryTableName, uniqueKey, tableNames, executionContext);
-            tableUkMap.computeIfAbsent(ukTargetTable.toUpperCase(), k -> new ArrayList<>())
-                .add(uniqueKeys.get(e.getKey()));
+        if (bestTableUkMap.isEmpty()) {
+            for (Map.Entry<Integer, List<String>> e : ukAllTableMap.entrySet()) {
+                List<String> tableNames = e.getValue();
+                List<String> uniqueKey = uniqueKeys.get(e.getKey());
+                boolean isPrimary = uniqueKey.containsAll(primaryKey) && primaryKey.containsAll(uniqueKey);
+
+                // PK must be searched on primary table
+                String ukTargetTable = isPrimary ? primaryTableName :
+                    getUkTargetTable(schemaName, primaryTableName, uniqueKey, tableNames, executionContext);
+                tableUkMap.computeIfAbsent(ukTargetTable.toUpperCase(), k -> new ArrayList<>())
+                    .add(uniqueKeys.get(e.getKey()));
+            }
+        } else {
+            tableUkMap.putAll(bestTableUkMap);
         }
 
         return tableUkMap;
+    }
+
+    /**
+     * @param ukAllTableMap map[uk index, tables contains this uk]
+     * @param uniqueKeys map[uk index, columns of this uk]
+     */
+    private static @NotNull Map<String, List<List<String>>> findBestTableForAllUk(
+        Map<Integer, List<String>> ukAllTableMap,
+        List<List<String>> uniqueKeys,
+        List<String> primaryKey,
+        String schemaName,
+        String primaryTableName,
+        ExecutionContext ec) {
+        final Map<String, List<List<String>>> bestTableUkMap = new HashMap<>();
+        final Set<String> pkSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        pkSet.addAll(primaryKey);
+
+        final SchemaManager sm = ec.getSchemaManager(schemaName);
+
+        final Optional<List<String>> bestTableCandidates = ukAllTableMap
+            .entrySet()
+            .stream()
+            // skip primary key
+            .filter(e -> !(uniqueKeys.get(e.getKey()).containsAll(primaryKey)
+                && pkSet.containsAll(uniqueKeys.get(e.getKey()))))
+            .map(e -> e.getValue()
+                .stream()
+                // exclude unpublished gsi
+                .filter(tableName -> tableName.equalsIgnoreCase(primaryTableName)
+                    || GlobalIndexMeta.isPublished(ec, sm.getTable(tableName)))
+                .collect(Collectors.toList()))
+            // exclude empty table candidates list
+            .filter(candidates -> !candidates.isEmpty())
+            .findFirst();
+
+        if (bestTableCandidates.isPresent()) {
+            final TddlRuleManager rm = OptimizerContext.getContext(schemaName).getRuleManager();
+
+            for (String bestTable : bestTableCandidates.get()) {
+                boolean bestForAllUk = true;
+                final List<List<String>> ukList = new ArrayList<>();
+
+                for (Map.Entry<Integer, List<String>> e : ukAllTableMap.entrySet()) {
+                    final Set<String> ukTableNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                    ukTableNames.addAll(e.getValue());
+                    final Set<String> ukColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                    ukColumnSet.addAll(uniqueKeys.get(e.getKey()));
+
+                    final boolean isPrimary = ukColumnSet.containsAll(pkSet) && pkSet.containsAll(ukColumnSet);
+
+                    if (isPrimary) {
+                        // PK must be searched on primary table
+                        continue;
+                    }
+
+                    if (!ukTableNames.contains(bestTable)
+                        || !ukColumnSet.containsAll(rm.getSharedColumns(bestTable))) {
+                        bestForAllUk = false;
+                        break;
+                    }
+
+                    ukList.add(uniqueKeys.get(e.getKey()));
+                }
+
+                if (bestForAllUk) {
+                    bestTableUkMap.put(bestTable.toUpperCase(), ukList);
+
+                    // PK must be searched on primary table
+                    bestTableUkMap.computeIfAbsent(
+                            primaryTableName.toUpperCase(),
+                            k -> new ArrayList<>())
+                        .add(primaryKey);
+                    break;
+                }
+            }
+        } else {
+            // PK only and PK must be searched on primary table
+            bestTableUkMap.computeIfAbsent(primaryTableName.toUpperCase(), k -> new ArrayList<>()).add(primaryKey);
+        }
+        return bestTableUkMap;
     }
 
     private Map<String, List<String>> getLocalIndexName(Map<String, List<List<String>>> tableUkMap, String schemaName,
@@ -899,29 +992,44 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                                     List<String> tableNames, ExecutionContext executionContext) {
         final TddlRuleManager rm = OptimizerContext.getContext(schemaName).getRuleManager();
         final SchemaManager sm = executionContext.getSchemaManager(schemaName);
-        // All table name in tableNames should be in upper case
-        Set<String> sharedTableNames = tableNames.stream().filter(tableName -> uniqueKey.containsAll(
-                rm.getSharedColumns(tableName).stream().map(String::toUpperCase).collect(Collectors.toList())))
-            .collect(Collectors.toCollection(HashSet::new));
-        Set<String> publicTableNames = tableNames.stream().filter(
-            tableName -> tableName.equalsIgnoreCase(primaryTableName) || GlobalIndexMeta.isPublished(executionContext,
-                sm.getTable(tableName))).collect(Collectors.toCollection(HashSet::new));
+        final Set<String> ukColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        ukColumnSet.addAll(uniqueKey);
+
+        final Set<String> tablesPartitionedByUk = tableNames
+            .stream()
+            .filter(tableName -> ukColumnSet.containsAll(rm.getSharedColumns(tableName)))
+            .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+        final Set<String> primaryTableAndPublicGsiNames = tableNames
+            .stream()
+            .filter(tableName -> tableName.equalsIgnoreCase(primaryTableName)
+                || GlobalIndexMeta.isPublished(executionContext, sm.getTable(tableName)))
+            .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+
+        // If primary table is partitioned by uk
+        if (tablesPartitionedByUk.contains(primaryTableName)) {
+            return primaryTableName;
+        }
 
         // Try to use table whose sharding key is included in this uk first to avoid full table scan, should
         // improve small batch performance
-        for (String tableName : publicTableNames) {
-            if (sharedTableNames.contains(tableName)) {
+        for (String tableName : primaryTableAndPublicGsiNames) {
+            if (tablesPartitionedByUk.contains(tableName)) {
                 return tableName;
             }
         }
 
-        for (String tableName : publicTableNames) {
+        // If no table partitioned by uk, check primary table contains uk first
+        if (primaryTableAndPublicGsiNames.contains(primaryTableName)) {
+            return primaryTableName;
+        }
+
+        for (String tableName : primaryTableAndPublicGsiNames) {
             return tableName;
         }
 
         // Only WRITE_ONLY GSI contains this UK
         for (String tableName : tableNames) {
-            if (sharedTableNames.contains(tableName)) {
+            if (tablesPartitionedByUk.contains(tableName)) {
                 return tableName;
             }
         }

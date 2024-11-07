@@ -1,0 +1,113 @@
+## test hash/one col/int
+
+## test drop partition for range
+drop table if exists tbl_rng;
+drop table if exists tbl_rng1;
+drop table if exists tbl_rng2;
+create table if not exists tbl_rng (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p4 values less than (maxvalue)
+);
+create table if not exists tbl_rng1 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p4 values less than (maxvalue)
+);
+create table if not exists tbl_rng2 (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300),
+partition p40 values less than (maxvalue)
+);
+show create table tbl_rng;
+alter table tbl_rng drop partition p2;
+alter table tbl_rng1 drop partition p2;
+show create table tbl_rng;
+alter table tbl_rng drop partition p4;
+alter table tbl_rng1 drop partition p4;
+alter table tbl_rng2 drop partition p40;
+show create table tbl_rng;
+show create table tbl_rng1;
+show create table tbl_rng2;
+
+drop table if exists tbl_rng_col;
+drop table if exists tbl_rng_col1;
+create table if not exists tbl_rng_col (a varchar(20) not null,b int, primary key (`a`))
+partition by range columns(a, b)
+( partition p1 values less than ('100',20),
+partition p2 values less than ('200',20),
+partition p3 values less than ('300',20),
+partition p4 values less than (maxvalue,maxvalue)
+);
+create table if not exists tbl_rng_col1 (a varchar(20) not null,b int, primary key (`a`))
+partition by range columns(a, b)
+( partition p1 values less than ('100',20),
+partition p2 values less than ('200',20),
+partition p3 values less than ('300',20),
+partition p4 values less than (maxvalue,maxvalue)
+);
+show create table tbl_rng_col;
+alter table tbl_rng_col drop partition p2;
+alter table tbl_rng_col1 drop partition p2;
+show create table tbl_rng_col;
+alter table tbl_rng_col drop partition p4;
+alter table tbl_rng_col1 drop partition p4;
+show create table tbl_rng_col;
+show create table tbl_rng_col1;
+
+drop table if exists tbl_list;
+drop table if exists tbl_list1;
+create table if not exists tbl_list (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201),
+partition p4 values in (default)
+);
+create table if not exists tbl_list1 (a int not null,primary key (`a`))
+partition by list(a)
+( partition p1 values in (10,11),
+partition p2 values in (100,101),
+partition p3 values in (200,201),
+partition p4 values in (default)
+);
+show create table tbl_list;
+alter table tbl_list drop partition p2;
+alter table tbl_list1 drop partition p2;
+show create table tbl_list;
+alter table tbl_list drop partition p4;
+alter table tbl_list1 drop partition p4;
+show create table tbl_list;
+show create table tbl_list1;
+
+drop table if exists tbl_list_col;
+drop table if exists tbl_list_col1;
+create table if not exists tbl_list_col (a int not null, b int, primary key (`a`))
+partition by list columns(a, b)
+( partition p1 values in ((10,11),(12,13)),
+partition p2 values in ((100,101),(100,103)),
+partition p3 values in ((200,201),(100,1321)),
+partition p4 values in (default)
+);
+create table if not exists tbl_list_col1 (a int not null, b int, primary key (`a`))
+partition by list columns(a, b)
+( partition p1 values in ((10,11),(12,13)),
+partition p2 values in ((100,101),(100,103)),
+partition p3 values in ((200,201),(100,1321)),
+partition p4 values in (default)
+);
+show create table tbl_list_col;
+alter table tbl_list_col drop partition p2;
+alter table tbl_list_col1 drop partition p2;
+show create table tbl_list_col;
+alter table tbl_list_col drop partition p4;
+alter table tbl_list_col1 drop partition p4;
+show create table tbl_list_col;
+show create table tbl_list_col1;
+

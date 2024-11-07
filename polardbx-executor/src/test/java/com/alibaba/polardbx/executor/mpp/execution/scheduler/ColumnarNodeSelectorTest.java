@@ -1,13 +1,14 @@
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.executor.mpp.execution.NodeTaskMap;
+import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
-import com.alibaba.polardbx.executor.mpp.metadata.Split;
-import com.alibaba.polardbx.executor.mpp.execution.NodeTaskMap;
 import com.alibaba.polardbx.gms.node.NodeVersion;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multimap;
@@ -21,7 +22,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class ColumnarNodeSelectorTest {
 
@@ -54,8 +56,8 @@ public class ColumnarNodeSelectorTest {
         List<Split> splits = ImmutableList.of(new Split(true, split));
         NodeAssignmentStats assignmentStats = mock(NodeAssignmentStats.class);
         Multimap assignment = HashMultimap.create();
-        try (MockedStatic<OssSplit> theMock = Mockito.mockStatic(OssSplit.class)) {
-            when(OssSplit.calcPartition("test", "test", "test", "test")).thenReturn(1);
+        try (MockedStatic<PartitionUtils> theMock = Mockito.mockStatic(PartitionUtils.class)) {
+            when(PartitionUtils.calcPartition("test", "test", "test", "test")).thenReturn(1);
             Multimap<Node, Split> result =
                 nodeSelector.scheduleOssSplit(splits, candidateNodes, assignmentStats, assignment);
 

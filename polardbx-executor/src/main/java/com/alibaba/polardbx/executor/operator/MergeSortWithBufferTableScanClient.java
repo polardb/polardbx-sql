@@ -91,7 +91,7 @@ public class MergeSortWithBufferTableScanClient extends TableScanClient {
     }
 
     @Override
-    public SplitResultSet newSplitResultSet(JdbcSplit jdbcSplit) {
+    public SplitResultSet newSplitResultSet(JdbcSplit jdbcSplit, boolean rangeScan, int splitIndex) {
         return new BufferSplitResultSet(jdbcSplit, Lists.newArrayList(dataTypeList));
     }
 

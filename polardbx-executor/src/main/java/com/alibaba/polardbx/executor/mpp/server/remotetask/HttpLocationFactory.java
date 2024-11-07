@@ -67,7 +67,7 @@ public class HttpLocationFactory implements LocationFactory {
     }
 
     @Override
-    public URI createDdlFilterLocktion(String jobId) {
+    public URI createDdlFilterLocation(String jobId) {
         requireNonNull(jobId, "jobId is null");
         return URI.create(baseUriPath + "/v1/ddl/" + jobId);
     }

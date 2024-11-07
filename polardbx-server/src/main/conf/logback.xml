@@ -256,6 +256,37 @@
             </appender>
         </sift>
     </appender>
+    <appender name="TTL_TASK" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <discriminator>
+            <Key>app</Key>
+            <DefaultValue>tddl</DefaultValue>
+        </discriminator>
+        <sift>
+            <appender name="TTL_TASK-{app}"
+                      class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/${app}/ttl-task.log</File>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- rollover daily -->
+
+                    <fileNamePattern>
+                        ${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/ttl-task-%d{yyyy-MM-dd}-%i.log.gz
+                    </fileNamePattern>
+                    <timeBasedFileNamingAndTriggeringPolicy
+                            class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <!-- or whenever the file size reaches 100MB -->
+                        <maxFileSize>512MB</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>10GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <pattern>
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} - [%X{CONNECTION}] %msg%n
+                    </pattern>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
     <appender name="BIG_SQL" class="ch.qos.logback.classic.sift.SiftingAppender">
         <discriminator>
             <Key>app</Key>
@@ -986,6 +1017,10 @@
     <logger name="scale_out_task" additivity="false">
         <level value="info"/>
         <appender-ref ref="SCALE_OUT_TASK"/>
+    </logger>
+    <logger name="ttl_task" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="TTL_TASK"/>
     </logger>
     <logger name="diagnose" additivity="false">
         <level value="INFO"/>

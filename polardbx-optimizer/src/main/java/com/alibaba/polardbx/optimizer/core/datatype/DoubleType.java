@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 
 import java.math.BigDecimal;
 
@@ -32,6 +33,21 @@ public class DoubleType extends NumberType<Double> {
     private static final double MAX_VALUE = Double.MAX_VALUE;
     private static final BigDecimal MIN_VALUE_TO_DECIMAL = new BigDecimal(MIN_VALUE);
     private static final BigDecimal MAX_VALUE_TO_DECIMAL = new BigDecimal(MAX_VALUE);
+
+    private final int scale;
+
+    public DoubleType() {
+        this(XResultUtil.DECIMAL_NOT_SPECIFIED);
+    }
+
+    public DoubleType(int scale) {
+        this.scale = scale;
+    }
+
+    @Override
+    public int getScale() {
+        return scale;
+    }
 
     private final Calculator calculator = new AbstractCalculator() {
 

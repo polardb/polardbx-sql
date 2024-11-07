@@ -2,6 +2,7 @@ package com.alibaba.polardbx.common.properties;
 
 import org.junit.Test;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class ConnectionParamsTest {
@@ -24,7 +25,7 @@ public class ConnectionParamsTest {
         assertTrue("ENABLE_AUTO_COMMIT_TSO should be an instance of BooleanConfigParam",
             ConnectionParams.ENABLE_AUTO_COMMIT_TSO instanceof BooleanConfigParam);
 
-        assertTrue("ENABLE_AUTO_COMMIT_TSO default value should be true",
+        assertFalse("ENABLE_AUTO_COMMIT_TSO default value should be false",
             Boolean.parseBoolean(ConnectionParams.ENABLE_AUTO_COMMIT_TSO.getDefault()));
 
         assertTrue("ENABLE_AUTO_COMMIT_TSO should be editable",

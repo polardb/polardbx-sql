@@ -190,13 +190,12 @@
     where a_uni_b.id = c.id and c.id > 5
 
   plan: |
-
-    Project(id="id")
-      BKAJoin(condition="id = id", type="inner")
-        UnionAll(concurrent=true)
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`name` = 'xx') AND (`id` > 5))")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE ((`name` = 'xx') AND (`id` > 5))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE ((`id` > 5) AND (`id` IN (...)))")
+    project(id="id")
+      bkajoin(condition="id = id", type="inner")
+        unionall(concurrent=true)
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where ((`name` = 'xx') and (`id` > 5))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`name` = 'xx') and (`id` > 5))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where ((`id` > 5) and (`id` in (...)))")

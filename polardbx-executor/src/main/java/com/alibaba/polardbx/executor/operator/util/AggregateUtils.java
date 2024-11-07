@@ -36,6 +36,10 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.FirstVal
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.GroupConcat;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.HyperLoglog;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.InternalFirstValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonArrayAgg;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonArrayGlobalAgg;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonObjectAgg;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonObjectGlobalAgg;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Lag;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.LastValue;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Lead;
@@ -50,6 +54,8 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.RowNumbe
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SingleValue;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum0;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectAggFunction;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import org.apache.calcite.rel.core.AggregateCall;
@@ -253,6 +259,24 @@ public abstract class AggregateUtils {
                 }
                 break;
             }
+            case JSON_OBJECTAGG:
+                JsonObjectAgg jsonObjectAgg =
+                    new JsonObjectAgg(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
+                aggList.add(jsonObjectAgg);
+                break;
+            case JSON_OBJECT_GLOBALAGG:
+                JsonObjectGlobalAgg jsonObjectGlobalAgg =
+                    new JsonObjectGlobalAgg(index, filterArg);
+                aggList.add(jsonObjectGlobalAgg);
+                break;
+            case JSON_ARRAYAGG:
+                JsonArrayAgg jsonArrayAgg = new JsonArrayAgg(index, filterArg);
+                aggList.add(jsonArrayAgg);
+                break;
+            case JSON_ARRAY_GLOBALAGG:
+                JsonArrayGlobalAgg jsonArrayGlobalAgg = new JsonArrayGlobalAgg(index, filterArg);
+                aggList.add(jsonArrayGlobalAgg);
+                break;
             default:
                 throw new UnsupportedOperationException(
                     "Unsupported agg function to convert:" + function.name());

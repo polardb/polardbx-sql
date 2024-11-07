@@ -18,10 +18,12 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableModifyPartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -58,6 +60,8 @@ public class LogicalAlterTableModifyPartitionHandler extends LogicalCommonDdlHan
         LogicalAlterTableModifyPartition logicalAlterTableModifyPartition =
             (LogicalAlterTableModifyPartition) logicalDdlPlan;
         logicalAlterTableModifyPartition.preparedData(executionContext);
+        logicalAlterTableModifyPartition.getPreparedData()
+            .setDdlVersionId(DdlUtils.generateVersionId(executionContext));
         return AlterTableModifyPartitionJobFactory
             .create(logicalAlterTableModifyPartition.relDdl,
                 (AlterTableModifyPartitionPreparedData) logicalAlterTableModifyPartition.getPreparedData(),
@@ -221,6 +225,16 @@ public class LogicalAlterTableModifyPartitionHandler extends LogicalCommonDdlHan
             if (tableMeta.isGsi() && !tableMeta.isColumnar()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE,
                     String.format("it's not support to drop value for global index[%s]", logicalTableName));
+            }
+            boolean allDropTruncateCciPartition =
+                executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DROP_TRUNCATE_CCI_PARTITION);
+            if (tableMeta.withCci() && !allDropTruncateCciPartition) {
+                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                    String.format("it's not support to drop value when table[%s] with CCI", logicalTableName));
+            }
+            if (tableMeta.isColumnar() && !allDropTruncateCciPartition) {
+                throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_MODIFY_PARTITION_DROP_VALUE,
+                    String.format("it's not support to drop value for columnar index[%s]", logicalTableName));
             }
         }
         return false;

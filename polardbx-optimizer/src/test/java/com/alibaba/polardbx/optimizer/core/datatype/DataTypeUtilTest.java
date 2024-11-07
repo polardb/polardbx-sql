@@ -69,34 +69,34 @@ public class DataTypeUtilTest {
             new TypeCase(8, "DOUBLE", 22, 0, 22, true, "DOUBLE"),
             new TypeCase(3, "DECIMAL", 10, 0, 11, true, "DECIMAL(10, 0)"),
             new TypeCase(8, "DOUBLE", 22, 0, 22, true, "DOUBLE"),
-            new TypeCase(7, "FLOAT", 7, 3, 7, true, "FLOAT"),
-            new TypeCase(8, "DOUBLE", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(7, "FLOAT", 7, 3, 7, true, "FLOAT(3)"),
+            new TypeCase(8, "DOUBLE", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(3, "DECIMAL", 7, 3, 9, true, "DECIMAL(7, 3)"),
-            new TypeCase(8, "DOUBLE", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(8, "DOUBLE", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(7, "FLOAT UNSIGNED", 12, 0, 12, true, "FLOAT"),
             new TypeCase(8, "DOUBLE UNSIGNED", 22, 0, 22, true, "DOUBLE"),
             new TypeCase(3, "DECIMAL UNSIGNED", 10, 0, 10, true, "DECIMAL(10, 0)"),
             new TypeCase(8, "DOUBLE UNSIGNED", 22, 0, 22, true, "DOUBLE"),
-            new TypeCase(7, "FLOAT UNSIGNED", 7, 3, 7, true, "FLOAT"),
-            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(7, "FLOAT UNSIGNED", 7, 3, 7, true, "FLOAT(3)"),
+            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(3, "DECIMAL UNSIGNED", 7, 3, 8, true, "DECIMAL(7, 3)"),
-            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(7, "FLOAT UNSIGNED", 12, 0, 12, true, "FLOAT"),
             new TypeCase(8, "DOUBLE UNSIGNED", 22, 0, 22, true, "DOUBLE"),
             new TypeCase(3, "DECIMAL UNSIGNED", 10, 0, 10, true, "DECIMAL(10, 0)"),
             new TypeCase(8, "DOUBLE UNSIGNED", 22, 0, 22, true, "DOUBLE"),
-            new TypeCase(7, "FLOAT UNSIGNED", 7, 3, 7, true, "FLOAT"),
-            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(7, "FLOAT UNSIGNED", 7, 3, 7, true, "FLOAT(3)"),
+            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(3, "DECIMAL UNSIGNED", 7, 3, 8, true, "DECIMAL(7, 3)"),
-            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(7, "FLOAT UNSIGNED", 12, 0, 12, true, "FLOAT"),
             new TypeCase(8, "DOUBLE UNSIGNED", 22, 0, 22, true, "DOUBLE"),
             new TypeCase(3, "DECIMAL UNSIGNED", 10, 0, 10, true, "DECIMAL(10, 0)"),
             new TypeCase(8, "DOUBLE UNSIGNED", 22, 0, 22, true, "DOUBLE"),
-            new TypeCase(7, "FLOAT UNSIGNED", 7, 3, 7, true, "FLOAT"),
-            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(7, "FLOAT UNSIGNED", 7, 3, 7, true, "FLOAT(3)"),
+            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(3, "DECIMAL UNSIGNED", 7, 3, 8, true, "DECIMAL(7, 3)"),
-            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE"),
+            new TypeCase(8, "DOUBLE UNSIGNED", 7, 3, 7, true, "DOUBLE(3)"),
             new TypeCase(1, "CHAR", 10, 0, 0, true, "CHAR(10)"),
             new TypeCase(12, "VARCHAR", 1020, 0, 0, true, "VARCHAR(1020)"),
             new TypeCase(-2, "BINARY", 255, 0, 0, true, "BINARY(255)"),
@@ -125,6 +125,20 @@ public class DataTypeUtilTest {
             RelDataType dataType =
                 DataTypeUtil.jdbcTypeToRelDataType(t.jdbcType, t.typeName, t.precision, t.scale, t.length, t.nullable);
             Assert.assertEquals(t.expectedTypeString, dataType.toString());
+            if ((dataType.toString().contains("FLOAT") || dataType.toString().contains("DOUBLE")) && t.scale != 0) {
+                Assert.assertEquals(t.scale, dataType.getScale());
+            }
+            DataType dt = DataTypeFactory.INSTANCE.create(dataType);
+            if ((dataType.toString().contains("FLOAT") || dataType.toString().contains("DOUBLE")) && t.scale != 0) {
+                Assert.assertEquals(t.scale, dt.getScale());
+                if (dataType.toString().contains("FLOAT")) {
+                    Assert.assertEquals(1.12f, Float.parseFloat(DataTypeUtil.convert(dt, DataTypes.StringType, 1.12f)),
+                        1e-6);
+                } else {
+                    Assert.assertEquals(1.12d,
+                        Double.parseDouble(DataTypeUtil.convert(dt, DataTypes.StringType, 1.12d)), 1e-6);
+                }
+            }
         }
     }
 

@@ -16,15 +16,20 @@
 package com.alibaba.polardbx.optimizer.planmanager;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
 import com.alibaba.polardbx.common.model.sqljep.ExtComparative;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.planner.Xplanner.XPlanUtil;
 import com.alibaba.polardbx.optimizer.core.rel.PushDownOpt;
+import com.clearspring.analytics.util.Lists;
+import com.google.common.collect.ImmutableList;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import org.apache.calcite.avatica.AvaticaUtils;
 import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.avatica.util.TimeUnit;
@@ -84,6 +89,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.alibaba.polardbx.druid.sql.parser.CharTypes.bytesToHex;
+import static com.alibaba.polardbx.druid.sql.parser.CharTypes.hexToBytes;
+
 /**
  * Utilities for converting {@link RelNode}
  * into JSON format.
@@ -101,7 +109,20 @@ public class DRDSRelJson extends RelJson {
         List<Integer> keys = (List<Integer>) map.get("keys");
         RelDistribution.Type type = RelDistribution.Type.valueOf(map.get("type").toString());
         Integer shardCnt = (Integer) map.get("shardcnt");
-        return new RelDistributions.RelDistributionImpl(type, ImmutableIntList.copyOf(keys), shardCnt);
+        switch (type) {
+        case SINGLETON:
+            return RelDistributions.SINGLETON;
+        case RANDOM_DISTRIBUTED:
+            return RelDistributions.RANDOM_DISTRIBUTED;
+        case ROUND_ROBIN_DISTRIBUTED:
+            return RelDistributions.ROUND_ROBIN_DISTRIBUTED;
+        case BROADCAST_DISTRIBUTED:
+            return RelDistributions.BROADCAST_DISTRIBUTED;
+        case ANY:
+            return RelDistributions.ANY;
+        default:
+            return new RelDistributions.RelDistributionImpl(type, ImmutableIntList.copyOf(keys), shardCnt);
+        }
     }
 
     public RelPartitionWise toPartitionWise(Map<String, Object> map) {
@@ -188,10 +209,86 @@ public class DRDSRelJson extends RelJson {
             return toJson((RexWindowBound) value);
         } else if (value instanceof SqlKind) {
             return toJson((SqlKind) value);
+        } else if (value instanceof XPlanTemplate) {
+            return toJson((XPlanTemplate) value);
+        } else if (value instanceof XPlanUtil.ScalarParamInfo) {
+            return toJson((XPlanUtil.ScalarParamInfo) value);
         } else {
             throw new UnsupportedOperationException("type not serializable: "
                 + value + " (type " + value.getClass().getCanonicalName() + ")");
         }
+    }
+
+    public static XPlanTemplate fromJsonToXPlan(Map<String, Object> map) throws InvalidProtocolBufferException {
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+        String template = (String) map.get("template");
+        PolarxExecPlan.AnyPlan plan = PolarxExecPlan.AnyPlan.parseFrom(hexToBytes(template));
+        List<com.alibaba.polardbx.common.utils.Pair<String, String>> tableNameList = Lists.newArrayList();
+        List<String> schemaNames = (List<String>) map.get("schemaNames");
+        List<String> tableNames = (List<String>) map.get("tableNames");
+        for (int i = 0; i < schemaNames.size(); i++) {
+            tableNameList.add(new com.alibaba.polardbx.common.utils.Pair<>(schemaNames.get(i), tableNames.get(i)));
+        }
+        String indexName = (String) map.get("indexName");
+
+        List<Map> params = (List<Map>) map.get("paramInfo");
+
+        List<XPlanUtil.ScalarParamInfo> paramInfoList = new ArrayList<>();
+        for (Map param : params) {
+            XPlanUtil.ScalarParamInfo paramInfo = fromJson(param);
+            paramInfoList.add(paramInfo);
+        }
+        return new XPlanTemplate(indexName, plan, tableNameList, paramInfoList);
+    }
+
+    private Object toJson(XPlanTemplate node) {
+        final Map<String, Object> map = jsonBuilder.map();
+        List<com.alibaba.polardbx.common.utils.Pair<String, String>> tableNames = node.getTableNames();
+
+        List<String> schemaList = new ArrayList<>();
+        List<String> tableList = new ArrayList<>();
+
+        for (com.alibaba.polardbx.common.utils.Pair<String, String> tableName : tableNames) {
+            schemaList.add(tableName.getKey());
+            tableList.add(tableName.getValue());
+        }
+
+        map.put("template", bytesToHex(node.getTemplate().toByteArray()));
+        map.put("schemaNames", schemaList);
+        map.put("tableNames", tableList);
+        map.put("indexName", node.getIndexName());
+
+        List<XPlanUtil.ScalarParamInfo> paramInfos = node.getParamInfos();
+        List<Object> list = jsonBuilder.list();
+        for (XPlanUtil.ScalarParamInfo paramInfo : paramInfos) {
+            list.add(toJson(paramInfo));
+        }
+        map.put("paramInfo", list);
+        return map;
+    }
+
+    private static XPlanUtil.ScalarParamInfo fromJson(Map<String, Object> map) {
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+        String typeName = (String) map.get("type");
+        XPlanUtil.ScalarParamInfo.Type type = XPlanUtil.ScalarParamInfo.Type.valueOf(typeName);
+        Integer id = (Integer) map.get("id");
+        Boolean isBit = (Boolean) map.get("isBit");
+        Boolean isNullAble = (Boolean) map.get("isNullAble");
+        XPlanUtil.ScalarParamInfo paramInfo = new XPlanUtil.ScalarParamInfo(type, id, isBit, isNullAble);
+        return paramInfo;
+    }
+
+    private Object toJson(XPlanUtil.ScalarParamInfo paramInfo) {
+        final Map<String, Object> map = jsonBuilder.map();
+        map.put("type", paramInfo.getType().name());
+        map.put("id", paramInfo.getId());
+        map.put("isBit", paramInfo.isBit());
+        map.put("isNullAble", paramInfo.isNullable());
+        return map;
     }
 
     protected Object toJson(SqlKind value) {
@@ -276,6 +373,7 @@ public class DRDSRelJson extends RelJson {
 
     private Map<String, Object> toJson(RelNode node, String key) {
         final DRDSRelJsonWriter writer = new DRDSRelJsonWriter(this.supportMpp);
+        writer.setPlannerContext(PlannerContext.getPlannerContext(node));
         node.explain(writer);
         return writer.asMap(key);
     }

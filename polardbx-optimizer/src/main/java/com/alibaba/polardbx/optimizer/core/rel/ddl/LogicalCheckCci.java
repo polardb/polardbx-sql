@@ -90,7 +90,8 @@ public class LogicalCheckCci extends BaseDdlOperation {
             schemaName,
             tableName,
             indexName,
-            extraCmd
+            extraCmd,
+            sqlNode.getExtras()
         );
 
         return this.prepareData;

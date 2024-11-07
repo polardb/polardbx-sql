@@ -42,6 +42,16 @@ public class AddLocalPartitionTask extends BaseGmsTask {
     }
 
     @Override
+    protected void onExecutionSuccess(ExecutionContext executionContext) {
+        super.onExecutionSuccess(executionContext);
+    }
+
+    @Override
+    protected void onRollbackSuccess(ExecutionContext executionContext) {
+        super.onRollbackSuccess(executionContext);
+    }
+
+    @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.addLocalPartitionMeta(metaDbConnection, localPartitionDefinitionInfo.convertToRecord());
 

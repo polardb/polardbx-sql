@@ -73,7 +73,7 @@ public class CreateCheckCciTask extends BaseDdlTask {
         }
 
         ICciChecker checker;
-        if (executionContext.isEnableFastCciChecker()) {
+        if (executionContext.isEnableCciFastChecker() && ExecUtils.canUseCciFastChecker(schemaName, indexName)) {
             checker = new CciFastChecker(schemaName, logicalTableName, indexName);
         } else {
             checker = new CciChecker(schemaName, logicalTableName, indexName);
@@ -82,12 +82,12 @@ public class CreateCheckCciTask extends BaseDdlTask {
         try {
             long start = System.nanoTime();
             checker.check(executionContext, recover);
-            SQLRecorderLogger.ddlLogger.info((executionContext.isEnableFastCciChecker() ? "Fast " : "")
+            SQLRecorderLogger.ddlLogger.info((executionContext.isEnableCciFastChecker() ? "Fast " : "")
                 + "Check cci " + schemaName + "." + logicalTableName + "." + indexName
                 + " cost " + (System.nanoTime() - start) / 1_000_000 + " ms.");
         } catch (Throwable t) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                (executionContext.isEnableFastCciChecker() ? "Fast " : "")
+                (executionContext.isEnableCciFastChecker() ? "Fast " : "")
                     + "Check cci failed, caused by " + t.getMessage());
         } finally {
             if (null != recover) {
@@ -100,7 +100,7 @@ public class CreateCheckCciTask extends BaseDdlTask {
         if (!checker.getCheckReports(reports)) {
             for (String error : reports) {
                 SQLRecorderLogger.ddlLogger.error(
-                    (executionContext.isEnableFastCciChecker() ? "Fast " : "")
+                    (executionContext.isEnableCciFastChecker() ? "Fast " : "")
                         + "Check cci " + logicalTableName + "." + indexName + " error: " + error);
             }
             success = false;
@@ -110,7 +110,7 @@ public class CreateCheckCciTask extends BaseDdlTask {
             return;
         }
 
-        if (executionContext.isEnableFastCciChecker()) {
+        if (executionContext.isEnableCciFastChecker()) {
             // Fast checker failed, try naive checker.
             checker = new CciChecker(schemaName, logicalTableName, indexName);
             recover = null;
@@ -124,7 +124,7 @@ public class CreateCheckCciTask extends BaseDdlTask {
                     + "." + indexName + " cost " + (System.nanoTime() - start) / 1_000_000 + " ms.");
             } catch (Throwable t) {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                    (executionContext.isEnableFastCciChecker() ? "Fast " : "")
+                    (executionContext.isEnableCciFastChecker() ? "Fast " : "")
                         + "Check cci failed, caused by " + t.getMessage());
             } finally {
                 if (null != recover) {
@@ -135,7 +135,7 @@ public class CreateCheckCciTask extends BaseDdlTask {
             if (!checker.getCheckReports(reports)) {
                 for (String error : reports) {
                     SQLRecorderLogger.ddlLogger.error(
-                        (executionContext.isEnableFastCciChecker() ? "Fast " : "")
+                        (executionContext.isEnableCciFastChecker() ? "Fast " : "")
                             + "Check cci " + logicalTableName + "." + indexName + " error: " + error);
                 }
                 success = false;

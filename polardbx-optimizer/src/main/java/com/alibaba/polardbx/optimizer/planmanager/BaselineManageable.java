@@ -20,7 +20,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 
-import javax.sql.DataSource;
 import java.util.List;
 import java.util.Map;
 
@@ -34,11 +33,19 @@ public interface BaselineManageable {
                             String origin, SqlNode ast,
                             ExecutionContext executionContext);
 
+    BaselineInfo addBaselineInfo(String schema, String parameterSql, BaselineInfo baselineInfo);
+
     void updateBaseline(Map<String, List<String>> bMap);
 
     void deleteBaseline(String schema, String parameterSql);
 
+    void deleteBaseline(String schema, Integer baselineId);
+
     void deleteBaseline(String schema, String parameterSql, int planInfoId);
+
+    void deleteBaselineEvolved(String schema);
+
+    void deleteBaselinePlan(String schema, Integer baselineId, Integer planInfoId);
 
     boolean checkBaselineHashCodeValid(BaselineInfo baselineInfo, PlanInfo planInfo);
 }

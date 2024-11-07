@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.planner.common;
 
+import com.alibaba.polardbx.common.MergedStorageInfo;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -73,17 +74,47 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
     protected String getPlan(String testSql) {
         Map<Integer, ParameterContext> currentParameter = new HashMap<>();
         ExecutionContext executionContext = new ExecutionContext();
+        executionContext.setStorageInfoSupplier((schema) -> new MergedStorageInfo(true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            false,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true));
         executionContext.setServerVariables(new HashMap<>());
         executionContext.setAppName(appName);
         SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(
             ByteString.from(testSql), currentParameter, executionContext, false);
         setSysDefVariable(sqlParameterized.getParameters());
         Map<Integer, ParameterContext> param = OptimizerUtils.buildParam(sqlParameterized.getParameters());
+        executionContext.setParams(new Parameters(param, false));
         SqlNodeList astList = new FastsqlParser().parse(
             sqlParameterized.getSql(), sqlParameterized.getParameters(), executionContext);
         SqlNode ast = astList.get(0);
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
-        executionContext.setParams(new Parameters(param, false));
+        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, enableAutoForceIndex);
         executionContext.getExtraCmds().putAll(configMaps);
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName,
             executionContext.getExtraCmds(),

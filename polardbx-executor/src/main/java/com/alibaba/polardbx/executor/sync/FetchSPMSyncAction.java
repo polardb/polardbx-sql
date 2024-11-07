@@ -98,6 +98,7 @@ public class FetchSPMSyncAction implements ISyncAction {
         result.addColumn("IS_REBUILD_AT_LOAD", DataTypes.StringType);
         result.addColumn("HINT", DataTypes.StringType);
         result.addColumn("USE_POST_PLANNER", DataTypes.StringType);
+        result.addColumn("HOT_EVOLVED", DataTypes.StringType);
 
         if (baselineMap == null) {
             return result;
@@ -129,7 +130,8 @@ public class FetchSPMSyncAction implements ISyncAction {
                     "", // plan
                     baselineInfo.isRebuildAtLoad() + "",
                     baselineInfo.getHint(),
-                    baselineInfo.isUsePostPlanner() + ""
+                    baselineInfo.isUsePostPlanner() + "",
+                    String.valueOf(baselineInfo.isHotEvolution())
                 });
             }
             for (PlanInfo planInfo : baselineInfo.getPlans()) {
@@ -163,7 +165,8 @@ public class FetchSPMSyncAction implements ISyncAction {
                     planExplain,
                     baselineInfo.isRebuildAtLoad() + "",
                     baselineInfo.getHint(),
-                    baselineInfo.isUsePostPlanner() + ""
+                    baselineInfo.isUsePostPlanner() + "",
+                    String.valueOf(baselineInfo.isHotEvolution())
                 });
             }
         }

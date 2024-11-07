@@ -60,6 +60,10 @@ public class DdlContext {
     private DdlState pausedPolicy = DdlState.RUNNING;
     private DdlState rollbackPausedPolicy = DdlState.ROLLBACK_RUNNING;
     private String cdcRewriteDdlStmt;
+    /**
+     * subjob 中是否打标，暂时只支持普通的 CdcDdlMarkTask
+     */
+    private boolean skipSubJobCdcMark = false;
 
     private ConcurrentHashMap<Long, AtomicBoolean> physicalDdlInjectionFlag = new ConcurrentHashMap<>();
 
@@ -215,6 +219,7 @@ public class DdlContext {
         res.setTimeZone(getTimeZone());
         res.setParentDdlContext(getParentDdlContext());
         res.setForeignKeyOriginalSql(getForeignKeyOriginalSql());
+        res.setSkipSubJobCdcMark(isSkipSubJobCdcMark());
 
         return res;
     }
@@ -536,5 +541,13 @@ public class DdlContext {
 
     public String getForeignKeyOriginalSql() {
         return this.foreignKeyOriginalSql;
+    }
+
+    public void setSkipSubJobCdcMark(boolean skipSubJobCdcMark) {
+        this.skipSubJobCdcMark = skipSubJobCdcMark;
+    }
+
+    public boolean isSkipSubJobCdcMark() {
+        return skipSubJobCdcMark;
     }
 }

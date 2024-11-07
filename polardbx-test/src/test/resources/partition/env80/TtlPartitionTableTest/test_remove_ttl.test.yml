@@ -1,0 +1,26 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = true;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+
+create table my_rm_ttl_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+alter table my_rm_ttl_t2 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00' archive_table_pre_allocate = 2 archive_table_post_allocate = 2;
+show create table my_rm_ttl_t2;
+create table my_rm_arc_t2 like my_rm_ttl_t2 engine='columnar' archive_mode='ttl';
+show create table my_rm_ttl_t2;
+## error_msg: $# has bound #$
+alter table my_rm_ttl_t2 remove ttl;
+drop table my_rm_arc_t2;
+show create table my_rm_ttl_t2;
+alter table my_rm_ttl_t2 remove ttl;
+show create table my_rm_ttl_t2;
+
+
+
+
+

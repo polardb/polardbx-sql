@@ -1,19 +1,3 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.encryption;
 
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -24,6 +8,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
+import com.alibaba.polardbx.optimizer.exception.FunctionException;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
 import java.util.List;
@@ -41,6 +26,10 @@ public class AesEncrypt extends AbstractScalarFunction {
         super(operandTypes, resultType);
     }
 
+    public AesEncrypt() {
+        super(null, null);
+    }
+
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
         if (FunctionUtils.isNull(args[0]) || FunctionUtils.isNull(args[1])) {
@@ -52,11 +41,13 @@ public class AesEncrypt extends AbstractScalarFunction {
 
         byte[] initVector = null;
         if (encryptionMode.isInitVectorRequired()) {
-            initVector = FunctionUtils.parseInitVector(args[2], operandTypes.get(2),
-                getFunctionNames()[0]);
+            if (args.length != 3) {
+                throw FunctionException.invalidParamCount(getFunctionNames()[0]);
+            }
+            initVector = FunctionUtils.parseInitVector(args[2], getOperandType(2), getFunctionNames()[0]);
         }
-        byte[] plainTextBytes = DataTypeUtil.convert(operandTypes.get(0), DataTypes.BytesType, args[0]);
-        byte[] keyBytes = DataTypeUtil.convert(operandTypes.get(1), DataTypes.BytesType, args[1]);
+        byte[] plainTextBytes = DataTypeUtil.convert(getOperandType(0), DataTypes.BytesType, args[0]);
+        byte[] keyBytes = DataTypeUtil.convert(getOperandType(1), DataTypes.BytesType, args[1]);
 
         byte[] crypto = null;
         try {

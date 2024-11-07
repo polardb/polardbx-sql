@@ -28,13 +28,13 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
-import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
@@ -48,9 +48,7 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlDdl;
-import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -374,6 +372,13 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
     }
 
     /**
+     * Check if ddl operation is allowed to perform on cci table, default is false
+     */
+    public boolean isSupportedByCci(ExecutionContext ec) {
+        return false;
+    }
+
+    /**
      * Check if ddl operation involves file storage.
      * 1. ddl on a file storage table, and the table is bound to an innodb table, reject the ddl
      * 2. ddl on a file storage table, and the table is not bound to any innodb table,
@@ -410,6 +415,21 @@ public abstract class BaseDdlOperation extends BaseQueryOperation {
             return false;
         }
         return Engine.isFileStore(tableMeta.getEngine());
+    }
+
+    /**
+     * Check if ddl operation on cci table
+     *
+     * @return true if ddl on cci table
+     */
+    public boolean isCciTable(ExecutionContext executionContext) {
+        String schemaName = getSchemaName();
+        String logicalTableName = getTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(logicalTableName);
+        if (tableMeta == null) {
+            return false;
+        }
+        return tableMeta.isColumnar();
     }
 
     /**

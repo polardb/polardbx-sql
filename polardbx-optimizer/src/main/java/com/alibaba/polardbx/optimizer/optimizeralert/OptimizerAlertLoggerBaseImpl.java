@@ -58,7 +58,7 @@ public class OptimizerAlertLoggerBaseImpl implements OptimizerAlertLogger {
     }
 
     @Override
-    public boolean logDetail(ExecutionContext ec) {
+    public boolean logDetail(ExecutionContext ec, Object object) {
         if (lock.tryLock()) {
             try {
                 long lastTime = lastAccessTime.get();

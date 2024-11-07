@@ -114,7 +114,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
         ));
         List<DdlTask> bringUpAlterTableGroupTasks =
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
-                taskType, executionContext);
+                taskType, preparedData.getDdlVersionId(), executionContext);
 
         executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
         constructSubTasks(schemaName, executableDdlJob, addMetaTask, bringUpAlterTableGroupTasks, null);

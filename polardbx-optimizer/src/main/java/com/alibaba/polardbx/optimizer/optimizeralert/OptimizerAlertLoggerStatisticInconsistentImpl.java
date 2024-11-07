@@ -25,7 +25,7 @@ public class OptimizerAlertLoggerStatisticInconsistentImpl extends OptimizerAler
     }
 
     @Override
-    public boolean logDetail(ExecutionContext ec) {
+    public boolean logDetail(ExecutionContext ec, Object object) {
         // do nothing
         return false;
     }

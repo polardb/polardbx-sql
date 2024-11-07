@@ -1,0 +1,26 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+create table my_ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+alter table my_ttl_t1 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 12 ARCHIVE_TABLE_POST_ALLOCATE = 48;
+select TABLE_NAME,TTL_ENABLE,TTL_COL,TTL_EXPR,TTL_CRON,ARCHIVE_TABLE_SCHEMA,ARCHIVE_TABLE_NAME,ARCHIVE_TABLE_PRE_ALLOCATE,ARCHIVE_TABLE_POST_ALLOCATE from information_schema.ttl_info where table_name='my_ttl_t1' limit 1;
+alter table my_ttl_t1 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 3 ARCHIVE_TABLE_POST_ALLOCATE = 3;
+select TABLE_NAME,TTL_ENABLE,TTL_COL,TTL_EXPR,TTL_CRON,ARCHIVE_TABLE_SCHEMA,ARCHIVE_TABLE_NAME,ARCHIVE_TABLE_PRE_ALLOCATE,ARCHIVE_TABLE_POST_ALLOCATE from information_schema.ttl_info where table_name='my_ttl_t1' limit 1;
+create table my_arc_t1 like my_ttl_t1 ENGINE='COLUMNAR' ARCHIVE_MODE='TTL';
+show create table my_ttl_t1;
+alter table my_ttl_t1 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 3;
+alter table my_ttl_t1 cleanup expired data;
+show create table my_ttl_t1;
+
+

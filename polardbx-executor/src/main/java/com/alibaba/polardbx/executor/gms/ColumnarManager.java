@@ -18,12 +18,12 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.roaringbitmap.RoaringBitmap;
 
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -39,6 +39,13 @@ public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
      * Reload the columnar manager of current CN, clear all cache and snapshot
      */
     void reload();
+
+    /**
+     * Reload the columnar manager of current CN
+     *
+     * @param type reload type: ALL, SCHEMA_ONLY, CACHE_ONLY, SNAPSHOT_ONLY
+     */
+    void reload(ReloadType type);
 
     /**
      * Get the latest tso at which the columnar snapshot is visible.
@@ -97,11 +104,16 @@ public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
      * @param csvFileName csv file name.
      * @return Collection of csv cache data (in format of chunk)
      */
-    List<Chunk> csvData(long tso, String csvFileName);
+    Iterator<Chunk> csvData(long tso, String csvFileName);
 
-    default List<Chunk> rawCsvData(long tso, String csvFileName, ExecutionContext context) {
-        return null;
-    }
+    /**
+     * Get csv data cache of given file name for flashback query
+     *
+     * @param csvFileName csv file name.
+     * @param position end position of the csv file.
+     * @return Collection of csv cache data (in format of chunk)
+     */
+    Iterator<Chunk> csvData(String csvFileName, long position);
 
     /**
      * Fill the given selection array according to snapshot of tso, file name and position block
@@ -114,7 +126,7 @@ public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
      * @return filled size of selection array.
      */
     @Deprecated
-    int fillSelection(String fileName, long tso, int[] selection, IntegerBlock positionBlock);
+    int fillSelection(String fileName, long tso, int[] selection, LongBlock positionBlock);
 
     @Deprecated
     int fillSelection(String fileName, long tso, int[] selection, LongColumnVector longColumnVector, int batchSize);
@@ -127,4 +139,8 @@ public interface ColumnarManager extends ColumnarSchemaTransformer, Purgeable {
      * @return copy of corresponding delete bitmap
      */
     RoaringBitmap getDeleteBitMapOf(long tso, String fileName);
+
+    public static enum ReloadType {
+        ALL, SCHEMA_ONLY, CACHE_ONLY, SNAPSHOT_ONLY
+    }
 }

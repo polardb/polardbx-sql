@@ -46,7 +46,7 @@ public abstract class SpillSpaceMonitor implements SpillMonitor {
             }
             currentBytes += bytes;
         } else {
-            currentBytes -= bytes;
+            currentBytes += bytes;
         }
     }
 

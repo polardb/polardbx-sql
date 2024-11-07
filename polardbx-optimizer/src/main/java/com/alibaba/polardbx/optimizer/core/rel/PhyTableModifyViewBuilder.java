@@ -181,6 +181,7 @@ public class PhyTableModifyViewBuilder extends PhyOperationBuilderCommon {
         buildParams.setBatchParameters(null);
 
         PhyTableOperation phyTableModify = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
+        phyTableModify.setParamIndex(paramIndex);
         phyTableScans.add(phyTableModify);
     }
 

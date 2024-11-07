@@ -74,8 +74,29 @@ class StageStatistics extends React.Component<StageStatisticsProps, StageStatist
 
         node.forEach(function (element) {
             let loadingMessage = (element.relOp + element.id);
-            if (element.tableNames != undefined) {
+            if (element.tableNames !== undefined) {
                 loadingMessage = loadingMessage + ":" + element.tableNames;
+            }
+            let outerBuild = null;
+            if (element.relOp.toLowerCase().includes("hashjoin")) {
+                if (element.driverBuilder === true) {
+                    outerBuild = true;
+                } else {
+                    outerBuild = false;
+                }
+            }
+            let partitionWise = null;
+            if (element.partitionWise) {
+                partitionWise = [];
+                if (element.partitionWise.local === true) {
+                    partitionWise.push("local");
+                }
+                if (element.partitionWise.remote === true) {
+                    partitionWise.push("remote");
+                }
+                if (partitionWise.length === 0) {
+                    partitionWise = null;
+                }
             }
             result.set(element.relatedId, {
                 id: element.relatedId,
@@ -83,21 +104,10 @@ class StageStatistics extends React.Component<StageStatisticsProps, StageStatist
                 identifier: loadingMessage,
                 sources: element.sources,
                 remoteSources: element.fragmentIds,
+                outerBuild: outerBuild,
+                partitionWise: partitionWise,
             });
         })
-        // node.last
-        // result.set(node.id, {
-        //     id: node.id,
-        //     name: node['name'],
-        //     identifier: node['identifier'],
-        //     details: node['details'],
-        //     sources: node.children.map(node => node.id),
-        //     remoteSources: node.remoteSources,
-        // });
-        //
-        // node.children.forEach(function (child) {
-        //     StageStatistics.flattenNode(stages, child, result);
-        // });
     }
 
     render() {
@@ -133,6 +143,8 @@ PlanNodeProps = {
     identifier: string,
     sources: string[],
     remoteSources: string[],
+    outerBuild: boolean,
+    partitionWise: string[],
 }
 type
 PlanNodeState = {}
@@ -143,16 +155,31 @@ class PlanNode extends React.Component<PlanNodeProps, PlanNodeState> {
     }
 
     render() {
-        return (
-            <div style={{color: "#000"}} data-toggle="tooltip" data-placement="bottom" data-container="body"
-                 data-html="true"
-                 title={"<h4>" + this.props.name + "</h4>" + this.props.identifier}>
-                <strong>{this.props.name}</strong>
-                <div>
-                    {truncateString(this.props.identifier, 35)}
+        if (this.props.partitionWise && this.props.partitionWise.length > 0) {
+            return (
+                <div style={{color: "#000"}} data-toggle="tooltip" data-placement="bottom" data-container="body"
+                     data-html="true"
+                     title={"<h4>" + this.props.name + "</h4>" + this.props.identifier
+                         + "<br>partitionWise:" + this.props.partitionWise.join(', ')}>
+                    <strong>{this.props.name}</strong>
+                    <div>
+                        {truncateString(this.props.identifier, 35)}
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        } else {
+            return (
+                <div style={{color: "#000"}} data-toggle="tooltip" data-placement="bottom" data-container="body"
+                     data-html="true"
+                     title={"<h4>" + this.props.name + "</h4>" + this.props.identifier}>
+                    <strong>{this.props.name}</strong>
+                    <div>
+                        {truncateString(this.props.identifier, 35)}
+                    </div>
+                </div>
+            );
+        }
+
     }
 }
 
@@ -256,19 +283,66 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
             graph.setNode(nodeId, {label: nodeHtml, style: 'fill: #fff', labelType: "html"});
             graph.setParent(nodeId, clusterId);
 
-            node.sources.forEach(source => {
+            const outerBuild = node.outerBuild;
+
+            for (let i = 0; i < node.sources.length; i++){
+                const source = node.sources[i];
                 if (stageOperatorsMap.has(source)) {
-                    graph.setEdge("node-" + source, nodeId, {
-                        class: "plan-edge",
-                        arrowheadClass: "plan-arrowhead",
-                        label: formatRows(stageOperatorsMap.get(source).outputRowCount),
-                        labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
-                        labelType: "html",
-                    });
+                    if (outerBuild !== null) {
+                        if (outerBuild === true) {
+                            if (i === 0) {
+                                // left node
+                                graph.setEdge("node-" + source, nodeId, {
+                                    class: "plan-edge",
+                                    arrowheadClass: "plan-arrowhead",
+                                    label: formatRows(stageOperatorsMap.get(source).outputRowCount) + "<br>build",
+                                    labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
+                                    labelType: "html",
+                                });
+                            } else {
+                                // right node
+                                graph.setEdge("node-" + source, nodeId, {
+                                    class: "plan-edge",
+                                    arrowheadClass: "plan-arrowhead",
+                                    label: formatRows(stageOperatorsMap.get(source).outputRowCount) + "<br>probe",
+                                    labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
+                                    labelType: "html",
+                                });
+                            }
+                        } else {
+                            if (i === 1) {
+                                // right node
+                                graph.setEdge("node-" + source, nodeId, {
+                                    class: "plan-edge",
+                                    arrowheadClass: "plan-arrowhead",
+                                    label: formatRows(stageOperatorsMap.get(source).outputRowCount) + "<br>build",
+                                    labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
+                                    labelType: "html",
+                                });
+                            } else {
+                                // left node
+                                graph.setEdge("node-" + source, nodeId, {
+                                    class: "plan-edge",
+                                    arrowheadClass: "plan-arrowhead",
+                                    label: formatRows(stageOperatorsMap.get(source).outputRowCount) + "<br>probe",
+                                    labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
+                                    labelType: "html",
+                                });
+                            }
+                        }
+                    } else {
+                        graph.setEdge("node-" + source, nodeId, {
+                            class: "plan-edge",
+                            arrowheadClass: "plan-arrowhead",
+                            label: formatRows(stageOperatorsMap.get(source).outputRowCount),
+                            labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
+                            labelType: "html",
+                        });
+                    }
                 } else {
                     graph.setEdge("node-" + source, nodeId, {class: "plan-edge", arrowheadClass: "plan-arrowhead"});
                 }
-            });
+            }
 
             if (node.remoteSources !== undefined && node.remoteSources.length > 0) {
                 graph.setNode(nodeId, {label: '', shape: "circle"});
@@ -340,8 +414,8 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
 
     componentDidUpdate() {
         this.updateD3Graph();
-        //$FlowFixMe
-        $('[data-toggle="tooltip"]').tooltip()
+        $('[role="tooltip"]').remove();
+        $('[data-toggle="tooltip"]').tooltip();
     }
 
     render() {

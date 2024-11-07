@@ -45,6 +45,7 @@ import com.alibaba.polardbx.optimizer.core.expression.bean.LobVal;
 import com.alibaba.polardbx.optimizer.core.expression.bean.NullValue;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.alibaba.polardbx.optimizer.exception.SqlValidateException;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
@@ -112,6 +113,18 @@ public class DataTypeUtil {
                 return (T) ((Slice) value).getBytes();
             }
             return (T) ((SliceType) fromType).getCharsetHandler().encodeFromUtf8((Slice) value).getBytes();
+        } else if (fromType instanceof BlobType
+            && toType instanceof BytesType
+            && value instanceof Blob) {
+            com.alibaba.polardbx.optimizer.core.datatype.Blob blob =
+                (com.alibaba.polardbx.optimizer.core.datatype.Blob) DataTypes.BlobType.convertFrom(value);
+            return (T) blob.getSlice().getBytes();
+        } else if (fromType instanceof FloatType && fromType.getScale() != XResultUtil.DECIMAL_NOT_SPECIFIED
+            && toType instanceof StringType && value instanceof Float) {
+            return (T) String.format(String.format("%%.%df", fromType.getScale()), value);
+        } else if (fromType instanceof DoubleType && fromType.getScale() != XResultUtil.DECIMAL_NOT_SPECIFIED
+            && toType instanceof StringType && value instanceof Double) {
+            return (T) String.format(String.format("%%.%df", fromType.getScale()), value);
         }
 
         return toType.convertFrom(value);
@@ -690,6 +703,12 @@ public class DataTypeUtil {
         case TIME_WITH_LOCAL_TIME_ZONE:
         case TIME:
             calciteType = factory.createSqlType(calciteTypeName, precision, scale);
+            break;
+        case FLOAT:
+        case DOUBLE:
+            // 由于历史存储的元数据原因，忽略scale=0的情况
+            calciteType = factory.createSqlType(calciteTypeName, RelDataType.PRECISION_NOT_SPECIFIED,
+                scale > 0 ? scale : RelDataType.SCALE_NOT_SPECIFIED);
             break;
         /*
          * Note: Why CHAR and BINARY was commented here?

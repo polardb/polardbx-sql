@@ -97,9 +97,6 @@ explain  select * from tb_decimal_6530
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="tb_decimal_6530[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `id` FROM `tb_decimal_6530` AS `tb_decimal_6530` WHERE ((`id` >= ?) AND (`id` <= ?))")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: cc7827b4
 ## should scan no partitions
 explain  select * from tb_decimal_6530
 where id <= '12345678901234567890123456789012345.123456789012345678900123456789'
@@ -107,6 +104,3 @@ and  id >= '12345678901234567890123456789012345.123456789012345678900123456795';
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="tb_decimal_6530[]", shardCount=0, sql="SELECT `id` FROM `tb_decimal_6530` AS `tb_decimal_6530` WHERE ((`id` <= ?) AND (`id` >= ?))")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 2b255470

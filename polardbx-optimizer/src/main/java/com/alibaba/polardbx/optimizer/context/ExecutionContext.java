@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.context;
 
 import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.MergedStorageInfo;
 import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -26,6 +27,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.logical.ITConnection;
+import com.alibaba.polardbx.common.oss.IDeltaReadOption;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -40,6 +42,7 @@ import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.gms.metadb.columnar.FlashbackColumnarManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
@@ -68,8 +71,11 @@ import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.util.ValueHolder;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -94,6 +100,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
 
@@ -231,7 +238,7 @@ public class ExecutionContext {
 
     private ExplainResult explain;
     private SqlType sqlType;
-    private BitSet planProperties = new BitSet();
+    private BitSet planProperties = new BitSet(ExecutionPlanProperties.getMaxPropertyValue());
 
     /**
      * 用于sql.log日志，方便sql审计 hasScanWholeTable 是否存在全表扫描 :
@@ -334,6 +341,8 @@ public class ExecutionContext {
 
     private PrivilegeContext privilegeContext;
 
+    private boolean flashbackArea = false;
+
     private long txId = 0L;
     private long connId;
     private String clientIp;
@@ -367,19 +376,11 @@ public class ExecutionContext {
     /**
      * For DirectShardingKeyTableOperation
      */
-    private long backfillId;
-    private boolean clientFoundRows = true;
+    private Long backfillId;
+    private Long taskId;
 
-    /**
-     * enable the rule counter in cbo
-     * there is no need to copy the value
-     */
-    private boolean enableRuleCounter = false;
-    /**
-     * record the times of rules called in cbo
-     * there is no need to copy the value
-     */
-    private long ruleCount = 0;
+    private long estimatedBackfillBatchRows;
+    private boolean clientFoundRows = true;
 
     private volatile XplanStat xplanStat = null;
     private volatile Integer blockBuilderCapacity = null;
@@ -387,6 +388,8 @@ public class ExecutionContext {
     private volatile Boolean enableOssDelayMaterializationOnExchange = null;
 
     private int columnarMaxShard = -1;
+    private boolean useColumnar = false;
+    private boolean columnarPlanCache = false;
 
     private boolean executingPreparedStmt = false;
     private PreparedStmtCache preparedStmtCache = null;
@@ -414,15 +417,38 @@ public class ExecutionContext {
 
     private boolean needAutoSavepoint = false;
 
+    private Set<String> ignoredGsiSet = null;
+
     private Map<String, List<Object[]>> driverStatistics;
 
     private boolean checkingCci = false;
 
-    private List<String> readOrcFiles = null;
+    private Map<String, Set<String>> readOrcFiles = null;
+
+    private Map<String, IDeltaReadOption> readDeltaFiles = null;
+
+    private Map<List<Object>, FlashbackColumnarManager> fcManager = new HashMap<>();
+
+    @Getter
+    @Setter
+    private Function<String, MergedStorageInfo> storageInfoSupplier;
 
     private long pruningTime = 0L;
 
-    private String partitionName;
+    public boolean isOverrideDdlParams() {
+        return overrideDdlParams;
+    }
+
+    public void setOverrideDdlParams(boolean overrideDdlParams) {
+        this.overrideDdlParams = overrideDdlParams;
+    }
+
+    private boolean overrideDdlParams = false;
+
+    /**
+     * Set this flag to true when executing user sql.
+     */
+    private boolean userSql = false;
 
     public ExecutionContext() {
     }
@@ -770,6 +796,14 @@ public class ExecutionContext {
         memoryPoolHolder.initQueryMemoryPool(memoryPool);
     }
 
+    public boolean isFlashbackArea() {
+        return flashbackArea;
+    }
+
+    public void setFlashbackArea(boolean flashbackArea) {
+        this.flashbackArea = flashbackArea;
+    }
+
     public void renewMemoryPoolHolder() {
         memoryPoolHolder.destroy();
         this.memoryPoolHolder = new QueryMemoryPoolHolder();
@@ -884,6 +918,10 @@ public class ExecutionContext {
         return columnarTracer;
     }
 
+    public boolean getUseColumnarTracer() {
+        return columnarTracer != null;
+    }
+
     public void setColumnarTracer(ColumnarTracer columnarTracer) {
         this.columnarTracer = columnarTracer;
     }
@@ -985,6 +1023,18 @@ public class ExecutionContext {
         if (runtimeStatistics != null) {
             runtimeStatistics.setSqlType(sqlType);
         }
+    }
+
+    public void setIgnoredGsi(Set<String> gsiSet) {
+        if (gsiSet == null) {
+            ignoredGsiSet = null;
+            return;
+        }
+        ignoredGsiSet = ImmutableSet.<String>builder().addAll(gsiSet).build();
+    }
+
+    public Set<String> getIgnoredGsi() {
+        return ignoredGsiSet;
     }
 
     public boolean isModifyBroadcastTable() {
@@ -1258,7 +1308,9 @@ public class ExecutionContext {
         ec.isOriginSqlPushdownOrRoute = isOriginSqlPushdownOrRoute();
         ec.privilegeContext = getPrivilegeContext();
         ec.txId = getTxId();
+        ec.ignoredGsiSet = getIgnoredGsi();
         ec.clientIp = getClientIp();
+        ec.flashbackArea = isFlashbackArea();
         ec.connId = getConnId();
         ec.rescheduled = isRescheduled();
         ec.testMode = isTestMode();
@@ -1282,6 +1334,7 @@ public class ExecutionContext {
         ec.optimizedWithReturning = isOptimizedWithReturning();
         ec.readOnly = isReadOnly();
         ec.backfillId = getBackfillId();
+        ec.taskId = getTaskId();
         ec.clientFoundRows = isClientFoundRows();
         ec.blockBuilderCapacity = getBlockBuilderCapacity();
         ec.enableOssCompatible = isEnableOssCompatible();
@@ -1293,7 +1346,12 @@ public class ExecutionContext {
         ec.needAutoSavepoint = isNeedAutoSavepoint();
         ec.setColumnarTracer(getColumnarTracer());
         ec.columnarMaxShard = getColumnarMaxShard();
+        ec.useColumnar = isUseColumnar();
+        ec.columnarPlanCache = isColumnarPlanCache();
+        ec.storageInfoSupplier = getStorageInfoSupplier();
         ec.pruningTime = getPruningTime();
+        ec.overrideDdlParams = isOverrideDdlParams();
+        ec.userSql = isUserSql();
         return ec;
     }
 
@@ -1545,6 +1603,10 @@ public class ExecutionContext {
         this.preparedStmtCache = null;
     }
 
+    public MergedStorageInfo getStorageInfo(String schemaName) {
+        return storageInfoSupplier.apply(schemaName);
+    }
+
     public SchemaManager getSchemaManager(String schemaName) {
         if (schemaName == null) {
             schemaName = DefaultSchema.getSchemaName();
@@ -1782,10 +1844,21 @@ public class ExecutionContext {
 
         calcitePlanOptimizerTrace = null;
 
+        flashbackArea = false;
+
         // reset use hint flag
         useHint = false;
         xplanStat = null;
         pruningTime = 0L;
+        ignoredGsiSet = null;
+
+        // clear tid
+        sqlTemplateId = null;
+        columnarMaxShard = -1;
+        useColumnar = false;
+        columnarPlanCache = false;
+
+        planProperties = new BitSet();
     }
 
     /**
@@ -1844,7 +1917,6 @@ public class ExecutionContext {
         privilegeVerifyItems = new ArrayList<>();
         onlyUseTmpTblPool = true;
         internalSystemSql = true;
-        sqlTemplateId = null;
         runtimeStatistics = null;
         usingPhySqlCache = false;
         doingBatchInsertBySpliter = false;
@@ -1894,14 +1966,14 @@ public class ExecutionContext {
         optimizedWithReturning = false;
         backfillId = 0L;
         clientFoundRows = true;
-        enableRuleCounter = false;
-        ruleCount = 0;
+
         executingPreparedStmt = false;
 
         blockBuilderCapacity = null;
         enableOssCompatible = null;
         enableOssDelayMaterializationOnExchange = null;
-        columnarMaxShard = -1;
+
+        fcManager = null;
     }
 
     public boolean useReturning() {
@@ -1952,12 +2024,28 @@ public class ExecutionContext {
         this.preparedStmtCache = preparedStmtCache;
     }
 
-    public long getBackfillId() {
+    public Long getBackfillId() {
         return backfillId;
     }
 
-    public void setBackfillId(long backfillId) {
+    public void setBackfillId(Long backfillId) {
         this.backfillId = backfillId;
+    }
+
+    public long getEstimatedBackfillBatchRows() {
+        return estimatedBackfillBatchRows;
+    }
+
+    public void setEstimatedBackfillBatchRows(long estimatedBackfillBatchRows) {
+        this.estimatedBackfillBatchRows = estimatedBackfillBatchRows;
+    }
+
+    public Long getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(Long taskId) {
+        this.taskId = taskId;
     }
 
     public boolean isClientFoundRows() {
@@ -1987,22 +2075,6 @@ public class ExecutionContext {
         // 由于不存在所有flags都不开的情况，所以0可以作为默认值来代表着4个flags的情况
         return clientFoundRows ? 0 : Capabilities.CLIENT_MULTI_RESULTS | Capabilities.CLIENT_DEPRECATE_EOF |
             Capabilities.CLIENT_PS_MULTI_RESULTS;
-    }
-
-    public boolean isEnableRuleCounter() {
-        return enableRuleCounter;
-    }
-
-    public void setEnableRuleCounter(boolean enableRuleCounter) {
-        this.enableRuleCounter = enableRuleCounter;
-    }
-
-    public void setRuleCount(long ruleCount) {
-        this.ruleCount = ruleCount;
-    }
-
-    public long getRuleCount() {
-        return ruleCount;
     }
 
     public int getBlockBuilderCapacity() {
@@ -2040,19 +2112,34 @@ public class ExecutionContext {
         this.columnarMaxShard = columnarMaxShard;
     }
 
+    public boolean isUseColumnar() {
+        return useColumnar;
+    }
+
+    public void setUseColumnar(boolean useColumnar) {
+        this.useColumnar = useColumnar;
+    }
+
+    public boolean isColumnarPlanCache() {
+        return columnarPlanCache;
+    }
+
+    public void setColumnarPlanCache(boolean columnarPlanCache) {
+        this.columnarPlanCache = columnarPlanCache;
+    }
+
     /**
-     * copy context for trans
+     * copy context for optimizer
      */
-    public ExecutionContext subContextForParamsPrune() {
+    public ExecutionContext copyContextForOptimizer() {
         ExecutionContext executionContext = new ExecutionContext(schemaName);
-        executionContext.setParamManager(paramManager);
-        executionContext.setExtraCmds(extraCmds);
-        executionContext.setServerVariables(serverVariables);
-        executionContext.setParams(params);
-        executionContext.extraServerVariables = extraServerVariables;
-        executionContext.userDefVariables = userDefVariables;
-        executionContext.serverVariables = serverVariables;
-        executionContext.planProperties = planProperties;
+
+        executionContext.setExtraCmds(deepCopyExtraCmds(this.extraCmds));
+        executionContext.setParams(params.clone());
+        executionContext.setExplain(explain);
+        executionContext.setSqlType(sqlType);
+        executionContext.setAutoCommit(autoCommit);
+        executionContext.setTraceId(traceId);
         return executionContext;
     }
 
@@ -2124,6 +2211,14 @@ public class ExecutionContext {
 
     public void setCalcitePlanOptimizerTrace(CalcitePlanOptimizerTrace calcitePlanOptimizerTrace) {
         this.calcitePlanOptimizerTrace = calcitePlanOptimizerTrace;
+    }
+
+    public boolean isUserSql() {
+        return userSql;
+    }
+
+    public void setUserSql(boolean userSql) {
+        this.userSql = userSql;
     }
 
     public boolean isTsoTransaction() {
@@ -2252,7 +2347,7 @@ public class ExecutionContext {
 
     public boolean isEnableOrcDeletedScan() {
         if (null != this.getParamManager()) {
-            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_ORC_DELETED_SCAN);
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_DELETED_SCAN);
         }
         return false;
     }
@@ -2271,19 +2366,20 @@ public class ExecutionContext {
         return false;
     }
 
-    public String getForceReadOrcFile() {
-        if (null != this.getParamManager()) {
-            return this.getParamManager().getString(ConnectionParams.FORCE_READ_ORC_FILE);
-        }
-        return null;
-    }
-
-    public List<String> getReadOrcFiles() {
+    public Map<String, Set<String>> getReadOrcFiles() {
         return readOrcFiles;
     }
 
-    public void setReadOrcFiles(List<String> readOrcFiles) {
+    public void setReadOrcFiles(Map<String, Set<String>> readOrcFiles) {
         this.readOrcFiles = readOrcFiles;
+    }
+
+    public Map<String, IDeltaReadOption> getReadDeltaFiles() {
+        return readDeltaFiles;
+    }
+
+    public void setReadDeltaFiles(Map<String, IDeltaReadOption> readDeltaFiles) {
+        this.readDeltaFiles = readDeltaFiles;
     }
 
     public boolean isReadOrcOnly() {
@@ -2293,9 +2389,23 @@ public class ExecutionContext {
         return false;
     }
 
-    public boolean isEnableFastCciChecker() {
+    public boolean isReadSpecifiedColumnarFiles() {
         if (null != this.getParamManager()) {
-            return getParamManager().getBoolean(ConnectionParams.ENABLE_FAST_CCI_CHECKER);
+            return this.getParamManager().getBoolean(ConnectionParams.READ_SPECIFIED_COLUMNAR_FILES);
+        }
+        return false;
+    }
+
+    public boolean isCciIncrementalCheck() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.CCI_INCREMENTAL_CHECK);
+        }
+        return false;
+    }
+
+    public boolean isEnableCciFastChecker() {
+        if (null != this.getParamManager()) {
+            return getParamManager().getBoolean(ConnectionParams.ENABLE_CCI_FAST_CHECKER);
         }
         return false;
     }
@@ -2306,6 +2416,14 @@ public class ExecutionContext {
         }
         // Default true.
         return true;
+    }
+
+    public boolean isEnableAccurateRelTypeToDataType() {
+        if (null != this.getParamManager()) {
+            return getParamManager().getBoolean(ConnectionParams.ENABLE_ACCURATE_REL_TYPE_TO_DATA_TYPE);
+        }
+        // Default false.
+        return false;
     }
 
     public boolean isForce2pcDuringCciCheck() {
@@ -2329,10 +2447,37 @@ public class ExecutionContext {
         return false;
     }
 
+    public boolean isMarkSyncPoint() {
+        // default false
+        return null != this.getExtraServerVariables() &&
+            null != this.getExtraServerVariables().get(ConnectionProperties.MARK_SYNC_POINT) &&
+            Boolean.parseBoolean((String) this.getExtraServerVariables().get(ConnectionProperties.MARK_SYNC_POINT));
+    }
+
     public boolean isEnable1PCOpt() {
         if (null != this.getParamManager()) {
             return this.getParamManager().getBoolean(ConnectionParams.ENABLE_1PC_OPT);
         }
         return true;
     }
+
+    public boolean isForbidAutoCommitTrx() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.FORBID_AUTO_COMMIT_TRX);
+        }
+        return false;
+    }
+
+    public boolean isEnableExternalConsistencyForWriteTrx() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX);
+        }
+        return false;
+    }
+
+    public FlashbackColumnarManager getFlashbackColumnarManager(Long tso, String logicalSchema, String logicalTable) {
+        List<Object> fcKey = Arrays.asList(tso, logicalSchema, logicalTable);
+        return fcManager.computeIfAbsent(fcKey, k -> new FlashbackColumnarManager(tso, logicalSchema, logicalTable));
+    }
+
 }

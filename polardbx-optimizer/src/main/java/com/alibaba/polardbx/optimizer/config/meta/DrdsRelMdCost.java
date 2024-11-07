@@ -16,46 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
-import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
-import com.alibaba.polardbx.optimizer.core.rel.LookupJoin;
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
-import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
-import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
-import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.Limit;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.core.rel.LookupJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MemSort;
-import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlAgg;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlHashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlIndexNLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlLimit;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlMaterializedSemiJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlNLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiHashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlSemiIndexNLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlSort;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
-import com.alibaba.polardbx.optimizer.core.rel.MysqlTopN;
-import com.alibaba.polardbx.optimizer.core.rel.NLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiNLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiSortMergeJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SortAgg;
-import com.alibaba.polardbx.optimizer.core.rel.SortMergeJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
-import com.alibaba.polardbx.optimizer.core.rel.TopN;
+import com.alibaba.polardbx.optimizer.core.rel.*;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
@@ -72,12 +38,7 @@ import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalTableLookup;
-import org.apache.calcite.rel.metadata.ChainedRelMetadataProvider;
-import org.apache.calcite.rel.metadata.CyclicMetadataException;
-import org.apache.calcite.rel.metadata.ReflectiveRelMetadataProvider;
-import org.apache.calcite.rel.metadata.RelMdPercentageOriginalRows;
-import org.apache.calcite.rel.metadata.RelMetadataProvider;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.metadata.*;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.util.BuiltInMethod;
 import org.apache.calcite.util.Util;
@@ -87,6 +48,7 @@ import java.util.Map;
 
 import static com.alibaba.polardbx.optimizer.config.meta.CostModelWeight.LOOKUP_START_UP_NET;
 import static com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil.getRexParam;
+import static com.alibaba.polardbx.optimizer.utils.OptimizerUtils.getParametersMapForOptimizer;
 
 public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
 
@@ -217,7 +179,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         RelOptCost inputCost = mq.getCumulativeCost(rel.getInput());
         Double inputRowCount = mq.getRowCount(rel.getInput());
 
-        Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> params = getParametersMapForOptimizer(rel);
         double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
@@ -262,7 +224,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         RelOptCost inputCost = mq.getCumulativeCost(rel.getInput());
         Double inputRowCount = mq.getRowCount(rel.getInput());
 
-        Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> params = getParametersMapForOptimizer(rel);
         double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
@@ -299,7 +261,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
             return getCumulativeCost((RelNode) rel, mq);
         }
 
-        Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> params = getParametersMapForOptimizer(rel);
         double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);

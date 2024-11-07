@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexBuilder;
@@ -32,12 +35,15 @@ public class AbstractIOEstimator extends RexVisitorImpl<Double> {
     public final RelMetadataQuery metadataQuery;
     private final RexBuilder rexBuilder;
     private final double maxIO;
+    protected final PlannerContext plannerContext;
 
-    public AbstractIOEstimator(RelMetadataQuery metadataQuery, RexBuilder rexBuilder, double maxIO) {
+    public AbstractIOEstimator(RelMetadataQuery metadataQuery, RexBuilder rexBuilder, double maxIO,
+                               PlannerContext plannerContext) {
         super(true);
         this.metadataQuery = metadataQuery;
         this.rexBuilder = rexBuilder;
         this.maxIO = maxIO;
+        this.plannerContext = plannerContext;
     }
 
     public Double normalize(Double io) {
@@ -53,6 +59,20 @@ public class AbstractIOEstimator extends RexVisitorImpl<Double> {
     }
 
     public Double evaluate(RexNode predicate) {
+        try {
+            return evaluateInside(predicate);
+        } catch (Throwable e) {
+            OptimizerAlertUtil.selectivityAlert(getExecutionContext(), e);
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public ExecutionContext getExecutionContext() {
+        return plannerContext == null ? null : plannerContext.getExecutionContext();
+    }
+
+    public Double evaluateInside(RexNode predicate) {
         if (predicate == null) {
             return maxIO;
         } else {

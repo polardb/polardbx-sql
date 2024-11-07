@@ -151,7 +151,7 @@ public class PushProjectRule extends RelOptRule {
         }
 
         // 判断是否有需要特殊处理的Project
-        if (remainProject(project) || RelUtils.isNotPushLastInsertId(context, project)) {
+        if (remainProject(project) || RelUtils.existLastInsertId(project)) {
             // 不下压或者构造新的project下压，保留原先的project
 
             // if project has subquery with single table && logicalview only possess single table,

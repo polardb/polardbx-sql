@@ -304,27 +304,31 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
         }
 
         // try matched condition cases
-        boolean isSemiLongNotEqInteger = joinKeyType == JoinKeyType.LONG;
-        boolean isSemiIntegerNotEqInteger = joinKeyType == JoinKeyType.INTEGER;
+        boolean isSemiLongNotEq = joinKeyType == JoinKeyType.LONG;
+        boolean isSemiIntegerNotEq = joinKeyType == JoinKeyType.INTEGER;
         int buildChunkConditionIndex = -1;
         if (!useAntiCondition && isScalarInputRefCondition()) {
             boolean isNotEq = ((ScalarFunctionExpression) condition).isA(NotEqual.class);
 
-            isSemiLongNotEqInteger &= isNotEq;
-            isSemiIntegerNotEqInteger &= isNotEq;
+            isSemiLongNotEq &= isNotEq;
+            isSemiIntegerNotEq &= isNotEq;
             // since this is outer build (reverse)
             buildChunkConditionIndex = getBuildChunkConditionIndex();
         } else {
-            isSemiLongNotEqInteger = false;
-            isSemiIntegerNotEqInteger = false;
+            isSemiLongNotEq = false;
+            isSemiIntegerNotEq = false;
         }
 
-        if (useVecJoin && isNotNullSafeJoin && isSemiLongNotEqInteger) {
-            buildReverseSemiLongNotEqIntProbe(synchronizer, enableVecBuildJoinRow, buildChunkConditionIndex);
-            return;
-        } else if (useVecJoin && isNotNullSafeJoin && isSemiIntegerNotEqInteger) {
-            buildReverseSemiIntNotEqIntProbe(synchronizer, enableVecBuildJoinRow, buildChunkConditionIndex);
-            return;
+        if (isSemiLongNotEq || isSemiIntegerNotEq) {
+            JoinKeyType conditionType = getConditionKeyType((ScalarFunctionExpression) condition);
+
+            if (useVecJoin && isNotNullSafeJoin && isSemiLongNotEq && conditionType == JoinKeyType.INTEGER) {
+                buildReverseSemiLongNotEqIntProbe(synchronizer, enableVecBuildJoinRow, buildChunkConditionIndex);
+                return;
+            } else if (useVecJoin && isNotNullSafeJoin && isSemiIntegerNotEq && conditionType == JoinKeyType.INTEGER) {
+                buildReverseSemiIntNotEqIntProbe(synchronizer, enableVecBuildJoinRow, buildChunkConditionIndex);
+                return;
+            }
         }
 
         // normal cases
@@ -659,22 +663,57 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
             return;
         }
 
+        // semi join with condition
         int buildChunkConditionIndex = -1;
-        boolean isLongKeyNotEqInteger = joinKeyType == JoinKeyType.LONG;
+        boolean isLongKeyNotEq = joinKeyType == JoinKeyType.LONG;
         if (!useAntiCondition && isScalarInputRefCondition()) {
-            isLongKeyNotEqInteger &= ((ScalarFunctionExpression) condition).isA(NotEqual.class);
+            isLongKeyNotEq &= ((ScalarFunctionExpression) condition).isA(NotEqual.class);
             buildChunkConditionIndex = getBuildChunkConditionIndex();
         } else {
-            isLongKeyNotEqInteger = false;
+            isLongKeyNotEq = false;
         }
 
-        if (joinType == JoinRelType.SEMI && isLongKeyNotEqInteger) {
+        if (!isLongKeyNotEq || joinType != JoinRelType.SEMI) {
+            // to be implemented
+            buildDefaultProbe();
+            return;
+        }
+
+        JoinKeyType conditionKeyType = getConditionKeyType((ScalarFunctionExpression) condition);
+
+        if (conditionKeyType == JoinKeyType.INTEGER) {
             buildSemiLongNotEqIntProbe(enableVecBuildJoinRow, buildChunkConditionIndex);
+            return;
+        }
+
+        if (conditionKeyType == JoinKeyType.LONG) {
+            buildSemiLongNotEqLongProbe(enableVecBuildJoinRow, buildChunkConditionIndex);
             return;
         }
 
         // normal cases
         buildDefaultProbe();
+    }
+
+    protected JoinKeyType getConditionKeyType(ScalarFunctionExpression condition) {
+        List<IExpression> args = condition.getArgs();
+        Preconditions.checkArgument(args.size() == 2, "Join condition arg count should be 2");
+
+        // get build chunk condition index for TypedHashTable
+        int idx1 = ((InputRefExpression) args.get(0)).getInputRefIndex();
+        int idx2 = ((InputRefExpression) args.get(1)).getInputRefIndex();
+        int minIdx = Math.min(idx1, idx2);
+        int maxIdx = Math.max(idx1, idx2);
+
+        DataType type1 = outerInput.getDataTypes().get(minIdx);
+        DataType type2 = innerInput.getDataTypes().get(maxIdx - outerInput.getDataTypes().size());
+        if (type1 instanceof LongType && type2 instanceof LongType) {
+            return JoinKeyType.LONG;
+        }
+        if (type1 instanceof IntegerType && type2 instanceof IntegerType) {
+            return JoinKeyType.INTEGER;
+        }
+        return JoinKeyType.OTHER;
     }
 
     private void buildSemiLongProbe(boolean enableVecBuildJoinRow) {
@@ -716,6 +755,53 @@ public class ParallelHashJoinExec extends AbstractHashJoinExec {
             public TypedList[] getTypedLists(int fixedSize) {
                 if (typedLists == null) {
                     typedLists = new TypedList[] {TypedList.createInt(fixedSize)};
+                }
+                return typedLists;
+            }
+
+            @Override
+            public void consume(Chunk chunk, int sourceIndex) {
+                chunk.getBlock(buildChunkConditionIndex)
+                    .appendTypedHashTable(typedLists[0], sourceIndex, 0, chunk.getPositionCount());
+            }
+        });
+        shared.builderKeyChunks.setTypedHashTable(new TypedListHandle() {
+            private TypedList[] typedLists;
+
+            @Override
+            public long estimatedSize(int fixedSize) {
+                return TypedList.LongTypedList.estimatedSizeInBytes(fixedSize);
+            }
+
+            @Override
+            public TypedList[] getTypedLists(int fixedSize) {
+                if (typedLists == null) {
+                    typedLists = new TypedList[] {TypedList.createLong(fixedSize)};
+                }
+                return typedLists;
+            }
+
+            @Override
+            public void consume(Chunk chunk, int sourceIndex) {
+                chunk.getBlock(0).appendTypedHashTable(typedLists[0], sourceIndex, 0, chunk.getPositionCount());
+            }
+        });
+    }
+
+    private void buildSemiLongNotEqLongProbe(boolean enableVecBuildJoinRow, int buildChunkConditionIndex) {
+        this.probeOperator = new SemiLongNotEqLongProbeOperator(enableVecBuildJoinRow);
+        shared.builderChunks.setTypedHashTable(new TypedListHandle() {
+            private TypedList[] typedLists;
+
+            @Override
+            public long estimatedSize(int fixedSize) {
+                return TypedList.LongTypedList.estimatedSizeInBytes(fixedSize);
+            }
+
+            @Override
+            public TypedList[] getTypedLists(int fixedSize) {
+                if (typedLists == null) {
+                    typedLists = new TypedList[] {TypedList.createLong(fixedSize)};
                 }
                 return typedLists;
             }

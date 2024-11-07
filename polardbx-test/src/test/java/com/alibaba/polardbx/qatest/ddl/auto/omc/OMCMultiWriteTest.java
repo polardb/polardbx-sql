@@ -283,6 +283,63 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
+    public void testAfterOmc() {
+        String tableName = "after_omc_test_tb1" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (a varchar(11) primary key, b bigint, c bigint) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('123', 1, 2), ('234', 2, 3)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table `%s` modify b int, algorithm = omc", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('456', 4, 5)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("UPDATE %s SET b = 2 WHERE a = '123'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "UPDATE", 1);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 1);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("INSERT INTO %s VALUES ('567', 5, 6) ON DUPLICATE KEY UPDATE a = '678'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "INSERT", 1);
+
+        sql = String.format("REPLACE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('678', 6 ,7)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dmlHintStr + sql);
+        sql = String.format("REPLACE INTO %s VALUES ('678', 7, 8)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+        assertTraceContains(trace, "DELETE", 0);
+    }
+
+    @Test
     public void testStayAtDeleteOnlyWithChangeColumn() {
         String tableName = "modify_sk_test_tbl" + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
@@ -345,6 +402,63 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
+    public void testAfterOmcWithChangeColumn() {
+        String tableName = "after_omc_test_tb2" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (a varchar(11) primary key, b bigint, c bigint) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('123', 1, 2), ('234', 2, 3)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table `%s` change column b d int, algorithm = omc", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('456', 4, 5)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("UPDATE %s SET d = 2 WHERE a = '123'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "UPDATE", 1);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 1);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("INSERT INTO %s VALUES ('567', 5, 6) ON DUPLICATE KEY UPDATE a = '678'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "INSERT", 1);
+
+        sql = String.format("REPLACE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('678', 6 ,7)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dmlHintStr + sql);
+        sql = String.format("REPLACE INTO %s VALUES ('678', 7, 8)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(1));
+        assertTraceContains(trace, "DELETE", 0);
+    }
+
+    @Test
     public void testStayAtWriteOnlyWithChangeColumn() {
         String tableName = "modify_sk_test_tbl2" + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
@@ -403,6 +517,67 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(4));
         assertTraceContains(trace, "DELETE", 1);
+    }
+
+    @Test
+    public void testAfterOmcWithGsi() {
+        String tableName = "after_omc_gsi_test_tb1" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (a varchar(11) primary key, b bigint, c bigint) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('123', 1, 2), ('234', 2, 3)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format(
+            "alter table `%s` add global index modify_sk_test_gsi(a, b, c) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table `%s` modify b int, algorithm = omc", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('456', 4, 5)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        sql = String.format("UPDATE %s SET b = 2 WHERE a = '123'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(3));
+
+        sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 2);
+        Assert.assertThat(trace.size(), is(3));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        sql = String.format("INSERT INTO %s VALUES ('567', 5, 6) ON DUPLICATE KEY UPDATE a = '678'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 2);
+        assertTraceContains(trace, "INSERT", 2);
+
+        sql = String.format("REPLACE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('678', 6 ,7)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dmlHintStr + sql);
+        sql = String.format("REPLACE INTO %s VALUES ('678', 7, 8)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+        assertTraceContains(trace, "DELETE", 0);
     }
 
     @Test
@@ -536,6 +711,67 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(7));
         assertTraceContains(trace, "DELETE", 2);
+    }
+
+    @Test
+    public void testAfterOmcChangeColumnWithGsi() {
+        String tableName = "after_omc_gsi_test_tb2" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (a varchar(11) primary key, b bigint, c bigint) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('123', 1, 2), ('234', 2, 3)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format(
+            "alter table `%s` add global index modify_sk_test_gsi(a, b, c) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table `%s` change column b d int, algorithm = omc", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table `%s` values('456', 4, 5)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        sql = String.format("UPDATE %s SET d = 2 WHERE a = '123'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(3));
+
+        sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 2);
+        Assert.assertThat(trace.size(), is(3));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        sql = String.format("INSERT INTO %s VALUES ('567', 5, 6) ON DUPLICATE KEY UPDATE a = '678'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        assertTraceContains(trace, "DELETE", 2);
+        assertTraceContains(trace, "INSERT", 2);
+
+        sql = String.format("REPLACE INTO %s VALUES ('567', 5, 6)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+
+        sql = String.format("INSERT IGNORE INTO %s VALUES ('678', 6 ,7)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dmlHintStr + sql);
+        sql = String.format("REPLACE INTO %s VALUES ('678', 7, 8)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
+        trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.size(), is(2));
+        assertTraceContains(trace, "DELETE", 0);
     }
 
     protected void assertTraceContains(List<List<String>> trace, String targetStr, int count) {

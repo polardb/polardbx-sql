@@ -14,7 +14,7 @@ public class TimestampWithTimeZoneTest extends ColumnarReadBaseTestCase {
     public static String COLUMNAR_INDEX_NAME = "time_cci";
 
     @Before
-    public void before() {
+    public void prepareTable() {
         JdbcUtil.dropTable(tddlConnection, PRIMARY_TABLE_NAME);
     }
 

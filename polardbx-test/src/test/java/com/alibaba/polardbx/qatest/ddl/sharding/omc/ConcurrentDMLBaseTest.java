@@ -30,8 +30,8 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
     // Use logical execution since result may be different from pushdown execution
     protected static final String USE_LOGICAL_EXECUTION = "DML_EXECUTION_STRATEGY=LOGICAL";
     protected static final String DISABLE_DML_RETURNING = "DML_USE_RETURNING=FALSE";
-    protected static final int FILL_COUNT = 2500;
-    protected static final int FILL_BATCH_SIZE = 2500;
+    protected static final int FILL_COUNT = 1500;
+    protected static final int FILL_BATCH_SIZE = 1500;
 
     protected static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -138,6 +138,7 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                                     if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
                                         .contains("Deadlock found")) {
                                         // ignore
+                                        Thread.sleep(500);
                                         totalCount.getAndDecrement();
                                     } else if ((e.getMessage().contains("Unknown target column") || e.getMessage()
                                         .contains("not found")) && !changed) {
@@ -169,7 +170,8 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                             JdbcUtil.updateDataTddl(connection, sql, null);
                         }
                         Thread.sleep(1000);
-                        String sql = String.format(alterSql, finalTableName) + USE_OMC_ALGORITHM;
+                        String batchHint = "/*+TDDL:cmd_extra(GSI_BACKFILL_BATCH_SIZE=50,CHANGE_SET_APPLY_BATCH=32)*/";
+                        String sql = batchHint + String.format(alterSql, finalTableName) + USE_OMC_ALGORITHM;
                         try {
                             execDdlWithRetry(tddlDatabase1, finalTableName, sql, connection);
                         } finally {

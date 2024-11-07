@@ -35,10 +35,11 @@ import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
+import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.stats.TransactionStatistics;
-import com.alibaba.polardbx.transaction.connection.AutoCommitConnectionHolder;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import com.alibaba.polardbx.transaction.connection.AutoCommitConnectionHolder;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.sql.SQLException;
@@ -77,9 +78,15 @@ public class AutoCommitTransaction extends BaseTransaction {
     @Override
     public IConnection getConnection(String schemaName, String groupName, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+        if (rw.equals(RW.WRITE) && executionContext.isEnableExternalConsistencyForWriteTrx() && ec.isUserSql()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
+                "Should not get write connection when ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX is true");
+        }
         MasterSlave masterSlave = ExecUtils.getMasterSlave(false, rw.equals(RW.WRITE), ec);
         IConnection connection = getRealConnection(schemaName, groupName, ds, masterSlave);
-        return sendLsn(connection, schemaName, groupName, masterSlave, () -> -1L);
+        boolean needSetFlashbackArea = executionContext.isFlashbackArea() && rw == ITransaction.RW.READ;
+        return sendLsn(connection, schemaName, groupName, masterSlave, () -> -1L)
+            .enableFlashbackArea(needSetFlashbackArea);
     }
 
     protected IConnection getRealConnection(
@@ -179,7 +186,7 @@ public class AutoCommitTransaction extends BaseTransaction {
         //We should execute rollback  before recycle the connections into pool. The reasons as followed:
         //1. releases any database locks currently held for TSO_READONLY&AUTO_COMMIT_SINGLE_SHARD;
         //2. check the connection is used by other users or not, thus the rollback will failed. we will
-        //disard the connection.
+        //discard the connection.
         AsyncTaskQueue asyncQueue = getManager().getTransactionExecutor().getAsyncQueue();
         try {
             ch.forEachConnection(asyncQueue, (conn) -> {

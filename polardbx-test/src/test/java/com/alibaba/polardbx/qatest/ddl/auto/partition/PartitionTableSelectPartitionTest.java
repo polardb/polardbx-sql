@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.partition;
 
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.util.List;

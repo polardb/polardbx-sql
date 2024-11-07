@@ -51,9 +51,11 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuableExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableCleanupExpiredData;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsArchivePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsInspectIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
@@ -228,8 +230,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlignToTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableModifyTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePartition;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePurgeBeforeTimeStamp;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableRemoveTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableSingle;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsBaselineStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCancelDDLJob;
@@ -238,6 +242,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeDDLJ
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeRuleVersionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarPartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarSnapshot;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckGlobalIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclTriggersStatement;
@@ -266,7 +271,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPushDownUd
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRecoverDDLJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRemoveDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsResumeRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRollbackDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDdlEngineStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsTerminateRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowChangeSet;
@@ -496,6 +504,7 @@ import static com.alibaba.polardbx.druid.sql.parser.Token.IDENTIFIER;
 import static com.alibaba.polardbx.druid.sql.parser.Token.JAVA;
 import static com.alibaba.polardbx.druid.sql.parser.Token.LITERAL_CHARS;
 import static com.alibaba.polardbx.druid.sql.parser.Token.LPAREN;
+import static com.alibaba.polardbx.druid.sql.parser.Token.MODE;
 import static com.alibaba.polardbx.druid.sql.parser.Token.OF;
 import static com.alibaba.polardbx.druid.sql.parser.Token.ON;
 import static com.alibaba.polardbx.druid.sql.parser.Token.PARTITION;
@@ -1516,6 +1525,13 @@ public class MySqlStatementParser extends SQLStatementParser {
         SQLIndexDefinition sqlIndexDefinition = stmt.getIndexDefinition();
 
         this.exprParser.parseIndex(sqlIndexDefinition, true);
+
+        if (lexer.token() == Token.HINT) {
+            String execComment = lexer.stringVal();
+            sqlIndexDefinition.getOptions().setExecComment(execComment);
+            lexer.nextToken();
+        }
+
         parseAsyncOption(stmt);
         return stmt;
     }
@@ -2762,6 +2778,7 @@ public class MySqlStatementParser extends SQLStatementParser {
                 if (lexer.token() == Token.HINT) {
                     stmt.setHeadHints(this.exprParser.parseHints());
                 }
+                stmt.setTargetSql(lexer.token().toString() + " " + lexer.text.substring(lexer.pos()));
 
                 MySqlSelectParser selectParser = createSQLSelectParser();
                 stmt.setSelect(selectParser.select());
@@ -2772,6 +2789,7 @@ public class MySqlStatementParser extends SQLStatementParser {
                 if (lexer.token() == Token.HINT) {
                     stmt.setHeadHints(this.exprParser.parseHints());
                 }
+                stmt.setTargetSql(lexer.token().toString() + " " + lexer.text.substring(lexer.pos()));
                 stmt.setSubStatement(parseStatement());
             } else {
                 // Parse id list.
@@ -3154,6 +3172,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                         // Extra command.
                         checkColumnarIndex.setExtraCmd(lexer.stringVal());
                         lexer.nextToken();
+
+                        while (lexer.token() != Token.EOF && lexer.token() != Token.SEMI) {
+                            checkColumnarIndex.setExtra(lexer.integerValue().longValue());
+                            lexer.nextToken();
+                        }
                     }
 
                     statementList.add(checkColumnarIndex);
@@ -3162,6 +3185,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                     DrdsCheckColumnarPartition checkColumnarPartition = new DrdsCheckColumnarPartition();
                     checkColumnarPartition.setTableName(exprParser.name());
                     statementList.add(checkColumnarPartition);
+                } else if (lexer.token() == Token.SNAPSHOT || lexer.identifierEquals("SNAPSHOT")) {
+                    lexer.nextToken();;
+                    DrdsCheckColumnarSnapshot checkColumnarSnapshot = new DrdsCheckColumnarSnapshot();
+                    checkColumnarSnapshot.setTableName(exprParser.name());
+                    statementList.add(checkColumnarSnapshot);
                 } else {
                     setErrorEndPos(lexer.pos());
                     printError(lexer.token());
@@ -3178,14 +3206,22 @@ public class MySqlStatementParser extends SQLStatementParser {
                     lexer.nextToken();
                 }
 
-                if (lexer.token() == FOR) {
+                if (lexer.identifierEquals("CHANNEL")) {
                     lexer.nextToken();
-                    acceptIdentifier("CHANNEL");
+                    accept(EQ);
                     SQLName channel = this.exprParser.name();
+                    SQLName mode = null;
+                    if (lexer.identifierEquals("MODE")) {
+                        lexer.nextToken();
+                        accept(EQ);
+                        mode = this.exprParser.name();
+                    }
+
                     SQLStartReplicaCheckTableStatement stmt = new SQLStartReplicaCheckTableStatement();
                     stmt.setDbName(dbName);
                     stmt.setTableName(tbName);
                     stmt.setChannel(channel);
+                    stmt.setMode(mode);
                     statementList.add(stmt);
                 } else if (lexer.identifierEquals("PAUSE")) {
                     lexer.nextToken();
@@ -3227,10 +3263,17 @@ public class MySqlStatementParser extends SQLStatementParser {
                         statementList.add(stmt);
                     }
                 } else {
-                    // 如果check replica table不带for channel，则视为对""的fsm操作
+                    // 如果check replica table不带channel，则视为对""的fsm操作
+                    SQLName mode = null;
+                    if (lexer.identifierEquals("MODE")) {
+                        lexer.nextToken();
+                        accept(EQ);
+                        mode = this.exprParser.name();
+                    }
                     SQLStartReplicaCheckTableStatement stmt = new SQLStartReplicaCheckTableStatement();
                     stmt.setDbName(dbName);
                     stmt.setTableName(tbName);
+                    stmt.setMode(mode);
                     statementList.add(stmt);
                 }
             }
@@ -4099,8 +4142,10 @@ public class MySqlStatementParser extends SQLStatementParser {
             explain.setType("COST_TRACE");
         } else if (lexer.identifierEquals("PIPELINE")) {
             lexer.nextToken();
-            ;
             explain.setType("PIPELINE");
+        } else if (lexer.identifierEquals("SNAPSHOT")) {
+            lexer.nextToken();
+            explain.setType("SNAPSHOT");
         }
 
         if (lexer.token() == Token.HINT) {
@@ -5758,6 +5803,16 @@ public class MySqlStatementParser extends SQLStatementParser {
                 }
                 return drdsShowPhysicalDdl;
             }
+
+            if (lexer.identifierEquals("ENGINE")) {
+                DrdsShowDdlEngineStatus drdsShowDdlEngineStatus = new DrdsShowDdlEngineStatus();
+                lexer.nextToken();
+                if (lexer.identifierEquals("STATUS")) {
+                    lexer.nextToken();
+                    return drdsShowDdlEngineStatus;
+                }
+                return drdsShowDdlEngineStatus;
+            }
             if (isEnabled(SQLParserFeature.DRDSAsyncDDL) && !lexer.identifierEquals("STATUS")) {
                 // SHOW [FULL] DDL [ <job_id> [ , <job_id> ] ... ].
                 DrdsShowDDLJobs showDDLJobs = new DrdsShowDDLJobs();
@@ -6712,6 +6767,20 @@ public class MySqlStatementParser extends SQLStatementParser {
             // TERMINATE REBALANCE { ALL | <job_id> [, <job_id>] ... }
             lexer.nextToken();
             DrdsTerminateRebalanceJob stmt = new DrdsTerminateRebalanceJob();
+            parseGenericDdlCommand(stmt);
+            return stmt;
+        }
+
+        throw new ParserException("Only support terminate rebalance .");
+    }
+
+    public SQLStatement parseResume() {
+        acceptIdentifier("RESUME");
+
+        if (isEnabled(SQLParserFeature.DRDSAsyncDDL) && lexer.identifierEquals("REBALANCE")) {
+            // RESUME REBALANCE { ALL | <job_id> [, <job_id>] ... }
+            lexer.nextToken();
+            DrdsResumeRebalanceJob stmt = new DrdsResumeRebalanceJob();
             parseGenericDdlCommand(stmt);
             return stmt;
         }
@@ -8107,6 +8176,27 @@ public class MySqlStatementParser extends SQLStatementParser {
         return item;
     }
 
+    protected SQLAlterTableOptimizePartition parseOptimizePartition() {
+        SQLAlterTableOptimizePartition item = new SQLAlterTableOptimizePartition();
+
+        lexer.nextToken();
+
+        if (lexer.identifierEquals(FnvHash.Constants.SUBPARTITION)) {
+            item.setSubPartition(true);
+            lexer.nextToken();
+        } else {
+            accept(Token.PARTITION);
+        }
+
+        if (lexer.token() == Token.ALL) {
+            item.getPartitions().add(new SQLIdentifierExpr("ALL"));
+            lexer.nextToken();
+        } else {
+            this.exprParser.names(item.getPartitions(), item);
+        }
+        return item;
+    }
+
     protected SQLAlterTableAddPartition parseAddPartition() {
         accept(Token.PARTITION);
 
@@ -8205,6 +8295,137 @@ public class MySqlStatementParser extends SQLStatementParser {
             accept(Token.RPAREN);
         }
         return alterItems;
+    }
+
+    protected DrdsAlterTableModifyTtlOptions parseModifyTtlOptions() {
+
+        DrdsAlterTableModifyTtlOptions modifyTtlOptions = new DrdsAlterTableModifyTtlOptions();
+
+        /**
+         * <pre>
+         * MODIFY TTL
+         * SET
+         *  TTL_ENABLE = 'ON'
+         *  TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+         *  TTL_JOB = CRON 'xxx' TIMEZONE '+08:00';
+         * </pre>
+         */
+
+        // skip lexer 'TTL'
+        lexer.nextToken();
+        // make sure next lexer must be set
+        if (lexer.token() == Token.SET) {
+            lexer.nextToken();
+        }
+
+        for (; ; ) {
+            boolean findOptions = false;
+
+            if (lexer.token() == Token.EOF) {
+                break;
+            }
+
+            if (lexer.token() == Token.SEMI) {
+                break;
+            }
+
+            if (lexer.token() == Token.COMMA) {
+                lexer.nextToken();
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_ENABLE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlEnableExpr = exprParser.charExpr();
+                modifyTtlOptions.setTtlEnable(ttlEnableExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_EXPR)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlExpr = MySqlCreateTableParser.parseTimeToLiveExpr(exprParser, lexer);
+                modifyTtlOptions.setTtlExpr(ttlExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_JOB)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlJobExpr = MySqlCreateTableParser.parseTimeToLiveJobExpr(exprParser, lexer);
+                modifyTtlOptions.setTtlJob(ttlJobExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_FILTER)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlFilter = exprParser.charExpr();
+                modifyTtlOptions.setTtlFilter(ttlFilter);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TYPE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr archiveTypeExpr = exprParser.charExpr();
+                modifyTtlOptions.setArchiveKind(archiveTypeExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_SCHEMA)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr archiveTableSchemaExpr = exprParser.charExpr();
+                modifyTtlOptions.setArchiveTableSchema(archiveTableSchemaExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_NAME)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr archiveTableNameExpr = exprParser.charExpr();
+                modifyTtlOptions.setArchiveTableName(archiveTableNameExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_PRE_ALLOCATE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr arcPreAllocateExpr = exprParser.integerExpr();
+                modifyTtlOptions.setArcPreAllocate(arcPreAllocateExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_POST_ALLOCATE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr arcPostAllocateExpr = exprParser.integerExpr();
+                modifyTtlOptions.setArcPostAllocate(arcPostAllocateExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.token() == Token.RPAREN) {
+                lexer.nextToken();
+                break;
+            }
+
+            if (!findOptions) {
+                throw new ParserException("syntax error " + lexer.info());
+            }
+        }
+
+        return modifyTtlOptions;
     }
 
     // parse MODIFY SUBPARTITION [(] sub_part_name ADD|DROP VALUES(),sub_part_name ADD|DROP VALUES(), ... [)]
@@ -8362,6 +8583,31 @@ public class MySqlStatementParser extends SQLStatementParser {
         accept(Token.TO);
         SQLName partitionName = this.exprParser.name();
         item.setTargetPartitionName(partitionName);
+        return item;
+    }
+
+    protected DrdsArchivePartition parseArchivePartition() {
+        DrdsArchivePartition item = new DrdsArchivePartition();
+        lexer.nextToken();
+
+        if (lexer.identifierEquals(FnvHash.Constants.SUBPARTITIONS)) {
+            item.setSubPartitionsArchive(true);
+            lexer.nextToken();
+        } else {
+            acceptIdentifier("PARTITIONS");
+        }
+
+        List<SQLName> partNames = new ArrayList<>();
+        while (true) {
+            SQLName partitionName = this.exprParser.name();
+            partNames.add(partitionName);
+            if (lexer.token() != Token.COMMA) {
+                break;
+            }
+            accept(Token.COMMA);
+        }
+        item.setPartitions(partNames);
+
         return item;
     }
 
@@ -9508,6 +9754,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                         // Index.
                         SQLAlterTableAddIndex item = new SQLAlterTableAddIndex();
                         this.exprParser.parseIndex(item.getIndexDefinition());
+                        if (lexer.token() == Token.HINT) {
+                            String execComment = lexer.stringVal();
+                            item.getIndexDefinition().getOptions().setExecComment(execComment);
+                            lexer.nextToken();
+                        }
                         stmt.addItem(item);
                     } else if (lexer.identifierEquals(FnvHash.Constants.EXTPARTITION)) {
                         // Caution: Not in MySql documents.
@@ -9772,6 +10023,19 @@ public class MySqlStatementParser extends SQLStatementParser {
                     }
 
                     return true;
+                } else if (lexer.identifierEquals("TTL")) {
+                    /**
+                     * <pre>
+                     * MODIFY TTL
+                     * SET
+                     *  TTL_ENABLE = 'ON'
+                     *  TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+                     *  TTL_JOB = CRON 'xxx' TIMEZONE '+08:00';
+                     * </pre>
+                     */
+                    DrdsAlterTableModifyTtlOptions modifyTtlOptions = parseModifyTtlOptions();
+                    stmt.addItem(modifyTtlOptions);
+                    return true;
                 } else {
                     // MODIFY [COLUMN] col_name column_definition [FIRST | AFTER col_name]
                     if (lexer.token() == Token.COLUMN) {
@@ -9895,6 +10159,13 @@ public class MySqlStatementParser extends SQLStatementParser {
                 this.exprParser.names(item.getPartitions(), item);
                 stmt.addItem(item);
                 return true;
+            } else if (lexer.identifierEquals("CLEANUP")) {
+                lexer.nextToken();
+                acceptIdentifier("EXPIRED");
+                acceptIdentifier("DATA");
+                DrdsAlterTableCleanupExpiredData item = new DrdsAlterTableCleanupExpiredData();
+                stmt.addItem(item);
+                return true;
             } else if (lexer.identifierEquals("REORGANIZE")) {
                 // REORGANIZE PARTITION partition_names INTO (partition_definitions)
                 SQLAlterTableReorgPartition item = parseReorgPartition();
@@ -9964,9 +10235,20 @@ public class MySqlStatementParser extends SQLStatementParser {
                     acceptIdentifier("PARTITIONING");
                     stmt.setRemoveLocalPatiting(true);
                     return true;
+                } else if (lexer.identifierEquals("TTL")) {
+                    /**
+                     * <pre>
+                     * REMOVE TTL
+                     * </pre>
+                     */
+                    lexer.nextToken();
+                    DrdsAlterTableRemoveTtlOptions removeTtlOptions = new DrdsAlterTableRemoveTtlOptions();
+                    stmt.addItem(removeTtlOptions);
+                    return true;
                 }
                 acceptIdentifier("PARTITIONING");
                 stmt.setRemovePatiting(true);
+                return true;
             } else if (lexer.identifierEquals("UPGRADE")) {
                 // UPGRADE PARTITIONING
                 lexer.nextToken();
@@ -10369,15 +10651,18 @@ public class MySqlStatementParser extends SQLStatementParser {
 
         case OPTIMIZE: {
             // OPTIMIZE PARTITION {partition_names | ALL}
-            lexer.nextToken();
-            accept(Token.PARTITION);
-            SQLAlterTableOptimizePartition item = new SQLAlterTableOptimizePartition();
-            if (lexer.token() == Token.ALL) {
-                lexer.nextToken();
-                item.getPartitions().add(new SQLIdentifierExpr("ALL"));
-            } else {
-                this.exprParser.names(item.getPartitions(), item);
-            }
+            SQLAlterTableOptimizePartition item = parseOptimizePartition();
+
+//            lexer.nextToken();
+//            accept(Token.PARTITION);
+//            SQLAlterTableOptimizePartition item = new SQLAlterTableOptimizePartition();
+//            if (lexer.token() == Token.ALL) {
+//                lexer.nextToken();
+//                item.getPartitions().add(new SQLIdentifierExpr("ALL"));
+//            } else {
+//                this.exprParser.names(item.getPartitions(), item);
+//            }
+
             stmt.addItem(item);
             return true;
         }
@@ -10544,6 +10829,11 @@ public class MySqlStatementParser extends SQLStatementParser {
             stmt.setLocalPartition(localPartitionClause);
         }
 
+        if (lexer.identifierEquals("ARCHIVE")) {
+            DrdsArchivePartition archivePartition = parseArchivePartition();
+            stmt.setDrdsArchivePartition(archivePartition);
+        }
+
         // partition_options
         if (Token.PARTITION == lexer.token()) {
             Lexer.SavePoint mark = lexer.mark();
@@ -10580,7 +10870,7 @@ public class MySqlStatementParser extends SQLStatementParser {
             }
         }
 
-        if (stmt.getItems().size() >= 1 || (stmt.getItems().size() == 0 && stmt.getPartition() != null)) {
+        if (stmt.getItems().size() >= 1 || (stmt.getItems().size() == 0 && stmt.getPartition() != null) || stmt.isRemovePatiting()) {
             SQLAlterTableItem sqlAlterTableItem = stmt.getItems().size() >= 1 ? stmt.getItems().get(0) : null;
             boolean partitionReorg =
                 sqlAlterTableItem instanceof DrdsSplitPartition
@@ -10599,7 +10889,11 @@ public class MySqlStatementParser extends SQLStatementParser {
                     || sqlAlterTableItem instanceof SQLAlterTableDropPartition
                     || sqlAlterTableItem instanceof SQLAlterTableDropSubpartition
                     || sqlAlterTableItem instanceof MySqlAlterTableModifyColumn
-                    || stmt.getPartition() != null;
+                    || stmt.getPartition() != null
+                    || stmt.isRemovePatiting();
+            if (!partitionReorg && stmt.getItems().size() > 1) {
+                partitionReorg = stmt.getItems().stream().anyMatch(o -> o instanceof MySqlAlterTableModifyColumn);
+            }
             if (partitionReorg) {
                 if (lexer.token() == Token.WITH) {
                     lexer.nextToken();
@@ -10731,12 +11025,14 @@ public class MySqlStatementParser extends SQLStatementParser {
                 || lexer.identifierEquals(FnvHash.Constants.SET)
                 || lexer.identifierEquals(FnvHash.Constants.DROP)
                 || lexer.identifierEquals(FnvHash.Constants.TRUNCATE)
+                || lexer.identifierEquals(FnvHash.Constants.OPTIMIZER)
                 || (opName.equalsIgnoreCase("SPLIT")
                 || opName.equalsIgnoreCase("MERGE") || opName.equalsIgnoreCase("MOVE")
                 || opName.equalsIgnoreCase("ADD") || opName.equalsIgnoreCase("MODIFY")
                 || opName.equalsIgnoreCase("REORGANIZE") || opName.equalsIgnoreCase("RENAME")
                 || opName.equalsIgnoreCase("SET") || opName.equalsIgnoreCase("EXTRACT")
-                || opName.equalsIgnoreCase("DROP") || opName.equalsIgnoreCase("TRUNCATE")
+                || opName.equalsIgnoreCase("DROP") || opName.equalsIgnoreCase("TRUNCATE") || opName.equalsIgnoreCase(
+                "OPTIMIZE")
             )
             ) {
 

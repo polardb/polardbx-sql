@@ -1,9 +1,7 @@
 package com.alibaba.polardbx.qatest.NotThreadSafe;
 
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
-import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.NotThreadSafe.DeadlockTest;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang.StringUtils;
@@ -35,6 +33,7 @@ public class DeadlockAutoTest extends DDLBaseNewDBTestCase {
     @Before
     public void before() {
         JdbcUtil.executeSuccess(tddlConnection, "set global ENABLE_DEADLOCK_DETECTION_80 = true");
+        JdbcUtil.executeSuccess(tddlConnection, "set global MAX_KEEP_DEADLOCK_LOGS = 10000");
     }
 
     @Test(timeout = 60000)
@@ -58,9 +57,11 @@ public class DeadlockAutoTest extends DDLBaseNewDBTestCase {
             connections.add(getPolardbxConnection());
         }
         try {
+            long before = queryInfoSchemaDeadlocks();
             createTable(tableName, single);
             innerTest(tableName, connections);
             testShowDeadlocks(tableName, single);
+            ensureMoreDeadlocks(before);
         } finally {
             clear(connections, tableName);
         }
@@ -178,7 +179,7 @@ public class DeadlockAutoTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         // Create a partition table
-        sql = "create table " + tableName + " (id int primary key)" + (single ? "" :
+        sql = "create table " + tableName + " (id int primary key)" + (single ? " single " :
             " partition by hash(id) partitions 3");
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
@@ -209,4 +210,26 @@ public class DeadlockAutoTest extends DDLBaseNewDBTestCase {
         }
         Assert.assertTrue(flag);
     }
+
+    public long queryInfoSchemaDeadlocks() throws SQLException {
+        final String sql = "SELECT count(0) FROM information_schema.deadlocks";
+        final ResultSet rs2 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        if (rs2.next()) {
+            return rs2.getLong(1);
+        }
+        return 0;
+    }
+
+    private void ensureMoreDeadlocks(long before) throws SQLException {
+        int retry = 0;
+        while (queryInfoSchemaDeadlocks() - before < 1 && retry++ < 10) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        Assert.assertTrue("Not found more records in info_schema.deadlocks", retry < 10);
+    }
+
 }

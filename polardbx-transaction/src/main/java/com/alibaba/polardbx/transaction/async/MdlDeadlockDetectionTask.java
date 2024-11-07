@@ -24,6 +24,8 @@ import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.logger.MDC;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -33,15 +35,19 @@ import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
 import com.alibaba.polardbx.executor.utils.transaction.LocalTransaction;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLock;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.gms.metadb.trx.DeadlocksAccessor;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
-import com.alibaba.polardbx.transaction.sync.FetchTransForDeadlockDetectionSyncAction;
+import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.utils.DiGraph;
 import com.google.common.collect.ImmutableSet;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -53,6 +59,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -67,7 +74,6 @@ import static com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet.Trans
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildGroupNameFromPhysicalDb;
 import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildPhysicalDbNameFromGroupName;
-import static java.lang.Math.min;
 
 /**
  * activates if these conditions are met:
@@ -91,6 +97,12 @@ public class MdlDeadlockDetectionTask implements Runnable {
     private final TransactionExecutor executor;
 
     private static Class killSyncActionClass;
+
+    private static final String PENDING_STATUS = "PENDING";
+
+    private static final String GRANTED_STATUS = "GRANTED";
+
+    private Collection<String> allSchema;
 
     private static final Set<String> DDL_WAIT_MDL_LOCK_TYPE =
         ImmutableSet.of(
@@ -134,10 +146,27 @@ public class MdlDeadlockDetectionTask implements Runnable {
             + "AND "
             + "(`pt`.`PROCESSLIST_ID` != `gt`.`PROCESSLIST_ID`)";
 
+    private static final String SELECT_MDL_WAITING_ONLY =
+        "select "
+            + "`g`.`OBJECT_SCHEMA` AS `object_schema`,"
+            + "`g`.`OBJECT_NAME` AS `object_name`,"
+            + "`g`.`OBJECT_TYPE` AS `object_type`,"
+            + "`g`.`LOCK_TYPE` AS `lock_type`,"
+            + "`g`.`LOCK_STATUS` AS `lock_status`,"
+            + "`g`.`OWNER_THREAD_ID` AS `owner_thread_id` "
+            + "from `performance_schema`.`metadata_locks` `g` ";
+
+    private static final String SELECT_THREADS_ONLY =
+        "select "
+            + "`t`.`THREAD_ID` AS `thread_id`,"
+            + "`t`.`PROCESSLIST_ID` AS `processlist_id`,"
+            + "`t`.`PROCESSLIST_INFO` AS `processlist_info`,"
+            + "`t`.`PROCESSLIST_TIME` AS `processlist_time` "
+            + "from `performance_schema`.`threads` `t` ";
     /**
      * DDL will wait for MDL for some seconds, then kill the query which held the MDL
      */
-    private long MDL_WAIT_TIMEOUT;
+    private static AtomicLong MDL_WAIT_TIMEOUT = new AtomicLong(15);
 
     static {
         // 只有server支持，这里是暂时改法，后续要将这段逻辑解耦
@@ -149,10 +178,125 @@ public class MdlDeadlockDetectionTask implements Runnable {
         }
     }
 
-    public MdlDeadlockDetectionTask(String db, TransactionExecutor executor, int mdlWaitTimeoutInSec) {
+    public MdlDeadlockDetectionTask(String db, Collection<String> allSchema, TransactionExecutor executor,
+                                    int mdlWaitTimeoutInSec) {
         this.db = db;
         this.executor = executor;
-        this.MDL_WAIT_TIMEOUT = mdlWaitTimeoutInSec;
+        this.allSchema = allSchema;
+        MDL_WAIT_TIMEOUT.set(mdlWaitTimeoutInSec);
+    }
+
+    private static class DbTableName {
+        String dbName;
+        String tableName;
+        String objectType;
+
+        static String phyTableNameFormat = "%s.%s";
+
+        public DbTableName(String dbName, String tableName, String objectType) {
+            this.dbName = dbName;
+            this.tableName = tableName;
+            this.objectType = objectType;
+        }
+
+        public Boolean isTable() {
+            return objectType.equalsIgnoreCase("TABLE");
+        }
+
+        public String getPhyTableName() {
+            return String.format(phyTableNameFormat, SqlIdentifier.surroundWithBacktick(dbName),
+                SqlIdentifier.surroundWithBacktick(tableName));
+        }
+
+    }
+
+    private static class MdlLockInfo {
+        String lockStatus;
+        String lockType;
+        Long threadId;
+
+        public MdlLockInfo(String lockStatus, String lockType, Long threadId) {
+            this.lockStatus = lockStatus;
+            this.lockType = lockType;
+            this.threadId = threadId;
+        }
+    }
+
+    private static class ProcessInfo {
+        Long processId;
+        Object processInfo;
+        Long runningTime;
+
+        public ProcessInfo(Long processId, Object processInfo, Long runningTime) {
+            this.processId = processId;
+            this.processInfo = processInfo;
+            this.runningTime = runningTime;
+        }
+    }
+
+    private static class MdlLockInfoSet {
+        Map<String, List<MdlLockInfo>> mdlLockInfoMap;
+        Boolean markForMdlWaiting;
+
+        MdlLockInfoSet() {
+            this.mdlLockInfoMap = new HashMap<>();
+            this.markForMdlWaiting = false;
+        }
+
+        public void append(MdlLockInfo mdlLockInfo) {
+            if (!this.mdlLockInfoMap.containsKey(mdlLockInfo.lockType)) {
+                this.mdlLockInfoMap.put(mdlLockInfo.lockType, new ArrayList<>());
+            }
+            this.mdlLockInfoMap.get(mdlLockInfo.lockType).add(mdlLockInfo);
+            if (this.markForMdlWaiting == false && DDL_WAIT_MDL_LOCK_TYPE.contains(mdlLockInfo.lockType)
+                && mdlLockInfo.lockStatus.equalsIgnoreCase(PENDING_STATUS)) {
+                this.markForMdlWaiting = true;
+            }
+        }
+
+        public List<MdlWaitInfo> fetchWaitForInfoList(DbTableName dbTableName) {
+            List<MdlWaitInfo> waitInfoList = new ArrayList<>();
+            MdlLockInfo waitingMdlLockInfo = null;
+            for (String lockType : this.mdlLockInfoMap.keySet()) {
+                if (DDL_WAIT_MDL_LOCK_TYPE.contains(lockType)) {
+                    if (waitingMdlLockInfo == null) {
+                        List<MdlLockInfo> mdlLockInfos = this.mdlLockInfoMap.get(lockType);
+                        for (MdlLockInfo mdlLockInfo : mdlLockInfos) {
+                            if (mdlLockInfo.lockStatus.equalsIgnoreCase(PENDING_STATUS)) {
+                                waitingMdlLockInfo = mdlLockInfo;
+                            }
+                        }
+                    }
+                }
+            }
+            for (String lockType : this.mdlLockInfoMap.keySet()) {
+                if (waitingMdlLockInfo != null && !DDL_WAIT_MDL_LOCK_TYPE.contains(lockType)) {
+                    List<MdlLockInfo> mdlLockInfos = this.mdlLockInfoMap.get(lockType);
+                    for (MdlLockInfo mdlLockInfo : mdlLockInfos) {
+                        if (mdlLockInfo.lockStatus.equalsIgnoreCase(GRANTED_STATUS)
+                            && !waitingMdlLockInfo.threadId.equals(mdlLockInfo.threadId)) {
+                            MdlWaitInfo mdlWaitInfo = new MdlWaitInfo(
+                                waitingMdlLockInfo.threadId,
+                                mdlLockInfo.threadId,
+                                waitingMdlLockInfo.lockType,
+                                mdlLockInfo.lockType,
+                                -1L,
+                                "",
+                                "",
+                                dbTableName.dbName,
+                                dbTableName.tableName,
+                                null);
+                            waitInfoList.add(mdlWaitInfo);
+                        }
+                    }
+                }
+            }
+            return waitInfoList;
+        }
+
+        public Boolean getMarkForMdlWaiting() {
+            return this.markForMdlWaiting;
+        }
     }
 
     /**
@@ -168,49 +312,114 @@ public class MdlDeadlockDetectionTask implements Runnable {
      * @param mysqlConn2DatasourceMap is updated in this method
      * @param mdlWaitInfoList is updated in this method
      */
-    public void fetchMetaDataLockWaits(TGroupDataSource dataSource,
-                                       Collection<String> groupNames,
-                                       DiGraph<TrxLookupSet.Transaction> graph,
-                                       TrxLookupSet lookupSet,
-                                       Map<Long, TGroupDataSource> mysqlConn2DatasourceMap,
-                                       List<MdlWaitInfo> mdlWaitInfoList) {
+    public static void fetchMetaDataLockWaits(String dn, TGroupDataSource dataSource,
+                                              Collection<String> groupNames,
+                                              DiGraph<TrxLookupSet.Transaction> graph,
+                                              TrxLookupSet lookupSet,
+                                              Map<Long, TGroupDataSource> mysqlConn2DatasourceMap,
+                                              List<MdlWaitInfo> mdlWaitInfoList) {
+        Long startMoment = System.currentTimeMillis();
+        Long fetchMdlMoment = startMoment;
+        Long processMdlMoment = startMoment;
+        Long fetchProcessMoment = startMoment;
+        Long processProcessMoment = startMoment;
+        Long finalMoment = startMoment;
+        int mdlCount = 0;
+        int processCount = 0;
         final Map<Long, TrxLookupSet.Transaction> ddlTrxMap = new HashMap<>();
         final Set<String> phyDbNames =
             groupNames.stream().map(o -> buildPhysicalDbNameFromGroupName(o).toUpperCase()).collect(
                 Collectors.toSet());
         String masterDnId = dataSource.getMasterDNId();
+        List<MdlWaitInfo> mdlWaitInfoOnDataSource = new ArrayList<>();
         try (final Connection conn = DeadlockDetectionTask.createPhysicalConnectionForLeaderStorage(dataSource);
             Statement stmt = conn.createStatement()) {
-            final ResultSet rs = stmt.executeQuery(SELECT_PERFORMANCE_SCHEMA_METALOCKS);
-            while (rs.next()) {
+//            final ResultSet rs = stmt.executeQuery(SELECT_PERFORMANCE_SCHEMA_METALOCKS);
+            Map<String, MdlLockInfoSet> objectMdlMap = new HashMap<>();
+            Boolean markForFetchThreadInfo = false;
+            Map<String, DbTableName> dbTableNameMap = new HashMap<>();
+            try (final ResultSet rs = stmt.executeQuery(SELECT_MDL_WAITING_ONLY)) {
+                while (rs.next()) {
+                    mdlCount++;
+                    final String objectSchema = rs.getString("object_schema");
+                    final String objectName = rs.getString("object_name");
+                    final String objectType = rs.getString("object_type");
+                    final String lockStatus = rs.getString("lock_status");
+                    final String lockType = rs.getString("lock_type");
+                    final Long threadId = rs.getLong("owner_thread_id");
+                    DbTableName dbTableName = new DbTableName(objectSchema, objectName, objectType);
+                    if (!dbTableName.isTable()) {
+                        continue;
+                    }
+                    String phyTableName = dbTableName.getPhyTableName();
+                    if (!objectMdlMap.containsKey(phyTableName)) {
+                        objectMdlMap.put(phyTableName, new MdlLockInfoSet());
+                        dbTableNameMap.put(phyTableName, dbTableName);
+                    }
+                    objectMdlMap.get(phyTableName).append(new MdlLockInfo(lockStatus, lockType, threadId));
+                }
+            }
+            fetchMdlMoment = System.currentTimeMillis();
+            for (String phyTableName : objectMdlMap.keySet()) {
+                MdlLockInfoSet mdlLockInfoSet = objectMdlMap.get(phyTableName);
+                if (mdlLockInfoSet.getMarkForMdlWaiting()) {
+                    // short-way for non-ddl-waiting occasion.
+                    markForFetchThreadInfo = true;
+                    DbTableName dbTableName = dbTableNameMap.get(phyTableName);
+                    mdlWaitInfoOnDataSource.addAll(mdlLockInfoSet.fetchWaitForInfoList(dbTableName));
+                }
+            }
+
+            processMdlMoment = System.currentTimeMillis();
+            fetchProcessMoment = processMdlMoment;
+            if (markForFetchThreadInfo) {
+                Map<Long, ProcessInfo> processInfoMap = new HashMap<Long, ProcessInfo>();
+                try (final ResultSet rs2 = stmt.executeQuery(SELECT_THREADS_ONLY)) {
+                    while (rs2.next()) {
+                        processCount++;
+                        final Long threadId = rs2.getLong("thread_id");
+                        final Long processId = rs2.getLong("processlist_id");
+                        // getString processlist_info is very costly
+                        final Object processInfo = rs2.getObject("processlist_info");
+                        final Long processTime = rs2.getLong("processlist_time");
+                        processInfoMap.put(threadId, new ProcessInfo(processId, processInfo, processTime));
+                    }
+                }
+                fetchProcessMoment = System.currentTimeMillis();
+                for (MdlWaitInfo mdlWaitInfo : mdlWaitInfoOnDataSource) {
+                    // update thread id => process id, and update process info, and more.
+                    mdlWaitInfo.updateProcessInfo(processInfoMap.get(mdlWaitInfo.waiting),
+                        processInfoMap.get(mdlWaitInfo.blocking), dataSource);
+                }
+            }
+
+            processProcessMoment = System.currentTimeMillis();
+
+            for (MdlWaitInfo mdlWaitInfo : mdlWaitInfoOnDataSource) {
                 // Get the waiting and blocking processlist id
-                final long waiting = rs.getLong("waiting_pid");
-                final long blocking = rs.getLong("blocking_pid");
+                final long waiting = mdlWaitInfo.waiting;
+                final long blocking = mdlWaitInfo.blocking;
 
                 // Update mysqlConn2DatasourceMap
                 mysqlConn2DatasourceMap.put(waiting, dataSource);
                 mysqlConn2DatasourceMap.put(blocking, dataSource);
 
-                final String waitingQuery = rs.getString("waiting_query");
-                final long waitingQuerySecs = rs.getLong("waiting_query_secs");
-                final String waitingLockType = rs.getString("waiting_lock_type");
-                final String blockingLockType = rs.getString("blocking_lock_type");
-                final String physicalDbName = rs.getString("object_schema");
-                final String blockingQuery = rs.getString("blocking_query");
-                final String physicalTableName = rs.getString("object_name");
+                final Object waitingQuery = mdlWaitInfo.waitingQuery;
+                final long waitingQuerySecs = mdlWaitInfo.waitingQuerySecs;
+                final String waitingLockType = mdlWaitInfo.waitingLockType;
+                final String blockingLockType = mdlWaitInfo.blockingLockType;
+                final String physicalDbName = mdlWaitInfo.phyDbName;
+                final Object blockingQuery = mdlWaitInfo.blockingQuery;
+                final String physicalTableName = mdlWaitInfo.phyTableName;
 
                 // Update mdlWaitInfoList, it is used to do the following thing:
                 // If A is waiting for EXCLUSIVE MDL blocked by B, and B is holding a non-EXCLUSIVE MDL lock
                 // Then we kill B
-                if (waitingQuerySecs >= MDL_WAIT_TIMEOUT &&
+                if (waitingQuerySecs >= MDL_WAIT_TIMEOUT.get() &&
                     DDL_WAIT_MDL_LOCK_TYPE.contains(waitingLockType.toUpperCase()) &&
                     !DDL_WAIT_MDL_LOCK_TYPE.contains(blockingLockType.toUpperCase()) &&
                     phyDbNames.contains(physicalDbName.toUpperCase())) {
-                    MdlWaitInfo mdlInfo =
-                        new MdlWaitInfo(waiting, blocking, waitingLockType, waitingQuerySecs, waitingQuery,
-                            blockingQuery, physicalDbName, physicalTableName, dataSource);
-
-                    mdlWaitInfoList.add(mdlInfo);
+                    mdlWaitInfoList.add(mdlWaitInfo);
                 }
 
                 // The wait-block relation is not so accurate.
@@ -222,7 +431,8 @@ public class MdlDeadlockDetectionTask implements Runnable {
 
                 // Get the waiting and blocking transaction
                 final Triple<TrxLookupSet.Transaction, TrxLookupSet.Transaction, String> waitingAndBlockingTrx =
-                    lookupSet.getWaitingAndBlockingTrx(groupNames, waiting, blocking);
+                    lookupSet.getWaitingAndBlockingTrx(
+                        Collections.singletonList(buildGroupNameFromPhysicalDb(physicalDbName)), waiting, blocking);
 
                 // Update waiting trx/DDL
                 TrxLookupSet.Transaction waitingTrx = waitingAndBlockingTrx.getLeft();
@@ -247,12 +457,12 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 }
                 // Update other information of waiting trx
                 if (null != waitingQuery) {
-                    final String truncatedSql = waitingQuery.substring(0, min(waitingQuery.length(), 4096));
+                    final Object truncatedSql = waitingQuery;
                     waitingLocalTrx.setPhysicalSql(truncatedSql);
                 }
 
                 final String physicalTable = String.format("`%s`.`%s`",
-                    rs.getString("object_schema"), rs.getString("object_name"));
+                    mdlWaitInfo.phyDbName, mdlWaitInfo.phyTableName);
                 if (null == waitingLocalTrx.getWaitingTrxLock()) {
                     // A lock id represents a unique lock,
                     // and we use {schema.table:lock type} to represent an MDL lock id
@@ -276,7 +486,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
                     // Note that this fake transaction should have only one local transaction
                     blockingLocalTrx =
                         blockingTrx.getLocalTransaction(FAKE_GROUP_FOR_DDL);
-                    final long blockingQuerySecs = rs.getLong("blocking_query_secs");
+                    final long blockingQuerySecs = mdlWaitInfo.waitingQuerySecs;
                     final Long startTime = System.currentTimeMillis() - blockingQuerySecs * 1000;
                     blockingTrx.setStartTime(startTime);
                 } else {
@@ -285,7 +495,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 }
                 // Update other information of blocking trx
                 if (null != blockingQuery && null == blockingLocalTrx.getPhysicalSql()) {
-                    final String truncatedSql = blockingQuery.substring(0, min(blockingQuery.length(), 4096));
+                    final Object truncatedSql = blockingQuery;
                     blockingLocalTrx.setPhysicalSql(truncatedSql);
                 }
 
@@ -295,10 +505,25 @@ public class MdlDeadlockDetectionTask implements Runnable {
                 blockingLocalTrx.addHoldingTrxLock(new TrxLock(lockId, blockingLockType, physicalTable));
                 graph.addDiEdge(waitingTrx, blockingTrx);
             }
+            finalMoment = System.currentTimeMillis();
+            if (mdlWaitInfoList.size() > 0 || mdlCount > 100 || processCount > 100 || finalMoment - startMoment > 10) {
+                String logInfo = String.format(
+                    "mdl detection task fetch mdl cost total %d ms on dn %s(%s), fetch %d mdl, fetch %d process, generate %d mdl wait info: -----with %d ms on fetch mdl, %d ms on process mdl, %d ms on fetch process, %d ms on process process, %d ms on deadlock detect",
+                    finalMoment - startMoment, dataSource.getMasterDNId(), dn, mdlCount, processCount,
+                    mdlWaitInfoList.size(),
+                    fetchMdlMoment - startMoment, processMdlMoment - fetchMdlMoment,
+                    fetchProcessMoment - processMdlMoment,
+                    processProcessMoment - fetchProcessMoment,
+                    finalMoment - processProcessMoment);
+                SQLRecorderLogger.ddlLogger.warn(logInfo);
+            }
         } catch (SQLException ex) {
             final String dnId = dataSource.getMasterSourceAddress();
-            throw new RuntimeException(
-                String.format("Failed to fetch lock waits on data source %s. msg:%s", dnId, ex.getMessage()), ex);
+            final String logInfo =
+                String.format("Failed to fetch lock waits on data source %s. msg:%s", dnId,
+                    Optional.of(ex.getMessage()).orElse(" unknown cause"));
+            SQLRecorderLogger.ddlLogger.error(logInfo);
+            throw new RuntimeException(logInfo, ex);
         }
     }
 
@@ -306,35 +531,9 @@ public class MdlDeadlockDetectionTask implements Runnable {
      * @return Whether the blocking lock should block the waiting lock.
      * For example, SHARED_WRITE should NOT block SHARED_WRITE.
      */
-    private boolean notBlockMdlType(String waitingLockType, String blockingLockType) {
+    private static boolean notBlockMdlType(String waitingLockType, String blockingLockType) {
         final Set<String> notBlockMdlType = ImmutableSet.of("SHARED_WRITE", "SHARED_READ");
         return notBlockMdlType.contains(waitingLockType) && notBlockMdlType.contains(blockingLockType);
-    }
-
-    /**
-     * Fetch all transactions on the given db
-     */
-    public TrxLookupSet fetchTransInfo(String db) {
-        final TrxLookupSet lookupSet = new TrxLookupSet();
-        final List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(new FetchTransForDeadlockDetectionSyncAction(db), db, SyncScope.NOT_COLUMNAR_SLAVE);
-        for (List<Map<String, Object>> result : results) {
-            if (result == null) {
-                continue;
-            }
-            for (Map<String, Object> row : result) {
-                final Long transId = (Long) row.get("TRANS_ID");
-                final String group = (String) row.get("GROUP");
-                final long connId = (Long) row.get("CONN_ID");
-                final long frontendConnId = (Long) row.get("FRONTEND_CONN_ID");
-                final Long startTime = (Long) row.get("START_TIME");
-                final String sql = (String) row.get("SQL");
-                final GroupConnPair entry = new GroupConnPair(group, connId);
-                lookupSet.addNewTransaction(entry, transId);
-                lookupSet.updateTransaction(transId, frontendConnId, sql, startTime);
-            }
-        }
-        return lookupSet;
     }
 
     private void killByFrontendConnId(long frontendConnId) {
@@ -364,8 +563,31 @@ public class MdlDeadlockDetectionTask implements Runnable {
         }
     }
 
+    private void killByBackendConnIds(final List<Long> backendConnIds, final TGroupDataSource dataSource) {
+        if (backendConnIds == null || null == dataSource) {
+            return;
+        }
+        String masterDnId = dataSource.getMasterDNId();
+        try (Connection conn = DeadlockDetectionTask.createPhysicalConnectionForLeaderStorage(dataSource);
+            Statement stmt = conn.createStatement()) {
+            List<String> sqls = new ArrayList<>();
+            for (Long backendConnId : backendConnIds) {
+                sqls.add(String.format("kill %s", backendConnId));
+            }
+            stmt.executeUpdate(StringUtils.join(sqls, ";"));
+        } catch (SQLException ex) {
+            final String dnId = dataSource.getMasterSourceAddress();
+            throw new RuntimeException("Failed to kill connection on datasource " + dnId, ex);
+        }
+    }
+
     @Override
     public void run() {
+
+        MDC.put(MDC.MDC_KEY_APP, DEFAULT_DB_NAME);
+        if (!ConfigDataMode.isPolarDbX()) {
+            cancel();
+        }
 
         boolean hasLeadership = ExecUtils.hasLeadership(db);
 
@@ -374,34 +596,34 @@ public class MdlDeadlockDetectionTask implements Runnable {
             return;
         }
 
-        if (!runningCountByDb.containsKey(db)) {
-            runningCountByDb.put(db, new AtomicLong(0));
+        if (!runningCountByDb.containsKey(DEFAULT_DB_NAME)) {
+            runningCountByDb.put(DEFAULT_DB_NAME, new AtomicLong(0));
         }
 
         int phyiscalMdlWaitTimeout = DynamicConfig.getInstance().getPhyiscalMdlWaitTimeout();
         if (phyiscalMdlWaitTimeout <= 0) {
-            if (runningCountByDb.get(db).get() > 0L) {
+            if (runningCountByDb.get(DEFAULT_DB_NAME).get() > 0L) {
                 EventLogger.log(EventType.DEAD_LOCK_DETECTION,
-                    String.format("mdl detection has been shutdown for db %s!", db));
-                runningCountByDb.get(db).set(-1L);
+                    String.format("mdl detection has been shutdown for db %s!", DEFAULT_DB_NAME));
+                runningCountByDb.get(DEFAULT_DB_NAME).set(-1L);
             }
             TransactionLogger.debug("Skip MDL deadlock detection task since dn mdl wait timeout is negative or zero");
             return;
         } else {
-            MDL_WAIT_TIMEOUT = Math.max(phyiscalMdlWaitTimeout, 5);
-            long runningCount = runningCountByDb.get(db).get();
+            MDL_WAIT_TIMEOUT.set(Math.max(phyiscalMdlWaitTimeout, 5));
+            long runningCount = runningCountByDb.get(DEFAULT_DB_NAME).get();
             if (runningCount < 0L) {
                 EventLogger.log(EventType.DEAD_LOCK_DETECTION,
-                    String.format("mdl detection has been launched for db %s, wait timeout %s s!", db,
+                    String.format("mdl detection has been launched for db %s, wait timeout %s s!", DEFAULT_DB_NAME,
                         MDL_WAIT_TIMEOUT));
-                runningCountByDb.get(db).set(1L);
+                runningCountByDb.get(DEFAULT_DB_NAME).set(1L);
             } else {
                 if (runningCount % 100L == 0) {
                     EventLogger.log(EventType.DEAD_LOCK_DETECTION,
                         String.format("mdl detection has been running for db %s, running count %d, wait timeout %s s!",
-                            db, runningCount, MDL_WAIT_TIMEOUT));
+                            DEFAULT_DB_NAME, runningCount, MDL_WAIT_TIMEOUT));
                 }
-                runningCountByDb.get(db).incrementAndGet();
+                runningCountByDb.get(DEFAULT_DB_NAME).incrementAndGet();
             }
         }
 
@@ -421,16 +643,17 @@ public class MdlDeadlockDetectionTask implements Runnable {
         final DiGraph<TrxLookupSet.Transaction> graph = new DiGraph<>();
 
         // Get all global transaction information
-        final TrxLookupSet lookupSet = fetchTransInfo(db);
+        final TrxLookupSet lookupSet = DeadlockDetectionTask.fetchTransInfo();
 
         // Get all group data sources, and group by DN's ID (host:port)
-        final Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(db);
+        final Map<String, List<TGroupDataSource>> instId2GroupList = ExecUtils.getInstId2GroupList(allSchema);
 
         final Map<Long, TGroupDataSource> mysqlConn2DatasourceMap = new HashMap<>();
         List<MdlWaitInfo> mdlWaitInfoList = new ArrayList<>();
 
         // For each DN, find the lock-wait information and add it to the graph
-        for (final List<TGroupDataSource> groupDataSources : instId2GroupList.values()) {
+        for (String dn : instId2GroupList.keySet()) {
+            final List<TGroupDataSource> groupDataSources = instId2GroupList.get(dn);
             if (CollectionUtils.isNotEmpty(groupDataSources)) {
                 // Since all data sources are in the same DN, any data source is ok
                 final TGroupDataSource groupDataSource = groupDataSources.get(0);
@@ -441,7 +664,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
 
                 // Fetch MDL-lock-wait information for this DN,
                 // and update the graph, the lookup set, the mysqlConn2GroupMap, and the mdlWaitInfoList
-                fetchMetaDataLockWaits(groupDataSource, groupNames,
+                fetchMetaDataLockWaits(dn, groupDataSource, groupNames,
                     graph, lookupSet, mysqlConn2DatasourceMap, mdlWaitInfoList);
             }
         }
@@ -498,6 +721,16 @@ public class MdlDeadlockDetectionTask implements Runnable {
 
             // Store deadlock log in StorageInfoManager so that executor can access it
             StorageInfoManager.updateMdlDeadlockInfo(fullDeadlockLog.toString());
+
+            // Record deadlock in meta db.
+            try (Connection connection = MetaDbUtil.getConnection()) {
+                DeadlocksAccessor deadlocksAccessor = new DeadlocksAccessor();
+                deadlocksAccessor.setConnection(connection);
+                deadlocksAccessor.recordDeadlock(GlobalTxLogManager.getCurrentServerAddr(), "MDL",
+                    fullDeadlockLog.toString());
+            } catch (Exception e) {
+                logger.error(e);
+            }
         });
 
         if (CollectionUtils.isNotEmpty(mdlWaitInfoList)) {
@@ -561,10 +794,11 @@ public class MdlDeadlockDetectionTask implements Runnable {
         long waiting;
         long blocking;
         String waitingLockType;
+        String blockingLockType;
         long waitingQuerySecs;
-        String waitingQuery;
+        Object waitingQuery;
 
-        String blockingQuery;
+        Object blockingQuery;
         TGroupDataSource dataSource;
 
         String phyDbName;
@@ -574,6 +808,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
         public MdlWaitInfo(final long waiting,
                            final long blocking,
                            final String waitingLockType,
+                           final String blockingLockType,
                            final long waitingQuerySecs,
                            final String waitingQuery,
                            final String blockingQuery,
@@ -583,6 +818,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
             this.waiting = waiting;
             this.blocking = blocking;
             this.waitingLockType = waitingLockType;
+            this.blockingLockType = blockingLockType;
             this.waitingQuerySecs = waitingQuerySecs;
             this.waitingQuery = Optional.ofNullable(waitingQuery).orElse("");
             this.blockingQuery = Optional.ofNullable(blockingQuery).orElse("");
@@ -590,9 +826,31 @@ public class MdlDeadlockDetectionTask implements Runnable {
             this.phyTableName = phyTableName;
             this.dataSource = dataSource;
         }
+
+        public void updateProcessInfo(ProcessInfo waitingProcessInfo, ProcessInfo blockingProcessInfo,
+                                      TGroupDataSource dataSource) {
+            if (waitingProcessInfo != null) {
+                if (waitingProcessInfo.processInfo != null) {
+                    this.waitingQuery = waitingProcessInfo.processInfo;
+                }
+                this.waitingQuerySecs = waitingProcessInfo.runningTime;
+                this.waiting = waitingProcessInfo.processId;
+            } else {
+                this.waiting = -1L;
+            }
+            if (blockingProcessInfo != null) {
+                if (blockingProcessInfo.processInfo != null) {
+                    this.blockingQuery = blockingProcessInfo.processInfo;
+                }
+                this.blocking = blockingProcessInfo.processId;
+            } else {
+                this.blocking = -1L;
+            }
+            this.dataSource = dataSource;
+        }
     }
 
-    private static String formatProcessInfo(String processInfo) {
-        return processInfo.replace("\n", "\\n");
+    private static String formatProcessInfo(Object processInfo) {
+        return Optional.ofNullable(processInfo).orElse("").toString().replace("\n", "\\n");
     }
 }

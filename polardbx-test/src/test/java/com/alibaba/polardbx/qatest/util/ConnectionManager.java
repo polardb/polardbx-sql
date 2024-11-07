@@ -28,7 +28,6 @@ import org.junit.Assert;
 import javax.sql.DataSource;
 import java.security.Security;
 import java.sql.Connection;
-import java.sql.Driver;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -108,6 +107,9 @@ public class ConnectionManager {
         }
         if (isMysql) {
             connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
+        }
+        if (PropertiesUtil.columnarMode()) {
+            connProp = connProp + "&socketTimeout=600000";
         }
         String url = String.format(ConfigConstant.URL_PATTERN_WITH_DB + connProp, server, port,
             db);
@@ -290,6 +292,15 @@ public class ConnectionManager {
         String url =
             String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), polardbxAddress, polardbxPort);
         return JdbcUtil.createConnection(url, polardbxUser, polardbxPassword);
+    }
+
+    public static Connection newPolarDBXConnection0() {
+        String url =
+            String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(),
+                PropertiesUtil.configProp.getProperty(ConfigConstant.POLARDBX_ADDRESS),
+                PropertiesUtil.configProp.getProperty(ConfigConstant.POLARDBX_PORT));
+        return JdbcUtil.createConnection(url, PropertiesUtil.configProp.getProperty(ConfigConstant.POLARDBX_USER),
+            PropertiesUtil.configProp.getProperty(ConfigConstant.POLARDBX_PASSWORD));
     }
 
     public Connection newPolarDBXConnectionWithUseAffectedRows() {

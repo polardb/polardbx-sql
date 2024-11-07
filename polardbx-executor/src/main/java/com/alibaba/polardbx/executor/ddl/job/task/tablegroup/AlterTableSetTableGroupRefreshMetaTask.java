@@ -47,8 +47,8 @@ public class AlterTableSetTableGroupRefreshMetaTask extends AlterTableGroupRefre
 
     @JSONCreator
     public AlterTableSetTableGroupRefreshMetaTask(String schemaName, String tableGroupName, Long sourceTableGroupId,
-                                                  String tableName) {
-        super(schemaName, tableGroupName);
+                                                  String tableName, Long versionId) {
+        super(schemaName, tableGroupName, versionId);
         this.tableName = tableName;
         this.sourceTableGroupId = sourceTableGroupId;
     }

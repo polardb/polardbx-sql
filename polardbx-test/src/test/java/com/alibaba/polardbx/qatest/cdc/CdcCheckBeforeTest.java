@@ -16,13 +16,12 @@
 
 package com.alibaba.polardbx.qatest.cdc;
 
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
-import org.springframework.jdbc.support.JdbcUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.Statement;
 
 import static com.alibaba.polardbx.qatest.cdc.Bank.ACCOUNT_COUNT;
 
@@ -65,7 +64,7 @@ public class CdcCheckBeforeTest extends CdcCheckTest {
             log.error("Initial Accounts ERROR.", e);
             throw e;
         } finally {
-            JdbcUtils.closeConnection(conn);
+            JdbcUtil.closeConnection(conn);
         }
         log.info("accounts initialized success.");
     }

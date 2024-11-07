@@ -57,6 +57,8 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupKey;
 import com.alibaba.polardbx.executor.utils.NewGroupKey;
 import com.alibaba.polardbx.executor.utils.RowSet;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
@@ -64,6 +66,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
@@ -116,11 +119,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -260,6 +265,125 @@ public abstract class HandlerCommon implements PlanHandler {
             }
         }
 
+        if (!GeneralUtil.isEmpty(exceptions)) {
+            throw GeneralUtil.mergeException(exceptions);
+        }
+    }
+
+    private void executeSubNodesBlockConcurrentAmongShards(ExecutionContext executionContext, List<RelNode> subNodes,
+                                                           List<Cursor> subCursors, String schemaName) {
+        if (subNodes != null && subNodes.isEmpty()) {
+            return;
+        }
+        checkExecMemCost(executionContext, subNodes);
+        Map<String, Queue<RelNode>> groupAndQcs = new HashMap<>();
+        List<RelNode> execSubNodes = new ArrayList<>();
+        for (RelNode q : subNodes) {
+
+            String groupName = ((BaseQueryOperation) q).getDbIndex();
+            Queue<RelNode> qcs = groupAndQcs.get(groupName);
+            if (qcs == null) {
+                qcs = new LinkedBlockingQueue<>();
+                groupAndQcs.put(groupName, qcs);
+                execSubNodes.add(q);
+            }
+
+            qcs.add(q);
+        }
+
+        Set<String> groupNames = groupAndQcs.keySet();
+
+        int prefetch = executionContext.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS);
+        Boolean overrideDdlParams = executionContext.isOverrideDdlParams();
+        if (prefetch < 0) {
+            if (overrideDdlParams) {
+                prefetch = 3;
+            } else {
+                // By default, #prefetch_shards = 1
+                prefetch = 1;
+            }
+        }
+        Map<String, Integer> groupAndResidues = new HashMap<>();
+        int finalPrefetch = prefetch;
+        groupNames.forEach(o -> groupAndResidues.put(o, finalPrefetch));
+
+        Map<String, List<Future<Cursor>>> groupAndFutures = new HashMap<>();
+        groupNames.forEach(o -> groupAndFutures.put(o, new ArrayList<>()));
+
+        List<Throwable> exceptions = new ArrayList<>();
+
+        // For DDL only
+        Map<String, GenericPhyObjectRecorder> phyObjectRecorderMap = new ConcurrentHashMap<>();
+
+        FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_INTERRUPTED, executionContext, () -> {
+            DdlContext ddlContext = executionContext.getDdlContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_INTERRUPTED, String.valueOf(ddlContext.getJobId()),
+                ddlContext.getSchemaName(), ddlContext.getObjectName());
+        });
+
+        for (int execute = 0; execute < subNodes.size(); ) {
+            for (String groupName : groupNames) {
+                int residue = groupAndResidues.get(groupName);
+                if (residue > 0) {
+                    final RelNode subNode = groupAndQcs.get(groupName).poll();
+                    if (subNode == null) {
+                        continue;
+                    }
+                    GenericPhyObjectRecorder phyObjectRecorder =
+                        CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
+                    if (!phyObjectRecorder.checkIfDone()) {
+                        Future<Cursor> rcfuture = ExecutorContext.getContext(schemaName)
+                            .getTopologyExecutor()
+                            .execByExecPlanNodeFuture(subNode, executionContext, null);
+                        groupAndFutures.get(groupName).add(rcfuture);
+                        if (subNode instanceof PhyDdlTableOperation) {
+                            String phyTableKey = DdlHelper.genPhyTableInfo(subNode, executionContext.getDdlContext());
+                            if (TStringUtil.isNotBlank(phyTableKey)) {
+                                phyObjectRecorderMap.put(phyTableKey, phyObjectRecorder);
+                            }
+                        }
+                        groupAndResidues.put(groupName, residue - 1);
+                    } else {
+                        // skip
+                    }
+
+                }
+            }
+            GenericPhyObjectRecorder phyObjectRecorder = null;
+            for (String groupName : groupNames) {
+                final List<Future<Cursor>> futures = groupAndFutures.get(groupName);
+                List<Future<Cursor>> doneFutures = new ArrayList<>();
+                for (Future<Cursor> future : futures) {
+                    if (future.isDone()) {
+                        try {
+                            Cursor cursor = future.get();
+                            subCursors.add(cursor);
+                            if (cursor instanceof MyPhyDdlTableCursor) {
+                                RelNode subNode = ((MyPhyDdlTableCursor) cursor).getRelNode();
+                                String phyTableKey =
+                                    DdlHelper.genPhyTableInfo(subNode, executionContext.getDdlContext());
+                                if (TStringUtil.isNotBlank(phyTableKey)) {
+                                    phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
+                                    if (phyObjectRecorder != null) {
+                                        phyObjectRecorder.recordDone();
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
+                                exceptions.add(new TddlException(e));
+                            }
+                        } finally {
+                            doneFutures.add(future);
+                        }
+                    }
+                }
+                futures.removeAll(doneFutures);
+                groupAndResidues.put(groupName, groupAndResidues.get(groupName) + doneFutures.size());
+                execute += doneFutures.size();
+            }
+//            Thread.sleep(100);
+        }
         if (!GeneralUtil.isEmpty(exceptions)) {
             throw GeneralUtil.mergeException(exceptions);
         }
@@ -489,6 +613,10 @@ public abstract class HandlerCommon implements PlanHandler {
             // full concurrent
             executeSubNodesBlockConcurrent(executionContext, inputs, inputCursors, schemaName);
             break;
+        case DDL_CONCURRENT:
+            // full concurrent
+            executeSubNodesBlockConcurrentAmongShards(executionContext, inputs, inputCursors, schemaName);
+            break;
         case RELAXED_GROUP_CONCURRENT:
             // relaxed group concurrent
             executeRelaxedGroupConcurrent(executionContext, inputs, inputCursors, schemaName);
@@ -503,6 +631,12 @@ public abstract class HandlerCommon implements PlanHandler {
                 GenericPhyObjectRecorder phyObjectRecorder =
                     CrossEngineValidator.getPhyObjectRecorder(relNode, executionContext);
                 if (!phyObjectRecorder.checkIfDone()) {
+                    FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_INTERRUPTED, executionContext, () -> {
+                        DdlContext ddlContext = executionContext.getDdlContext();
+                        throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_INTERRUPTED,
+                            String.valueOf(ddlContext.getJobId()),
+                            ddlContext.getSchemaName(), ddlContext.getObjectName());
+                    });
                     try {
                         inputCursors.add(executor.execByExecPlanNode(relNode, executionContext));
                         phyObjectRecorder.recordDone();
@@ -1096,6 +1230,23 @@ public abstract class HandlerCommon implements PlanHandler {
         return sortedColumns;
     }
 
+    protected List<String> getUpdateSortedColumns(TableMeta tableMeta, ForeignKeyData data,
+                                                  List<String> updateColumns) {
+        Map<String, String> columnMap =
+            IntStream.range(0, data.columns.size()).collect(TreeMaps::caseInsensitiveMap,
+                (m, i) -> m.put(data.columns.get(i), data.refColumns.get(i)), Map::putAll);
+
+        List<String> sortedColumns = new ArrayList<>();
+        tableMeta.getAllColumns().forEach(c -> {
+            if (data.columns.stream().anyMatch(c.getName()::equalsIgnoreCase) &&
+                updateColumns.stream().anyMatch(c.getName()::equalsIgnoreCase)) {
+                sortedColumns.add(columnMap.get(c.getName()));
+            }
+        });
+
+        return sortedColumns;
+    }
+
     protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResults(ForeignKeyData data,
                                                                                           String schemaName,
                                                                                           String tableName,
@@ -1104,12 +1255,17 @@ public abstract class HandlerCommon implements PlanHandler {
                                                                                           List<List<Object>> values,
                                                                                           PhysicalPlanBuilder builder,
                                                                                           List<String> selectKeys,
+                                                                                          List<String> updateColumns,
                                                                                           boolean isFront,
-                                                                                          boolean isInsert) {
+                                                                                          boolean isInsert,
+                                                                                          boolean isUpdateCheck) {
         List<String> columns = isInsert ? selectKeys : isFront ? data.refColumns : data.columns;
 
         List<String> sortedColumns;
-        if (!isInsert) {
+        if (isUpdateCheck) {
+            sortedColumns = getUpdateSortedColumns(tableMeta, data, updateColumns);
+            columns = sortedColumns;
+        } else if (!isInsert) {
             sortedColumns =
                 isFront ? getSortedColumns(true, tableMeta, data) : getSortedColumns(false, parentTableMeta, data);
         } else {
@@ -1216,9 +1372,10 @@ public abstract class HandlerCommon implements PlanHandler {
             Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
                 getShardResults(data.getValue(), schemaName, tableName, tableMeta, parentTableMeta, updateValueList,
                     builder, null,
-                    true, false);
+                    tableModify.getUpdateColumnList(), true, false, true);
 
-            List<String> sortedColumns = getSortedColumns(true, tableMeta, data.getValue());
+            List<String> sortedColumns =
+                getUpdateSortedColumns(tableMeta, data.getValue(), tableModify.getUpdateColumnList());
 
             ExecutionContext selectEc = executionContext.copy();
             selectEc.setParams(new Parameters(selectEc.getParams().getCurrentParameter(), false));
@@ -1315,7 +1472,7 @@ public abstract class HandlerCommon implements PlanHandler {
                 getShardResults(data.getValue(), schemaName, tableName, refTableMeta, tableMeta,
                     shardConditionValueList, builder,
                     null,
-                    false, false);
+                    null, false, false, false);
 
             columnMap = IntStream.range(0, data.getValue().columns.size()).collect(TreeMaps::caseInsensitiveMap,
                 (m, i) -> m.put(data.getValue().refColumns.get(i), data.getValue().columns.get(i)),
@@ -1454,7 +1611,7 @@ public abstract class HandlerCommon implements PlanHandler {
                     executionContext, false) :
                 getShardResults(data.getValue(), schemaName, tableName, refTableMeta, tableMeta, conditionValueList,
                     builder, null,
-                    false, false);
+                    null, false, false, false);
 
             List<String> sortedColumns = getSortedColumns(false, tableMeta, data.getValue());
 

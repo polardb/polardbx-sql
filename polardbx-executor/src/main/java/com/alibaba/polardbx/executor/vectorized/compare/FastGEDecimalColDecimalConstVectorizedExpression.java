@@ -183,5 +183,3 @@ public class FastGEDecimalColDecimalConstVectorizedExpression extends AbstractVe
         return leftInputVectorSlot.getScale() == operand1.scale();
     }
 }
-
-

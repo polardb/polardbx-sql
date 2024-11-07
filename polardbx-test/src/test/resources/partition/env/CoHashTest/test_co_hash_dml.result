@@ -23,15 +23,13 @@ PARTITIONS 16;
 explain select * from ch_t1_f_f where user_id='12345678';
 Logical ExecutionPlan
 PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE (`ch_t1_f_f`.`user_id` = ?)", params="12345678")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 2f8b99db
 explain select * from ch_t1_f_f where order_id='abcdefg12345678';
 Logical ExecutionPlan
 PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE (`ch_t1_f_f`.`order_id` = ?)", params="abcdefg12345678")
 explain select * from ch_t1_f_f where order_id='abcdefg12345678' or user_id='12345678';
 Logical ExecutionPlan
-PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE ((`ch_t1_f_f`.`order_id` = ?) OR (`ch_t1_f_f`.`user_id` = ?))", params="12345678,abcdefg12345678")
+Gather(concurrent=true)
+  LogicalView(tables="ch_t1_f_f[p14]", sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE ((`order_id` = ?) OR (`user_id` = ?))")
 explain select * from ch_t1_f_f where order_id='abcdefg12345678' and user_id='12345678';
 Logical ExecutionPlan
 PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE ((`ch_t1_f_f`.`order_id` = ?) AND (`ch_t1_f_f`.`user_id` = ?))", params="12345678,abcdefg12345678")
@@ -40,17 +38,16 @@ Logical ExecutionPlan
 PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE ((`ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`user_id`) =(?, ?))", params="12345678,abcdefg12345678")
 explain select * from ch_t1_f_f where order_id in ('abcdefg12345678') and user_id in ('12345678');
 Logical ExecutionPlan
-PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE ((`ch_t1_f_f`.`order_id` IN (?)) AND (`ch_t1_f_f`.`user_id` IN (?)))", params="Raw('12345678'),Raw('abcdefg12345678')")
+Gather(concurrent=true)
+  LogicalView(tables="ch_t1_f_f[p14]", sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE ((`order_id` IN(?)) AND (`user_id` IN(?)))")
 explain select * from ch_t1_f_f where (order_id,user_id) in (('abcdefg12345678','12345678'));
 Logical ExecutionPlan
-PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE (((`ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`user_id`)) IN (?))", params="Raw(('abcdefg12345678','12345678'))")
+Gather(concurrent=true)
+  LogicalView(tables="ch_t1_f_f[p14]", sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE (((`order_id`, `user_id`)) IN(?))")
 ## point-select2
 explain select * from ch_t1_f_f where user_id='12345679';
 Logical ExecutionPlan
 PhyTableOperation(tables="ch_t1_f_f[p7]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE (`ch_t1_f_f`.`user_id` = ?)", params="12345679")
-HitCache:true
-Source:PLAN_CACHE
-TemplateId: 2f8b99db
 explain select * from ch_t1_f_f where order_id='abcdefg12345678';
 Logical ExecutionPlan
 PhyTableOperation(tables="ch_t1_f_f[p14]", sql="SELECT `ch_t1_f_f`.`id`, `ch_t1_f_f`.`sid`, `ch_t1_f_f`.`user_id`, `ch_t1_f_f`.`order_id`, `ch_t1_f_f`.`order_time` FROM ? AS `ch_t1_f_f` WHERE (`ch_t1_f_f`.`order_id` = ?)", params="abcdefg12345678")
@@ -77,9 +74,6 @@ explain select * from ch_t1_f_f where user_id>='12345678';
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="ch_t1_f_f[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE (`user_id` >= ?)")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: c1e87f3f
 explain select * from ch_t1_f_f where order_id<='abcdefg12345678';
 Logical ExecutionPlan
 Gather(concurrent=true)

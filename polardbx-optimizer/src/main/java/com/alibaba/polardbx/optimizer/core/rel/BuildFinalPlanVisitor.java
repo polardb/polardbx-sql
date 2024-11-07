@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -27,6 +28,8 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -41,6 +44,9 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import groovy.sql.Sql;
+import org.apache.calcite.plan.RelOptSchema;
+import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.TableScan;
@@ -51,6 +57,9 @@ import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlDelete;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlInsert;
@@ -63,6 +72,7 @@ import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFamily;
+import org.jetbrains.annotations.NotNull;
 
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -131,10 +141,19 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             this.sqlTemplate = this.sqlTemplate.accept(visitor);
         }
 
-        replaceTableNameWithQuestionMark(oc.getSchemaName());
-
         String tableName = lv.getLogicalTableName();
         String schemaName = lv.getSchemaName();
+
+        if (sqlTemplate.getKind() == SqlKind.DELETE) {
+            /**
+             * non-exist force index delete should be invalidated
+             */
+            final TableMeta tMeta = this.pc.getExecutionContext().getSchemaManager(schemaName).getTable(tableName);
+            RemoveIndexNodeVisitor removeIndexNodeVisitor = new RemoveIndexNodeVisitor(tMeta);
+            this.sqlTemplate = this.sqlTemplate.accept(removeIndexNodeVisitor);
+        }
+
+        replaceTableNameWithQuestionMark(oc.getSchemaName());
 
         ShardProcessor processor = null;
         if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
@@ -244,7 +263,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         String tableName = logicalInsert.getLogicalTableName();
         String schemaName = logicalInsert.getSchemaName();
         final TableMeta table = ec.getSchemaManager(schemaName).getTable(tableName);
-        if (GlobalIndexMeta.hasIndex(tableName, schemaName, ec)) {
+        if (GlobalIndexMeta.hasGsi(tableName, schemaName, ec)) {
             return buildLogicalModify(logicalInsert);
         }
 
@@ -273,7 +292,6 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         }
 
         TableMeta tableMeta = pc.getExecutionContext().getSchemaManager(schemaName).getTable(tableName);
-
         // foreign key?
         if (ec.foreignKeyChecks() && !GeneralUtil.isEmpty(tableMeta.getForeignKeys())) {
             return buildLogicalModify(logicalInsert);
@@ -343,10 +361,9 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return buildLogicalModify(logicalInsert);
         }
 
-        boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
         // Insert source must be value here
         if (!buildPlanForScaleOut && (ComplexTaskPlanUtils.isDeleteOnly(tableMeta) && !logicalInsert.isInsertIgnore()
-            || !ComplexTaskPlanUtils.canWrite(tableMeta)) && !isColumnMultiWrite) {
+            || !ComplexTaskPlanUtils.canWrite(tableMeta))) {
             RelNode singleTableInsert = buildSingleTableInsert(logicalInsert, ec);
             if (singleTableInsert != null) {
                 return singleTableInsert;
@@ -396,7 +413,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
     private RelNode buildNewPlanForUpdateDelete(LogicalModifyView logicalModifyView, ExecutionContext ec) {
         String tableName = logicalModifyView.getLogicalTableName();
         String schemaName = logicalModifyView.getSchemaName();
-        if (GlobalIndexMeta.hasIndex(tableName, schemaName, ec)) {
+        if (GlobalIndexMeta.hasGsi(tableName, schemaName, ec)) {
             return buildLogicalModifyViewGsi(logicalModifyView);
         }
 
@@ -408,8 +425,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             return logicalModifyView;
         }
 
-        boolean isColumnMultiWrite = TableColumnUtils.isModifying(schemaName, tableName, ec);
-        if (logicalModifyView.isSingleGroup() && !buildPlanForScaleOut && !isColumnMultiWrite) {
+        if (logicalModifyView.isSingleGroup() && !buildPlanForScaleOut) {
             OptimizerContext context = OptimizerContext.getContext(schemaName);
             TddlRuleManager or = context.getRuleManager();
             RelNode tableScan = buildSingleTableScan(context, logicalModifyView, or, true);

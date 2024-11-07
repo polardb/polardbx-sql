@@ -39,8 +39,4 @@ public class EvaluationContext {
         return executionContext;
     }
 
-    public void setExecutionContext(ExecutionContext executionContext) {
-        this.executionContext = executionContext;
-    }
-
 }

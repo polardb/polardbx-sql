@@ -49,11 +49,12 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragmenter;
 import com.alibaba.polardbx.executor.mpp.planner.StageExecutionPlan;
 import com.alibaba.polardbx.executor.mpp.planner.SubPlan;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.node.MppScope;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Throwables;
 import com.google.inject.Inject;
 import io.airlift.units.Duration;
@@ -78,7 +79,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.alibaba.polardbx.executor.utils.ExecUtils.existMppOnlyInstanceNode;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -147,10 +147,13 @@ public class SqlQueryExecution extends QueryExecution {
             long distributedPlanningStart = System.currentTimeMillis();
             // plan distribution of query
             Pair<SubPlan, Integer> subPlan = PlanFragmenter.buildRootFragment(physicalPlan, session);
-            int polarXParallelism = ExecUtils.getPolarDBXCores(
-                session.getClientContext().getParamManager(), !existMppOnlyInstanceNode());
             int limitNode = session.getClientContext().getParamManager().getInt(ConnectionParams.MPP_NODE_SIZE);
+            boolean columnarMode = session.getClientContext().getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCHEDULE);
+            MppScope mppScope = ExecUtils.getMppSchedulerScope(!columnarMode);
             if (limitNode <= 0) {
+                int polarXParallelism = ExecUtils.getPolarDBXCNCores(
+                    session.getClientContext().getParamManager(), mppScope);
                 limitNode = subPlan.getValue() % polarXParallelism > 0 ? subPlan.getValue() / polarXParallelism + 1 :
                     subPlan.getValue() / polarXParallelism;
             }
@@ -315,6 +318,21 @@ public class SqlQueryExecution extends QueryExecution {
         }
 
         ExecutionContext executionContext = session.getClientContext();
+        //fetch ColumnarTrace in TaskInfo when stage is complete
+        if (executionContext.getColumnarTracer() != null && stageInfo.isPresent() && stageInfo.get().isCompleteInfo()) {
+            //enumerate all TaskInfo
+            for (StageInfo stage : StageInfo.getAllStages(stageInfo)) {
+                for (TaskInfo taskInfo : stage.getTasks()) {
+                    executionContext.getColumnarTracer().mergeColumnarTracer(taskInfo.getColumnarTracer());
+                    if (logger.isDebugEnabled()) {
+                        logger.debug(
+                            "mergeColumnarTracer node: " + taskInfo.getColumnarTracer().getInstanceId() + " size "
+                                + taskInfo.getColumnarTracer().getPruneRecordMap().size());
+                    }
+                }
+            }
+        }
+
         if (executionContext.getDriverStatistics() != null
             && stageInfo.isPresent() && stageInfo.get().isCompleteInfo()) {
             // Check if this tree-structure StageInfo is completed and collect driver statistics.

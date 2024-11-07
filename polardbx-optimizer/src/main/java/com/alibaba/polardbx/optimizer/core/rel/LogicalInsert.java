@@ -25,8 +25,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
@@ -66,8 +64,6 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.util.Pair;
-import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -816,7 +812,7 @@ public class LogicalInsert extends TableModify {
         String tableName = getLogicalTableName();
         TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
         return or.isBroadCast(tableName) || GlobalIndexMeta
-            .hasIndex(tableName, schemaName, PlannerContext.getPlannerContext(this).getExecutionContext());
+            .hasGsi(tableName, schemaName, PlannerContext.getPlannerContext(this).getExecutionContext());
     }
 
     public String getLogicalTableName() {

@@ -1,3 +1,4 @@
 test_show_profiles
 test_query_tables
 select_db
+show_dal_columnar_test

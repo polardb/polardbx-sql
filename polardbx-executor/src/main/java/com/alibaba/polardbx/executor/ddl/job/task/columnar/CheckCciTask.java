@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.columnar;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.columnar.checker.CciChecker;
@@ -27,19 +25,13 @@ import com.alibaba.polardbx.executor.columnar.checker.ICciChecker;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
-import com.alibaba.polardbx.gms.topology.InstConfigRecord;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CheckCciPrepareData;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.google.common.collect.ImmutableList;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlCheckColumnarIndex;
 
 import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -76,8 +68,9 @@ public class CheckCciTask extends CheckCciBaseTask {
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
         // Check.
+        long startTime = System.nanoTime();
         ICciChecker checker;
-        if (executionContext.isEnableFastCciChecker()) {
+        if (executionContext.isEnableCciFastChecker() && ExecUtils.canUseCciFastChecker(schemaName, indexName)) {
             checker = new CciFastChecker(schemaName, tableName, indexName);
         } else {
             checker = new CciChecker(schemaName, tableName, indexName);
@@ -117,7 +110,9 @@ public class CheckCciTask extends CheckCciBaseTask {
             createReportRecord(
                 CheckCciMetaTask.ReportErrorType.SUMMARY,
                 CheckerManager.CheckerReportStatus.FINISH,
-                "data of columnar index checked"));
+                "data of columnar index checked."
+                    + "Cost " + (System.nanoTime() - startTime) / 1000000 + "ms"
+            ));
     }
 
     @Override

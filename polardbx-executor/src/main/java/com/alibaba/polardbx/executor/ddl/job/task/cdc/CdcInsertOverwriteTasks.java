@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -48,7 +49,7 @@ public class CdcInsertOverwriteTasks {
     @TaskName(name = "DropOriginTableMarkTask")
     @Getter
     @Setter
-    public static class DropOriginTableMarkTask extends BaseDdlTask {
+    public static class DropOriginTableMarkTask extends BaseCdcTask {
         private final String logicTableName;
 
         @JSONCreator

@@ -18,8 +18,8 @@ package com.alibaba.polardbx.transaction.async;
 
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -35,8 +35,6 @@ import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -44,7 +42,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 public class RotateGlobalTxLogTask implements Runnable {
 
@@ -119,8 +116,9 @@ public class RotateGlobalTxLogTask implements Runnable {
                     logger.error("Interrupted when waiting XA recover task", e);
                 }
 
-                if (TransactionManager.getInstance(schema).isFirstRecover()) {
-                    // Still not finished, skip rotating trx log.
+                if (null == TransactionManager.getInstance(schema) ||
+                    TransactionManager.getInstance(schema).isFirstRecover()) {
+                    // Still not finished, or db is dropped, skip rotating trx log.
                     logger.warn("Wait XA recover task timeout, skip this round of trx log rotating.");
                     return;
                 }
@@ -207,7 +205,7 @@ public class RotateGlobalTxLogTask implements Runnable {
                             }
 
                             try {
-                                int count = GlobalTxLogManager.rotate(datasource, beforeTxid, nextTxid);
+                                int count = GlobalTxLogManager.rotateWithTimeout(datasource, beforeTxid, nextTxid);
                                 purgedCount.addAndGet(count);
                             } catch (Exception e) {
                                 logger.error("Rotate transaction log failed on group "
@@ -229,7 +227,7 @@ public class RotateGlobalTxLogTask implements Runnable {
 
                     globalLock.lock();
                     try {
-                        int count = GlobalTxLogManager.rotate(datasource, beforeTxid, nextTxid);
+                        int count = GlobalTxLogManager.rotateWithTimeout(datasource, beforeTxid, nextTxid);
                         purgedCount.addAndGet(count);
                         Thread.sleep(1000);
                     } catch (Exception e) {

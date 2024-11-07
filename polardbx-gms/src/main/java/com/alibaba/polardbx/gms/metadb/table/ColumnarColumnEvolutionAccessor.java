@@ -273,40 +273,41 @@ public class ColumnarColumnEvolutionAccessor extends AbstractAccessor {
         update(UPDATE_COLUMNS_RECORD, COLUMNAR_COLUMN_EVOLUTION_TABLE, params);
     }
 
-    public void deleteSchema(String schemaName) {
+    public int deleteSchema(String schemaName) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
         try {
             DdlMetaLogUtil.logSql(DELETE_SCHEMA, params);
-            MetaDbUtil.delete(DELETE_SCHEMA, params, connection);
+            return MetaDbUtil.delete(DELETE_SCHEMA, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
     }
 
-    public void deleteByTableIdAndStatus(long tableId, long status) {
+    public int deleteByTableIdAndStatus(long tableId, long status) {
         Map<Integer, ParameterContext> params = new HashMap<>(2);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tableId);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, String.valueOf(status));
         try {
             DdlMetaLogUtil.logSql(DELETE_BY_ID_STATUS, params);
-            MetaDbUtil.delete(DELETE_BY_ID_STATUS, params, connection);
+            return MetaDbUtil.delete(DELETE_BY_ID_STATUS, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
     }
 
-    public void deleteSchemaTableIndex(String schemaName, String tableName, String indexName) {
+    public int deleteSchemaTableIndex(String schemaName, String tableName, String indexName) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
         MetaDbUtil.setParameter(3, params, ParameterMethod.setString, indexName);
-        delete(DELETE_SCHEMA_TABLE_INDEX, COLUMNAR_COLUMN_EVOLUTION_TABLE, params);
+        return delete(DELETE_SCHEMA_TABLE_INDEX, COLUMNAR_COLUMN_EVOLUTION_TABLE, params);
+
     }
 
-    public void deleteId(long tableId) {
+    public int deleteId(long tableId) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tableId);
-        delete(DELETE_TABLE_ID, COLUMNAR_COLUMN_EVOLUTION_TABLE, params);
+        return delete(DELETE_TABLE_ID, COLUMNAR_COLUMN_EVOLUTION_TABLE, params);
     }
 }

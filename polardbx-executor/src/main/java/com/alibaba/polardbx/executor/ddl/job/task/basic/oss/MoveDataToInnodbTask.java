@@ -74,6 +74,7 @@ public class MoveDataToInnodbTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         // don't continue the ddl if it was paused
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             try {

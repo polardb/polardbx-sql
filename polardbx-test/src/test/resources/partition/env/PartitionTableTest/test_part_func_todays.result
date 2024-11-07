@@ -46,17 +46,11 @@ a
 explain select * from tbl where a='1989-01-01' order by a;
 Logical ExecutionPlan
 PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="1989-01-01")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 48dfdf4e
 ## explain range select
 explain select * from tbl where (a<'2019-01-02' and a>='2009-12-31') or a between '1989-01-01' and '1989-11-01'  order by a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
   LogicalView(tables="tbl[p0,p2,p3]", shardCount=3, sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (((`a` < ?) AND (`a` >= ?)) OR (`a` BETWEEN ? AND ?)) ORDER BY `a`")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: d85eb230
 ## test hash
 CREATE TABLE `tod1` (
 `d` date DEFAULT NULL

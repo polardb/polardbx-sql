@@ -1,0 +1,54 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false
+set FORBID_DDL_WITH_CCI=false
+create table my_ttl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+alter table my_ttl_t3 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00'
+alter table my_ttl_t3 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 3
+show create table my_ttl_t3
+Table,Create Table
+my_ttl_t3,CREATE TABLE `my_ttl_t3` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 3 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+create table my_arc_t3 like my_ttl_t3 engine='columnar' archive_mode='ttl'
+desc my_arc_t3
+Field,Type,Null,Key,Default,Extra
+a,integer,YES,,NULL,
+b,datetime(0),YES,,NULL,
+alter table my_ttl_t3 add column c datetime default null
+desc my_arc_t3
+Field,Type,Null,Key,Default,Extra
+a,integer,YES,,NULL,
+b,datetime(0),YES,,NULL,
+c,datetime(0),YES,,NULL,
+alter table my_ttl_t3 add column d datetime default null
+desc my_arc_t3
+Field,Type,Null,Key,Default,Extra
+a,integer,YES,,NULL,
+b,datetime(0),YES,,NULL,
+c,datetime(0),YES,,NULL,
+d,datetime(0),YES,,NULL,
+alter table my_ttl_t3 drop column d
+desc my_arc_t3
+Field,Type,Null,Key,Default,Extra
+a,integer,YES,,NULL,
+b,datetime(0),YES,,NULL,
+c,datetime(0),YES,,NULL,
+alter table my_ttl_t3 change column c d datetime default null
+desc my_arc_t3
+Field,Type,Null,Key,Default,Extra
+a,integer,YES,,NULL,
+b,datetime(0),YES,,NULL,
+d,datetime(0),YES,,NULL,

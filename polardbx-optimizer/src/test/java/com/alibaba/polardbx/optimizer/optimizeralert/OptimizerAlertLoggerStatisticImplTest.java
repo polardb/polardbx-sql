@@ -52,7 +52,7 @@ public class OptimizerAlertLoggerStatisticImplTest {
         OptimizerAlertUtil.statisticsAlert(DEFAULT_META_DB_NAME, testTbl, null);
         Assert.assertTrue(0L == getStatisticAlertNum());
 
-        OptimizerContext oc = BasePlannerTest.initOptiContext(testSchema, 4, true);
+        OptimizerContext oc = BasePlannerTest.initOptiContext(testSchema, 4, true, false);
         OptimizerContext.setContext(oc);
 
         // test rowcount == 0

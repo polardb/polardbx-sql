@@ -24,6 +24,8 @@ public enum EventType {
      */
     REBALANCE_INFO(EventLevel.INFO),
 
+    DDL_MPP_INFO(EventLevel.INFO),
+
     /**
      * 用于统计一些DDL发生的次数
      */
@@ -97,6 +99,15 @@ public enum EventType {
     INIT_OSS(EventLevel.INFO),
     CLOSE_OSS(EventLevel.INFO),
 
+    /**
+     * Usage statistics for TTL 2.0
+     */
+    CREATE_TTL_DEFINITION(EventLevel.INFO),
+    CREATE_TTL_DEFINITION_WITH_ARCHIVE_TABLE(EventLevel.INFO),
+    CREATE_CCI_ARCHIVE_TABLE(EventLevel.INFO),
+    DROP_CCI_ARCHIVE_TABLE(EventLevel.INFO),
+    CLEANUP_EXPIRED_DATA(EventLevel.INFO),
+
     OPTIMIZER_ALERT(EventLevel.INFO),
 
     AUTO_SP(EventLevel.INFO),
@@ -107,7 +118,9 @@ public enum EventType {
     TRX_RECOVER(EventLevel.INFO),
     TRX_INFO(EventLevel.INFO),
     TRX_ERR(EventLevel.INFO),
-
+    COLUMNAR_ERR(EventLevel.INFO),
+    CCI_SNAPSHOT(EventLevel.INFO),
+    METRICS(EventLevel.INFO),
     CDC_WARN(EventLevel.WARN);
 
     private final EventLevel level;

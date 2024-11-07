@@ -17,9 +17,11 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.DecimalBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.DoubleBlock;
+import com.alibaba.polardbx.executor.chunk.DoubleBlockBuilder;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -30,13 +32,18 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.AvgV2;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountV2;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import org.junit.Ignore;
+import com.google.common.collect.Lists;
 import org.junit.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+
+import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_DIV_ZERO;
 
 public class HashAggExecTest extends BaseExecTest {
 
@@ -88,6 +95,82 @@ public class HashAggExecTest extends BaseExecTest {
             decimalBlockBuilder.build()
         )), false);
 
+    }
+
+    @Test
+    public void testHashAggSimpleAvg2() {
+        MockExec inputExec = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
+            .withChunk(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                IntegerBlock.of(3, 4, 9, 7)))
+            .withChunk(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                IntegerBlock.of(5, 3, 8, 1)))
+            .build();
+        int[] groups = {0};
+        List<Aggregator> aggregators = new ArrayList<>();
+        aggregators.add(new AvgV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        List<DataType> outputColumn = Lists.newArrayList(DataTypes.IntegerType, DataTypes.DoubleType);
+
+        HashAggExec exec =
+            new HashAggExec(inputExec.getDataTypes(), groups, aggregators, outputColumn, DEFAULT_AGG_HASH_TABLE_SIZE,
+                context);
+        SingleExecTest test = new SingleExecTest.Builder(exec, inputExec.getChunks()).build();
+        test.exec();
+
+        DoubleBlockBuilder doubleBlockBuilder = new DoubleBlockBuilder(4);
+        doubleBlockBuilder.writeDouble(4.0);
+        doubleBlockBuilder.writeDouble(3.5);
+        doubleBlockBuilder.writeDouble(8.5);
+        doubleBlockBuilder.writeDouble(4.0);
+
+        assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+            IntegerBlock.of(0, 1, 2, 3),
+            doubleBlockBuilder.build()
+        )), false);
+
+    }
+
+    @Test
+    public void testDecimalAvgDivBy0() {
+        // Divided by 0 may be an unreachable state
+        try (MockedStatic<FastDecimalUtils> mockedDecUtils = Mockito.mockStatic(FastDecimalUtils.class)) {
+            mockedDecUtils.when(
+                    () -> FastDecimalUtils.div(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyInt()))
+                .thenReturn(E_DEC_DIV_ZERO);
+            MockExec inputExec = MockExec.builder(DataTypes.IntegerType, DataTypes.IntegerType)
+                .withChunk(new Chunk(
+                    IntegerBlock.of(0, 1, 2, 3),
+                    IntegerBlock.of(1, 2, 3, 4)))
+                .withChunk(new Chunk(
+                    IntegerBlock.of(0, 1, 2, 3),
+                    IntegerBlock.of(null, null, null, null)))
+                .build();
+            int[] groups = {0};
+            List<Aggregator> aggregators = new ArrayList<>();
+            aggregators.add(new AvgV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+            List<DataType> outputColumn = new ArrayList<>();
+            outputColumn.add(DataTypes.IntegerType);
+            outputColumn.add(DataTypes.DecimalType);
+
+            HashAggExec exec =
+                new HashAggExec(inputExec.getDataTypes(), groups, aggregators, outputColumn,
+                    DEFAULT_AGG_HASH_TABLE_SIZE,
+                    context);
+            SingleExecTest test = new SingleExecTest.Builder(exec, inputExec.getChunks()).build();
+            test.exec();
+
+            DecimalBlockBuilder decimalBlockBuilder = new DecimalBlockBuilder(256);
+            decimalBlockBuilder.appendNull();
+            decimalBlockBuilder.appendNull();
+            decimalBlockBuilder.appendNull();
+            decimalBlockBuilder.appendNull();
+
+            assertExecResultByRow(test.result(), Collections.singletonList(new Chunk(
+                IntegerBlock.of(0, 1, 2, 3),
+                decimalBlockBuilder.build()
+            )), false);
+        }
     }
 
     @Test

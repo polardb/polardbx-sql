@@ -51,6 +51,8 @@ import java.util.TreeMap;
 public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVisitor {
 
     private String schemaName;
+    private boolean allBroadcastTbl = true;
+    private boolean withBroadcastTbl;
     private boolean withSingleTbl;
     private boolean withPartitionTbl;
     private String uniqGroupName;
@@ -143,7 +145,7 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
                 } else {
                     // should not happen
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_HINT,
-                        "Unsupported to use direct HINT for part table that has multi physical tables in one partition");
+                        "Unsupported direct HINT for part table :" + pHint);
                 }
 
                 return sqlNode;
@@ -183,6 +185,13 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
         if (tableRule == null) {
             return sqlNode;
         }
+
+        this.withSingleTbl |= tddlRuleManager.isTableInSingleDb(logicalTableName);
+        this.withPartitionTbl |= tddlRuleManager.isShard(logicalTableName);
+        final boolean currentIsBroadcast = tddlRuleManager.isBroadCast(logicalTableName);
+        this.withBroadcastTbl |= currentIsBroadcast;
+        this.allBroadcastTbl &= currentIsBroadcast;
+
         // don't replace table with sharding db and  tb
         if (tableRule.getActualTopology().size() > 1) {
             for (Map.Entry<String, Set<String>> dbEntry : tableRule.getActualTopology().entrySet()) {
@@ -191,9 +200,6 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
                 }
             }
         }
-
-        this.withSingleTbl |= tddlRuleManager.isTableInSingleDb(logicalTableName);
-        this.withPartitionTbl |= tddlRuleManager.isShard(logicalTableName);
 
         return new SqlIdentifier(tableRule.getTbNamePattern(), SqlParserPos.ZERO);
     }
@@ -233,6 +239,14 @@ public class ReplaceTblWithPhyTblVisitor extends ReplaceTableNameWithSomethingVi
             return true;
         }
         return false;
+    }
+
+    public boolean withBroadcastTable() {
+        return withBroadcastTbl;
+    }
+
+    public boolean allBroadcastTable() {
+        return withBroadcastTbl && allBroadcastTbl;
     }
 
     public boolean shouldSkipSingleGroup() {

@@ -1312,6 +1312,11 @@ public interface BatchBlockWriter {
             }
         }
 
+        @Override
+        public int getScale() {
+            return scale;
+        }
+
         public boolean isNormal() {
             return state.isNormal();
         }

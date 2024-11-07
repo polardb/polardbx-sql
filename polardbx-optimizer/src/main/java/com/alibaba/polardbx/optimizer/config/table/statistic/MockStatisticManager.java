@@ -17,17 +17,12 @@
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
 public class MockStatisticManager extends StatisticManager {
-    public MockStatisticManager(String schemaName,
-                                StatisticDataSource sds) {
+    public MockStatisticManager() {
         super();
     }
-//    public MockStatisticManager(String schemaName,
-//                                SystemTableTableStatistic systemTableTableStatistic,
-//                                SystemTableColumnStatistic systemTableColumnStatistic,
-//                                SystemTableNDVSketchStatistic ndvSketchStatistic,
-//                                NDVSketchService ndvSketch,
-//                                Map<String, Object> connectionProperties) {
-//        super(schemaName, systemTableTableStatistic, systemTableColumnStatistic, ndvSketchStatistic, ndvSketch,
-//            connectionProperties);
-//    }
+
+    @Override
+    protected void doInit() {
+    }
+
 }

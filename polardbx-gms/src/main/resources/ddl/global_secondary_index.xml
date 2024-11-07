@@ -5,6 +5,7 @@
             create table if not exists `backfill_objects` (
               `id` bigint unsigned not null auto_increment,
               `job_id` bigint unsigned not null,
+              `task_id` bigint unsigned not null,
               `table_schema` varchar(64) not null,
               `table_name` varchar(64) not null,
               `index_schema` varchar(64) not null,
@@ -24,7 +25,8 @@
               primary key (`id`),
               unique key `i_job_db_tb_column` (`job_id`, `physical_db`, `physical_table`, `column_index`),
               key `i_job_id` (`job_id`),
-              key `i_job_id_status` (`job_id`, `status`)
+              key `i_job_id_status` (`job_id`, `status`),
+              key `i_job_id_task_id`(`job_id`, `task_id`)
             ) charset=utf8mb4
         ]]></Create>
         <Change><![CDATA[
@@ -33,14 +35,18 @@
         <Change><![CDATA[
             ALTER TABLE `backfill_objects` modify column physical_table varchar(128) default null comment 'Physical table name'
         ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `backfill_objects` add column task_id bigint unsigned not null after job_id, add key `i_job_id_task_id`(`job_id`, `task_id`);
+        ]]></Change>
     </SystemTable>
     <SystemTable name="file_storage_backfill_objects">
         <Create><![CDATA[
             create table if not exists `file_storage_backfill_objects` (
               `id` bigint unsigned not null auto_increment,
               `job_id` bigint unsigned not null,
+              `task_id` bigint unsigned not null,
               `table_schema` varchar(64) not null,
-              `table_name` varchar(64) not null,
+              `table_name` varchar(128) not null,
               `index_schema` varchar(64) not null,
               `index_name` varchar(64) not null,
               `physical_db` varchar(128) default null comment 'Group key',
@@ -61,6 +67,12 @@
               key `i_job_id_status` (`job_id`, `status`)
             ) charset=utf8mb4
         ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `file_storage_backfill_objects` modify column physical_table varchar(128) default null comment 'Physical table name'
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `file_storage_backfill_objects` add column task_id bigint unsigned not null after job_id, add key `i_job_id_task_id`(`job_id`, `task_id`);
+        ]]></Change>
     </SystemTable>
     <SystemTable name="checker_reports">
         <Create><![CDATA[
@@ -72,7 +84,7 @@
               `index_schema` varchar(64) not null,
               `index_name` varchar(64) default null,
               `physical_db` varchar(128) default null comment 'Group key',
-              `physical_table` varchar(64) default null comment 'Physical table name',
+              `physical_table` varchar(128) default null comment 'Physical table name',
               `error_type` varchar(128) default null comment 'Check error type',
               `timestamp` datetime default null comment 'Error found time',
               `status` bigint(10) not null default '0' comment '0:FOUND,1:REPAIRED,2:START,3:FINISH',
@@ -87,6 +99,9 @@
         ]]></Create>
         <Change><![CDATA[
             ALTER TABLE `checker_reports` CONVERT TO CHARACTER SET utf8mb4
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `checker_reports` modify column physical_table varchar(128) default null comment 'Physical table name'
         ]]></Change>
     </SystemTable>
     <SystemTable name="changeset_objects">
@@ -126,6 +141,44 @@
             ALTER TABLE `changeset_objects` add index `i_job_id_status` (`job_id`, `status`)
         ]]></Change>
     </SystemTable>
+    <SystemTable name="backfill_sample_rows">
+        <Create><![CDATA[
+            create table if not exists `backfill_sample_rows` (
+              `schema_name` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `job_id` bigint not null,
+              `task_id` bigint not null,
+              `columns` text,
+              `sample_rows` longtext,
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              `extra` longtext,
+              `backfill_ids` longtext,
+              primary key (`schema_name`, `table_name`, `task_id`),
+              key `task_id` (`task_id`),
+              key `job_id` (`job_id`)
+            ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="backfill_sample_rows_archive">
+        <Create><![CDATA[
+            create table if not exists `backfill_sample_rows_archive` (
+              `schema_name` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `job_id` bigint not null,
+              `task_id` bigint not null,
+              `columns` text,
+              `sample_rows` longtext,
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              `extra` longtext,
+              `backfill_ids` longtext,
+              primary key (`schema_name`, `table_name`, `task_id`),
+              key `task_id` (`task_id`),
+              key `job_id` (`job_id`)
+            ) charset=utf8mb4
+        ]]></Create>
+    </SystemTable>
     <SystemTable name="physical_backfill_objects">
     <Create><![CDATA[
         create table `physical_backfill_objects` (
@@ -136,7 +189,7 @@
          `index_schema` varchar(64) NOT NULL,
          `index_name` varchar(64) NOT NULL,
          `physical_db` varchar(128) DEFAULT NULL COMMENT 'Group key',
-         `physical_table` varchar(64) DEFAULT NULL COMMENT 'Physical table name',
+         `physical_table` varchar(128) DEFAULT NULL COMMENT 'Physical table name',
          `physical_partition` varchar(64) DEFAULT NULL COMMENT 'Physical partition name',
          `source_group_name` varchar(64) NOT NULL,
          `target_group_name` varchar(64) NOT NULL,
@@ -158,5 +211,27 @@
           KEY `i_job_id_status` (`job_id`,`status`)
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `physical_backfill_objects` modify column physical_table varchar(128) default null comment 'Physical table name'
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="import_tablespace_info_stat">
+        <Create><![CDATA[
+        create table `import_tablespace_info_stat` (
+         `task_id` bigint(20) unsigned NOT NULL,
+         `table_schema` varchar(64) NOT NULL,
+         `table_name` varchar(64) NOT NULL,
+         `physical_db` varchar(128) DEFAULT NULL COMMENT 'Group key',
+         `physical_table` varchar(128) DEFAULT NULL COMMENT 'Physical table name',
+         `data_size` bigint(20) NOT NULL COMMENT 'ibd file size',
+         `start_time` bigint unsigned not null,
+         `end_time` bigint unsigned not null,
+          PRIMARY KEY (`task_id`),
+          key (`table_schema`, `table_name`)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `import_tablespace_info_stat` modify column physical_table varchar(128) default null comment 'Physical table name'
+        ]]></Change>
     </SystemTable>
 </SystemTables>

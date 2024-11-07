@@ -27,9 +27,7 @@ import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.google.common.base.Preconditions;
 
-import javax.servlet.http.Part;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 
 import static com.alibaba.polardbx.optimizer.core.field.AbstractNumericField.INT_64_MAX;
 

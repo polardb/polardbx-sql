@@ -1,5 +1,9 @@
 package com.alibaba.polardbx.server.response;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.version.Version;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcVersionUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.ColumnarVersionUtil;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -28,6 +32,71 @@ public class SelectPolardbVersionTest {
     private static RowDataPacket generatePacket() {
         RowDataPacket row = new RowDataPacket(3);
         return row;
+    }
+
+    @Test
+    public void testParseProductVersion() {
+        RowDataPacket packet = generatePacket();
+        String type = "Product";
+        final String productVersion = "PolarDB V2";
+        final String productReleaseDate = "Distributed Edition";
+        SelectPolardbVersion.addToRow(packet, type,
+            productVersion, productReleaseDate, CHARSET,
+            new Pair<>("5.4.20", "20241015"),
+            new Pair<>("8.4.20", "20241015"),
+            "20241015");
+
+        String typeInPacket = new String(packet.fieldValues.get(0));
+        String versionInPacket = new String(packet.fieldValues.get(1));
+        String releaseDateInPacket = new String(packet.fieldValues.get(2));
+        Assert.assertEquals(type, typeInPacket);
+        Assert.assertEquals("PolarDB V2_2.5.0_5.4.20-20241015_8.4.20-20241015 (Distributed Edition)", versionInPacket);
+        Assert.assertEquals("20241015", releaseDateInPacket);
+    }
+
+    @Test
+    public void testMaxVersion() throws Exception {
+        try (MockedStatic<Version> versionMockedStatic = Mockito.mockStatic(Version.class);
+            MockedStatic<ExecUtils> mockedStatic = Mockito.mockStatic(ExecUtils.class);
+            MockedStatic<CdcVersionUtil> mockedCdcVersionUtil = Mockito.mockStatic(CdcVersionUtil.class);
+            MockedStatic<MetaDbUtil> mockedMetaDBUtil = Mockito.mockStatic(MetaDbUtil.class);
+            MockedStatic<ColumnarVersionUtil> mockedColumnarVersionUtil = Mockito.mockStatic(
+                ColumnarVersionUtil.class)) {
+
+            versionMockedStatic.when(Version::getVersion).thenReturn("5.4.20-20211015");
+            mockedStatic.when(ExecUtils::getDnPolardbVersion).thenReturn("8.4.20-20241015");
+            mockedCdcVersionUtil.when(CdcVersionUtil::getVersion).thenReturn("5.4.1-20241016");
+            mockedMetaDBUtil.when(MetaDbUtil::getGmsPolardbVersion).thenReturn("5.4.2-20241017");
+            mockedColumnarVersionUtil.when(ColumnarVersionUtil::getVersion).thenReturn("5.4.30-20251018");
+
+            Assert.assertEquals(SelectPolardbVersion.getMaxVersion(), "20251018");
+        }
+
+        try (MockedStatic<Version> versionMockedStatic = Mockito.mockStatic(Version.class);
+            MockedStatic<CdcVersionUtil> mockedCdcVersionUtil = Mockito.mockStatic(CdcVersionUtil.class);
+            MockedStatic<MetaDbUtil> mockedMetaDBUtil = Mockito.mockStatic(MetaDbUtil.class);
+            MockedStatic<ColumnarVersionUtil> mockedColumnarVersionUtil = Mockito.mockStatic(
+                ColumnarVersionUtil.class)) {
+
+            versionMockedStatic.when(Version::getVersion).thenReturn("5.4.20-20211015");
+            mockedCdcVersionUtil.when(CdcVersionUtil::getVersion).thenReturn("5.4.1-20241016");
+            mockedMetaDBUtil.when(MetaDbUtil::getGmsPolardbVersion).thenReturn("5.4.2-20241017");
+            mockedColumnarVersionUtil.when(ColumnarVersionUtil::getVersion).thenReturn("5.4.30-20251018");
+
+            Assert.assertEquals(SelectPolardbVersion.getMaxVersion(), "20211015");
+        }
+    }
+
+    @Test
+    public void testReplaceWhenGreaterThan() {
+        String releaseDate = "20240314";
+        String type = "CN";
+        Assert.assertEquals("20240315",
+            SelectPolardbVersion.replaceWhenGreaterThan(releaseDate, "5.4.19-20240315", type));
+        Assert.assertEquals(releaseDate,
+            SelectPolardbVersion.replaceWhenGreaterThan(releaseDate, "5.4.19-20240313", type));
+        Assert.assertEquals("20240313", SelectPolardbVersion.replaceWhenGreaterThan(null, "5.4.19-20240313", type));
+        Assert.assertEquals(releaseDate, SelectPolardbVersion.replaceWhenGreaterThan(releaseDate, null, type));
     }
 
     @Test

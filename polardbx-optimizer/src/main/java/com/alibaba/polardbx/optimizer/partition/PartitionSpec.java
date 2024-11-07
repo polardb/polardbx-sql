@@ -18,9 +18,8 @@ package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.gms.locality.LocalityDesc;
-import com.alibaba.polardbx.gms.partition.ExtraFieldJSON;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.ttl.TtlPartArcState;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
@@ -59,6 +58,16 @@ public class PartitionSpec extends PartSpecBase {
         this.isDefaultPartition = false;
     }
 
+    public boolean isReadyForArchiving() {
+        if (this.extras.getArcState() != null) {
+            if (this.extras.getArcState() == TtlPartArcState.ARC_STATE_READY.getArcState()
+                || this.extras.getArcState() == TtlPartArcState.ARC_STATE_REREADY.getArcState()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public PartitionSpec copy() {
 
         PartitionSpec spec = new PartitionSpec();
@@ -83,6 +92,7 @@ public class PartitionSpec extends PartSpecBase {
         spec.setSpecTemplate(this.isSpecTemplate);
         spec.setTemplateName(this.templateName);
         spec.setIntraGroupConnKey(this.intraGroupConnKey);
+        spec.setArcState(this.arcState);
 
         if (this.location != null) {
             spec.setLocation(this.location.copy());
@@ -536,7 +546,9 @@ public class PartitionSpec extends PartSpecBase {
         sb.append(normalizePartSpec(normalSpecParams));
         sb.append(",");
         if (!isLogical) {
-            sb.append(this.getLocation().getDigest());
+            if (this.getLocation() != null) {
+                sb.append(this.getLocation().getDigest());
+            }
         }
         sb.append("]");
         return sb.toString();

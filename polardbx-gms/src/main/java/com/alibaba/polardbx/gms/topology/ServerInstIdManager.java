@@ -70,6 +70,7 @@ public class ServerInstIdManager extends AbstractLifecycle {
     public void reload() {
         loadMasterInstId();
         loadAllInstIdAndStorageIdSet();
+        loadColumnarInstIdAndUpdate();
         int instType = loadAllHtapInstIds();
         initInstType(instType);
         //here register the new storageIds listener after load the new learner InstId.
@@ -139,6 +140,16 @@ public class ServerInstIdManager extends AbstractLifecycle {
         }
     }
 
+    public synchronized void loadColumnarInstIdAndUpdate() {
+        ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
+        try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
+            serverInfoAccessor.loadColumnarInstIdAndUpdate(connection);
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
     public List<StorageInfoRecord> getSlaveStorageInfosByMasterStorageInstId(String masterStorageId) {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
@@ -192,5 +203,4 @@ public class ServerInstIdManager extends AbstractLifecycle {
     public int getInstType() {
         return instType;
     }
-
 }

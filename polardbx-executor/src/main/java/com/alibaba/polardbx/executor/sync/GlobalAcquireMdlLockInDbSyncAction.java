@@ -45,6 +45,8 @@ import java.util.TreeSet;
  */
 @Getter
 public class GlobalAcquireMdlLockInDbSyncAction implements ISyncAction {
+    final static String TABLE_TYPE_COL = "TABLE_TYPE";
+    final static String BASE_TABLE_TYPE = "base table";
     final private Set<String> schemaNames;
 
     public GlobalAcquireMdlLockInDbSyncAction(Set<String> schemaNames) {
@@ -91,15 +93,17 @@ public class GlobalAcquireMdlLockInDbSyncAction implements ISyncAction {
     }
 
     protected Set<String> getAllTablesInDatabase(String schemaName) {
-        final String queryTablesSql = "show tables";
+        final String queryTablesSql = "show full tables";
         List<Map<String, Object>> result = DdlHelper.getServerConfigManager().executeQuerySql(queryTablesSql,
             schemaName,
             null);
         Set<String> tables = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (Map<String, Object> map : result) {
-            String tb = (String) map.get(("TABLES_IN_" + SQLUtils.normalize(schemaName)).toUpperCase());
-            if (tb != null) {
-                tables.add(tb);
+            if (BASE_TABLE_TYPE.equalsIgnoreCase((String) map.get((TABLE_TYPE_COL)))) {
+                String tb = (String) map.get(("TABLES_IN_" + SQLUtils.normalize(schemaName)).toUpperCase());
+                if (tb != null) {
+                    tables.add(tb);
+                }
             }
         }
         return tables;

@@ -18,7 +18,11 @@ package com.alibaba.polardbx.gms.util;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -28,6 +32,15 @@ import java.util.regex.Pattern;
 public class DbNameUtil {
 
     private final static int MAX_DB_NAME_LENGTH = 64;
+
+    private static Set<String> forbiddenDbNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+    static {
+        forbiddenDbNameSet.add("mysql");
+        forbiddenDbNameSet.add("performance_schema");
+        forbiddenDbNameSet.addAll(SystemDbHelper.getAllBuildInDbNameList());
+
+    }
 
     public static boolean validateDbName(String dbName, boolean isKeyWords) {
 
@@ -43,6 +56,11 @@ public class DbNameUtil {
                     String.format("Failed to create database because the dbName[%s] contains some invalid characters",
                         dbName));
             }
+        }
+
+        if (forbiddenDbNameSet.contains(dbName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                String.format("Failed to create database because the dbName[%s] is forbidden build-in dbname", dbName));
         }
 
         if (isKeyWords) {

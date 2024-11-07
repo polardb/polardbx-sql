@@ -31,13 +31,13 @@ public interface NDVSketchService {
      * 重建全部分片的 ndv sketch 信息
      */
     void reBuildShardParts(String schema, String tableName, String columnName, ExecutionContext ec,
-                           ThreadPoolExecutor sketchHllExecutor) throws SQLException;
+                           ThreadPoolExecutor sketchHllExecutor) throws Exception;
 
     /**
      * 更新所有分片的 ndv sketch 信息,如果不存在重建.如果已存在则判断是否需要更新
      */
     void updateAllShardParts(String schema, String tableName, String columnName, ExecutionContext ec,
-                             ThreadPoolExecutor sketchHllExecutor) throws SQLException;
+                             ThreadPoolExecutor sketchHllExecutor) throws Exception;
 
     /**
      * 加载组装 meta db 中的数据

@@ -19,14 +19,15 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
@@ -62,6 +63,20 @@ public class LogicalAlterTableDropPartition extends BaseDdlOperation {
     public LogicalAlterTableDropPartition(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
+    }
+
+    @Override
+    public boolean isSupportedByCci(ExecutionContext ec) {
+        String schemaName = this.schemaName;
+        String tblName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            TableMeta tblMeta = ec.getSchemaManager(schemaName).getTable(tblName);
+            if (tblMeta.isColumnar()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -102,34 +117,21 @@ public class LogicalAlterTableDropPartition extends BaseDdlOperation {
         preparedData.setWithHint(targetTablesHintCache != null);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
 
-        List<String> oldPartitionNames =
-            getDroppingPartitionNames(sqlAlterTableDropPartition, partitionInfo, preparedData);
+        List<String> oldPartitionNames = new ArrayList<>();
+        for (SqlNode sqlNode : sqlAlterTableDropPartition.getPartitionNames()) {
+            final String origName = ((SqlIdentifier) sqlNode).getLastName().toLowerCase();
+            oldPartitionNames.add(origName);
+        }
 
         preparedData.setOldPartitionNames(oldPartitionNames);
 
-        preparedData.prepareInvisiblePartitionGroup(sqlAlterTableDropPartition.isSubPartition());
-
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-
-        List<String> newPartitionNames =
-            preparedData.getInvisiblePartitionGroups().stream().map(o -> o.getPartition_name())
-                .collect(Collectors.toList());
-
-        preparedData.setNewPartitionNames(newPartitionNames);
+        preparedData.setOperateOnSubPartition(sqlAlterTableDropPartition.isSubPartition());
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION);
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
         preparedData.setTableName(logicalTableName);
         preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
         if (preparedData.needFindCandidateTableGroup()) {
-            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
-                new TreeMap<>(String::compareToIgnoreCase);
-            for (int i = 0; i < newPartitionNames.size(); i++) {
-                String mockTableName = "";
-                mockOrderedTargetTableLocations.put(newPartitionGroups.get(i).partition_name, new Pair<>(mockTableName,
-                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(i).partition_name)));
-            }
-
             PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
                 .getNewPartitionInfo(
                     preparedData,
@@ -141,7 +143,7 @@ public class LogicalAlterTableDropPartition extends BaseDdlOperation {
                     preparedData.getTableGroupName(),
                     null,
                     preparedData.getInvisiblePartitionGroups(),
-                    mockOrderedTargetTableLocations,
+                    null,
                     ec);
 
             int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
@@ -289,6 +291,12 @@ public class LogicalAlterTableDropPartition extends BaseDdlOperation {
 
     public static LogicalAlterTableDropPartition create(DDL ddl) {
         return new LogicalAlterTableDropPartition(ddl);
+    }
+
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getPreparedData()) {
+            getPreparedData().setDdlVersionId(ddlVersionId);
+        }
     }
 
 }

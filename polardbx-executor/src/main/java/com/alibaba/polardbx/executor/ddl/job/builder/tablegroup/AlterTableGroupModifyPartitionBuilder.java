@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -38,6 +39,11 @@ public class AlterTableGroupModifyPartitionBuilder extends AlterTableGroupBaseBu
     @Override
     public AlterTableGroupItemPreparedData createAlterTableGroupItemPreparedData(String tableName,
                                                                                  List<GroupDetailInfoExRecord> groupDetailInfoExRecords) {
+        TableMeta tableMeta =
+            getExecutionContext().getSchemaManager(getPreparedData().getSchemaName()).getTable(tableName);
+        if (tableMeta.withCci()) {
+            TableValidator.validateTableWithCCI(getExecutionContext(), getPreparedData().getTaskType());
+        }
 
         AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
             new AlterTableGroupItemPreparedData(preparedData.getSchemaName(), tableName);
@@ -55,7 +61,6 @@ public class AlterTableGroupModifyPartitionBuilder extends AlterTableGroupBaseBu
         alterTableGroupItemPreparedData.setInvisiblePartitionGroups(preparedData.getInvisiblePartitionGroups());
         alterTableGroupItemPreparedData.setTaskType(preparedData.getTaskType());
         String primaryTableName;
-        TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
         if (tableMeta.isGsi()) {
             //all the gsi table version change will be behavior by primary table
             assert
@@ -69,6 +74,7 @@ public class AlterTableGroupModifyPartitionBuilder extends AlterTableGroupBaseBu
             .setTableVersion(
                 executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName)
                     .getVersion());
+        alterTableGroupItemPreparedData.setColumnarIndex(tableMeta.isColumnar());
 
         return alterTableGroupItemPreparedData;
     }

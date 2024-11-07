@@ -39,7 +39,6 @@ public class CreatePartitionTableWithGsiBuilder {
     private final DDL relDdl;
     private final CreateTableWithGsiPreparedData preparedData;
     private final ExecutionContext executionContext;
-
     private CreateTableBuilder primaryTableBuilder;
 
     private Map<String, List<List<String>>> primaryTableTopology;
@@ -80,10 +79,10 @@ public class CreatePartitionTableWithGsiBuilder {
     private void buildPrimaryTablePhysicalPlans() {
         CreateTablePreparedData primaryTablePreparedData = preparedData.getPrimaryTablePreparedData();
         final PartitionTableType partitionTableType = getPartitionTableType(primaryTablePreparedData);
-
         primaryTableBuilder = new CreatePartitionTableBuilder(relDdl, primaryTablePreparedData, executionContext,
             partitionTableType);
         primaryTableBuilder.build();
+
         this.primaryTableTopology = primaryTableBuilder.getTableTopology();
         this.primaryTablePhysicalPlans = primaryTableBuilder.getPhysicalPlans();
     }
@@ -135,6 +134,10 @@ public class CreatePartitionTableWithGsiBuilder {
         indexTableBuilder.build();
 
         this.indexTablePhysicalPlansMap.put(indexTableName, indexTableBuilder.getPhysicalPlans());
+    }
+
+    public CreateTableBuilder getPrimaryTableBuilder() {
+        return primaryTableBuilder;
     }
 
 }

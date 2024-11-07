@@ -22,7 +22,9 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
+import com.alibaba.polardbx.gms.partition.ExtraFieldJSON;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.ttl.TtlPartArcState;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
@@ -1837,6 +1839,26 @@ public class PartitionByDefinition extends PartitionByDefinitionBase {
         } else {
             return containsAllIgnoreCase(actualUsedPartCols, allPartCols);
         }
+    }
+
+    /**
+     * Fetch all the first level partitions name which arc_state
+     * is from arc_state_ready (without oss files) or arc_state_reready (with oss files)
+     */
+    public List<PartitionSpec> getAllReadyArchivingPartitions() {
+        List<PartitionSpec> results = new ArrayList<>();
+        for (int i = 0; i < this.partitions.size(); i++) {
+            PartitionSpec partSpec = this.partitions.get(i);
+            ExtraFieldJSON extras = partSpec.extras;
+            if (extras != null) {
+                Integer arcState = partSpec.extras.getArcState();
+                if (arcState != null && (arcState == TtlPartArcState.ARC_STATE_READY.getArcState()
+                    || arcState == TtlPartArcState.ARC_STATE_REREADY.getArcState())) {
+                    results.add(partSpec);
+                }
+            }
+        }
+        return results;
     }
 
     public PartKeyLevel getPhysicalPartLevel() {

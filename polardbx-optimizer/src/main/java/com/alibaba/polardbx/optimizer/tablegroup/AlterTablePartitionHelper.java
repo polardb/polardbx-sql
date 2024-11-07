@@ -73,7 +73,7 @@ public class AlterTablePartitionHelper {
                     if (tblMetaOfTblOfIdx != null) {
                         SqlIdentifier alterIndexNameAst = (SqlIdentifier) alterIndexNameNode;
                         TableMeta gsiFullTblMeta =
-                            getGisTableMetaByPrimaryTblMetaAndIndexName(alterIndexNameAst, tblAstOfAlterIdx,
+                            getGsiTableMetaByPrimaryTblMetaAndIndexName(alterIndexNameAst, tblAstOfAlterIdx,
                                 tblMetaOfTblOfIdx);
                         if (gsiFullTblMeta != null) {
                             String gsiDbName = gsiFullTblMeta.getSchemaName();
@@ -124,7 +124,7 @@ public class AlterTablePartitionHelper {
                     List<String> fullTblNamesIdOfIndex = tblIdOfIndex.names;
                     TableMeta tblMetaOfIndex = getTableMetaByFullTblName(fullTblNamesIdOfIndex);
                     TableMeta gsiFullTblMeta =
-                        getGisTableMetaByPrimaryTblMetaAndIndexName(tblId, tblIdOfIndex, tblMetaOfIndex);
+                        getGsiTableMetaByPrimaryTblMetaAndIndexName(tblId, tblIdOfIndex, tblMetaOfIndex);
                     targetTblMeta = gsiFullTblMeta;
                 } else {
                     List<String> fullTblNames = tblId.names;
@@ -143,31 +143,38 @@ public class AlterTablePartitionHelper {
         return targetTgName;
     }
 
-    private static TableMeta getGisTableMetaByPrimaryTblMetaAndIndexName(SqlIdentifier idxNameAst,
+    private static TableMeta getGsiTableMetaByPrimaryTblMetaAndIndexName(SqlIdentifier idxNameAst,
                                                                          SqlIdentifier tblNameAstOfIndex,
                                                                          TableMeta tblMetaOfIndex) {
         String dbNameOfTblOfIndex = tblMetaOfIndex.getSchemaName();
         String idxName = SQLUtils.normalizeNoTrim(idxNameAst.getLastName());
-        String gsiFullTblName = null;
+        String fullTblName = null;
         Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = tblMetaOfIndex.getGsiPublished();
+        Map<String, GsiMetaManager.GsiIndexMetaBean> cciPublished = tblMetaOfIndex.getColumnarIndexPublished();
         if (gsiPublished != null) {
             String idxNameLowerCase = idxName.toLowerCase();
             // all gsi tbl name format is idxname + "_$xxxx";
             int targetLength = idxNameLowerCase.length() + 6;
             for (String gsiName : gsiPublished.keySet()) {
                 if (gsiName.toLowerCase().startsWith(idxNameLowerCase) && gsiName.length() == targetLength) {
-                    gsiFullTblName = gsiName;
+                    fullTblName = gsiName;
+                    break;
+                }
+            }
+            for (String cciName : cciPublished.keySet()) {
+                if (cciName.toLowerCase().startsWith(idxNameLowerCase) && cciName.length() == targetLength) {
+                    fullTblName = cciName;
                     break;
                 }
             }
         }
-        if (gsiFullTblName == null) {
+        if (fullTblName == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                 String.format("Not found the index [%s] of table [%s]", idxName, tblNameAstOfIndex.toString()));
         }
-        TableMeta gsiFullTblMeta =
-            OptimizerContext.getContext(dbNameOfTblOfIndex).getLatestSchemaManager().getTable(gsiFullTblName);
-        return gsiFullTblMeta;
+        TableMeta fullTblMeta =
+            OptimizerContext.getContext(dbNameOfTblOfIndex).getLatestSchemaManager().getTable(fullTblName);
+        return fullTblMeta;
     }
 
     @NotNull

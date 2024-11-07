@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.columnar.DeletionFileReader;
 import com.alibaba.polardbx.executor.operator.spill.MemorySpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
@@ -80,6 +81,7 @@ public class FileVersionStorage implements Closeable, Purgeable {
 
     /**
      * Maintain the already loaded tso for each partition
+     * TODO(siyun): for multi-version partition info, this map is MIXED with different versions, which should be separated for SPLIT PARTITION
      */
     private LoadingCache<PartitionId, MultiVersionDelPartitionInfo> delDataTsoMap;
 
@@ -187,16 +189,6 @@ public class FileVersionStorage implements Closeable, Purgeable {
         }
     }
 
-    /**
-     * Read data from csv into memory, never cache.
-     *
-     * @param tso this tso must be taken from columnar_appended_files
-     * @return data in raw orc type: long, double, or byte array
-     */
-    public List<Chunk> csvRawOrcTypeData(long tso, String csvFileName, ExecutionContext context) {
-        return MultiVersionCsvData.loadRawOrcTypeUntilTso(tso, openedIncrementFileCount, csvFileName, context);
-    }
-
     // Used for old columnar table scan
     @Deprecated
     public int fillSelection(String fileName, long tso, int[] selection, LongColumnVector longColumnVector,
@@ -229,7 +221,7 @@ public class FileVersionStorage implements Closeable, Purgeable {
 
     // Used for old columnar table scan
     @Deprecated
-    public int fillSelection(String fileName, long tso, int[] selection, IntegerBlock positionBlock) {
+    public int fillSelection(String fileName, long tso, int[] selection, LongBlock positionBlock) {
         try {
             RoaringBitmap bitmap = delDataMap.get(fileName).buildDeleteBitMap(tso);
 

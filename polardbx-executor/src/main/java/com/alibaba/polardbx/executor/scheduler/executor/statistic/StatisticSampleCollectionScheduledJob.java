@@ -337,7 +337,7 @@ public class StatisticSampleCollectionScheduledJob extends SchedulerExecutor {
     }
 
     private boolean succeedExit(long scheduleId, long fireTime, String remark) {
-        if (fromScheduleJob) {
+        if (!fromScheduleJob) {
             return true;
         }
         long finishTime = System.currentTimeMillis() / 1000;

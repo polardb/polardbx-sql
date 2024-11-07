@@ -38,6 +38,7 @@ public class SqlStartReplicaCheck extends SqlDal {
     private SqlNode dbName;
     private SqlNode tableName;
     private SqlNode channel;
+    private SqlNode mode;
 
     public SqlStartReplicaCheck(SqlParserPos pos, SqlNode channel, SqlNode dbName) {
         super(pos);
@@ -69,6 +70,14 @@ public class SqlStartReplicaCheck extends SqlDal {
         this.channel = channel;
     }
 
+    public SqlNode getMode() {
+        return mode;
+    }
+
+    public void setMode(SqlNode mode) {
+        this.mode = mode;
+    }
+
     @Override
     public SqlOperator getOperator() {
         return OPERATOR;
@@ -83,8 +92,12 @@ public class SqlStartReplicaCheck extends SqlDal {
             tableName.unparse(writer, 0, 0);
         }
         if (channel != null) {
-            writer.keyword("FOR CHANNEL");
+            writer.keyword("CHANNEL=");
             channel.unparse(writer, 0, 0);
+        }
+        if (mode != null) {
+            writer.keyword("MODE=");
+            mode.unparse(writer, 0, 0);
         }
     }
 

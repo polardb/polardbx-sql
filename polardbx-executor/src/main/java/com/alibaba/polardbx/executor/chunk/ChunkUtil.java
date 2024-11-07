@@ -31,17 +31,13 @@ public abstract class ChunkUtil {
         return result;
     }
 
-    public static int hashCode(char[] arr, int start, int end, boolean ingoreCase) {
+    public static int hashCodeIgnoreCase(char[] arr, int start, int end) {
         if (arr == null) {
             return 0;
         }
         int result = 1;
         for (int i = start; i < end; ++i) {
-            if (ingoreCase) {
-                result = 31 * result + Character.toUpperCase(arr[i]);
-            } else {
-                result = 31 * result + arr[i];
-            }
+            result = 31 * result + Character.toUpperCase(arr[i]);
         }
         return result;
     }

@@ -36,6 +36,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+/**
+ * This scan work scan return deleted data from orc files.
+ */
 public class DeletedScanWork extends AbstractScanWork {
     private final boolean activeLoading;
 
@@ -59,7 +62,6 @@ public class DeletedScanWork extends AbstractScanWork {
 
     @Override
     protected void handleNextWork() {
-
         // not all row group but those filtered by pruner should be loaded.
         final boolean[] prunedRowGroupBitmap = rgIterator.rgIncluded();
         final int rowGroupCount = prunedRowGroupBitmap.length;

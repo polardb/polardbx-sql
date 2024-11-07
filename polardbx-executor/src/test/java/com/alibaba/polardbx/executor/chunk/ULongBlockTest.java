@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.ULongType;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.SliceInput;
@@ -118,5 +119,58 @@ public class ULongBlockTest extends BaseBlockTest {
         for (int i = 0; i < size; i++) {
             Assert.assertEquals(block.getObject(i), block1.getObject(i));
         }
+    }
+
+    @Test
+    public void test() {
+        int count = 100;
+        ULongBlockBuilder builder1 = new ULongBlockBuilder(count / 2);
+        for (int i = 0; i < count - 1; i++) {
+            builder1.writeLong(i);
+        }
+        builder1.appendNull();
+        ULongBlock ulongBlock = (ULongBlock) builder1.build();
+        ULongBlockBuilder builder2 = new ULongBlockBuilder(1);
+        for (int i = 0; i < count; i++) {
+            ulongBlock.writePositionTo(i, builder2);
+        }
+        ULongBlock newBlock = (ULongBlock) builder2.build();
+        Assert.assertSame(DataTypes.ULongType, newBlock.getType());
+        int[] hashes = newBlock.hashCodeVector();
+        int[] hashes2 = new int[hashes.length];
+        newBlock.hashCodeVector(hashes2, hashes2.length);
+        for (int i = 0; i < count; i++) {
+            Assert.assertEquals(ulongBlock.getObject(i), newBlock.getObject(i));
+            Assert.assertEquals(ulongBlock.getElementAtUnchecked(i), newBlock.getElementAtUnchecked(i));
+            Assert.assertEquals(ulongBlock.getLong(i), newBlock.getLong(i));
+            Assert.assertEquals(ulongBlock.hashCode(i), newBlock.hashCode(i));
+            Assert.assertEquals(ulongBlock.hashCode(i), hashes[i]);
+            Assert.assertEquals(ulongBlock.hashCode(i), hashes2[i]);
+            Assert.assertEquals(ulongBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
+        }
+
+        ULongBlock newBlock2 = new ULongBlock(DataTypes.ULongType, count);
+        newBlock.shallowCopyTo(newBlock2);
+        Assert.assertSame(newBlock.longArray(), newBlock2.longArray());
+
+        int[] sel = new int[] {0, 1, 2, 3, 4, 11, 12, 13, 14};
+        ULongBlock newBlock3 = new ULongBlock(DataTypes.ULongType, count);
+        newBlock.copySelected(false, null, count, newBlock3);
+        for (int i = 0; i < count; i++) {
+            Assert.assertEquals(newBlock3.getObject(i), newBlock.getObject(i));
+        }
+        newBlock.copySelected(true, sel, sel.length, newBlock3);
+        for (int i = 0; i < sel.length; i++) {
+            int j = sel[i];
+            Assert.assertEquals(newBlock3.getObject(j), newBlock.getObject(j));
+        }
+        LongBlock longBlock = new LongBlock(DataTypes.LongType, count);
+        newBlock.copySelected(false, null, count, longBlock);
+        for (int i = 0; i < count; i++) {
+            Assert.assertEquals(longBlock.getLong(i), newBlock.getLong(i));
+        }
+        // compact should work
+        newBlock.compact(sel);
+        Assert.assertEquals(sel.length, newBlock.getPositionCount());
     }
 }

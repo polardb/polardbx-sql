@@ -15,8 +15,9 @@
     <artifactId>polardbx-test</artifactId>
 
     <properties>
-        <mysql_connector_v5>5.1.49</mysql_connector_v5>
+        <mysql_connector_v5>5.1.40.12</mysql_connector_v5>
         <mysql_connector_v8>8.0.26</mysql_connector_v8>
+        <polardbx_connector>1.4.0-SNAPSHOT</polardbx_connector>
         <mvn_parallel>none</mvn_parallel>
         <mvn_threadCount>24</mvn_threadCount>
         <mvn_threadCountClasses>10</mvn_threadCountClasses>
@@ -26,17 +27,23 @@
         <toml4j.version>0.7.2</toml4j.version>
         <encjdbc.version>1.0.7</encjdbc.version>
         <gson.version>2.10.1</gson.version>
-<!--        <mvn_useSystemClassLoader>false</mvn_useSystemClassLoader>-->
-<!--        <mvn_parallelOptimized>true</mvn_parallelOptimized>-->
-<!--        <mvn_perCoreThreadCount>false</mvn_perCoreThreadCount>-->
+        <jcip.version>1.0</jcip.version>
+        <!--        <mvn_useSystemClassLoader>false</mvn_useSystemClassLoader>-->
+        <!--        <mvn_parallelOptimized>true</mvn_parallelOptimized>-->
+        <!--        <mvn_perCoreThreadCount>false</mvn_perCoreThreadCount>-->
         <!--sed -i "" 's/'{mysql_connector_v5}'/'{mysql_connector_v5}'/g' tddl-qatest/pom.xml-->
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>pl.pragmatists</groupId>
-            <artifactId>JUnitParams</artifactId>
-            <version>${jUnitParams.version}</version>
+            <groupId>net.jcip</groupId>
+            <artifactId>jcip-annotations</artifactId>
+            <version>${jcip.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.external</groupId>
+            <artifactId>test.junit.hamcrest</artifactId>
+            <version>${test.junit.hamcrest.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -88,6 +95,19 @@
             <version>${mysql_connector_v5}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>polardbx-java-connector</artifactId>
+            <version>${polardbx_connector}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.junit.jupiter</groupId>
+                    <artifactId>junit-jupiter</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
 
         <dependency>
             <groupId>com.google.truth</groupId>
@@ -96,25 +116,11 @@
             <scope>test</scope>
         </dependency>
 
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-jdbc</artifactId>
-            <version>${spring_version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hamcrest</groupId>
-            <artifactId>hamcrest</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- https://mvnrepository.com/artifact/net.jcip/jcip-annotations -->
-        <dependency>
-            <groupId>net.jcip</groupId>
-            <artifactId>jcip-annotations</artifactId>
-            <version>${jcip.version}</version>
-            <scope>test</scope>
-        </dependency>
+        <!--        <dependency>-->
+        <!--            <groupId>org.springframework</groupId>-->
+        <!--            <artifactId>spring-jdbc</artifactId>-->
+        <!--            <scope>test</scope>-->
+        <!--        </dependency>-->
 
         <dependency>
             <groupId>commons-cli</groupId>
@@ -125,26 +131,6 @@
             <groupId>com.moandjiezana.toml</groupId>
             <artifactId>toml4j</artifactId>
             <version>${toml4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.aliyun</groupId>
-            <artifactId>aliyun-encdb-mysql-jdbc</artifactId>
-            <version>${encjdbc.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.grpc</groupId>
-                    <artifactId>grpc-core</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>mysql</groupId>
-                    <artifactId>mysql-connector-java</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>${gson.version}</version>
         </dependency>
     </dependencies>
 
@@ -162,7 +148,7 @@
                         </property>
                     </properties>
                     <parallel>${mvn_parallel}</parallel>
-                    <!--  <runOrder>random</runOrder>-->
+                    <!--                    <runOrder>random</runOrder>-->
                     <threadCount>${mvn_threadCount}</threadCount>
                     <threadCountClasses>${mvn_threadCountClasses}</threadCountClasses>
                     <threadCountSuites>${mvn_threadCountSuites}</threadCountSuites>

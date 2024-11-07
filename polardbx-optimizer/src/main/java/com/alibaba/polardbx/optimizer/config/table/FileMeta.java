@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
+import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.orc.impl.OrcTail;
@@ -114,8 +115,7 @@ public class FileMeta {
         case NFS: {
             // Identify the file with its suffix (orc, csv or del).
             String fileName = filesRecord.getFileName();
-            String suffix = fileName.substring(fileName.lastIndexOf('.') + 1);
-            ColumnarFileType fileType = ColumnarFileType.of(suffix);
+            ColumnarFileType fileType = FileSystemUtils.getFileType(fileName);
 
             switch (fileType) {
             case ORC:

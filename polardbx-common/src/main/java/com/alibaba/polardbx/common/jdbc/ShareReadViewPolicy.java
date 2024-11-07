@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.jdbc;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 
 import java.sql.Connection;
 
@@ -28,13 +29,16 @@ public enum ShareReadViewPolicy {
     DEFAULT;
 
     public static boolean supportTxIsolation(int isolationLevel) {
-        return isolationLevel == Connection.TRANSACTION_REPEATABLE_READ;
+        return isolationLevel == Connection.TRANSACTION_REPEATABLE_READ ||
+            (DynamicConfig.getInstance().isEnableShareReadviewInRc()
+                && isolationLevel == Connection.TRANSACTION_READ_COMMITTED);
     }
 
     public static void checkTxIsolation(int isolationLevel) {
-        if (isolationLevel != Connection.TRANSACTION_REPEATABLE_READ) {
+        if (!supportTxIsolation(isolationLevel)) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
-                "Share read view is only supported in repeatable-read.");
+                "Share read view is only supported in repeatable-read. "
+                    + "Or in read-committed when ENABLE_SHARE_READVIEW_IN_RC is true.");
         }
     }
 }

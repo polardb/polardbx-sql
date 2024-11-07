@@ -866,6 +866,13 @@ public class SQLStatementParser extends SQLParser {
                 continue;
             }
 
+            if(lexer.identifierEquals("RESUME")) {
+                SQLStatement stmt = parseResume();
+                statementList.add(stmt);
+                stmt.setParent(parent);
+                continue;
+            }
+
             if (lexer.identifierEquals("DUMP")) {
                 SQLStatement stmt = parseDump();
                 statementList.add(stmt);
@@ -984,6 +991,7 @@ public class SQLStatementParser extends SQLParser {
             // + lexer.stringVal() + ", pos "
             // + lexer.pos());
             //throw new ParserException("not supported." + lexer.info());
+
             printError(lexer.token);
         }
 
@@ -1738,6 +1746,11 @@ public class SQLStatementParser extends SQLParser {
     public SQLStatement parseTerminate() {
         lexer.nextToken();
         throw new ParserException("Only support terminate rebalance .");
+    }
+
+    public SQLStatement parseResume() {
+        lexer.nextToken();
+        throw new ParserException("Only support resume rebalance .");
     }
 
     public SQLStatement parseCommit() {

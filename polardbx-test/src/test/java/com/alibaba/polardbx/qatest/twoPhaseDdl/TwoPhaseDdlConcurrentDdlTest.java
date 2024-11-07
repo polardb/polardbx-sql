@@ -21,7 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.alterTableViaTwoPhaseDdl;
+import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.alterTableViaJdbc;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfExecuteTwoPhaseDdl;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkPhyDdlStatus;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkTableStatus;
@@ -65,7 +65,7 @@ public class TwoPhaseDdlConcurrentDdlTest extends DDLBaseNewDBTestCase {
 
     // two_phase_ddl_test1.online_ddl_pause_concurrent.{0..3}, 16 * 100W
     @Test
-    public void testConcurrentAlterTableAddDdlPauseBeforePrepare() throws SQLException, InterruptedException {
+    public void testConcurrentAlterTableAddDdlPauseBeforePrepare() throws Exception {
         String schemaName = "two_phase_ddl_test1";
         List<String> tableNames = new ArrayList<>();
         List<Connection> connections = new ArrayList<>();
@@ -111,7 +111,7 @@ public class TwoPhaseDdlConcurrentDdlTest extends DDLBaseNewDBTestCase {
 
     // two_phase_ddl_test1.modify_column_pause_concurrent.{0..3}, 16 * 100W
     @Test
-    public void testConcurrentAlterTableModifyColumnDdlPauseBeforePrepare() throws SQLException, InterruptedException {
+    public void testConcurrentAlterTableModifyColumnDdlPauseBeforePrepare() throws Exception {
         String schemaName = "two_phase_ddl_test1";
         List<String> tableNames = new ArrayList<>();
         List<Connection> connections = new ArrayList<>();
@@ -131,7 +131,7 @@ public class TwoPhaseDdlConcurrentDdlTest extends DDLBaseNewDBTestCase {
         for (int i = 0; i < concurrent; i++) {
             String table = tableNames.get(i);
             String recoverDdl = String.format("alter table %s modify column c varchar(32)", table);
-            alterTableViaTwoPhaseDdl(tddlConnection, schemaName, table, recoverDdl);
+            alterTableViaJdbc(tddlConnection, schemaName, table, recoverDdl);
             String ddl = String.format("alter table %s modify column c varchar(16)", table);
             int finalI = i;
             futures.add(
@@ -161,7 +161,7 @@ public class TwoPhaseDdlConcurrentDdlTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String msg = String.format("table: %s, ddl: %s", table, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, table, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, table, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 4;
         Thread.sleep(sleepTime * 1000);

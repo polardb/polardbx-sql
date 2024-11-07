@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Manage the tablegroup and partition group
@@ -400,7 +401,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                     return;
                 }
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
-                    TablePartitionRecord tablePartitionRecord = partRecList.stream()
+                    TablePartitionRecord tablePartitionRecord = allPhyPartRecInfos.stream()
                         .filter(o -> o.partName.equalsIgnoreCase(partitionGroupRecord.partition_name)).findFirst()
                         .orElse(null);
                     assert tablePartitionRecord != null;

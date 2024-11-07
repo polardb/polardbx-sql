@@ -68,9 +68,18 @@ public class ServerVariables {
         ConnectionProperties.ENABLE_TRX_IDLE_TIMEOUT_TASK,
         ConnectionProperties.TRX_IDLE_TIMEOUT_TASK_INTERVAL);
 
+    public static final Set<String> MODIFIABLE_SYNC_POINT_PARAM = ImmutableSet.of(
+        ConnectionProperties.ENABLE_SYNC_POINT,
+        ConnectionProperties.SYNC_POINT_TASK_INTERVAL);
+
     public static final Set<String> MODIFIABLE_TIMER_TASK_PARAM;
 
+    public static final String ENABLE_POLARX_SYNC_POINT = "enable_polarx_sync_point";
+
     static {
+        variables.add(ENABLE_POLARX_SYNC_POINT);
+        variables.add("opt_flashback_area");
+        variables.add("innodb_txn_retention");
         variables.add("activate_all_roles_on_login");
         variables.add("admin_address");
         variables.add("admin_port");
@@ -1048,7 +1057,9 @@ public class ServerVariables {
         variables.add("warning_count");
         variables.add("weak_consensus_mode");
         variables.add("windowing_use_high_precision");
+        variables.add("polarx_sync_point_timeout");
         variables.add("xa_detach_on_prepare");
+        variables.add("innodb_rds_faster_ddl");
 
         readonlyVariables.add("audit_log_current_session");
         readonlyVariables.add("audit_log_filter_id");
@@ -1231,6 +1242,8 @@ public class ServerVariables {
         readonlyVariables.add("warning_count");
         readonlyVariables.add("version_tokens_session_number");
 
+        writableVariables.add("opt_flashback_area");
+        writableVariables.add("innodb_txn_retention");
         writableVariables.add("auto_increment_increment");
         writableVariables.add("auto_increment_offset");
         writableVariables.add("autocommit");
@@ -1642,6 +1655,9 @@ public class ServerVariables {
         mysqlBothVariables.add("wait_timeout");
         mysqlBothVariables.add("windowing_use_high_precision");
         mysqlBothVariables.add("xa_detach_on_prepare");
+
+        mysqlGlobalVariables.add("opt_flashback_area");
+        mysqlGlobalVariables.add("innodb_txn_retention");
         mysqlGlobalVariables.add("Ndb_conflict_last_conflict_epoch");
         mysqlGlobalVariables.add("Ndb_replica_max_replicated_epoch");
         mysqlGlobalVariables.add("Ndb_slave_max_replicated_epoch");
@@ -2649,6 +2665,9 @@ public class ServerVariables {
         mysqlGlobalVariables.add("version_compile_os");
         mysqlGlobalVariables.add("version_compile_zlib");
         mysqlGlobalVariables.add("weak_consensus_mode");
+        mysqlGlobalVariables.add(ENABLE_POLARX_SYNC_POINT);
+        mysqlGlobalVariables.add("polarx_sync_point_timeout");
+
         mysqlSessionVariables.add("debug_sync");
         mysqlSessionVariables.add("error_count");
         mysqlSessionVariables.add("external_user");
@@ -2681,6 +2700,11 @@ public class ServerVariables {
         mysqlSessionVariables.add("transaction_allow_batching");
         mysqlSessionVariables.add("use_secondary_engine");
         mysqlSessionVariables.add("warning_count");
+
+        mysqlDynamicVariables.add("polarx_sync_point_timeout");
+        mysqlDynamicVariables.add(ENABLE_POLARX_SYNC_POINT);
+        mysqlDynamicVariables.add("opt_flashback_area");
+        mysqlDynamicVariables.add("innodb_txn_retention");
         mysqlDynamicVariables.add("activate_all_roles_on_login");
         mysqlDynamicVariables.add("admin_ssl_ca");
         mysqlDynamicVariables.add("admin_ssl_capath");
@@ -3592,6 +3616,9 @@ public class ServerVariables {
         globalBannedVariables.add("auto_increment_increment");
         globalBannedVariables.add("super_write");
 
+        // 禁止全局设置：
+        globalBannedVariables.add("file_list");
+
         ImmutableSet.Builder<String> modifiableTimerTaskVarBuilder = new ImmutableSet.Builder<>();
 
         for (String modifiableTimerTaskParam : MODIFIABLE_PURGE_TRANS_PARAM) {
@@ -3607,6 +3634,10 @@ public class ServerVariables {
         }
 
         for (String modifiableTimerTaskParam : MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM) {
+            modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
+        }
+
+        for (String modifiableTimerTaskParam : MODIFIABLE_SYNC_POINT_PARAM) {
             modifiableTimerTaskVarBuilder.add(modifiableTimerTaskParam);
         }
         MODIFIABLE_TIMER_TASK_PARAM = modifiableTimerTaskVarBuilder.build();
@@ -3668,7 +3699,7 @@ public class ServerVariables {
         return globalBannedVariables.contains(variable.toLowerCase());
     }
 
-    public static boolean isGlobalBlackList(String variable) {
+    public static boolean isVariablesBlackList(String variable) {
         return DynamicConfig.getInstance().getBlacklistConf().contains(variable.toLowerCase());
     }
 

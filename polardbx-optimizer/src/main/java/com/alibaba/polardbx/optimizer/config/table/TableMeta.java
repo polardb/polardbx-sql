@@ -24,10 +24,12 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLExprUtils;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
@@ -51,12 +53,14 @@ import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionI
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.taobao.tddl.common.utils.TddlToStringStyle;
+import lombok.NonNull;
 import org.apache.calcite.config.CalciteConnectionConfig;
 import org.apache.calcite.plan.Context;
 import org.apache.calcite.plan.RelOptCluster;
@@ -184,6 +188,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private Map<String, GsiIndexMetaBean> gsiPublished = null;
     private Map<String, GsiIndexMetaBean> columnarIndexPublished = null;
     private Map<String, GsiIndexMetaBean> columnarIndexChecking = null;
+    private Map<String, GsiIndexMetaBean> archiveColumnarIndexPublished = null;
 
     private ComplexTaskOutlineRecord complexTaskOutlineRecord = null;
     private ComplexTaskMetaManager.ComplexTaskTableMetaBean complexTaskTableMetaBean = null;
@@ -206,6 +211,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private List<Long> columnarFieldIdList = null;
 
     private volatile LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
+
+    private volatile TtlDefinitionInfo ttlDefinitionInfo;
 
     private volatile TableFilesMeta tableFilesMeta = null;
 
@@ -451,6 +458,74 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         }
         indexes.addAll(this.getSecondaryIndexes());
         return indexes;
+    }
+
+    public boolean checkIndexNameExists(String indexName) {
+        return findLocalIndexByName(indexName) != null || findGlobalSecondaryIndexByName(indexName) != null;
+    }
+
+    /**
+     * Retrieves the local index metadata by its name.
+     *
+     * @param localIndexName the local index name
+     * @return the IndexMeta object if found; otherwise, returns {@code null}
+     */
+    @Nullable
+    public IndexMeta findLocalIndexByName(@NonNull String localIndexName) {
+        // Normalize the input index name without trimming
+        localIndexName = SQLUtils.normalizeNoTrim(localIndexName);
+
+        // Handle primary key
+        if (GeneralUtil.isPrimary(localIndexName)) {
+            return getPrimaryIndex();
+        }
+
+        // Iterate through all indexes to find a non-primary key match
+        for (IndexMeta indexMeta : getAllIndexes()) {
+            if (!indexMeta.isPrimaryKeyIndex() && indexMeta.getPhysicalIndexName().equalsIgnoreCase(localIndexName)) {
+                return indexMeta;
+            }
+        }
+
+        // No matching index found
+        return null;
+    }
+
+    /**
+     * Retrieves the Global Secondary Index (GSI) metadata by its name.
+     *
+     * @param indexName the GSI name (case-insensitive)
+     * @return the GsiIndexMetaBean object if found; otherwise, returns null
+     */
+    public GsiMetaManager.GsiIndexMetaBean findGlobalSecondaryIndexByName(@NonNull String indexName) {
+        // Normalize the input index name
+        String normalizedIndexName = SQLUtils.normalizeNoTrim(indexName);
+
+        if (gsiPublished != null && !gsiPublished.isEmpty()) {
+            for (GsiMetaManager.GsiIndexMetaBean gsiMeta : gsiPublished.values()) {
+                if (gsiMeta.visibility != IndexVisibility.VISIBLE) {
+                    continue;
+                }
+                String gsiIndexName = TddlSqlToRelConverter.unwrapGsiName(gsiMeta.indexName);
+                if (gsiIndexName.equalsIgnoreCase(normalizedIndexName)) {
+                    return gsiMeta;
+                }
+            }
+        }
+
+        if (columnarIndexPublished != null && !columnarIndexPublished.isEmpty()) {
+            for (GsiMetaManager.GsiIndexMetaBean cciMeta : columnarIndexPublished.values()) {
+                if (cciMeta.visibility != IndexVisibility.VISIBLE) {
+                    continue;
+                }
+                String cciName = TddlSqlToRelConverter.unwrapGsiName(cciMeta.indexName);
+                if (cciName.equalsIgnoreCase(normalizedIndexName)) {
+                    return cciMeta;
+                }
+            }
+        }
+
+        return null;
     }
 
     public Set<String> getLocalIndexNames() {
@@ -775,6 +850,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
             this.gsiPublished = new HashMap<>();
             this.columnarIndexPublished = new HashMap<>();
             this.columnarIndexChecking = new HashMap<>();
+            this.archiveColumnarIndexPublished = new HashMap<>();
             for (Entry<String, GsiIndexMetaBean> indexMetaBeanEntry : gsiTableMetaBean.indexMap.entrySet()) {
                 if (indexMetaBeanEntry.getValue().indexStatus.isWriteReorg()
                     && indexMetaBeanEntry.getValue().columnarIndex) {
@@ -793,6 +869,7 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         }
     }
 
+    // CCI是GSI的子集，可能包含GSI和CCI
     public boolean withGsi() {
         return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.GSI
             && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
@@ -806,6 +883,16 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.COLUMNAR
             && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap) && getGsiTableMetaBean().indexMap.values()
             .stream().anyMatch(index -> index.columnarIndex);
+    }
+
+    // CCI是GSI的子集，当indexMap中都为columnarIndex时，证明表中全部都是CCI
+    public boolean allCci() {
+        return withCci() && getGsiTableMetaBean().indexMap.values()
+            .stream().allMatch(index -> index.columnarIndex);
+    }
+
+    public boolean withGsiExcludingPureCci() {
+        return withGsi() && !allCci();
     }
 
     public boolean hasCci(String indexName) {
@@ -874,6 +961,20 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     public boolean withColumnar() {
         return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.COLUMNAR
             && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
+    }
+
+    public boolean isColumnarArchive() {
+        String ttlTable = this.columnarOriginTable();
+        TableMeta ttlTm = OptimizerContext.getContext(this.getSchemaName()).getLatestSchemaManager().getTableWithNull(ttlTable);
+        if (ttlTm == null) {
+            return false;
+        }
+        for (String key : ttlTm.getArchiveColumnarIndexPublished().keySet()) {
+            if (key.equals(this.getTableName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String columnarOriginTable() {
@@ -995,6 +1096,18 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
 
     public String getDefaultCollation() {
         return defaultCollation;
+    }
+
+    public TtlDefinitionInfo getTtlDefinitionInfo() {
+        return ttlDefinitionInfo;
+    }
+
+    public void setTtlDefinitionInfo(TtlDefinitionInfo ttlDefinitionInfo) {
+        this.ttlDefinitionInfo = ttlDefinitionInfo;
+    }
+
+    public Map<String, GsiIndexMetaBean> getArchiveColumnarIndexPublished() {
+        return archiveColumnarIndexPublished;
     }
 
     private class TableMetaInitializerExpressionFactory extends NullInitializerExpressionFactory {

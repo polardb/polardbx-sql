@@ -38,6 +38,8 @@ public class PurgeColumnarTsoTimerTask implements Runnable {
                 return;
             }
 
+            logger.warn("Start to fetch columnar purge tso");
+
             Long minSnapshotTime;
             try {
                 minSnapshotTime = ColumnarTransactionUtils.getMinColumnarSnapshotTime();
@@ -54,6 +56,17 @@ public class PurgeColumnarTsoTimerTask implements Runnable {
 
             } catch (Throwable t) {
                 logger.error(String.format("Failed to purge columnar tso: %d", minSnapshotTime), t);
+            }
+
+            try {
+                int updateRows = ColumnarTransactionUtils.updateColumnarPurgeWatermark(minSnapshotTime);
+                if (updateRows > 0) {
+                    logger.warn(String.format("Update columnar purge watermark: %d", minSnapshotTime));
+                } else {
+                    logger.warn("Columnar purge watermark remains the same");
+                }
+            } catch (Throwable t) {
+                logger.error(String.format("Failed to update columnar purge watermark: %d", minSnapshotTime), t);
             }
         } catch (Throwable t) {
             logger.error("Columnar tso purge task failed unexpectedly!", t);

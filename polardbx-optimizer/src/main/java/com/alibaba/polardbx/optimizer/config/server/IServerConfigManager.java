@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.commons.collections.ListUtils;
 
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +95,45 @@ public interface IServerConfigManager {
 
     default List<String> getLoadedSchemas() {
         return Collections.emptyList();
+    }
+
+    default Object getTransConnection(String schema) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default Object getTransConnection(String schema, Map<String, Object> sessionVariables) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default void closeTransConnection(Object transConn) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default int executeBackgroundDmlByTransConnection(String sql, String schema, InternalTimeZone timeZone,
+                                                      Object transConn) {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default List<Map<String, Object>> executeBackgroundQueryByTransConnection(String sql, String schema,
+                                                                              InternalTimeZone timeZone,
+                                                                              Object transConn) {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default void transConnectionBegin(Object transConn) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default void transConnectionCommit(Object transConn) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    default void transConnectionRollback(Object transConn) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
+    }
+
+    public static void getColumMetas(ResultSet resultSet) throws SQLException {
+        throw new UnsupportedOperationException("not supported");
     }
 
 }

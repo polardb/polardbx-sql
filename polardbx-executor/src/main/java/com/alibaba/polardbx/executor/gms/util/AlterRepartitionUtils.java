@@ -494,7 +494,8 @@ public class AlterRepartitionUtils {
             null,
             new LinkedList<>(),
             withImplicitTableGroup,
-            true);
+            true,
+            null);
     }
 
     public static List<String> getPrimaryKeys(SqlAlterTable sqlAlterTable) {
@@ -587,10 +588,10 @@ public class AlterRepartitionUtils {
     public static String genGlobalIndexName(String schema, String indexName, ExecutionContext executionContext) {
         // Assign new name with suffix.
         final Random random = new Random();
-        final Formatter formatter = new Formatter();
 
         String fullName;
         do {
+            Formatter formatter = new Formatter();
             final String suffix = "_$" + formatter.format("%04x", random.nextInt(0x10000));
             fullName = indexName + suffix;
         } while (!executionContext.getSchemaManager(schema).getGsi(fullName, IndexStatus.ALL).isEmpty());

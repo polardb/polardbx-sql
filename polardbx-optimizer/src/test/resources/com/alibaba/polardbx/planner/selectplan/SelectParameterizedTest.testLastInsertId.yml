@@ -4,9 +4,7 @@
     where a.id = last_insert_id()
 
   plan: |
-
     phytableoperation(tables="optest_0000.[test_hash_tb]", sql="select `a`.`id` as `id` from ? as `a` where (`a`.`id` = ?)", params="0")
-
 - sql: |
       select id
       from test_hash_tb a
@@ -33,4 +31,4 @@
 
   plan: |
     project(last_insert_id(a.id + 100)="last_insert_id(id + ?0)")
-      logicalview(tables="optest_0002.test_hash_tb", sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` = ?)")
+      logicalview(tables="optest_0002.test_hash_tb", sql="select `id` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where (`id` = ?)")

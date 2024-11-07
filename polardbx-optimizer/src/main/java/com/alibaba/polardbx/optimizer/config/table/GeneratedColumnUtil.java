@@ -716,6 +716,8 @@ public class GeneratedColumnUtil {
                 sqlSelectOrderByItem = column.clone();
                 SQLIdentifierExpr id = new SQLIdentifierExpr(newColName);
                 sqlSelectOrderByItem.setExpr(id);
+                //改成列名之后不用括号
+                sqlSelectOrderByItem.setHasParen(false);
             } else {
                 sqlSelectOrderByItem = column.clone();
             }

@@ -1,0 +1,182 @@
+## DISABLE_FAST_SQL_PARSER
+
+## orginal
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+partition by key(a) partitions 8
+local partition by range(b)
+STARTWITH '2021-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6;
+
+
+#  -- 语法
+#  (SUB)PARTITION BY RANGE COLUMNS (gmt_modified)		  -- 分区列
+#  [STARTWITH $startWithDate] 						      -- 分区初始时间
+#  INTERVAL $intervalCount $intervalUnit				  -- 分区间隔
+#  [EXPIRE AFTER $expireAfterCount]						  -- expireAfterCount个间隔后失效
+#  [PRE ALLOCATE $preAllocateCount]						  -- 提前preAllocateCount个间隔创建分区
+#  [PIVOTDATE $pivotDate] 								  -- 基准时间，默认为NOW()
+#  ;
+
+## new
+create table ttl_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+partition by key(a) partitions 8
+subpartition by range columns(b)
+STARTWITH '2021-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6
+PIVOTDATE NOW();
+
+
+create table pttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+subpartition by range columns(b)
+STARTWITH '2022-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6
+PIVOTDATE NOW();
+
+#CREATE TABLE `pttl_t1` (
+#`a` int(11) NOT NULL AUTO_INCREMENT,
+#`b` datetime DEFAULT CURRENT_TIMESTAMP,
+#PRIMARY KEY (`a`),
+#KEY `auto_shard_key_b` USING BTREE (`b`)
+#) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#PARTITION BY KEY(`a`)
+#PARTITIONS 2
+#SUBPARTITION BY RANGE COLUMNS(`b`)
+#(SUBPARTITION `sp20220101` VALUES LESS THAN ('2022-01-01 00:00:00'),
+#SUBPARTITION `sp20220701` VALUES LESS THAN ('2022-07-01 00:00:00'),
+#SUBPARTITION `sp20230101` VALUES LESS THAN ('2023-01-01 00:00:00'),
+#SUBPARTITION `sp20230701` VALUES LESS THAN ('2023-07-01 00:00:00'),
+#SUBPARTITION `sp20240101` VALUES LESS THAN ('2024-01-01 00:00:00'),
+#SUBPARTITION `sp20240701` VALUES LESS THAN ('2024-07-01 00:00:00'),
+#SUBPARTITION `sp20250101` VALUES LESS THAN ('2025-01-01 00:00:00'),
+#SUBPARTITION `sp20250701` VALUES LESS THAN ('2025-07-01 00:00:00'),
+#SUBPARTITION `sp20260101` VALUES LESS THAN ('2026-01-01 00:00:00'),
+#SUBPARTITION `sp20260701` VALUES LESS THAN ('2026-07-01 00:00:00'),
+#SUBPARTITION `spmax` VALUES LESS THAN (MAXVALUE))
+
+alter table pttl_t1 split subpartition spmax into (
+SUBPARTITION `sp20270101` VALUES LESS THAN ('2027-01-01 00:00:00'),
+SUBPARTITION `spmax` VALUES LESS THAN (maxvalue)
+);
+
+
+create table ttl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_EXPR = '`b` | EXPIRE AFTER 5 MINUTE | TIMEZONE=+08:00'
+partition by key(a) partitions 2;
+
+create table ttl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_LEVEL = 'ROW'
+TTL_EXPR = `b` EXPIRE AFTER 5 MINUTE TIMEZONE '+08:00'
+TTL_JOB = CRON '* */2 * * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+
+create table rl_ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_LEVEL = 'ROW'
+TTL_EXPR = `b` EXPIRE AFTER 5 MINUTE TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+
+insert into rl_ttl_t1(a, b) values (null, now());
+insert into rl_ttl_t1(a, b) select null, date_format( b, b - interval '5' DAY) from rl_ttl_t1 limit 10000;
+
+select b - interval '5' DAY ;
+
+
+create table nottl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+
+
+##
+## TTL_ENABLE = {'ON'|'OFF'|}
+## TTL_LEVEL = {'ROW'|'PART'|'SUBPART'|'LOCAL'}
+## TTL_EXPR = '`column` INTERVAL 6 MONTH'
+##
+
+
+create table ttl_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+ENA
+partition by key(a) partitions 3;
+
+
+
+
+
+
+insert into bmsql_history
+(hist_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date,h_amount, h_data )
+
+select
+null, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, date_format( h_date, h_date - interval minute(h_date) * 60 + second(h_date)  HOUR),h_amount, h_data
+from
+bmsql_history;
+
+
+date_format( b, b - interval '5' DAY)
+date_format( h_date, h_date - interval minute(h_date) * 60 + second(h_date)  HOUR)
+
+
+
+insert into bmsql_history (hist_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date,h_amount, h_data ) select null, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, date_format( h_date, h_date - interval minute(h_date) * 60 + second(h_date)  HOUR),h_amount, h_data from bmsql_history order by h_date limit 50000;
+
+
+
+
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 6 MONTH TIMEZONE '+08:00'
+partition by key(a) partitions 2;
+
+
+CREATE TABLE oss_t1
+LIKE ttl_t1 ENGINE = 'local_disk' ARCHIVE_MODE = 'TTL';
+
+
+
+

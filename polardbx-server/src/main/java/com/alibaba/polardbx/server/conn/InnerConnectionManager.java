@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.server.conn;
 
+import com.alibaba.polardbx.common.IInnerConnection;
 import com.alibaba.polardbx.common.IInnerConnectionManager;
 
 import java.sql.Connection;
@@ -32,12 +33,12 @@ public class InnerConnectionManager implements IInnerConnectionManager {
     }
 
     @Override
-    public Connection getConnection() throws SQLException {
+    public IInnerConnection getConnection() throws SQLException {
         return new InnerConnection();
     }
 
     @Override
-    public Connection getConnection(String schema) throws SQLException {
+    public IInnerConnection getConnection(String schema) throws SQLException {
         return new InnerConnection(schema);
     }
 

@@ -25,6 +25,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.utils.DrdsRexFolder;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptUtil;
@@ -46,18 +47,16 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
     private final TableScan tableScan;
     private final Double tableRowCount;
     private final TableMeta tableMeta;
-    private final PlannerContext plannerContext;
 
     public static int LACK_OF_STATISTICS_INDEX_EQUAL_ROW_COUNT = 100;
 
     public static int LACK_OF_STATISTICS_INDEX_RANGE_ROW_COUNT = 1000;
 
     public TableScanSelectivityEstimator(TableScan tableScan, RelMetadataQuery metadataQuery) {
-        super(metadataQuery, tableScan.getCluster().getRexBuilder());
+        super(metadataQuery, tableScan.getCluster().getRexBuilder(), PlannerContext.getPlannerContext(tableScan));
         this.tableScan = tableScan;
         this.tableRowCount = metadataQuery.getRowCount(tableScan);
         this.tableMeta = CBOUtil.getTableMeta(tableScan.getTable());
-        this.plannerContext = PlannerContext.getPlannerContext(tableScan);
     }
 
     @Override
@@ -574,7 +573,10 @@ public class TableScanSelectivityEstimator extends AbstractSelectivityEstimator 
                         }
 
                         int idx = likeString.indexOf("%");
-                        if (idx == 0) {
+                        if (idx == -1) {
+                            leftValue = likeString;
+                            rightValue = likeString;
+                        } else if (idx == 0) {
                             continue;
                         } else {
                             leftValue = likeString.substring(0, idx);

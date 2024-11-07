@@ -19,17 +19,16 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupModifyPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableModifyPartitionPreparedData;
@@ -42,7 +41,6 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
-import org.apache.calcite.sql.SqlAlterTableMovePartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlSubPartition;
@@ -68,6 +66,20 @@ public class LogicalAlterTableModifyPartition extends BaseDdlOperation {
     public LogicalAlterTableModifyPartition(DDL ddl, boolean notIncludeGsiName) {
         super(ddl);
         assert notIncludeGsiName;
+    }
+
+    @Override
+    public boolean isSupportedByCci(ExecutionContext ec) {
+        String schemaName = this.schemaName;
+        String tblName = Util.last(((SqlIdentifier) relDdl.getTableName()).names);
+
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            TableMeta tblMeta = ec.getSchemaManager(schemaName).getTable(tblName);
+            if (tblMeta.isColumnar()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -263,4 +275,9 @@ public class LogicalAlterTableModifyPartition extends BaseDdlOperation {
         return new LogicalAlterTableModifyPartition(ddl);
     }
 
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getPreparedData()) {
+            getPreparedData().setDdlVersionId(ddlVersionId);
+        }
+    }
 }

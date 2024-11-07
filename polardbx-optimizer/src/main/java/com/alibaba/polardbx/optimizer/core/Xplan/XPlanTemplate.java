@@ -17,14 +17,15 @@
 package com.alibaba.polardbx.optimizer.core.Xplan;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.XPlanUtil;
 import com.alibaba.polardbx.rpc.XUtil;
+import com.clearspring.analytics.util.Lists;
 import com.google.protobuf.ByteString;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -41,7 +42,7 @@ public class XPlanTemplate implements IXPlan {
 
     private final PolarxExecPlan.AnyPlan template;
     private final ByteString digest;
-    private final List<SqlIdentifier> tableNames;
+    private final List<Pair<String, String>> tableNames;
     private final List<XPlanUtil.ScalarParamInfo> paramInfos;
 
     private final String indexName;
@@ -49,6 +50,28 @@ public class XPlanTemplate implements IXPlan {
     public XPlanTemplate(PolarxExecPlan.AnyPlan template, List<SqlIdentifier> tableNames,
                          List<XPlanUtil.ScalarParamInfo> paramInfos,
                          String indexName) {
+        this.template = template;
+        ByteString digest;
+        try {
+            digest = ByteString.copyFrom(MessageDigest.getInstance("md5").digest(template.toByteArray()));
+        } catch (NoSuchAlgorithmException e) {
+            digest = null;
+        }
+        this.digest = digest;
+        this.tableNames = Lists.newArrayList();
+        for (SqlIdentifier sqlIdentifier : tableNames) {
+            String tableName = sqlIdentifier.getLastName();
+            String schemaName = 2 == sqlIdentifier.names.size() ? sqlIdentifier.names.get(0) : "";
+            this.tableNames.add(new Pair<>(schemaName, tableName));
+        }
+        this.paramInfos = paramInfos;
+        this.indexName = indexName;
+    }
+
+    public XPlanTemplate(String indexName,
+                         PolarxExecPlan.AnyPlan template,
+                         List<Pair<String, String>> tableNames,
+                         List<XPlanUtil.ScalarParamInfo> paramInfos) {
         this.template = template;
         ByteString digest;
         try {
@@ -66,7 +89,7 @@ public class XPlanTemplate implements IXPlan {
         return template;
     }
 
-    public List<SqlIdentifier> getTableNames() {
+    public List<Pair<String, String>> getTableNames() {
         return tableNames;
     }
 
@@ -98,7 +121,7 @@ public class XPlanTemplate implements IXPlan {
                     return null;
                 }
                 // NOTE: When compare value with BIT type, uint must be used.
-                if (info.getDataType().getSqlTypeName() == SqlTypeName.BIT && val instanceof byte[]) {
+                if (info.isBit() && val instanceof byte[]) {
                     final ByteBuffer buf =
                         ByteBuffer.allocate(Long.BYTES).put((byte[]) val)
                             .order(ByteOrder.LITTLE_ENDIAN);
@@ -145,7 +168,7 @@ public class XPlanTemplate implements IXPlan {
                         return null;
                     }
                     // NOTE: When compare value with BIT type, uint must be used.
-                    if (info.getDataType().getSqlTypeName() == SqlTypeName.BIT && val instanceof byte[]) {
+                    if (info.isBit() && val instanceof byte[]) {
                         final ByteBuffer buf =
                             ByteBuffer.allocate(Long.BYTES).put((byte[]) val)
                                 .order(ByteOrder.LITTLE_ENDIAN);
@@ -157,13 +180,10 @@ public class XPlanTemplate implements IXPlan {
                 }
                 break;
             case TableName:
-                builder.addParameters(XUtil.genUtf8StringScalar(tableNames.get(info.getId()).getLastName()));
+                builder.addParameters(XUtil.genUtf8StringScalar(tableNames.get(info.getId()).getValue()));
                 break;
             case SchemaName:
-                builder.addParameters(XUtil.genUtf8StringScalar(
-                    2 == tableNames.get(info.getId()).names.size() ?
-                        tableNames.get(info.getId()).names.get(0) :
-                        ""));
+                builder.addParameters(XUtil.genUtf8StringScalar(tableNames.get(info.getId()).getKey()));
                 break;
             }
         }

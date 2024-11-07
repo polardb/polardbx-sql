@@ -68,7 +68,10 @@ public class AlterTableGroupItemBuilder extends DdlPhyPlanBuilder {
     @Override
     public AlterTableGroupItemBuilder build() {
         buildNewTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
-        buildPhysicalPlans();
+        // not build physical plans for cci
+        if (!preparedData.isColumnarIndex()) {
+            buildPhysicalPlans();
+        }
         this.built = true;
         return this;
     }

@@ -18,6 +18,7 @@ package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -437,10 +438,15 @@ public class SqlDataTypeSpec extends SqlNode {
                     writer.endList(frame);
                 }
             } else if (sqlTypeName.allowsPrec() && (precision >= 0)) {
+                // 15 is the default precision,
+                // see org.apache.calcite.rel.type.RelDataTypeSystemImpl.getDefaultPrecision for more details.
+                if (SqlTypeName.APPROX_TYPES.contains(sqlTypeName) && precision == 15) {
+                    return;
+                }
                 final SqlWriter.Frame frame =
                     writer.startList(SqlWriter.FrameTypeEnum.FUN_CALL, "(", ")");
                 writer.print(precision);
-                if (sqlTypeName.allowsScale() && (scale >= 0)) {
+                if (sqlTypeName.allowsScale() && (scale >= 0) && scale < XResultUtil.DECIMAL_NOT_SPECIFIED) {
                     writer.sep(",", true);
                     writer.print(scale);
                 }

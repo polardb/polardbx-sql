@@ -23,8 +23,6 @@ import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.utils.MathUtils;
 import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
-import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
-import com.alibaba.polardbx.executor.chunk.ULongBlock;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
@@ -124,6 +122,7 @@ public class CastLongConstToDecimalVectorizedExpression extends AbstractVectoriz
                                             int[] sel) {
         Slice output = (outputVectorSlot.cast(DecimalBlock.class)).getMemorySegments();
         DecimalStructure tmpDecimal = new DecimalStructure();
+        tmpDecimal.reset();
         int precision = outputDataType.getPrecision();
         int scale = outputDataType.getScale();
         DecimalConverter.rescale(operand1.getDecimalStructure(), tmpDecimal, precision, scale, false);

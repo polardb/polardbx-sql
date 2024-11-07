@@ -84,6 +84,7 @@ public class MoveDataToFileStoreTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             try {
                 MetaDbUtil.beginTransaction(metaDbConn);

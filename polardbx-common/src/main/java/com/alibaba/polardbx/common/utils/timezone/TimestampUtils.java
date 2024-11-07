@@ -23,6 +23,10 @@ import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
@@ -36,6 +40,7 @@ public class TimestampUtils {
     public static final String TYPE_NAME_TIMESTAMP = "timestamp";
     public static final String PATTERN_TIMESTAMP = "yyyy-MM-dd HH:mm:ss";
     public static final String FIXED_GMT_IN_META = "GMT+8:00";
+    public static final int BITS_LOGICAL_TIME = 22;
 
     public static final Pattern PATTERN_ZERO_VALUE = Pattern.compile("^0000-00-00 00:00:00\\.?0*$");
 
@@ -71,7 +76,7 @@ public class TimestampUtils {
     }
 
     public static String convertBetweenTimeZones(String timestampString, TimeZone fromTimeZone, TimeZone toTimeZone,
-                                                  long precision) {
+                                                 long precision) {
         boolean needTimeZoneConversion = needTimeZoneConversion(fromTimeZone) || needTimeZoneConversion(toTimeZone);
         if (!needTimeZoneConversion ||
             TStringUtil.isBlank(timestampString) ||
@@ -144,4 +149,15 @@ public class TimestampUtils {
         return mysqlDateTime.toDatetimeString((int) precision);
     }
 
+    public static long getTsFromTimestampWithTimeZone(String timestamp, TimeZone timeZone) {
+        String utcTimeStampString =
+            TimestampUtils.convertBetweenTimeZones(timestamp, timeZone, TimeZone.getTimeZone("UTC"), 0);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        LocalDateTime localDateTime = LocalDateTime.parse(utcTimeStampString, formatter);
+        Instant instant = localDateTime.toInstant(ZoneOffset.UTC);
+        if (instant.toEpochMilli() < 0) {
+            throw new IllegalArgumentException("timestamp should greater than 1970-01-01 00:00:01");
+        }
+        return instant.toEpochMilli() << BITS_LOGICAL_TIME;
+    }
 }

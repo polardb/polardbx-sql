@@ -18,4 +18,9 @@ package com.alibaba.polardbx.common;
 
 public class ColumnarTableOptions {
     public static final String DICTIONARY_COLUMNS = "DICTIONARY_COLUMNS";
+    public static final String TYPE = "type";
+    public static final String SNAPSHOT_RETENTION_DAYS = "snapshot_retention_days";
+    public static final String DEFAULT_SNAPSHOT_RETENTION_DAYS = "7";
+    public static final String AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL = "auto_gen_columnar_snapshot_interval";
+    public static final String DEFAULT_AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL = "30";
 }

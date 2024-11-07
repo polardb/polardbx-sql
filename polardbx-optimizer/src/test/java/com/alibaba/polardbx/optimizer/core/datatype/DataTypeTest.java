@@ -24,7 +24,6 @@ import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import io.airlift.slice.Slice;
-import org.apache.hadoop.yarn.webapp.hamlet2.Hamlet;
 import org.junit.Assert;
 import org.junit.Test;
 

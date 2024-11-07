@@ -66,7 +66,7 @@ import static com.alibaba.polardbx.executor.operator.util.RowChunksBuilder.rowCh
 public class HashJoinTest extends BaseExecTest {
 
     private static AsyncFileSingleStreamSpillerFactory spillerFactory;
-    private static Path tempPath = Paths.get("./tmp/" + UUID.randomUUID());
+    private static final Path tempPath = Paths.get("./tmp/" + UUID.randomUUID());
 
     @BeforeClass
     public static void beforeClass() {
@@ -235,7 +235,7 @@ public class HashJoinTest extends BaseExecTest {
             IntegerBlock.of(1, 1, 2, 2, 3),
             StringBlock.of("a", "a", "a", "b", "a"),
             StringBlock.of("E", "A", "B", "F", "C"));
-        List<Chunk> expects[] = new List[4];
+        List<Chunk>[] expects = new List[4];
 
         expects[0] = rowChunksBuilder(outTypes).addChunk(baseExpect).
             row(8118, 1000, "XX", 1000, "XX", "YY").
@@ -394,7 +394,7 @@ public class HashJoinTest extends BaseExecTest {
             IntegerBlock.of(1, 1, null, 2, 2, null, 3, null, null, null, null),
             StringBlock.of("a", "a", null, "a", "b", null, "a", null, null, null, null),
             StringBlock.of("E", "A", null, "B", "F", null, "C", null, null, null, null));
-        List<Chunk> expects[] = new List[4];
+        List<Chunk>[] expects = new List[4];
 
         expects[0] = rowChunksBuilder(outTypes).addChunk(baseExpect).
             row(8008, null, null, null, null, null).
@@ -501,7 +501,7 @@ public class HashJoinTest extends BaseExecTest {
             IntegerBlock.of(1, 1, 1, 2, 2, null, 3, 3, 4, 4, 4),
             StringBlock.of("a", "a", "b", "a", "b", "a", "a", "b", "a", "b", null)
         );
-        List<Chunk> expects[] = new List[4];
+        List<Chunk>[] expects = new List[4];
 
         expects[0] = rowChunksBuilder(outTypes).addChunk(baseExpect).
             row(null, null, null, 8008, null, null).
@@ -659,6 +659,28 @@ public class HashJoinTest extends BaseExecTest {
 //        test.exec();
 //        assertExecResultByRow(test.result(), expects, false);
 //    }
+
+    @Test
+    public void testSemiLongJoinNotEqLongVec() {
+        enableVecJoin();
+
+        IExpression condition = ScalarFunctionExpression.getScalarFunctionExp(
+            ImmutableList.of(new InputRefExpression(1), new InputRefExpression(5)), new NotEqual(), context);
+
+        List<Chunk> expects = Collections.singletonList(new Chunk(
+            LongBlock.of(1L, 3L, 4L, 7L),
+            IntegerBlock.of(4, 7, 5, 10),
+            LongBlock.of(12L, 14L, 15L, 18L)));
+
+        SingleExecTest test =
+            mockParallelHashJoinExec(EquiJoinMockData.SEMI_LONG_NOT_EQ_LONG_CASE, JoinRelType.SEMI, false,
+                condition, null, context);
+        Assert.assertTrue(
+            ((ParallelHashJoinExec) test.exec).probeOperator instanceof AbstractHashJoinExec.SemiLongNotEqLongProbeOperator);
+
+        test.exec();
+        assertExecResultByRow(test.result(), expects, false);
+    }
 
     @Test
     public void testReverseSemiJoin() {
@@ -830,7 +852,7 @@ public class HashJoinTest extends BaseExecTest {
 
         MockExec innerInput = MockExec.builder(DataTypes.IntegerType).build();
 
-        List<EquiJoinKey> joinKeys = Arrays.asList(
+        List<EquiJoinKey> joinKeys = Collections.singletonList(
             mockEquiJoinKey(1, 0, DataTypes.IntegerType));
 
         Executor exec =
@@ -861,7 +883,7 @@ public class HashJoinTest extends BaseExecTest {
 
         MockExec innerInput = MockExec.builder(DataTypes.IntegerType).build();
 
-        List<EquiJoinKey> joinKeys = Arrays.asList(
+        List<EquiJoinKey> joinKeys = Collections.singletonList(
             mockEquiJoinKey(1, 0, DataTypes.IntegerType));
 
         Executor exec =
@@ -954,7 +976,7 @@ public class HashJoinTest extends BaseExecTest {
             IntegerBlock.of(2, 3, 6),
             IntegerBlock.of(9, 7, 8)
         ));
-        List<IExpression> antiJoinOperands = Arrays.asList(
+        List<IExpression> antiJoinOperands = Collections.singletonList(
             new InputRefExpression(1)
         );
 
@@ -1065,10 +1087,10 @@ public class HashJoinTest extends BaseExecTest {
 
         MockExec innerInput = MockExec.builder(DataTypes.IntegerType).build();
 
-        List<EquiJoinKey> joinKeys = Arrays.asList(
+        List<EquiJoinKey> joinKeys = Collections.singletonList(
             mockEquiJoinKey(1, 0, DataTypes.IntegerType));
 
-        List<IExpression> antiJoinOperands = Arrays.asList(
+        List<IExpression> antiJoinOperands = Collections.singletonList(
             new InputRefExpression(1)
         );
 
@@ -1112,10 +1134,10 @@ public class HashJoinTest extends BaseExecTest {
                 IntegerBlock.of(3, null, 5, 6)))
             .build();
 
-        List<EquiJoinKey> joinKeys = Arrays.asList(
+        List<EquiJoinKey> joinKeys = Collections.singletonList(
             mockEquiJoinKey(1, 0, DataTypes.IntegerType));
 
-        List<IExpression> antiJoinOperands = Arrays.asList(
+        List<IExpression> antiJoinOperands = Collections.singletonList(
             new InputRefExpression(1)
         );
 

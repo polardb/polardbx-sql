@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillManager;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillReporter;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
@@ -37,6 +38,7 @@ import com.alibaba.polardbx.rpc.client.XSession;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.mysql.cj.polarx.protobuf.PolarxPhysicalBackfill;
+import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
@@ -50,6 +52,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.alibaba.polardbx.common.TddlConstants.LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
 
 @Getter
 @TaskName(name = "CloneTableDataFileTask")
@@ -64,6 +68,7 @@ public class CloneTableDataFileTask extends BaseDdlTask {
     final List<Pair<String, Integer>> targetHostsIpAndPort;
     final String sourceStorageInstId;
     final Long batchSize;
+    final Long dataSize;
     final boolean encrypted;
     //don't serialize this parameter
     private transient Map<String, Pair<String, String>> storageInstAndUserInfos = new ConcurrentHashMap<>();
@@ -72,7 +77,8 @@ public class CloneTableDataFileTask extends BaseDdlTask {
     public CloneTableDataFileTask(String schemaName, String logicalTableName, Pair<String, String> srcDbAndGroup,
                                   Pair<String, String> tarDbAndGroup, String phyTableName, List<String> phyPartNames,
                                   String sourceStorageInstId, Pair<String, Integer> sourceHostIpAndPort,
-                                  List<Pair<String, Integer>> targetHostsIpAndPort, Long batchSize, Boolean encrypted) {
+                                  List<Pair<String, Integer>> targetHostsIpAndPort,
+                                  Long batchSize, long dataSize, Boolean encrypted) {
         super(schemaName);
         this.srcDbAndGroup = srcDbAndGroup;
         this.tarDbAndGroup = tarDbAndGroup;
@@ -82,7 +88,11 @@ public class CloneTableDataFileTask extends BaseDdlTask {
         this.sourceStorageInstId = sourceStorageInstId;
         this.sourceHostIpAndPort = sourceHostIpAndPort;
         this.targetHostsIpAndPort = targetHostsIpAndPort;
+        if (sourceStorageInstId != null) {
+            setResourceAcquired(buildResourceRequired(sourceStorageInstId, -1L));
+        }
         this.batchSize = batchSize;
+        this.dataSize = dataSize;
         this.encrypted = encrypted;
     }
 
@@ -90,6 +100,15 @@ public class CloneTableDataFileTask extends BaseDdlTask {
     protected void beforeTransaction(ExecutionContext executionContext) {
         updateTaskStateInNewTxn(DdlTaskState.DIRTY);
         executeImpl(executionContext);
+    }
+
+    DdlEngineResources buildResourceRequired(String storageInst,
+                                             Long dataSize) {
+        String owner = "CloneTableDataFileTask:" + logicalTableName + phyTableName;
+        DdlEngineResources resourceRequired = new DdlEngineResources();
+        resourceRequired.request(storageInst + DN_IO, 90L, owner);
+        resourceRequired.request(storageInst + DN_CPU, 15L, owner);
+        return resourceRequired;
     }
 
     @Override
@@ -128,7 +147,7 @@ public class CloneTableDataFileTask extends BaseDdlTask {
     @Override
     public String remark() {
         return "|clone data for table:" + phyTableName + " in db:" + srcDbAndGroup.getKey() + " host:"
-            + sourceHostIpAndPort;
+            + sourceHostIpAndPort + " dataSize: " + DataSize.succinctBytes(dataSize);
     }
 
     private void initBackfillMeta(PhysicalBackfillReporter reporter, List<String> phyPartNames,

@@ -50,6 +50,7 @@ public class SqlTypeFactoryImpl extends RelDataTypeFactoryImpl {
     }
     assertBasic(typeName);
     RelDataType newType = new BasicSqlType(typeSystem, typeName);
+    newType = SqlTypeUtil.addCharsetAndCollation(newType, this);
     return canonize(newType);
   }
 

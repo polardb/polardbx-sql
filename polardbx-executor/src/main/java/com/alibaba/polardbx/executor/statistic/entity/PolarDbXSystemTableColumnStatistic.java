@@ -22,6 +22,10 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.Histogram;
 import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
@@ -337,11 +341,11 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
                     String cmSketchString =
                         Base64.encodeBase64String(CountMinSketch.serialize(new CountMinSketch(1, 1, 1)));
                     pps.setString(k * 10 + 5, cmSketchString);
-                    String histogramString;
+                    String histogramString = "";
                     if (row.getHistogram() != null) {
                         histogramString = Histogram.serializeToJson(row.getHistogram());
-                    } else {
-                        histogramString = Histogram.serializeToJson(new Histogram(1, DataTypes.IntegerType, 1));
+                        histogramString = checkHistogramString(histogramString, row.getSchema(), row.getTableName(),
+                            row.getColumnName());
                     }
                     pps.setString(k * 10 + 6, histogramString);
 
@@ -374,6 +378,20 @@ public class PolarDbXSystemTableColumnStatistic implements SystemTableColumnStat
             JdbcUtils.close(pps);
             JdbcUtils.close(conn);
         }
+    }
+
+    /**
+     * check if histogram serialize string is valid
+     */
+    public static String checkHistogramString(String histogramString, String schema, String tableName,
+                                              String columnName) {
+        Histogram histogram = Histogram.deserializeFromJson(histogramString);
+        if (histogram == null) {
+            ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, LogPattern.CHECK_FAIL,
+                new String[] {"checkHistogramString", schema + "," + tableName + "," + columnName},
+                LogLevel.CRITICAL);
+        }
+        return histogramString;
     }
 
     private boolean canWrite() {

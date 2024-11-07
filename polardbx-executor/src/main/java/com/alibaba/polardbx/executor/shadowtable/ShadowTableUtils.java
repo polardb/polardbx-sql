@@ -16,27 +16,23 @@
 
 package com.alibaba.polardbx.executor.shadowtable;
 
-import com.alibaba.polardbx.common.IdGenerator;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.ddl.twophase.TwoPhaseDdlData;
 import com.alibaba.polardbx.executor.ddl.twophase.TwoPhaseDdlUtils;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.utils.StringUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.sql.SqlIdentifier;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.alibaba.polardbx.druid.sql.SQLUtils.parseStatementsWithDefaultFeatures;
-import static com.alibaba.polardbx.executor.ddl.twophase.TwoPhaseDdlUtils.queryGroupBypassConnPool;
 import static com.alibaba.polardbx.gms.metadb.limit.Limits.MAX_LENGTH_OF_IDENTIFIER_NAME;
 
 public class ShadowTableUtils {
@@ -111,7 +107,7 @@ public class ShadowTableUtils {
                                             String shadowTableName, Long id) {
         String sql =
             String.format(TwoPhaseDdlUtils.SQL_INIT_TWO_PHASE_DDL, schemaName, String.valueOf(id),
-                StringUtils.quote(shadowTableName));
+                TStringUtil.quote(shadowTableName));
         TwoPhaseDdlUtils.updateGroup(originEc, -1L, schemaName, groupName, sql);
         sql = String.format(TwoPhaseDdlUtils.SQL_TRACE_TWO_PHASE_DDL, schemaName, String.valueOf(id));
         TwoPhaseDdlUtils.updateGroup(originEc, -1L, schemaName, groupName, sql);

@@ -16,27 +16,14 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 
-import com.alibaba.polardbx.gms.metadb.limit.Limits;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestUtils;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
-import org.apache.commons.lang.StringUtils;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
-import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
-import static org.hamcrest.Matchers.is;
-
 
 public class OptimizeTableTest extends DDLBaseNewDBTestCase {
 
@@ -74,7 +61,9 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
         String sql2 = "create table " + tableName2 + "(id int, name varchar(20)) partition by hash(id) partitions 3";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql2);
-        String gsiSql = String.format("create global index %s on %s(id) partition by hash(id) partitions 3", gsiPrimaryTableName, tableName1);
+        String gsiSql =
+            String.format("create global index %s on %s(id) partition by hash(id) partitions 3", gsiPrimaryTableName,
+                tableName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, gsiSql);
 
         sql1 = "optimize table " + tableName1 + "," + tableName2;
@@ -93,7 +82,9 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
         String sql2 = "create table " + tableName2 + "(id int, name varchar(20)) partition by hash(id) partitions 3";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql2);
-        String gsiSql = String.format("create global index %s on %s(id) partition by hash(id) partitions 3", gsiPrimaryTableName, tableName1);
+        String gsiSql =
+            String.format("create global index %s on %s(id) partition by hash(id) partitions 3", gsiPrimaryTableName,
+                tableName1);
         JdbcUtil.executeUpdateSuccess(tddlConnection, gsiSql);
 
         sql1 = "/*+TDDL:cmd_extra(OPTIMIZE_TABLE_PARALLELISM=1)*/optimize table " + tableName1 + "," + tableName2;

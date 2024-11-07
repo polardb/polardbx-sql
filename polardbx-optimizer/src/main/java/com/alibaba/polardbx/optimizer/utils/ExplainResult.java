@@ -87,7 +87,9 @@ public class ExplainResult {
         // show statistic detail
         COST_TRACE,
         // show pipeline level stats
-        PIPELINE;
+        PIPELINE,
+        // show columnar snapshot
+        SNAPSHOT;
 
         public boolean isLogic() {
             return this == LOGIC || isSimple();
@@ -157,6 +159,10 @@ public class ExplainResult {
             return this == PIPELINE;
         }
 
+        public boolean isSnapshot() {
+            return this == SNAPSHOT;
+        }
+
         public boolean isA(EnumSet enumSet) {
             return null != enumSet && enumSet.contains(this);
         }
@@ -212,6 +218,10 @@ public class ExplainResult {
 
     public static boolean isExplainPipeline(ExplainResult er) {
         return er != null && er.explainMode.isPipeline();
+    }
+
+    public static boolean isExplainSnapshot(ExplainResult er) {
+        return er != null && er.explainMode.isSnapshot();
     }
 
     public static boolean isExplainVec(ExplainResult er) {

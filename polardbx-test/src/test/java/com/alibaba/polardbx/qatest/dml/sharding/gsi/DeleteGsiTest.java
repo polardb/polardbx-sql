@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.math.Exp;
 import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.AfterClass;
@@ -378,6 +379,40 @@ public class DeleteGsiTest extends GsiDMLTest {
         if (!errors.isEmpty()) {
             throw errors.get(0);
         }
+
+        assertIndexSame(baseOneTableName);
+
+        assertRouteCorrectness(baseOneTableName);
+    }
+
+    // test force gsi , use table gsi_dml_global_unique_one_index_base
+    @Test
+    public void deleteTestWithForceGSI() throws Exception {
+        if (!baseOneTableName.endsWith("gsi_dml_global_unique_one_index_base")) {
+            return;
+        }
+        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) ? hint + "insert " : "insert " + hint) + " into "
+            + baseOneTableName
+            + " (pk,integer_test,bigint_test,varchar_test,datetime_test,year_test,char_test)"
+            + " values (?,?,?,?,?,?,?)";
+        List<Object> param = new ArrayList<Object>();
+        param.add(100);
+        param.add(null);
+        param.add(null);
+        param.add("test100");
+        param.add(columnDataGenerator.datetime_testValue);
+        param.add(2000);
+        param.add(columnDataGenerator.char_testValue);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param);
+
+        String tddlSql = hint + "delete from " + baseOneTableName + " force index(" + baseOneTableName
+            + ".gsi_dml_global_unique_one_index_index1) where integer_test=null";
+        String mysqlSql = hint + "delete from " + baseOneTableName + " where integer_test=null";
+        param = new ArrayList<>();
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, param, true);
+
+        sql = hint + "select * from " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
 
         assertIndexSame(baseOneTableName);
 

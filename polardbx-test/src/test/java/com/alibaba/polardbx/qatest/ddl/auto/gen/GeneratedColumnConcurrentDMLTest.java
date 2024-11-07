@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN;
 import static org.junit.Assert.assertTrue;
 
 public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
@@ -38,6 +39,8 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
     // Use logical execution since result may be different from pushdown execution
     private static final String USE_LOGICAL_EXECUTION = "DML_EXECUTION_STRATEGY=LOGICAL";
     private static final String DISABLE_DML_RETURNING = "DML_USE_RETURNING=FALSE";
+    private static final String ENABLE_LOCAL_UK_FULL_TABLE_SCAN =
+        DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN + "=TRUE";
 
     private final boolean isRDS80 = StorageInfoManager.checkRDS80(ConnectionManager.getInstance().getMysqlDataSource());
 
@@ -426,7 +429,7 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
-        String hint = buildCmdExtra(DISABLE_DML_RETURNING, USE_LOGICAL_EXECUTION);
+        String hint = buildCmdExtra(DISABLE_DML_RETURNING, USE_LOGICAL_EXECUTION, ENABLE_LOCAL_UK_FULL_TABLE_SCAN);
 
         String alterSql1 =
             "alter table %s add column c int as (a-b) logical first, add column d int as (a+b) logical first";
@@ -510,7 +513,7 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
-        String hint = buildCmdExtra(DISABLE_DML_RETURNING, USE_LOGICAL_EXECUTION);
+        String hint = buildCmdExtra(DISABLE_DML_RETURNING, USE_LOGICAL_EXECUTION, ENABLE_LOCAL_UK_FULL_TABLE_SCAN);
 
         String alterSql1 =
             "alter table %s add column c int not null as (a-b) logical first, add column d int as (a+b) logical first";
@@ -612,7 +615,7 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
         final ExecutorService threadPool = Executors.newFixedThreadPool(2);
         final List<Callable<Void>> tasks = new ArrayList<>();
 
-        String hint = buildCmdExtra(DISABLE_DML_RETURNING, USE_LOGICAL_EXECUTION);
+        String hint = buildCmdExtra(DISABLE_DML_RETURNING, USE_LOGICAL_EXECUTION, ENABLE_LOCAL_UK_FULL_TABLE_SCAN);
 
         String alterSql1 =
             "alter table %s add column c int not null as (a-b) logical first, add column d int as (a+b) logical first";
@@ -773,7 +776,11 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                 try {
                                     JdbcUtil.executeUpdateSuccess(connection, sql);
                                 } catch (AssertionError e) {
-                                    if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
+                                    if (isRDS80 && e.getMessage().contains(
+                                        "The definition of the table required by the flashback query has changed ")) {
+                                        // ignore
+                                        totalCount.getAndDecrement();
+                                    } else if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
                                         .contains("Deadlock found")) {
                                         // ignore
                                         totalCount.getAndDecrement();

@@ -3,15 +3,15 @@
 ## test hash tbl
 drop table if exists nation;
 CREATE TABLE `nation` (
-        `N_NATIONKEY` int(11) NOT NULL,
+        `N_NATIONKEY` int NOT NULL,
         `N_NAME` char(255) DEFAULT NULL,
-        `N_REGIONKEY` int(11) DEFAULT NULL,
+        `N_REGIONKEY` int DEFAULT NULL,
         `N_COMMENT` varchar(255) DEFAULT NULL,
         PRIMARY KEY (`N_NATIONKEY`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`N_NATIONKEY`)
 PARTITIONS 8;
-explain SELECT
+explain /*TDDL:IN_SUB_QUERY_THRESHOLD=10000*/ SELECT
   nation.n_nationkey,
   nation.n_regionkey,
   nation.n_comment,
@@ -32,4 +32,5 @@ WHERE
   AND nation.n_nationkey IS NOT NULL
   AND nation.n_nationkey BETWEEN 3.805471129478495 AND 4.758352957397205;
 Logical ExecutionPlan
-PhyTableOperation(tables="nation[p8]", sql="SELECT `nation`.`N_NATIONKEY` AS `n_nationkey`, `nation`.`N_REGIONKEY` AS `n_regionkey`, `nation`.`N_COMMENT` AS `n_comment`, `nation`.`N_NAME` AS `n_name` FROM ? AS `nation` WHERE ((`nation`.`N_NATIONKEY` IN (?)) AND (`nation`.`N_NATIONKEY` IN (?)) AND ((`nation`.`N_NATIONKEY` + ?) <= ?) AND (`nation`.`N_NATIONKEY` IN (?)) AND (`nation`.`N_NATIONKEY` IS NOT NULL) AND (`nation`.`N_NATIONKEY` BETWEEN ? AND ?))", params="Raw(4,1.9768277360857997E9),3.805471129478495,5.27214097707928,Raw(4,4.472058352208863E8,1.333687324233481E9,4.1576415757607274E7),1,4.758352957397205,Raw(4,8.81152213174817E8,3.389451686261133E8,1.6448133002964172E9)")
+Gather(concurrent=true)
+  LogicalView(tables="nation[p8]", sql="SELECT `N_NATIONKEY` AS `n_nationkey`, `N_REGIONKEY` AS `n_regionkey`, `N_COMMENT` AS `n_comment`, `N_NAME` AS `n_name` FROM `nation` AS `nation` WHERE (((`N_NATIONKEY` + ?) <= ?) AND (`N_NATIONKEY` IN(?)) AND (`N_NATIONKEY` IN(?)) AND (`N_NATIONKEY` IN(?)) AND (`N_NATIONKEY` BETWEEN ? AND ?) AND (`N_NATIONKEY` IS NOT NULL))", pruningInfo="all size:10*1(part), pruning size:7")

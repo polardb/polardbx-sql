@@ -1,0 +1,20 @@
+## DISABLE_FAST_SQL_PARSER
+desc information_schema.ttl_info;
+Field,Type,Null,Key,Default,Extra
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_NAME,varchar,YES,,NULL,
+TTL_ENABLE,varchar,YES,,NULL,
+TTL_COL,varchar,YES,,NULL,
+TTL_EXPR,varchar,YES,,NULL,
+TTL_CRON,varchar,YES,,NULL,
+ARCHIVE_TYPE,varchar,YES,,NULL,
+ARCHIVE_TABLE_SCHEMA,varchar,YES,,NULL,
+ARCHIVE_TABLE_NAME,varchar,YES,,NULL,
+ARCHIVE_TABLE_PRE_ALLOCATE,varchar,YES,,NULL,
+ARCHIVE_TABLE_POST_ALLOCATE,varchar,YES,,NULL,
+desc information_schema.ttl_schedule;
+Field,Type,Null,Key,Default,Extra
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_NAME,varchar,YES,,NULL,
+METRIC_KEY,varchar,YES,,NULL,
+METRIC_VAL,varchar,YES,,NULL,

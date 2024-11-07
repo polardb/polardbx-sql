@@ -140,6 +140,10 @@ public interface Block extends CastableBlock {
         return hashCode(position);
     }
 
+    default int checksumV2(int position) {
+        return checksum(position);
+    }
+
     /**
      * Vectorized version of hashCode
      */

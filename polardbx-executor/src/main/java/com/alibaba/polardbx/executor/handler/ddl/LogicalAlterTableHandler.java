@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.SQLMode;
+import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -28,6 +29,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
@@ -85,11 +87,13 @@ import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTableDropOssFileJo
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.AlterTablePurgeBeforeTimeStampJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.MoveOSSDataJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterColumnDefaultTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ForeignKeyValidator;
@@ -103,9 +107,12 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.gms.util.AlterRepartitionUtils;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableAllocateLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableCleanupExpiredDataHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableEngineHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableExpireLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableModifyTtlHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableRemoveLocalPartitionHandler;
+import com.alibaba.polardbx.executor.handler.LogicalAlterTableRemoveTtlHandler;
 import com.alibaba.polardbx.executor.handler.LogicalAlterTableRepartitionLocalPartitionHandler;
 import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -163,12 +170,13 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.rex.RexNode;
@@ -194,6 +202,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
@@ -204,9 +213,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -247,6 +254,19 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 .buildDdlJob(logicalDdlPlan, executionContext);
         }
 
+        if (logicalAlterTable.isCleanupExpiredData()) {
+            return new LogicalAlterTableCleanupExpiredDataHandler(repo)
+                .buildDdlJob(logicalDdlPlan, executionContext);
+        }
+
+        if (logicalAlterTable.isModifyTtlOptions()) {
+            return new LogicalAlterTableModifyTtlHandler(repo).buildDdlJob(logicalDdlPlan, executionContext);
+        }
+
+        if (logicalAlterTable.isRemoveTtlOptions()) {
+            return new LogicalAlterTableRemoveTtlHandler(repo).buildDdlJob(logicalDdlPlan, executionContext);
+        }
+
         if (logicalAlterTable.isRepartitionLocalPartition()) {
             return new LogicalAlterTableRepartitionLocalPartitionHandler(repo)
                 .buildDdlJob(logicalDdlPlan, executionContext);
@@ -272,7 +292,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
 
         if (logicalAlterTable.validateOnlineModify(executionContext, false)
             || logicalAlterTable.autoConvertToOmc(executionContext)) {
-            return buildRebuildTableJob(logicalAlterTable, true, executionContext);
+            return buildRebuildTableJob(logicalAlterTable, true, executionContext, ddlVersionId);
         }
 
         logicalAlterTable = rewriteExpressionIndex(logicalAlterTable, executionContext);
@@ -309,7 +329,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         } else {
             if (logicalAlterTable.getAlterTablePreparedData().isNeedRepartition()) {
                 // for drop primary key, add primary
-                return buildRebuildTableJob(logicalAlterTable, false, executionContext);
+                return buildRebuildTableJob(logicalAlterTable, false, executionContext, ddlVersionId);
             } else {
                 return buildAlterTableJob(logicalAlterTable, executionContext);
             }
@@ -319,7 +339,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
     private LogicalAlterTable rewriteExpressionIndex(LogicalAlterTable logicalAlterTable,
                                                      ExecutionContext executionContext) {
         // We rewrite expression in executor because in parser we do not know other column names in the table
-        if (logicalAlterTable.getSqlAlterTable().getOriginalSql() == null) {
+        if (logicalAlterTable.getSqlAlterTable().getOriginalSql() == null || InstanceVersion.isMYSQL80()) {
             // Could be alter table after rewrite
             return logicalAlterTable;
         }
@@ -423,7 +443,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             return logicalAlterTable;
         }
 
-        if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CREATE_EXPRESSION_INDEX)) {
+        if (!InstanceVersion.isMYSQL80() && !executionContext.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_CREATE_EXPRESSION_INDEX)) {
             throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "create expression index is not enabled");
         }
 
@@ -726,128 +747,10 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
 
         ForeignKeyValidator.validateFkConstraints(sqlAlterTable, schemaName, logicalTableName, executionContext);
 
-        TableValidator.validateTruncatePartition(logicalDdlPlan.getSchemaName(), logicalTableName, sqlAlterTable);
+        TableValidator.validateTruncatePartition(logicalDdlPlan.getSchemaName(), logicalTableName, sqlAlterTable,
+            executionContext);
 
         return false;
-    }
-
-    private DdlJob buildAlterTableOnlineModifyColumnJob(LogicalAlterTable logicalAlterTable,
-                                                        ExecutionContext executionContext) {
-        ExecutorContext executorContext =
-            ExecutorContext.getContext(logicalAlterTable.getAlterTablePreparedData().getSchemaName());
-        if (!executorContext.getStorageInfoManager().supportsAlterType()) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "DN do not support online modify column");
-        }
-
-        AlterTablePreparedData alterTablePreparedData = logicalAlterTable.getAlterTablePreparedData();
-        AlterTableWithGsiPreparedData alterTableWithGsiPreparedData =
-            logicalAlterTable.getAlterTableWithGsiPreparedData();
-
-        DdlPhyPlanBuilder alterTableBuilder =
-            AlterTableBuilder.create(logicalAlterTable.relDdl, alterTablePreparedData, executionContext).build();
-        PhysicalPlanData physicalPlanData = alterTableBuilder.genPhysicalPlanData();
-
-        if (!alterTablePreparedData.isNewColumnNullable() && !SQLMode.isStrictMode(
-            executionContext.getSqlModeFlags())) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                "Do not support modify/change to not nullable column in non strict mode");
-        }
-
-        // Get old column type from show create table, wish we could rename column directly in DN someday
-        String targetTableName = alterTablePreparedData.getTableName();
-        String modifiedColumnName = alterTablePreparedData.getModifyColumnName();
-        LogicalShowCreateTableHandler logicalShowCreateTablesHandler = new LogicalShowCreateTableHandler(repo);
-
-        SqlShowCreateTable sqlShowCreateTable =
-            SqlShowCreateTable.create(SqlParserPos.ZERO, new SqlIdentifier(targetTableName, SqlParserPos.ZERO));
-        PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
-        ExecutionPlan showCreateTablePlan = Planner.getInstance().getPlan(sqlShowCreateTable, plannerContext);
-        LogicalShow logicalShowCreateTable = (LogicalShow) showCreateTablePlan.getPlan();
-
-        Cursor showCreateTableCursor =
-            logicalShowCreateTablesHandler.handle(logicalShowCreateTable, executionContext);
-
-        String createTableSql = null;
-
-        Row showCreateResult = showCreateTableCursor.next();
-        if (showCreateResult != null && showCreateResult.getString(1) != null) {
-            createTableSql = showCreateResult.getString(1);
-        } else {
-            GeneralUtil.nestedException("Get reference table architecture failed.");
-        }
-
-        SQLCreateTableStatement createTableStmt =
-            (SQLCreateTableStatement) FastsqlUtils.parseSql(createTableSql).get(0);
-
-        // Do not support if table contains fulltext index on any columns
-        if (createTableStmt.existFullTextIndex()) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                "Do not support online modify column on table with fulltext index");
-        }
-
-        SQLColumnDefinition colDef = createTableStmt.getColumn(modifiedColumnName);
-        if (colDef == null) {
-            for (SQLColumnDefinition columnDefinition : createTableStmt.getColumnDefinitions()) {
-                String columnName = SQLUtils.normalizeNoTrim(columnDefinition.getColumnName());
-                if (columnName.equalsIgnoreCase(modifiedColumnName)) {
-                    colDef = columnDefinition;
-                    break;
-                }
-            }
-        }
-
-        final boolean enableWithGenCol =
-            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OMC_WITH_GEN_COL);
-
-        // Check if table has any generated column
-        for (SQLColumnDefinition columnDefinition : createTableStmt.getColumnDefinitions()) {
-            if (columnDefinition.getGeneratedAlawsAs() != null) {
-                if (!enableWithGenCol) {
-                    // For now, we do not allow OMC on table with generated column, because on mysql we can not add or
-                    // drop column before a generated column using inplace algorithm
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                        String.format("Can not modify column [%s] on table with generated column [%s].",
-                            alterTablePreparedData.getModifyColumnName(), columnDefinition.getColumnName()));
-                }
-
-                String expr = columnDefinition.getGeneratedAlawsAs().toString();
-                Set<String> refCols = GeneratedColumnUtil.getReferencedColumns(expr);
-                if (refCols.contains(alterTablePreparedData.getModifyColumnName())) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                        String.format("Can not modify column [%s] referenced by a generated column [%s].",
-                            alterTablePreparedData.getModifyColumnName(), columnDefinition.getColumnName()));
-                }
-            }
-        }
-
-        final boolean forceTypeConversion =
-            executionContext.getParamManager().getBoolean(ConnectionParams.OMC_FORCE_TYPE_CONVERSION);
-        if (!forceTypeConversion && TableColumnUtils.isUnsupportedType(colDef.getDataType().getName())) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                String.format("Converting from %s is not supported", colDef.getDataType().getName()));
-        }
-
-        alterTablePreparedData.setModifyColumnType(TableColumnUtils.getDataDefFromColumnDef(colDef));
-        alterTablePreparedData.setModifyColumnTypeNullable(
-            TableColumnUtils.getDataDefFromColumnDefWithoutUniqueNullable(colDef));
-
-        List<PhysicalPlanData> gsiPhysicalPlanData =
-            getGsiPhysicalPlanData(logicalAlterTable, executionContext);
-
-        ExecutableDdlJob alterTableJob =
-            new AlterTableOnlineModifyColumnJobFactory(physicalPlanData, gsiPhysicalPlanData, alterTablePreparedData,
-                alterTableWithGsiPreparedData, logicalAlterTable, executionContext).create();
-
-        Map<String, Long> tableVersions = new HashMap<>();
-        tableVersions.put(alterTablePreparedData.getTableName(),
-            alterTablePreparedData.getTableVersion());
-        ValidateTableVersionTask validateTableVersionTask =
-            new ValidateTableVersionTask(alterTablePreparedData.getSchemaName(), tableVersions);
-
-        alterTableJob.addTask(validateTableVersionTask);
-        alterTableJob.addTaskRelationship(validateTableVersionTask, alterTableJob.getHead());
-
-        return alterTableJob;
     }
 
     private DdlJob buildAlterTableJob(LogicalAlterTable logicalAlterTable, ExecutionContext executionContext) {
@@ -963,6 +866,9 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                     logicalAlterTable, executionContext);
             ddlJob = alterTableAddLogicalForeignKeyJobFactory.create();
         } else {
+            // 物理执行 ddl 的 pausedPolicy 设置为 PAUSED，避免自动调度
+            executionContext.getDdlContext().setPausedPolicy(DdlState.PAUSED);
+
             ParamManager paramManager = executionContext.getParamManager();
             boolean supportTwoPhaseDdl = paramManager.getBoolean(ConnectionParams.ENABLE_DRDS_MULTI_PHASE_DDL);
             String finalStatus = paramManager.getString(ConnectionParams.TWO_PHASE_DDL_FINAL_STATUS);
@@ -1099,6 +1005,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         ddlJob.addTask(validateTableVersionTask);
         ddlJob.addTaskRelationship(validateTableVersionTask, ddlJob.getHead());
 
+        addRefreshArcViewSubJobIfNeed(ddlJob, logicalAlterTable, executionContext);
+
         return ddlJob;
     }
 
@@ -1138,7 +1046,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         }
     }
 
-    private DdlJob buildRebuildTableJob(LogicalAlterTable logicalAlterTable, boolean omc, ExecutionContext ec) {
+    private DdlJob buildRebuildTableJob(LogicalAlterTable logicalAlterTable, boolean omc, ExecutionContext ec,
+                                        long versionId) {
         if (omc) {
             logicalAlterTable.prepareOnlineModifyColumn();
         }
@@ -1174,6 +1083,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         RebuildTablePrepareData rebuildTablePrepareData = new RebuildTablePrepareData();
         initPrimaryTableDefinition4RebuildTable(logicalAlterTable, ec, gsiData, primaryKeyNotChanged,
             rebuildTablePrepareData);
+        rebuildTablePrepareData.setVersionId(versionId);
 
         if (primaryKeyNotChanged.get()) {
             // alter table drop add primary key, but primary key is not changed
@@ -1186,11 +1096,12 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             logicalAlterTable.getCreateGlobalIndexesPreparedData();
 
         Map<String, Boolean> relatedTableGroupInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        globalIndexesPreparedData.stream().forEach(o -> relatedTableGroupInfo.putAll(o.getRelatedTableGroupInfo()));
+        globalIndexesPreparedData.forEach(o -> relatedTableGroupInfo.putAll(o.getRelatedTableGroupInfo()));
 
         Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap = new LinkedHashMap<>();
 
-        Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData = new HashMap<>();
+        List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareData = new ArrayList<>();
+        String targetPrimaryTableName = logicalAlterTable.getSqlAlterTable().getLogicalSecondaryTableName();
         for (CreateGlobalIndexPreparedData createGsiPreparedData : globalIndexesPreparedData) {
             createGsiPreparedData.getRelatedTableGroupInfo().putAll(relatedTableGroupInfo);
             DdlPhyPlanBuilder builder = CreateGlobalIndexBuilder.create(
@@ -1199,13 +1110,18 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 indexTablePreparedDataMap,
                 ec).build();
 
+            if (omc && StringUtils.equalsIgnoreCase(targetPrimaryTableName,
+                createGsiPreparedData.getIndexTableName())) {
+                createGsiPreparedData.setOmcRebuildPrimaryTable(true);
+            }
             indexTablePreparedDataMap.put(createGsiPreparedData.getIndexTableName(), createGsiPreparedData);
-            globalIndexPrepareData.put(createGsiPreparedData, builder.genPhysicalPlanData());
+            globalIndexPrepareData.add(new Pair<>(createGsiPreparedData, builder.genPhysicalPlanData()));
         }
 
         RebuildTableJobFactory jobFactory = new RebuildTableJobFactory(
             logicalAlterTable.getSchemaName(),
             logicalAlterTable.getTableName(),
+            omc ? targetPrimaryTableName : logicalAlterTable.getTableName(),
             globalIndexPrepareData,
             rebuildTablePrepareData,
             physicalPlanData,
@@ -1216,9 +1132,11 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         jobFactory.setChangedColumns(changedColumns);
 
         ExecutableDdlJob ddlJob = jobFactory.create();
-        Optional opt = globalIndexesPreparedData.stream().filter(o -> o.isNeedToGetTableGroupLock()).findAny();
+        Optional<CreateGlobalIndexPreparedData> opt = globalIndexesPreparedData.stream().filter(
+            CreateGlobalIndexPreparedData::isNeedToGetTableGroupLock).findAny();
         if (opt.isPresent()) {
             //create tablegroup firstly
+            addRefreshArcViewSubJobIfNeed(ddlJob, logicalAlterTable, ec);
             return ddlJob;
         }
         Map<String, Long> tableVersions = new HashMap<>();
@@ -1229,6 +1147,8 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
 
         ddlJob.addTask(validateTableVersionTask);
         ddlJob.addTaskRelationship(validateTableVersionTask, ddlJob.getHead());
+
+        addRefreshArcViewSubJobIfNeed(ddlJob, logicalAlterTable, ec);
 
         return ddlJob;
     }
@@ -1680,8 +1600,10 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                                                                                 ExecutionContext executionContext,
                                                                                 List<String> oldPrimaryKeys,
                                                                                 RebuildTablePrepareData rebuildTablePrepareData) {
-        Map<String, String> virtualColumnMap = rebuildTablePrepareData.getVirtualColumnMap();
-        Map<String, String> columnNewDef = rebuildTablePrepareData.getColumnNewDef();
+        Map<String, String> srcVirtualColumnMap = rebuildTablePrepareData.getSrcVirtualColumnMap();
+        Map<String, String> dstVirtualColumnMap = rebuildTablePrepareData.getDstVirtualColumnMap();
+        Map<String, SQLColumnDefinition> srcColumnNewDef = rebuildTablePrepareData.getSrcColumnNewDef();
+        Map<String, SQLColumnDefinition> dstColumnNewDef = rebuildTablePrepareData.getDstColumnNewDef();
         Map<String, String> backfillColumnMap = rebuildTablePrepareData.getBackfillColumnMap();
         List<String> modifyStringColumns = rebuildTablePrepareData.getModifyStringColumns();
         List<String> addNewColumns = rebuildTablePrepareData.getAddNewColumns();
@@ -1875,12 +1797,18 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
                 } else if (newColumnDefinitionMap.containsKey(columnName)) {
                     SQLColumnDefinition newColumnDefinition = newColumnDefinitionMap.get(columnName);
                     newTableElementList.add(newColumnDefinition);
-                    if (!autoIncrement) {
+                    if (!autoIncrement && !newColumnDefinition.isAutoIncrement()) {
                         // for checker prepare
                         String colNameStr = columnName.toLowerCase();
-                        virtualColumnMap.put(colNameStr, GsiUtils.generateRandomGsiName(colNameStr));
-                        columnNewDef.put(colNameStr,
-                            TableColumnUtils.getDataDefFromColumnDefNoDefault(newColumnDefinition));
+                        srcVirtualColumnMap.put(colNameStr, GsiUtils.generateRandomGsiName(colNameStr));
+                        srcColumnNewDef.put(colNameStr, newColumnDefinition);
+
+                        String newColNameStr = colNameStr;
+                        if (MapUtils.isNotEmpty(backfillColumnMap) && backfillColumnMap.containsKey(colNameStr)) {
+                            newColNameStr = backfillColumnMap.get(colNameStr);
+                        }
+                        dstVirtualColumnMap.put(newColNameStr, GsiUtils.generateRandomGsiName(newColNameStr));
+                        dstColumnNewDef.put(newColNameStr, columnDefinition);
                     }
                     if (!newColumnAfter.containsKey(columnName) && !newColumnFirst.containsKey(columnName)) {
                         newColumnDefinitionMap.remove(columnName);
@@ -2341,5 +2269,42 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         return buildIndexDefinition4Auto(schemaName, tableName, logicalDdlPlan, executionContext, gsiData,
             alterTablePreparedData, rebuildTablePrepareData, primaryKeyNotChanged, oldPrimaryKeys, primaryTableInfo,
             ast);
+    }
+
+    /**
+     * Check if need add a subjob task of auto refresh the cci view of arc tbl
+     */
+    public void addRefreshArcViewSubJobIfNeed(DdlJob ddlJob, LogicalAlterTable alterTable, ExecutionContext ec) {
+        if (!alterTable.needRefreshArcTblView(ec)) {
+            return;
+        }
+
+        String tableSchema = alterTable.getSchemaName();
+        String tableName = alterTable.getTableName();
+        TtlDefinitionInfo ttlInfo = TtlUtil.fetchTtlDefinitionInfoByDbAndTb(tableSchema, tableName, ec);
+        if (ttlInfo == null) {
+            return;
+        }
+        String arcTblSchema = ttlInfo.getArchiveTableSchema();
+        String arcTblName = ttlInfo.getArchiveTableName();
+
+        String createViewSqlForArcTbl =
+            TtlTaskSqlBuilder.buildCreateViewSqlForArcTbl(arcTblSchema, arcTblName, ttlInfo);
+        String dropViewSqlForArcTbl = ""; // ignore rollback
+        SubJobTask freshViewSubJobTask =
+            new SubJobTask(tableSchema, createViewSqlForArcTbl, dropViewSqlForArcTbl);
+        freshViewSubJobTask.setParentAcquireResource(true);
+
+        ExecutableDdlJob executableDdlJob = (ExecutableDdlJob) ddlJob;
+//        DdlTask tailTask = executableDdlJob.getTail();
+        List<DdlTask> tailNodes =
+            executableDdlJob.getAllZeroOutDegreeVertexes().stream().map(o -> o.getObject()).collect(
+                Collectors.toList());
+        executableDdlJob.addTask(freshViewSubJobTask);
+        for (int i = 0; i < tailNodes.size(); i++) {
+            DdlTask tailTask = tailNodes.get(i);
+            executableDdlJob.addTaskRelationship(tailTask, freshViewSubJobTask);
+        }
+        executableDdlJob.labelAsTail(freshViewSubJobTask);
     }
 }

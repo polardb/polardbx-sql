@@ -132,23 +132,6 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
         return doWildCompare(slice, wildCard) == 0;
     }
 
-    /**
-     * FIXME high overhead implementation
-     */
-    @Override
-    public boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
-        if (wildCard == null || wildCard.length == 0) {
-            // like '%%' always match
-            return true;
-        }
-        byte[] containWildCard = new byte[wildCard.length + 2];
-        containWildCard[0] = WILD_MANY;
-        System.arraycopy(wildCard, 0, containWildCard, 1, wildCard.length);
-        containWildCard[containWildCard.length - 1] = WILD_MANY;
-        Slice wildCardSlice = Slices.wrappedBuffer(containWildCard);
-        return doWildCompare(slice, wildCardSlice) == 0;
-    }
-
     public int doWildCompare(Slice slice, Slice wildCard) {
         int sliceCodePoint, wildCodePoint;
         SliceInput str = slice.getInput();

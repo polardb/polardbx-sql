@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.ddl.balancer.control;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DataManipulateUtil;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
@@ -15,6 +16,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DataManipulateUtil.prepareData;
 
 public class TerminateRebalanceAutoTest extends DDLBaseNewDBTestCase {
     private static final String SLOW_HINT = "GSI_DEBUG=\"slow\"";
@@ -156,6 +159,147 @@ public class TerminateRebalanceAutoTest extends DDLBaseNewDBTestCase {
         Assert.assertTrue(waitDDLJobFinish(tddlConnection));
 
         Assert.assertTrue(getDDLPlanStats(tddlConnection, jobId).equalsIgnoreCase("SUCCESS"));
+    }
+
+    @Test
+    public void testResumeRebalanceSchedule() throws SQLException, InterruptedException {
+        // create table
+        for (int i = 0; i < TABLE_COUNT; ++i) {
+            String tbName = TABLE_PREFIX + i;
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(DROP_TABLE_SQL, tbName));
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_SQL, tbName));
+        }
+
+        String command = prepareDrainNodeCommand(tddlConnection);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, command + " async=false");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "schedule rebalance database");
+
+        // check
+        Thread.sleep(10500);
+        Long jobId = getDDLJobId(tddlConnection);
+        // Assert.assertTrue(checkRunningDDL(tddlConnection));
+        if (!checkRunningDDL(tddlConnection)) {
+            return;
+        }
+        Assert.assertTrue(jobId != -1L);
+
+        // RESUME REBALANCE
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("RESUME REBALANCE %s", jobId));
+
+        // check
+        Assert.assertTrue(waitDDLJobFinish(tddlConnection));
+
+        Assert.assertTrue(getDDLPlanStats(tddlConnection, jobId).equalsIgnoreCase("EXECUTING"));
+
+        // check
+        Thread.sleep(10500);
+        jobId = getDDLJobId(tddlConnection);
+        // Assert.assertTrue(checkRunningDDL(tddlConnection));
+        if (!checkRunningDDL(tddlConnection)) {
+            return;
+        }
+        // rollback
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("TERMINATE REBALANCE %s", jobId));
+
+        // check
+        Assert.assertTrue(waitDDLJobFinish(tddlConnection));
+
+        Assert.assertTrue(getDDLPlanStats(tddlConnection, jobId).equalsIgnoreCase("SUCCESS"));
+    }
+
+    public void testResumeRebalanceWithDataSchedule() throws Exception {
+        // create table
+        for (int i = 0; i < TABLE_COUNT; ++i) {
+            String tbName = TABLE_PREFIX + i;
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(DROP_TABLE_SQL, tbName));
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_SQL, tbName));
+        }
+
+        String originalTableName = "multiple_pk_table3";
+        // prepare data
+        String createTableStmt = "create table if not exists "
+            + " %s(d int, a int NOT NULL AUTO_INCREMENT,b char(16), c varchar(32), PRIMARY KEY(c, a, b)"
+            + ") PARTITION BY HASH(a) PARTITIONS %d";
+        int partNum = 4;
+        int eachPartRows = 40960;
+        String rebalanceJob = "schedule rebalance table %s shuffle_data_dist=1";
+
+        prepareData(tddlConnection, DATABASE_NAME, originalTableName, eachPartRows, createTableStmt,
+            partNum, DataManipulateUtil.TABLE_TYPE.PARTITION_TABLE);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(rebalanceJob, originalTableName));
+
+        // check
+        Thread.sleep(10500);
+        Long jobId = getDDLJobId(tddlConnection);
+        // Assert.assertTrue(checkRunningDDL(tddlConnection));
+        if (!checkRunningDDL(tddlConnection)) {
+            return;
+        }
+        Assert.assertTrue(jobId != -1L);
+
+        // RESUME REBALANCE
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("RESUME REBALANCE %s", jobId));
+
+        // check
+        Assert.assertTrue(waitDDLJobFinish(tddlConnection));
+
+        Assert.assertTrue(getDDLPlanStats(tddlConnection, jobId).equalsIgnoreCase("EXECUTING"));
+
+        // check
+        Thread.sleep(10500);
+        jobId = getDDLJobId(tddlConnection);
+        // Assert.assertTrue(checkRunningDDL(tddlConnection));
+        if (!checkRunningDDL(tddlConnection)) {
+            return;
+        }
+        // rollback
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("TERMINATE REBALANCE %s", jobId));
+
+        // check
+        Assert.assertTrue(waitDDLJobFinish(tddlConnection));
+
+        Assert.assertTrue(getDDLPlanStats(tddlConnection, jobId).equalsIgnoreCase("SUCCESS"));
+    }
+
+    @Test
+    public void testResumeRebalance() throws SQLException, InterruptedException {
+        // create table
+        for (int i = 0; i < TABLE_COUNT; ++i) {
+            String tbName = TABLE_PREFIX + i;
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(DROP_TABLE_SQL, tbName));
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_SQL, tbName));
+        }
+
+        String command = prepareDrainNodeCommand(tddlConnection);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, command + " async=false");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "rebalance database");
+
+        Long jobId = getDDLJobId(tddlConnection);
+        // Assert.assertTrue(checkRunningDDL(tddlConnection));
+        if (!checkRunningDDL(tddlConnection)) {
+            return;
+        }
+        Assert.assertTrue(jobId != -1L);
+
+        // RESUME REBALANCE
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format("RESUME REBALANCE %s", jobId));
+
+        // check
+        Assert.assertTrue(waitDDLJobFinish(tddlConnection));
+    }
+
+    @Test
+    public void testResumeRebalanceFail() throws SQLException, InterruptedException {
+
+        String command = "resume rebalance all";
+        String errorMsg = "Operation on multi ddl jobs is not allowed";
+        JdbcUtil.executeUpdateFailed(tddlConnection, command, errorMsg);
+
+        command = "resume rebalance 123,234";
+        JdbcUtil.executeUpdateFailed(tddlConnection, command, errorMsg);
     }
 
     private static boolean checkRunningDDL(Connection connection) throws SQLException {

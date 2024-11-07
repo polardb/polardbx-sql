@@ -29,7 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableUpdateMetaTas
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
-import com.alibaba.polardbx.executor.ddl.job.task.columnar.RenameColumnarTablesMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.RenameColumnarTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -98,9 +98,7 @@ public class RenameTableJobFactory extends DdlJobFactory {
 
         SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
         TableMeta tableMeta = schemaManager.getTable(logicalTableName);
-        boolean withColumnar =
-            tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().indexMap != null
-                && tableMeta.getGsiTableMetaBean().indexMap.values().stream().anyMatch(m -> m.columnarIndex);
+        boolean withColumnar = tableMeta.withColumnar();
 
         List<DdlTask> taskList = new ArrayList<>();
         taskList.add(validateTask);
@@ -113,7 +111,7 @@ public class RenameTableJobFactory extends DdlJobFactory {
         if (!Engine.isFileStore(engine) && !isGsi) {
             if (withColumnar) {
                 DdlTask renameColumnarTask =
-                    new RenameColumnarTablesMetaTask(schemaName, logicalTableName, newLogicalTableName, versionId);
+                    new RenameColumnarTableMetaTask(schemaName, logicalTableName, newLogicalTableName, versionId);
                 taskList.add(renameColumnarTask);
             }
             taskList.add(cdcDdlMarkTask);

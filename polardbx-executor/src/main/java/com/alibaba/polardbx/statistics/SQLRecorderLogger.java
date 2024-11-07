@@ -68,6 +68,9 @@ public class SQLRecorderLogger {
     // SCALE OUT 任务日志
     public final static Logger scaleOutTaskLogger = LoggerFactory.getLogger("scale_out_task");
 
+    // TTL 任务日志
+    public final static Logger ttlTaskLogger = LoggerFactory.getLogger("ttl_task");
+
     // Slow trans log
     public final static Logger slowTransLogger = LoggerFactory.getLogger("slow_trans");
 
@@ -77,8 +80,10 @@ public class SQLRecorderLogger {
      * 0:sql#<br>
      * 1:success(0 for success, 1 for fail)#<br>
      * 2:time_cost
+     * 3:trace_id
+     * 4:update_count
      */
-    public final static MessageFormat innerSqlFormat = new MessageFormat("{0}#{1}#{2}");
+    public final static MessageFormat innerSqlFormat = new MessageFormat("{0}#{1}#{2}#{3}#{4}");
 
     public final static Logger cdcLogger = LoggerFactory.getLogger("cdc_log");
 

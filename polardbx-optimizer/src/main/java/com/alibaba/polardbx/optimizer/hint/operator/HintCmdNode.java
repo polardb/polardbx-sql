@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -70,7 +71,6 @@ public class HintCmdNode extends BaseHintOperator implements HintCmdOperator {
     public CmdBean handle(CmdBean current) {
         if (this.groups.size() > 0) {
             final List<String> result = convertGroupIndex(current.getSchemaName(), this.groups, current);
-
             current.setGroups(result);
         }
         return current;

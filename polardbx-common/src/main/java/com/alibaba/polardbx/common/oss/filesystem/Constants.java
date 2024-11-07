@@ -45,12 +45,12 @@ public final class Constants {
     // Number of simultaneous connections to oss
     public static final String MAXIMUM_CONNECTIONS_KEY =
         "fs.oss.connection.maximum";
-    public static final int MAXIMUM_CONNECTIONS_DEFAULT = 32;
+    public static final int MAXIMUM_CONNECTIONS_DEFAULT = 2048;
 
     // Connect to oss over ssl
     public static final String SECURE_CONNECTIONS_KEY =
         "fs.oss.connection.secure.enabled";
-    public static final boolean SECURE_CONNECTIONS_DEFAULT = true;
+    public static final boolean SECURE_CONNECTIONS_DEFAULT = false;
 
     // Use a custom endpoint
     public static final String ENDPOINT_KEY = "fs.oss.endpoint";

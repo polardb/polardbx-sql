@@ -38,7 +38,10 @@ public class ColumnarCheckpointsRecord implements SystemTableRecord {
     public String partitionName;
     public long checkpointTso;
     public String offset;
+    public long binlogTso;
     public String checkpointType;
+    public long minCompactionTso;
+    public String info;
     public String extra;
     public String createTime;
     public String updateTime;
@@ -51,7 +54,10 @@ public class ColumnarCheckpointsRecord implements SystemTableRecord {
         this.partitionName = rs.getString("partition_name");
         this.checkpointTso = rs.getLong("checkpoint_tso");
         this.offset = rs.getString("offset");
+        this.binlogTso = rs.getLong("binlog_tso");
         this.checkpointType = rs.getString("checkpoint_type");
+        this.minCompactionTso = rs.getLong("min_compaction_tso");
+        this.info = rs.getString("info");
         this.extra = rs.getString("extra");
         this.createTime = rs.getString("create_time");
         this.updateTime = rs.getString("update_time");
@@ -59,7 +65,7 @@ public class ColumnarCheckpointsRecord implements SystemTableRecord {
     }
 
     public Map<Integer, ParameterContext> buildInsertParams() {
-        Map<Integer, ParameterContext> params = new HashMap<>(8);
+        Map<Integer, ParameterContext> params = new HashMap<>(12);
         int index = 0;
         // skip auto increment primary-index
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.logicalSchema);
@@ -67,7 +73,10 @@ public class ColumnarCheckpointsRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.partitionName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.checkpointTso);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.offset);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.binlogTso);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.checkpointType);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.minCompactionTso);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.info);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.extra);
         // skip automatically updated column: create_time and update_time
         return params;

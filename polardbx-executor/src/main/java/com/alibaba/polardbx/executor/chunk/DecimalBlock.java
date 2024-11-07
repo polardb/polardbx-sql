@@ -100,6 +100,7 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
         this.selection = null;
         this.decimal64Values = null;
         this.state = UNALLOC_STATE;
+        updateSizeInfo();
     }
 
     private DecimalBlock(DataType dataType, int positionCount, boolean[] valueIsNull, boolean hasNull) {
@@ -297,6 +298,7 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
             this.memorySegments = Slices.allocate(positionCount * DECIMAL_MEMORY_SIZE);
             this.state = DecimalBlockState.UNSET_STATE;
         }
+        updateSizeInfo();
     }
 
     public int realPositionOf(int position) {
@@ -683,6 +685,8 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
             }
 
             this.state = DecimalBlockState.DECIMAL_64;
+        } else if (this.state.isNormal()) {
+            throw new IllegalStateException("Should not allocate decimal64 inside a normal decimal block");
         }
         updateSizeInfo();
         return this.decimal64Values;
@@ -723,6 +727,8 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
                 this.decimal128HighValues = new long[positionCount];
             }
             this.state = DecimalBlockState.DECIMAL_128;
+        } else if (this.state.isNormal()) {
+            throw new IllegalStateException("Should not allocate decimal128 inside a normal decimal block");
         }
 
         updateSizeInfo();
@@ -1306,9 +1312,45 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
         }
         SegmentedDecimalBlock otherBlock = (SegmentedDecimalBlock) other;
         if (isDecimal64()) {
-            if (otherBlock.isDecimal64()) {
-                return getLongInner(realPosition) == other.getLong(otherPosition);
-            } else if (otherBlock.isDecimal128()) {
+            return decimal64EqualsInner(realPosition, otherBlock, otherPosition);
+        }
+        if (isDecimal128()) {
+            return decimal128EqualsInner(realPosition, otherBlock, otherPosition);
+        }
+
+        // normal decimal compare
+        Slice memorySegment1 = this.segmentUncheckedAtInner(realPosition);
+        Slice memorySegment2 = otherBlock.segmentUncheckedAt(otherPosition);
+        return RawBytesDecimalUtils.equals(memorySegment1, memorySegment2);
+    }
+
+    private boolean decimal64EqualsInner(int realPosition, SegmentedDecimalBlock otherBlock, int otherPosition) {
+        if (otherBlock.isDecimal64()) {
+            long val = getLongInner(realPosition);
+            long otherVal = otherBlock.getLong(otherPosition);
+            int scale = getScale();
+            int otherScale = otherBlock.getScale();
+            int scaleDiff = scale - otherScale;
+            if (scaleDiff == 0) {
+                return val == otherVal;
+            }
+            if ((val >= 0 && otherVal < 0) || (val < 0 && otherVal >= 0)) {
+                return false;
+            }
+            int scaleDiffAbs = Math.abs(scaleDiff);
+            if (scaleDiffAbs < DecimalTypeBase.POW_10.length) {
+                long power = DecimalTypeBase.POW_10[scaleDiffAbs];
+                // it does not matter if this overflows
+                if (scaleDiff > 0) {
+                    otherVal *= power;
+                } else {
+                    val *= power;
+                }
+                return val == otherVal;
+            }
+            // rare case for large scaleDiff, just fallback to normal compare
+        } else if (otherBlock.isDecimal128()) {
+            if (getScale() == otherBlock.getScale()) {
                 long thisDecimal64 = getLongInner(realPosition);
                 long thatLow = otherBlock.getDecimal128Low(otherPosition);
                 long thatHigh = otherBlock.getDecimal128High(otherPosition);
@@ -1316,30 +1358,34 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
                     return false;
                 }
                 return thisDecimal64 >= 0 ? (thatHigh == 0) : (thatHigh == -1);
-            } else {
-                Slice memorySegment2 = otherBlock.segmentUncheckedAt(otherPosition);
-                return RawBytesDecimalUtils.equals(getDecimalInner(realPosition).getMemorySegment(), memorySegment2);
             }
         }
-        if (isDecimal128()) {
-            if (otherBlock.isDecimal64()) {
+
+        // fallback to normal decimal compare
+        Slice memorySegment1 = this.segmentUncheckedAtInner(realPosition);
+        Slice memorySegment2 = otherBlock.segmentUncheckedAt(otherPosition);
+        return RawBytesDecimalUtils.equals(memorySegment1, memorySegment2);
+    }
+
+    private boolean decimal128EqualsInner(int realPosition, SegmentedDecimalBlock otherBlock, int otherPosition) {
+        if (otherBlock.isDecimal64()) {
+            if (getScale() == otherBlock.getScale()) {
                 long thisLow = decimal64Values[realPosition];
                 long thisHigh = decimal128HighValues[realPosition];
-                long thatDecimal64 = other.getLong(otherPosition);
+                long thatDecimal64 = otherBlock.getLong(otherPosition);
                 if (thisLow != thatDecimal64) {
                     return false;
                 }
                 return thatDecimal64 >= 0 ? (thisHigh == 0) : (thisHigh == -1);
-            } else if (otherBlock.isDecimal128()) {
+            }
+        } else if (otherBlock.isDecimal128()) {
+            if (getScale() == otherBlock.getScale()) {
                 return decimal64Values[realPosition] == otherBlock.getDecimal128Low(otherPosition) &&
                     decimal128HighValues[realPosition] == otherBlock.getDecimal128High(otherPosition);
-            } else {
-                Slice memorySegment2 = otherBlock.segmentUncheckedAt(otherPosition);
-                return RawBytesDecimalUtils.equals(getDecimalInner(realPosition).getMemorySegment(), memorySegment2);
             }
         }
 
-        // for decimal block, compare by memory segment
+        // fallback to normal decimal compare
         Slice memorySegment1 = this.segmentUncheckedAtInner(realPosition);
         Slice memorySegment2 = otherBlock.segmentUncheckedAt(otherPosition);
         return RawBytesDecimalUtils.equals(memorySegment1, memorySegment2);
@@ -1417,7 +1463,7 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
     }
 
     /**
-     * considered a low-frequency path in VectorizedExpression
+     * considered as a low-frequency path in VectorizedExpression
      */
     private void setElementAtInner(final int position, Object element) {
         if (element == null) {
@@ -1507,6 +1553,9 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
     @Override
     public void updateSizeInfo() {
         if (isUnalloc()) {
+            // maybe not allocated yet, or all nulls
+            estimatedSize = INSTANCE_SIZE + sizeOf(isNull);
+            elementUsedBytes = Byte.BYTES * positionCount;
             return;
         }
         if (isDecimal64()) {
@@ -1614,6 +1663,7 @@ public class DecimalBlock extends AbstractBlock implements SegmentedDecimalBlock
         return state == UNALLOC_STATE;
     }
 
+    @Override
     public int getScale() {
         return dataType.getScale();
     }

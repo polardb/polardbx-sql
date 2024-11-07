@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilde
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLocalPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RemoveLocalPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcRepartitionLocalPartitionMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
@@ -184,6 +185,7 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
             definitionInfo.archiveTableName = primaryTableMeta.getLocalPartitionDefinitionInfo().archiveTableName;
         }
         taskList.add(new AddLocalPartitionTask(definitionInfo));
+        taskList.add(new CdcRepartitionLocalPartitionMarkTask(schemaName, primaryTableName));
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
         executableDdlJob.addSequentialTasks(taskList);
         return executableDdlJob;

@@ -411,7 +411,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         }
     }
 
-    protected void unbindGroupConfigListener() {
+    public void unbindGroupConfigListener() {
         String dbName = groupDataSource.getSchemaName();
         String groupName = groupDataSource.getDbGroupKey();
 
@@ -423,6 +423,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                 .unbindListener(dataId);
         }
     }
+
+
 
     protected synchronized List<DataSourceWrapper> switchGroupDs(HaSwitchParams haSwitchParams) {
 
@@ -720,39 +722,38 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         cleanUselessSourceWrapper(uselessSourceWrapper, true);
     }
 
-    private synchronized void resetPolarDBXSourceHolder(boolean failedSlave) {
-        if (dataSourceWrapperMap.size() == 1) {
-            this.groupDataSourceHolder = failedSlave ?
-                new MasterFailedSlaveGroupDataSourceHolder(
-                    dataSourceWrapperMap.values().iterator().next().getWrappedDataSource()) :
-                new MasterOnlyGroupDataSourceHolder(
-                    dataSourceWrapperMap.values().iterator().next().getWrappedDataSource());
-        } else {
+    protected synchronized void resetPolarDBXSourceHolder(boolean failedSlave) {
 
-            TAtomDataSource masterDataSource = null;
-            List<TAtomDataSource> slaveDataSources = new ArrayList<TAtomDataSource>();
+        boolean notAllowFailedSlave =
+            !ConfigDataMode.isMasterMode() && !SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName());
 
-            for (DataSourceWrapper dataSourceWrapper : dataSourceWrapperMap.values()) {
-                if (dataSourceWrapper.hasWriteWeight()) {
-                    masterDataSource = dataSourceWrapper.getWrappedDataSource();
-                } else {
-                    slaveDataSources.add(dataSourceWrapper.getWrappedDataSource());
-                }
+        TAtomDataSource masterDataSource = null;
+        List<TAtomDataSource> slaveDataSources = new ArrayList<TAtomDataSource>();
 
-            }
-
-            if (GeneralUtil.isEmpty(slaveDataSources)) {
-                /**
-                 * 备库没有任何读权重
-                 */
-                this.groupDataSourceHolder = failedSlave ?
-                    new MasterFailedSlaveGroupDataSourceHolder(masterDataSource) :
-                    new MasterOnlyGroupDataSourceHolder(masterDataSource);
+        for (DataSourceWrapper dataSourceWrapper : dataSourceWrapperMap.values()) {
+            if (dataSourceWrapper.hasWriteWeight()) {
+                masterDataSource = dataSourceWrapper.getWrappedDataSource();
             } else {
-                this.groupDataSourceHolder = new MasterSlaveGroupDataSourceHolder(masterDataSource, slaveDataSources);
+                slaveDataSources.add(dataSourceWrapper.getWrappedDataSource());
             }
 
         }
+
+        if (GeneralUtil.isEmpty(slaveDataSources)) {
+            /**
+             * 备库没有任何读权重
+             */
+            if (notAllowFailedSlave) {
+                this.groupDataSourceHolder = new MasterFailedSlaveGroupDataSourceHolder(masterDataSource);
+            } else {
+                this.groupDataSourceHolder = failedSlave ?
+                    new MasterFailedSlaveGroupDataSourceHolder(masterDataSource) :
+                    new MasterOnlyGroupDataSourceHolder(masterDataSource);
+            }
+        } else {
+            this.groupDataSourceHolder = new MasterSlaveGroupDataSourceHolder(masterDataSource, slaveDataSources);
+        }
+
     }
 
     private synchronized void cleanUselessSourceWrapper(Set<String> uselessStorageIds) {
@@ -816,7 +817,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
     }
 
     @Override
-    protected synchronized void doDestroy() {
+    protected void doDestroy() {
         // 关闭下层DataSource
         if (dataSourceWrapperMap != null) {
             for (DataSourceWrapper dsw : dataSourceWrapperMap.values()) {
@@ -841,7 +842,6 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
 
         try {
             unregisterHaSwitcher();
-            unbindGroupConfigListener();
             //clean the cache datasource for physical backfill
             PhysicalBackfillUtils.destroyDataSources();
         } catch (Exception e) {
@@ -866,6 +866,10 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                 "don't support query the table without columnar index!", new NullPointerException());
         }
         return this.groupDataSourceHolder.getDataSource(masterSlave);
+    }
+
+    public GroupDataSourceHolder getGroupDataSourceHolder() {
+        return groupDataSourceHolder;
     }
 
     protected String getServerInstIdForGroupDataSource() {

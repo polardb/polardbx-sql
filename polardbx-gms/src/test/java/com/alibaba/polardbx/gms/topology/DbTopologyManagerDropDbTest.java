@@ -83,4 +83,32 @@ public class DbTopologyManagerDropDbTest {
             Assert.fail(e.getMessage());
         }
     }
+
+    @Test
+    public void testDropLogicalDb() {
+        // Setup
+        DropDbInfo dropDbInfo = new DropDbInfo();
+        dropDbInfo.setDbName("testDb");
+        dropDbInfo.setDropIfExists(true);
+        dropDbInfo.setSocketTimeout(30000L);
+        dropDbInfo.setVersionId(1L);
+
+        final MetaDbDataSource metaDbDs = mock(MetaDbDataSource.class);
+        final Connection mockMetaDbConn = mock(Connection.class);
+        when(metaDbDs.getConnection()).thenReturn(mockMetaDbConn);
+        try (MockedStatic<MetaDbDataSource> mockedMetaDbClass = Mockito.mockStatic(MetaDbDataSource.class)) {
+            try (MockedStatic<LockUtil> mockLockUtilClass = Mockito.mockStatic(LockUtil.class)) {
+                try (MockedStatic<MetaDbUtil> mockMetaDbUtilClass = Mockito.mockStatic(MetaDbUtil.class)) {
+                    mockedMetaDbClass.when(() -> MetaDbDataSource.getInstance()).thenReturn(metaDbDs);
+                    mockLockUtilClass.when(() -> LockUtil.waitToAcquireMetaDbLock(any(), any()))
+                        .thenAnswer(invocation -> null);
+                    mockMetaDbUtilClass.when(() -> MetaDbUtil.setParameter(anyInt(), any(), any(), any()))
+                        .thenAnswer(invocation -> null);
+
+                    // Execute
+                    DbTopologyManager.dropLogicalDb(dropDbInfo);
+                }
+            }
+        }
+    }
 }

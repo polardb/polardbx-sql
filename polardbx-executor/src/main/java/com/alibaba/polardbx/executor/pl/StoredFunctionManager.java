@@ -44,7 +44,7 @@ import java.util.TreeMap;
 public class StoredFunctionManager {
     private static final Logger logger = LoggerFactory.getLogger(StoredFunctionManager.class);
 
-    public static StoredFunctionManager INSTANCE = new StoredFunctionManager();
+    private static StoredFunctionManager INSTANCE = new StoredFunctionManager();
 
     Map<String, Pair<SQLCreateFunctionStatement, Long>> functions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
@@ -191,5 +191,9 @@ public class StoredFunctionManager {
 
     public synchronized long getTotalSize() {
         return totalSpace;
+    }
+
+    public synchronized long getUdfCount() {
+        return functions.size();
     }
 }

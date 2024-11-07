@@ -30,7 +30,7 @@ import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.RelFactories;
-import org.apache.calcite.rel.logical.LogicalSemiJoin;
+import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.rules.FilterJoinRule;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
@@ -98,7 +98,7 @@ public class TddlPreBushyJoinShallowPushFilterRule extends FilterJoinRule {
          * Simplify join type
          */
         JoinRelType joinType = join.getJoinType();
-        if (!origAboveFilters.isEmpty() && joinType != JoinRelType.INNER && !(join instanceof LogicalSemiJoin)) {
+        if (!origAboveFilters.isEmpty() && joinType != JoinRelType.INNER && !(join instanceof SemiJoin)) {
             joinType = RelOptUtil.simplifyJoin(join, origAboveFilters, joinType);
         }
         boolean filterPushed = false;

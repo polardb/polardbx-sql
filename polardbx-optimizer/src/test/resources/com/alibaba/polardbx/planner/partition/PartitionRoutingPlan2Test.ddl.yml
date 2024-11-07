@@ -1,0 +1,438 @@
+customer:
+  CREATE TABLE `customer` (
+  `c_custkey` int(11) NOT NULL,
+  `c_name` varchar(25) NOT NULL,
+  `c_address` varchar(40) NOT NULL,
+  `c_nationkey` int(11) NOT NULL,
+  `c_phone` varchar(15) NOT NULL,
+  `c_acctbal` decimal(15,2) NOT NULL,
+  `c_mktsegment` varchar(10) NOT NULL,
+  `c_comment` varchar(117) NOT NULL,
+  PRIMARY KEY (`c_custkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(c_custkey) PARTITIONS 4;
+
+lineitem:
+  CREATE TABLE `lineitem` (
+  `l_orderkey` int(11) NOT NULL,
+  `l_partkey` int(11) NOT NULL,
+  `l_suppkey` int(11) NOT NULL,
+  `l_linenumber` int(11) NOT NULL,
+  `l_quantity` decimal(15,2) NOT NULL,
+  `l_extendedprice` decimal(15,2) NOT NULL,
+  `l_discount` decimal(15,2) NOT NULL,
+  `l_tax` decimal(15,2) NOT NULL,
+  `l_returnflag` varchar(1) NOT NULL,
+  `l_linestatus` varchar(1) NOT NULL,
+  `l_shipdate` date NOT NULL,
+  `l_commitdate` date NOT NULL,
+  `l_receiptdate` date NOT NULL,
+  `l_shipinstruct` varchar(25) NOT NULL,
+  `l_shipmode` varchar(10) NOT NULL,
+  `l_comment` varchar(44) NOT NULL,
+  PRIMARY KEY (`l_orderkey`,`l_linenumber`),
+  KEY `i_l_partkey` (`l_partkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(l_orderkey) PARTITIONS 4;
+
+nation:
+  CREATE TABLE `nation` (
+  `n_nationkey` int(11) NOT NULL,
+  `n_name` varchar(25) NOT NULL,
+  `n_regionkey` int(11) NOT NULL,
+  `n_comment` varchar(152) DEFAULT NULL,
+  PRIMARY KEY (`n_nationkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 broadcast;
+
+orders:
+  CREATE TABLE `orders` (
+  `o_orderkey` int(11) NOT NULL,
+  `o_custkey` int(11) NOT NULL,
+  `o_orderstatus` varchar(1) NOT NULL,
+  `o_totalprice` decimal(15,2) NOT NULL,
+  `o_orderdate` date NOT NULL,
+  `o_orderpriority` varchar(15) NOT NULL,
+  `o_clerk` varchar(15) NOT NULL,
+  `o_shippriority` int(11) NOT NULL,
+  `o_comment` varchar(79) NOT NULL,
+  PRIMARY KEY (`o_orderkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(O_ORDERKEY) PARTITIONS 4;
+
+part:
+  CREATE TABLE `part` (
+  `p_partkey` int(11) NOT NULL,
+  `p_name` varchar(55) NOT NULL,
+  `p_mfgr` varchar(25) NOT NULL,
+  `p_brand` varchar(10) NOT NULL,
+  `p_type` varchar(25) NOT NULL,
+  `p_size` int(11) NOT NULL,
+  `p_container` varchar(10) NOT NULL,
+  `p_retailprice` decimal(15,2) NOT NULL,
+  `p_comment` varchar(23) NOT NULL,
+  PRIMARY KEY (`p_partkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(p_partkey) PARTITIONS 4;
+
+partsupp:
+  CREATE TABLE `partsupp` (
+  `ps_partkey` int(11) NOT NULL,
+  `ps_suppkey` int(11) NOT NULL,
+  `ps_availqty` int(11) NOT NULL,
+  `ps_supplycost` decimal(15,2) NOT NULL,
+  `ps_comment` varchar(199) NOT NULL,
+  PRIMARY KEY (`ps_partkey`,`ps_suppkey`),
+  KEY `IDX_PARTSUPP_SUPPKEY` (`PS_SUPPKEY`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(ps_partkey) PARTITIONS 4;
+
+region:
+  CREATE TABLE `region` (
+  `r_regionkey` int(11) NOT NULL,
+  `r_name` varchar(25) NOT NULL,
+  `r_comment` varchar(152) DEFAULT NULL,
+  PRIMARY KEY (`r_regionkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 broadcast;
+
+supplier:
+  CREATE TABLE `supplier` (
+  `s_suppkey` int(11) NOT NULL,
+  `s_name` varchar(25) NOT NULL,
+  `s_address` varchar(40) NOT NULL,
+  `s_nationkey` int(11) NOT NULL,
+  `s_phone` varchar(15) NOT NULL,
+  `s_acctbal` decimal(15,2) NOT NULL,
+  `s_comment` varchar(101) NOT NULL,
+  PRIMARY KEY (`s_suppkey`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=latin1 PARTITION BY HASH(s_suppkey) PARTITIONS 4;
+
+t_a_hash:
+  CREATE TABLE `t_a_hash` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1 PARTITION BY HASH(a) PARTITIONS 4
+
+
+t_ab_hash:
+  CREATE TABLE `t_ab_hash` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1 PARTITION BY KEY(a,b) PARTITIONS 4
+
+t_a_range:
+  CREATE TABLE `t_a_range` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1
+  partition by range columns(a)
+  ( partition p0 values less than (10),
+  partition p1 values less than (20),
+  partition p2 values less than (30)
+  );
+
+t_ab_range:
+  CREATE TABLE `t_ab_range` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1
+  partition by range columns(a,b)
+  ( partition p0 values less than (10, 100),
+  partition p1 values less than (20, 200),
+  partition p2 values less than (30, 300)
+  );
+
+t_a_list:
+  CREATE TABLE `t_a_list` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1
+  partition by list columns (a)
+  ( partition p0 values in (10,30),
+  partition p1 values in (20,40)
+  );
+
+t_ab_list:
+  CREATE TABLE `t_ab_list` (
+  `a` int(11) NOT NULL,
+  `b` int(11) NOT NULL,
+  PRIMARY KEY (`a`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = latin1
+  partition by list columns (a,b)
+  ( partition p0 values in ((10, 100),(30, 300)),
+  partition p1 values in ((20, 200),(40, 400))
+  );
+
+t_hash_varchar:
+  CREATE TABLE `t_hash_varchar` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY KEY(varchar_test) PARTITIONS 4
+
+t_hash_bigint:
+  CREATE TABLE `t_hash_bigint` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY KEY(bigint_test) PARTITIONS 4
+
+t_hash_date:
+  CREATE TABLE `t_hash_date` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY KEY(date_test) PARTITIONS 4
+
+t_hash_timestamp:
+  CREATE TABLE `t_hash_timestamp` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY KEY(timestamp_test) PARTITIONS 4
+
+t_range_varchar:
+  CREATE TABLE `t_range_varchar` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY RANGE COLUMNS(varchar_test) (
+  partition p0 values less than('CCC'),
+  partition p1 values less than('GGG'),
+  partition p2 values less than('ZZZ')
+  )
+t_range_bigint:
+  CREATE TABLE `t_range_bigint` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY RANGE COLUMNS(bigint_test) (
+  partition p0 values less than(100),
+  partition p1 values less than(1000),
+  partition p2 values less than(100000000)
+  )
+t_range_date:
+  CREATE TABLE `t_range_date` (
+  `pk` bigint(11) NOT NULL,
+  `integer_test` int(11) DEFAULT NULL,
+  `varchar_test` varchar(255) DEFAULT NULL,
+  `char_test` char(255) DEFAULT NULL,
+  `blob_test` blob,
+  `tinyint_test` tinyint(4) DEFAULT NULL,
+  `tinyint_1bit_test` tinyint(1) DEFAULT NULL,
+  `smallint_test` smallint(6) DEFAULT NULL,
+  `mediumint_test` mediumint(9) DEFAULT NULL,
+  `bit_test` bit(1) DEFAULT NULL,
+  `bigint_test` bigint(20) DEFAULT NULL,
+  `float_test` float DEFAULT NULL,
+  `double_test` double DEFAULT NULL,
+  `decimal_test` decimal(10, 0) DEFAULT NULL,
+  `date_test` date DEFAULT NULL,
+  `time_test` time DEFAULT NULL,
+  `datetime_test` datetime DEFAULT NULL,
+  `timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `year_test` year(4) DEFAULT NULL,
+  `mediumtext_test` mediumtext,
+  PRIMARY KEY (`pk`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY RANGE COLUMNS(date_test) (
+  partition p0 values less than('2014-02-12'),
+  partition p1 values less than('2021-02-12'),
+  partition p2 values less than('2025-02-12')
+  )
+  
+t_rng_cols:
+  CREATE TABLE `t_rng_cols` (
+  `pk1` bigint(11) NOT NULL,
+  `pk2` bigint(11) NOT NULL,
+  `pk3` bigint(11) NOT NULL,
+  PRIMARY KEY (pk1,pk2)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 PARTITION BY RANGE COLUMNS(pk1,pk2) (
+  partition p0 values less than(100, 1000),
+  partition p1 values less than(300, 1000),
+  partition p2 values less than(300, 4000),
+  partition p3 values less than(500, 1000),  
+  partition p4 values less than(500, 8000) 
+  );
+
+t_key:
+  CREATE TABLE `t_key` (
+  `pk1` bigint(11) NOT NULL,
+  `pk2` bigint(11) NOT NULL,
+  `pk3` bigint(11) NOT NULL,
+  PRIMARY KEY (`pk1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8 
+  PARTITION BY KEY (pk1)
+  PARTITIONS 4;
+
+random_pruning_test:
+  CREATE TABLE `random_pruning_test` (
+          a bigint(20) NOT NULL,
+          b bigint(20) NOT NULL,
+          c bigint(20) NOT NULL,
+          d bigint(20) NOT NULL,
+          e bigint(20) NOT NULL,         
+          PRIMARY KEY (a,b,c)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+  PARTITION BY RANGE COLUMNS(a,b,c)
+  (PARTITION p1 VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+   PARTITION p2 VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+   PARTITION p3 VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+   PARTITION p4 VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+   PARTITION p5 VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+   PARTITION p6 VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+   PARTITION p7 VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+   PARTITION p8 VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+   PARTITION p9 VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+   PARTITION p10 VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+rng_tbl:
+  CREATE TABLE `rng_tbl` (
+          a bigint(20) NOT NULL,
+          b bigint(20) NOT NULL,
+          c bigint(20) NOT NULL,
+          d bigint(20) NOT NULL,
+          e bigint(20) NOT NULL,         
+          PRIMARY KEY (a,b,c)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  
+  PARTITION BY RANGE COLUMNS(a)
+  (PARTITION p1 VALUES LESS THAN (100) ENGINE = InnoDB,
+   PARTITION p2 VALUES LESS THAN (200) ENGINE = InnoDB,
+   PARTITION p3 VALUES LESS THAN (300) ENGINE = InnoDB,
+   PARTITION p4 VALUES LESS THAN (400) ENGINE = InnoDB,
+   PARTITION p5 VALUES LESS THAN (500) ENGINE = InnoDB,
+   PARTITION p6 VALUES LESS THAN (600) ENGINE = InnoDB,
+   PARTITION p7 VALUES LESS THAN (700) ENGINE = InnoDB,
+   PARTITION p8 VALUES LESS THAN (800) ENGINE = InnoDB,
+   PARTITION p9 VALUES LESS THAN (900) ENGINE = InnoDB,
+   PARTITION p10 VALUES LESS THAN (1000) ENGINE = InnoDB);
+
+   
+sp_k_r_month:
+  CREATE TABLE `sp_k_r_month` (
+  `id` bigint(18) NOT NULL AUTO_INCREMENT,
+  `vehicle_id` bigint(18) NOT NULL,
+  `snap_time` datetime NOT NULL,
+  `school_id` bigint(18) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 1684206033 DEFAULT CHARSET = utf8
+  PARTITION BY KEY(`school_id`,`id`)
+  PARTITIONS 64
+  SUBPARTITION BY RANGE(MONTH(`snap_time`))
+  (SUBPARTITION `sp2` VALUES LESS THAN (2),
+  SUBPARTITION `sp3` VALUES LESS THAN (3),
+  SUBPARTITION `sp4` VALUES LESS THAN (4),
+  SUBPARTITION `sp5` VALUES LESS THAN (5),
+  SUBPARTITION `sp6` VALUES LESS THAN (6),
+  SUBPARTITION `sp7` VALUES LESS THAN (7),
+  SUBPARTITION `sp8` VALUES LESS THAN (8),
+  SUBPARTITION `sp9` VALUES LESS THAN (9),
+  SUBPARTITION `sp10` VALUES LESS THAN (10),
+  SUBPARTITION `sp11` VALUES LESS THAN (11),
+  SUBPARTITION `spd` VALUES LESS THAN (MAXVALUE));

@@ -23,6 +23,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.TruncateTablePreparedDat
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
 
     protected TruncateTablePreparedData primaryTablePreparedData;
@@ -33,6 +35,7 @@ public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
     protected Map<String, String> tmpIndexTableMap;
 
     protected boolean hasColumnarIndex;
+    protected long versionId = DEFAULT_DDL_VERSION_ID;
 
     public TruncateTablePreparedData getPrimaryTablePreparedData() {
         return primaryTablePreparedData;
@@ -98,5 +101,12 @@ public class TruncateTableWithGsiPreparedData extends DdlPreparedData {
 
     public void setHasColumnarIndex(boolean hasColumnarIndex) {
         this.hasColumnarIndex = hasColumnarIndex;
+    }
+
+    public long getVersionId() {
+        return versionId;
+    }
+    public void setVersionId(long versionId) {
+        this.versionId = versionId;
     }
 }

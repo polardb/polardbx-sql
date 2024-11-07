@@ -20,8 +20,10 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.RowType;
+import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList;
 
 import java.util.Arrays;
@@ -44,7 +46,11 @@ public class Equal extends AbstractCollationScalarFunction {
         }
 
         DataType type = operandTypes == null ? getEqualType(Arrays.asList(args)) : getCompareType();
-        return type.compare(args[0], args[1]) == 0 ? 1L : 0L;
+
+        if (type instanceof RowType) {
+            return ((RowType) type).nullNotSafeEqual(args[0], args[1]);
+        }
+        return type.compare(args[0], args[1]) == 0 ? 1l : 0l;
     }
 
     @Override

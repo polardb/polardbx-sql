@@ -131,6 +131,7 @@ import static com.alibaba.polardbx.executor.utils.ExecUtils.buildDRDSTraceCommen
 import static com.alibaba.polardbx.executor.utils.ExecUtils.buildDRDSTraceCommentBytes;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.useExplicitTransaction;
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.TABLE_NAME_PARAM_INDEX;
+import static org.apache.calcite.sql.SqlKind.DROP_TABLE;
 
 /**
  * Created by chuanqin on 17/7/7.
@@ -1882,6 +1883,11 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                             FailPoint.injectException(FailPointKey.FP_BEFORE_PHYSICAL_DDL_PARTIAL_EXCEPTION);
                         }
                     });
+
+                if (tableOperation.getKind() == DROP_TABLE) {
+                    FailPoint.injectExceptionWithTableName(tableOperation.getLogicalTableName(),
+                        FailPointKey.FP_SPECIFIED_TABLE_DROP_PHY_EXCEPTION, executionContext);
+                }
 
                 /**
                  * 真正将SQL发向物理数据源并执行：一定需要返回是否真正对DB产生了影响，后面会根据这个来决定是否上推新规则

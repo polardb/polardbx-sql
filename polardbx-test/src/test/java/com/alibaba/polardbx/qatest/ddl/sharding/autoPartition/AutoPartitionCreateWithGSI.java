@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableList;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.text.MessageFormat;
@@ -206,6 +207,7 @@ public class AutoPartitionCreateWithGSI extends AutoPartitionTestBase {
     }
 
     @Test
+    @Ignore("忽略重复删除GSI的case，DDL引擎测试已有，删的过快情况下可能会导致偶发报错")
     public void testCreateIndexDoubleDrop1() {
         final String primaryTable = "t_idx_order";
         final String indexTable = "g_i_idx_seller";

@@ -29,7 +29,6 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MetricLevel;
-import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
@@ -324,8 +323,7 @@ public class LogicalInsertHandler extends HandlerCommon {
         handlerParams.returnedLastInsertId = insertSharder.getReturnedLastInsertId();
 
         assert shardResults.size() == inputs.size();
-        if (!logicalInsert.hasHint() && executionContext.getParams() != null
-            && GlobalIndexMeta.hasIndex(tableName, schemaName, executionContext)) {
+        if (isExecuteIndex(logicalInsert, executionContext, schemaName, tableName)) {
             executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
             return executeIndex(tableName,
                 insertSharder.getSqlTemplate(),
@@ -341,6 +339,13 @@ public class LogicalInsertHandler extends HandlerCommon {
             executeWithConcurrentPolicy(executionContext, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
             return ExecUtils.getAffectRowsByCursors(inputCursors, isBroadcast);
         }
+    }
+
+    public boolean isExecuteIndex(LogicalInsert logicalInsert, ExecutionContext executionContext,
+                                  String schemaName, String tableName) {
+        return !logicalInsert.hasHint()
+            && executionContext.getParams() != null
+            && GlobalIndexMeta.hasGsi(tableName, schemaName, executionContext);
     }
 
     protected void beforeInsertCheck(LogicalInsert logicalInsert, boolean checkPk, boolean checkFk,
@@ -428,7 +433,7 @@ public class LogicalInsertHandler extends HandlerCommon {
                 Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
                     getShardResults(data.getValue(), schemaName, tableName, tableMeta, parentTableMeta,
                         conditionValueList,
-                        builder, sortedColumns, true, true);
+                        builder, sortedColumns, null, true, true, false);
 
                 conditionValueList = conditionValueList.stream().distinct().collect(Collectors.toList());
 
@@ -519,7 +524,7 @@ public class LogicalInsertHandler extends HandlerCommon {
                 Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
                     getShardResults(data.getValue(), schemaName, tableName, tableMeta, parentTableMeta,
                         conditionValueList,
-                        builder, sortedColumns, true, true);
+                        builder, sortedColumns, null, true, true, false);
 
                 List<List<Object>> selectValues = getSelectValues(selectEc, schemaName,
                     parentTableMeta, conditionValueList, logicalInsert, memoryAllocator, builder, shardResults,
@@ -1006,8 +1011,9 @@ public class LogicalInsertHandler extends HandlerCommon {
             executionContext.getParamManager().getBoolean(ConnectionParams.INSERT_SELECT_SELF_BY_PARALLEL);
         //insert 和 select 操作同一个表时,非事务下可能会导致数据量 > 2倍，检测到自身表时，先select 再 insert (可hint绕过)
         if (!cacheAllOutput && !insertSelectSelfByParallel) {
+            String insertSchemaName = logicalInsert.getSchemaName();
             String insertTableName = logicalInsert.getLogicalTableName();
-            final Set<String> selectTableNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            final List<Pair<String, String>> selectTableNames = new ArrayList<>();
             if (executionContext.getFinalPlan() != null
                 && executionContext.getFinalPlan().getAst() instanceof SqlInsert) {
                 SqlNode ast = executionContext.getFinalPlan().getAst();
@@ -1018,14 +1024,23 @@ public class LogicalInsertHandler extends HandlerCommon {
                         @Override
                         protected SqlNode buildSth(SqlNode sqlNode) {
                             if (sqlNode instanceof SqlIdentifier) {
-                                selectTableNames.add(((SqlIdentifier) sqlNode).getLastName());
+                                //默认库名为当前库
+                                String schemaName = executionContext.getSchemaName();
+                                if (((SqlIdentifier) sqlNode).names.size() == 2) {
+                                    //如果带了库名
+                                    schemaName = ((SqlIdentifier) sqlNode).names.get(0);
+                                }
+                                String tableName = ((SqlIdentifier) sqlNode).getLastName();
+                                selectTableNames.add(Pair.of(schemaName, tableName));
                             }
                             return sqlNode;
                         }
                     };
                 selectSqlNode.accept(visitor);
 
-                if (selectTableNames.contains(insertTableName)) {
+                if (selectTableNames.stream().anyMatch(pair -> pair.getKey().equalsIgnoreCase(insertSchemaName)
+                    && pair.getValue().equalsIgnoreCase(insertTableName))) {
+                    //库名、表名匹配，代表包含插入的表
                     cacheAllOutput = true;
                 }
             }
@@ -1058,6 +1073,8 @@ public class LogicalInsertHandler extends HandlerCommon {
 
         Cursor selectCursor = null;
         final ExecutionContext selectEc = executionContext.copy();
+        //select 增加这个标记，避免select变成sequence策略，可看ExecUtils.getQueryConcurrencyPolicy
+        selectEc.getExtraCmds().put(ConnectionProperties.ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION, true);
 
         try {
             selectCursor = ExecutorHelper.execute(input, selectEc, false, cacheAllOutput, asyncCacheAllOutput);
@@ -1232,7 +1249,11 @@ public class LogicalInsertHandler extends HandlerCommon {
         List<PhyTableInsertSharder.PhyTableShardResult> shardResults = new ArrayList<>();
         PhyTableInsertSharder insertPartitioner = new PhyTableInsertSharder(insert,
             executionContext.getParams(),
-            SequenceAttribute.getAutoValueOnZero(executionContext.getSqlMode()));
+            SequenceAttribute.getAutoValueOnZero(executionContext.getSqlMode()),
+            // For INSERT IGNORE using returning, sequence already fetched in updateParam.
+            // Should skip update sequence
+            handlerParams.autoIncrementUsingSeq
+        );
         List<RelNode> inputs = insert.getInput(insertPartitioner, shardResults, executionContext);
         handlerParams.usingSequence = insertPartitioner.isUsingSequence();
         handlerParams.lastInsertId = insertPartitioner.getLastInsertId();

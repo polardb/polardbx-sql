@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.ValidateCreateViewTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateView;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
@@ -91,9 +92,15 @@ public class CreateViewJobFactory extends DdlJobFactory {
         DdlTask cdcMarkTask = new CdcCreateViewMarkTask(schemaName, viewName, isAlter);
         DdlTask syncTask = new CreateViewSyncTask(schemaName, viewName);
 
-        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(validateTask, addMetaTask, cdcMarkTask, syncTask));
-        return executableDdlJob;
+        ExecutableDdlJob4CreateView executableDdlJob4CreateView = new ExecutableDdlJob4CreateView();
+        executableDdlJob4CreateView.setValidateCreateViewTask((ValidateCreateViewTask) validateTask);
+        executableDdlJob4CreateView.setCreateViewAddMetaTask((CreateViewAddMetaTask) addMetaTask);
+        executableDdlJob4CreateView.setCdcCreateViewMarkTask((CdcCreateViewMarkTask) cdcMarkTask);
+        executableDdlJob4CreateView.setCreateViewSyncTask((CreateViewSyncTask) syncTask);
+        executableDdlJob4CreateView.addSequentialTasks(
+            Lists.newArrayList(validateTask, addMetaTask, cdcMarkTask, syncTask));
+
+        return executableDdlJob4CreateView;
     }
 
     @Override

@@ -739,4 +739,15 @@ public class DeferredConnection extends ReadViewConn {
             conn.forceRollback();
         }
     }
+
+    @Override
+    public IConnection enableFlashbackArea(boolean enable) throws SQLException {
+        conn.enableFlashbackArea(enable);
+        return this;
+    }
+
+    @Override
+    public void disableFlashbackArea() throws SQLException {
+        conn.disableFlashbackArea();
+    }
 }

@@ -73,17 +73,27 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
     }
 
     @Test
-    public void testCostModel() throws SQLException, IOException {
+    public void testCostModel() throws SQLException, IOException, InterruptedException {
         testInside();
     }
 
-    public void testInside() throws SQLException, IOException {
+    public void testInside() throws SQLException, IOException, InterruptedException {
         if (checkStruct.sql.isEmpty()) {
             return;
         }
         log.info(checkStruct.sql);
         log.info("link: xx.xx(" + checkStruct.taskLineInfo() + ")");
         try (Connection c = getPolardbxConnection()) {
+            // prepare global env
+            if (checkStruct.globalEnvSetCommands != null) {
+                for (String setCommand : checkStruct.globalEnvSetCommands) {
+                    if (StringUtils.isNotEmpty(setCommand)) {
+                        c.createStatement().execute(setCommand);
+                    }
+                }
+                Thread.sleep(3000L);
+            }
+
             // prepare catalog
             for (String buildCommand : checkStruct.catalogBuildCommands) {
                 c.createStatement().execute(buildCommand);
@@ -304,6 +314,7 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
         String sql;
         Map<String, String> statisticTraceMap;
         String plan;
+        String[] globalEnvSetCommands;
         String[] envSetCommands;
         String[] catalogBuildCommands;
         String detailPlan;
@@ -326,6 +337,7 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
                 return;
             }
 
+            List<String> globalSetCommands = Lists.newLinkedList();
             List<String> setCommands = Lists.newLinkedList();
             List<String> buildCommands = Lists.newLinkedList();
 
@@ -343,11 +355,14 @@ public abstract class StatisticCostModelTest extends BaseTestCase {
                 } else if (line.startsWith("reload statistics")) {
                 } else if (line.startsWith("set session ")) {
                     setCommands.add(originLine);
+                } else if (line.startsWith("set global ")) {
+                    globalSetCommands.add(originLine);
                 } else {
                     buildCommands.add(originLine);
                 }
             }
 
+            globalEnvSetCommands = globalSetCommands.toArray(new String[0]);
             envSetCommands = setCommands.toArray(new String[0]);
             catalogBuildCommands = buildCommands.toArray(new String[0]);
             Assert.assertTrue(schema != null);

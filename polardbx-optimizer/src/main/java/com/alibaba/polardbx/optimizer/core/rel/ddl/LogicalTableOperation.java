@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedDa
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlColumnDeclaration;
@@ -64,6 +65,8 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                              SqlNode tbPartitions,
                                                              SqlNode partitionings,
                                                              LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
+                                                             TtlDefinitionInfo ttlDefinitionInfo,
+                                                             SqlNode ttlDefinitionExpr,
                                                              SqlNode tableGroupName,
                                                              boolean withImplicitTableGroup,
                                                              SqlNode joinGroupName,
@@ -90,6 +93,8 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setTbPartitions(tbPartitions);
         preparedData.setPartitioning(partitionings);
         preparedData.setLocalPartitionDefinitionInfo(localPartitionDefinitionInfo);
+        preparedData.setTtlDefinitionInfo(ttlDefinitionInfo);
+        preparedData.setTtlDefinitionExpr(ttlDefinitionExpr);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setWithImplicitTableGroup(withImplicitTableGroup);
         preparedData.setJoinGroupName(joinGroupName);
@@ -100,33 +105,6 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setReferencedTables(referencedTables);
 
         return preparedData;
-    }
-
-    protected CreateGlobalIndexPreparedData prepareCreateGlobalIndexData(String primaryTableName,
-                                                                         String primaryTableDefinition,
-                                                                         String indexTableName,
-                                                                         TableMeta tableMeta,
-                                                                         boolean isShadow,
-                                                                         boolean autoPartition,
-                                                                         boolean isBroadcast,
-                                                                         SqlNode dbPartitionBy,
-                                                                         SqlNode dbPartitions,
-                                                                         SqlNode tbPartitionBy,
-                                                                         SqlNode tbPartitions,
-                                                                         SqlNode partitionings,
-                                                                         LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
-                                                                         boolean isUnique,
-                                                                         boolean clusteredIndex,
-                                                                         boolean columnarIndex,
-                                                                         SqlNode tableGroupName,
-                                                                         boolean withImplicitTableGroup,
-                                                                         Map<SqlNode, RexNode> partBoundExprInfo,
-                                                                         String sourceSql) {
-        return prepareCreateGlobalIndexData(primaryTableName, primaryTableDefinition, indexTableName, tableMeta,
-            isShadow, autoPartition, isBroadcast, dbPartitionBy, dbPartitions,
-            tbPartitionBy, tbPartitions, partitionings, localPartitionDefinitionInfo,
-            isUnique, clusteredIndex, columnarIndex, tableGroupName, withImplicitTableGroup, null, "",
-            partBoundExprInfo, sourceSql);
     }
 
     protected CreateGlobalIndexPreparedData prepareCreateGlobalIndexData(String primaryTableName,
@@ -162,8 +140,15 @@ public class LogicalTableOperation extends BaseDdlOperation {
         CreateTablePreparedData indexTablePreparedData =
             prepareCreateTableData(primaryTableMeta, isShadow, autoPartition,
                 isBroadcast, dbPartitionBy, dbPartitions, tbPartitionBy,
-                tbPartitions, partitionings, localPartitionDefinitionInfo, tableGroupName, withImplicitTableGroup,
+                tbPartitions, partitionings, localPartitionDefinitionInfo, null, null, tableGroupName,
+                withImplicitTableGroup,
                 null, locality, partBoundExprInfo, sourceSql, null, null);
+
+//        CreateTablePreparedData indexTablePreparedData =
+//            prepareCreateTableData(primaryTableMeta, isShadow, autoPartition,
+//                isBroadcast, dbPartitionBy, dbPartitions, tbPartitionBy,
+//                tbPartitions, partitionings, localPartitionDefinitionInfo, null, false, tableGroupName,
+//                null, locality, partBoundExprInfo, sourceSql, null, null);
 
         // Add all columns in primary table whose default value is binary, so binaryColumnDefaultValues may include
         // columns that do not exist in GSI

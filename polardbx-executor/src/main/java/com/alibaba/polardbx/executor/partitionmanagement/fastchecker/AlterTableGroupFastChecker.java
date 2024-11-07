@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.partitionmanagement.fastchecker;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -84,7 +83,7 @@ public class AlterTableGroupFastChecker extends FastChecker {
             .collect(Collectors.toList());
 
         // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!!!
-        final List<String> baseTablePks = FastChecker.getorderedPrimaryKeys(baseTableMeta);
+        final List<String> baseTablePks = FastChecker.getOrderedPrimaryKeys(baseTableMeta);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 

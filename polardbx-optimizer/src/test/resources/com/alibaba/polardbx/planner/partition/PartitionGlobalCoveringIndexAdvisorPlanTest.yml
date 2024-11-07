@@ -52,13 +52,12 @@
     memsort(sort="value desc")
       project(ps_partkey="ps_partkey", value="value")
         nljoin(condition="value > $f0 * 0.0001", type="inner")
-          hashagg(group="ps_partkey", value="sum(__*__)")
+          hashagg(group="ps_partkey", value="sum(value)")
             gather(concurrent=true)
-              indexscan(tables="supplier[p1,p2,p3,p4],nation,partsupp__what_if_gsi_ps_suppkey[p1,p2,p3,p4]", shardcount=4, sql="select `supplier`.`s_suppkey`, `partsupp__what_if_gsi_ps_suppkey`.`ps_partkey`, `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`, (`partsupp__what_if_gsi_ps_suppkey`.`ps_supplycost` * `partsupp__what_if_gsi_ps_suppkey`.`ps_availqty`) as `__*__` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany')) inner join `partsupp__what_if_gsi_ps_suppkey` as `partsupp__what_if_gsi_ps_suppkey` on (`supplier`.`s_suppkey` = `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`)")
+              indexscan(tables="supplier[p1,p2,p3,p4],nation,partsupp__what_if_gsi_ps_suppkey[p1,p2,p3,p4]", shardcount=4, sql="select `partsupp__what_if_gsi_ps_suppkey`.`ps_partkey`, sum((`partsupp__what_if_gsi_ps_suppkey`.`ps_supplycost` * `partsupp__what_if_gsi_ps_suppkey`.`ps_availqty`)) as `value` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany')) inner join `partsupp__what_if_gsi_ps_suppkey` as `partsupp__what_if_gsi_ps_suppkey` on (`supplier`.`s_suppkey` = `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`) group by `partsupp__what_if_gsi_ps_suppkey`.`ps_partkey`")
           hashagg($f0="sum($f0)")
             gather(concurrent=true)
               indexscan(tables="supplier[p1,p2,p3,p4],nation,partsupp__what_if_gsi_ps_suppkey[p1,p2,p3,p4]", shardcount=4, sql="select sum((`partsupp__what_if_gsi_ps_suppkey`.`ps_supplycost` * `partsupp__what_if_gsi_ps_suppkey`.`ps_availqty`)) as `$f0` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany')) inner join `partsupp__what_if_gsi_ps_suppkey` as `partsupp__what_if_gsi_ps_suppkey` on (`supplier`.`s_suppkey` = `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`)")
-
 - sql: |
     select
     sum(l_extendedprice * (1 - l_discount) ) as revenue

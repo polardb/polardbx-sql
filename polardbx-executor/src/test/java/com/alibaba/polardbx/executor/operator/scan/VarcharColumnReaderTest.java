@@ -100,6 +100,11 @@ public class VarcharColumnReaderTest extends ScanTestBase {
                 columnReader.startAt(location.rowGroupId, location.startPosition);
                 columnReader.next((RandomAccessBlock) block, location.positionCount);
 
+                Slice slice = ((SliceBlock) block).getData();
+                int bytesSize = ((byte[]) slice.getBase()).length;
+                int sliceSize = slice.length();
+                Assert.assertTrue(bytesSize == sliceSize);
+
                 // Check block
                 doValidate(block, columnId, stripeId, orcTail.getStripes(), location);
             }

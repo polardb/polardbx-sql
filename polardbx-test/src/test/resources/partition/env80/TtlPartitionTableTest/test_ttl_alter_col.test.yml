@@ -1,0 +1,24 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = true;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+
+create table my_ttl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+alter table my_ttl_t3 modify ttl set TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00';
+alter table my_ttl_t3 modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE = 4 ARCHIVE_TABLE_POST_ALLOCATE = 3;
+show create table my_ttl_t3;
+create table my_arc_t3 like my_ttl_t3 engine='columnar' archive_mode='ttl';
+desc my_arc_t3;
+alter table my_ttl_t3 add column c datetime default null;
+desc my_arc_t3;
+alter table my_ttl_t3 add column d datetime default null;
+desc my_arc_t3;
+alter table my_ttl_t3 drop column d;
+desc my_arc_t3;
+alter table my_ttl_t3 change column c d datetime default null;
+desc my_arc_t3;

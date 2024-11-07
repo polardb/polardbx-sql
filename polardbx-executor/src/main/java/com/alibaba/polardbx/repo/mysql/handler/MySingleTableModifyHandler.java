@@ -116,6 +116,19 @@ public class MySingleTableModifyHandler extends HandlerCommon {
             returnedLastInsertId = result[1];
         }
 
+        int[] affectRows = executeBatchUpdate(logicalPlan, executionContext, modifyCursor, oldLastInsertId,
+            lastInsertId, returnedLastInsertId);
+
+        if (executionContext.useReturning()) {
+            return modifyCursor;
+        } else {
+            return new AffectRowCursor(affectRows);
+        }
+    }
+
+    public static int[] executeBatchUpdate(RelNode logicalPlan, ExecutionContext executionContext,
+                                           MyPhyTableModifyCursor modifyCursor, long oldLastInsertId,
+                                           Long lastInsertId, Long returnedLastInsertId) {
         int[] affectRows;
         try {
             affectRows = modifyCursor.batchUpdate();
@@ -189,19 +202,14 @@ public class MySingleTableModifyHandler extends HandlerCommon {
                 executionContext.getConnection().setLastInsertId(oldLastInsertId);
             }
         }
-
-        if (executionContext.useReturning()) {
-            return modifyCursor;
-        } else {
-            return new AffectRowCursor(affectRows);
-        }
+        return affectRows;
     }
 
     /**
      * For INSERT, sequence should be calculated before sharding. The procedure
      * is a little different from ReplaceSequenceWithLiteralVisitor.
      */
-    private Long[] handleWithSequence(RelNode logicalPlan, ExecutionContext executionContext) {
+    protected Long[] handleWithSequence(RelNode logicalPlan, ExecutionContext executionContext) {
         if (!(logicalPlan instanceof SingleTableOperation)) {
             return null;
         }
@@ -237,7 +245,8 @@ public class MySingleTableModifyHandler extends HandlerCommon {
         return new Long[] {visitor.getLastInsertId(), visitor.getReturnedLastInsertId()};
     }
 
-    protected void logAllPhyDmlSqlIfNeed(ExecutionContext executionContext, RelNode logicalPlan, int[] affectRows) {
+    protected static void logAllPhyDmlSqlIfNeed(ExecutionContext executionContext, RelNode logicalPlan,
+                                                int[] affectRows) {
 
         if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_SCALE_OUT_ALL_PHY_DML_LOG)
             && !((BaseTableOperation) logicalPlan).isReplicateRelNode()) {
@@ -251,13 +260,13 @@ public class MySingleTableModifyHandler extends HandlerCommon {
             ((BaseQueryOperation) logicalPlan).getDbIndexAndParam(params, executionContext), executionContext);
     }
 
-    protected void logScaleOutSql(String traceId,
-                                  int srcAffectedRows,
-                                  int targetAffectedRows,
-                                  String targetPhyGroup,
-                                  BaseTableOperation targetPhyPlan,
-                                  Pair<String, Map<Integer, ParameterContext>> dbIndexAndParamOfPhyOperation,
-                                  ExecutionContext executionContext) {
+    protected static void logScaleOutSql(String traceId,
+                                         int srcAffectedRows,
+                                         int targetAffectedRows,
+                                         String targetPhyGroup,
+                                         BaseTableOperation targetPhyPlan,
+                                         Pair<String, Map<Integer, ParameterContext>> dbIndexAndParamOfPhyOperation,
+                                         ExecutionContext executionContext) {
 
         if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_SCALE_OUT_GROUP_PHY_DML_LOG)) {
             return;

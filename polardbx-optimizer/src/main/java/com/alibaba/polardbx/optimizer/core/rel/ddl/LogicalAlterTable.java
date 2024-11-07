@@ -20,8 +20,10 @@ import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -69,8 +71,10 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPrep
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.RenameGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.alibaba.polardbx.optimizer.utils.MetaUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -93,9 +97,11 @@ import org.apache.calcite.sql.SqlAlterTableAsOfTimeStamp;
 import org.apache.calcite.sql.SqlAlterTableDropFile;
 import org.apache.calcite.sql.SqlAlterTableDropIndex;
 import org.apache.calcite.sql.SqlAlterTableExchangePartition;
+import org.apache.calcite.sql.SqlAlterTableModifyTtlOptions;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTablePurgeBeforeTimeStamp;
 import org.apache.calcite.sql.SqlAlterTableRemoveLocalPartition;
+import org.apache.calcite.sql.SqlAlterTableRemoveTtlOptions;
 import org.apache.calcite.sql.SqlAlterTableRenameIndex;
 import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
 import org.apache.calcite.sql.SqlBinaryStringLiteral;
@@ -142,6 +148,7 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_PREFIX;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.EMPTY_CONTENT;
 import static com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter.unwrapGsiName;
 import static com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils.PARTITION_FK_SUB_JOB;
@@ -213,6 +220,36 @@ public class LogicalAlterTable extends LogicalTableOperation {
 
     public boolean isExpireLocalPartition() {
         return sqlAlterTable != null && sqlAlterTable.isExpireLocalPartition();
+    }
+
+    public boolean isCleanupExpiredData() {
+        return sqlAlterTable != null && sqlAlterTable.isCleanupExpiredData();
+    }
+
+    public boolean isModifyTtlOptions() {
+        if (sqlAlterTable != null) {
+            List<SqlAlterSpecification> sqlAlterSpecifications = sqlAlterTable.getAlters();
+            if (!sqlAlterSpecifications.isEmpty() && sqlAlterSpecifications.size() == 1) {
+                SqlAlterSpecification alterSpec = sqlAlterSpecifications.get(0);
+                if (alterSpec instanceof SqlAlterTableModifyTtlOptions) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean isRemoveTtlOptions() {
+        if (sqlAlterTable != null) {
+            List<SqlAlterSpecification> sqlAlterSpecifications = sqlAlterTable.getAlters();
+            if (!sqlAlterSpecifications.isEmpty() && sqlAlterSpecifications.size() == 1) {
+                SqlAlterSpecification alterSpec = sqlAlterSpecifications.get(0);
+                if (alterSpec instanceof SqlAlterTableRemoveTtlOptions) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public boolean isDropFile() {
@@ -352,6 +389,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         if (skipCheckForFileStorage()) {
             return true;
         }
+
         if (CheckOSSArchiveUtil.withoutOldFileStorage(schemaName, tableName)) {
             if (supportedCommonByFileStorage()) {
                 return true;
@@ -374,7 +412,25 @@ public class LogicalAlterTable extends LogicalTableOperation {
             || isDropFile() || isAllocateLocalPartition() || isExpireLocalPartition();
     }
 
+    /**
+     * Check if ddl od ttl-tbl/local-part-tbl should be skipped by the archive-table
+     */
     private boolean skipCheckForFileStorage() {
+
+        /**
+         * Comh here, that means the schemaName.tableName
+         * must be a ttl-table with binding archive table
+         */
+        if (!sqlAlterTable.getAlters().isEmpty()) {
+            SqlAlterSpecification alterModifyTtlDefAst = sqlAlterTable.getAlters().get(0);
+            if (alterModifyTtlDefAst instanceof SqlAlterTableModifyTtlOptions) {
+                if (sqlAlterTable.getAlters().size() > 1) {
+                    throw new NotSupportException("Not support multi alter on modify ttl definition");
+                }
+                return true;
+            }
+        }
+
         return isRepartitionLocalPartition();
     }
 
@@ -1792,10 +1848,10 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 droppedForeignKeys.add(dropForeignKey.getIndexName().getLastName());
             } else if (alterItem instanceof SqlAddIndex) {
                 SqlAddIndex addIndex = (SqlAddIndex) alterItem;
-                String firstColumnName = addIndex.getIndexDef().getColumns().get(0).getColumnNameStr();
                 if (addIndex.getIndexName() != null) {
                     addedIndexes.add(addIndex.getIndexName().getLastName());
                 } else {
+                    String firstColumnName = addIndex.getIndexDef().getColumns().get(0).getColumnNameStr();
                     // If user doesn't specify an index name, we use the first column name as reference.
                     addedIndexesWithoutNames.add(firstColumnName);
                 }
@@ -2235,6 +2291,13 @@ public class LogicalAlterTable extends LogicalTableOperation {
         return preparedData;
     }
 
+    public static boolean hasSequence(String schemaName, String sourceTableName) {
+        String seqName = AUTO_SEQ_PREFIX + sourceTableName;
+        SequenceAttribute.Type existingSeqType =
+            SequenceManagerProxy.getInstance().checkIfExists(schemaName, seqName);
+        return existingSeqType != SequenceAttribute.Type.NA;
+    }
+
     public boolean validateOnlineModify(ExecutionContext ec, boolean forceOmc) {
         final ParamManager paramManager = ec.getParamManager();
         if (!(paramManager.getBoolean(ConnectionParams.FORCE_USING_OMC) || forceOmc)) {
@@ -2313,6 +2376,12 @@ public class LogicalAlterTable extends LogicalTableOperation {
                             "Do not support insert after the same column");
                     }
                 }
+
+                if (modifyColumn.getColDef().isAutoIncrement() && !hasSequence(schemaName, tableName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format(
+                        "Missing sequence for auto increment column. Please try to execute this command first: \"CREATE SEQUENCE `AUTO_SEQ_%s`\"",
+                        tableName));
+                }
             } else if (alterType == SqlKind.CHANGE_COLUMN) {
                 SqlChangeColumn changeColumn = (SqlChangeColumn) alterItem;
                 columnName = changeColumn.getOldName().getLastName();
@@ -2350,6 +2419,12 @@ public class LogicalAlterTable extends LogicalTableOperation {
                     }
                 }
 
+                if (changeColumn.getColDef().isAutoIncrement() && !hasSequence(schemaName, tableName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format(
+                        "Missing sequence for auto increment column. Please try to execute this command first: \"CREATE SEQUENCE `AUTO_SEQ_%s`\"",
+                        tableName));
+                }
+
                 String newColumnName = changeColumn.getNewName().getLastName();
                 if (newColumnName.equalsIgnoreCase(columnName)) {
                     // Rewrite to modify
@@ -2384,6 +2459,11 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 if (sqlAddColumn.getColDef().getGeneratedAlwaysExpr() != null) {
                     throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
                         "Do not support add the column with generated expr when using online modify column");
+                }
+                if (sqlAddColumn.getColDef().isAutoIncrement() && !hasSequence(schemaName, tableName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, String.format(
+                        "Missing sequence for auto increment column. Please try to execute this command first: \"CREATE SEQUENCE `AUTO_SEQ_%s`\"",
+                        tableName));
                 }
                 continue;
             } else if (alterType == SqlKind.DROP_COLUMN) {
@@ -2900,10 +2980,10 @@ public class LogicalAlterTable extends LogicalTableOperation {
         }
 
         // forbid multiple statements for now
-        if (getSqlAlterTable().getAlters().size() > 1) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                "Do not support multiple ALTER TABLE statements on table with clustered columnar index");
-        }
+//        if (getSqlAlterTable().getAlters().size() > 1) {
+//            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+//                "Do not support multiple ALTER TABLE statements on table with clustered columnar index");
+//        }
 
         for (SqlAlterSpecification alterItem : getSqlAlterTable().getAlters()) {
             SqlKind alterType = alterItem.getKind();
@@ -3381,5 +3461,10 @@ public class LogicalAlterTable extends LogicalTableOperation {
         AlterColumnDefault, // Should start auto fill.
         AlterColumnComment, // May set to null and this flag is not set. Just push down this alter.
         AlterColumnOrder // Should alter order in metaDB first.
+    }
+
+    public boolean needRefreshArcTblView(ExecutionContext ec) {
+        boolean needFreshView = TtlUtil.checkIfNeedRefreshViewForArcTbl(this.alterTablePreparedData, ec);
+        return needFreshView;
     }
 }

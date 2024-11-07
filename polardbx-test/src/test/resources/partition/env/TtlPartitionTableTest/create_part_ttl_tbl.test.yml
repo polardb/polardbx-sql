@@ -1,0 +1,415 @@
+## DISABLE_FAST_SQL_PARSER
+
+## orginal
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+partition by key(a) partitions 8
+local partition by range(b)
+STARTWITH '2021-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6;
+
+
+#  -- 语法
+#  (SUB)PARTITION BY RANGE COLUMNS (gmt_modified)		  -- 分区列
+#  [STARTWITH $startWithDate] 						      -- 分区初始时间
+#  INTERVAL $intervalCount $intervalUnit				  -- 分区间隔
+#  [EXPIRE AFTER $expireAfterCount]						  -- expireAfterCount个间隔后失效
+#  [PRE ALLOCATE $preAllocateCount]						  -- 提前preAllocateCount个间隔创建分区
+#  [PIVOTDATE $pivotDate] 								  -- 基准时间，默认为NOW()
+#  ;
+
+## new
+create table ttl_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+partition by key(a) partitions 8
+subpartition by range columns(b)
+STARTWITH '2021-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6
+PIVOTDATE NOW();
+
+
+create table pttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2
+subpartition by range columns(b)
+STARTWITH '2022-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 12
+PRE ALLOCATE 6
+PIVOTDATE NOW();
+
+#CREATE TABLE `pttl_t1` (
+#`a` int(11) NOT NULL AUTO_INCREMENT,
+#`b` datetime DEFAULT CURRENT_TIMESTAMP,
+#PRIMARY KEY (`a`),
+#KEY `auto_shard_key_b` USING BTREE (`b`)
+#) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+#PARTITION BY KEY(`a`)
+#PARTITIONS 2
+#SUBPARTITION BY RANGE COLUMNS(`b`)
+#(SUBPARTITION `sp20220101` VALUES LESS THAN ('2022-01-01 00:00:00'),
+#SUBPARTITION `sp20220701` VALUES LESS THAN ('2022-07-01 00:00:00'),
+#SUBPARTITION `sp20230101` VALUES LESS THAN ('2023-01-01 00:00:00'),
+#SUBPARTITION `sp20230701` VALUES LESS THAN ('2023-07-01 00:00:00'),
+#SUBPARTITION `sp20240101` VALUES LESS THAN ('2024-01-01 00:00:00'),
+#SUBPARTITION `sp20240701` VALUES LESS THAN ('2024-07-01 00:00:00'),
+#SUBPARTITION `sp20250101` VALUES LESS THAN ('2025-01-01 00:00:00'),
+#SUBPARTITION `sp20250701` VALUES LESS THAN ('2025-07-01 00:00:00'),
+#SUBPARTITION `sp20260101` VALUES LESS THAN ('2026-01-01 00:00:00'),
+#SUBPARTITION `sp20260701` VALUES LESS THAN ('2026-07-01 00:00:00'),
+#SUBPARTITION `spmax` VALUES LESS THAN (MAXVALUE))
+
+alter table pttl_t1 split subpartition spmax into (
+SUBPARTITION `sp20270101` VALUES LESS THAN ('2027-01-01 00:00:00'),
+SUBPARTITION `spmax` VALUES LESS THAN (maxvalue)
+);
+
+
+create table ttl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_LEVEL = 'ROW'
+TTL_EXPR = '`b` | EXPIRE AFTER 5 MINUTE | TIMEZONE=+08:00'
+TTL_JOB = CRON '* */2 * * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+create table ttl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_LEVEL = 'ROW'
+TTL_EXPR = `b` EXPIRE AFTER 5 MINUTE TIMEZONE '+08:00'
+TTL_JOB = CRON '* */2 * * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+
+create table rl_ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_LEVEL = 'ROW'
+TTL_EXPR = `b` EXPIRE AFTER 5 MINUTE TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+
+insert into rl_ttl_t1(a, b) values (null, now());
+insert into rl_ttl_t1(a, b) select null, date_format( b, b - interval '5' DAY) from rl_ttl_t1 limit 10000;
+
+select b - interval '5' DAY ;
+
+
+create table nottl_t3(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+
+
+##
+## TTL_ENABLE = {'ON'|'OFF'|}
+## TTL_LEVEL = {'ROW'|'PART'|'SUBPART'|'LOCAL'}
+## TTL_EXPR = '`column` INTERVAL 6 MONTH'
+##
+
+
+create table ttl_t2(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+ENA
+partition by key(a) partitions 3;
+
+
+
+
+
+
+insert into bmsql_history
+(hist_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date,h_amount, h_data )
+
+select
+null, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, date_format( h_date, h_date - interval minute(h_date) * 60 + second(h_date)  HOUR),h_amount, h_data
+from
+bmsql_history;
+
+
+date_format( b, b - interval '5' DAY)
+date_format( h_date, h_date - interval minute(h_date) * 60 + second(h_date)  HOUR)
+
+
+
+insert into bmsql_history (hist_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date,h_amount, h_data ) select null, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, date_format( h_date, h_date - interval minute(h_date) * 60 + second(h_date)  HOUR),h_amount, h_data from bmsql_history order by h_date limit 50000;
+
+
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a),
+global index g_b (b) partition by key(b) partitions 16
+)
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 5 MINUTE TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 16;
+
+
+create table oss_t1
+like ttl_t1 engine = 'local_disk'
+archive_mode = 'ttl';
+
+alter table ttl_t1 cleanup expired data;
+
+alter table _ttl_tmp_ttl_t1 add partition (
+  PARTITION `p2` VALUES LESS THAN ('2023-02-01 00:00:00'),
+  PARTITION `p3` VALUES LESS THAN ('2023-03-01 00:00:00')
+);
+
+insert into ttl_t1 values
+(null, '2023-01-01'),
+(null, '2023-01-02'),
+(null, '2023-01-03'),
+(null, '2023-01-04'),
+(null, '2023-01-11'),
+(null, '2023-01-12')
+;
+
+insert into ttl_t1 (a, b) select null, b from ttl_t1;
+
+
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a),
+global index g_b (b) partition by key(b) partitions 16
+)
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 16;
+
+create table oss_t1
+like ttl_t1 engine = 'local_disk'
+archive_mode = 'ttl';
+
+
+create table no_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a),
+
+global index g_b (b) partition by key(b) partitions 16
+)
+partition by key(a) partitions 16;
+
+
+;
+alter table no_t1
+set
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00';
+
+insert into ttl_t1 values
+(null, '2023-01-01'),
+(null, '2023-07-05'),
+(null, '2023-08-02'),
+(null, '2023-09-03'),
+(null, '2023-10-04'),
+(null, '2023-11-11'),
+(null, '2023-12-11'),
+(null, '2024-03-12')
+;
+
+insert into ttl_bk values
+(null, '2023-01-01'),
+(null, '2023-07-05'),
+(null, '2023-08-02'),
+(null, '2023-09-03'),
+(null, '2023-10-04'),
+(null, '2023-11-11'),
+(null, '2023-12-11'),
+(null, '2024-03-12')
+;
+
+insert into ttl_bk select null,b from ttl_bk;
+
+insert into ttl_t1 select null,b from ttl_bk;
+
+insert into ttl_t1 values
+(null, '2023-01-01', c_seq.nextval),
+(null, '2023-07-05', c_seq.nextval),
+(null, '2023-08-02', c_seq.nextval),
+(null, '2023-09-03', c_seq.nextval),
+(null, '2023-10-04', c_seq.nextval),
+(null, '2023-11-11', c_seq.nextval),
+(null, '2023-12-11', c_seq.nextval),
+(null, '2024-03-12', c_seq.nextval)
+;
+
+
+CREATE TABLE `_ttl_tmp_ttl_t1` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` datetime DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY (`a`)
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+TTL_TEMPORARY= 'Y'
+PARTITION BY RANGE COLUMNS(`b`)
+SUBPARTITION BY KEY(`a`)
+SUBPARTITIONS 8
+(
+ PARTITION `pstart` VALUES LESS THAN ('1970-01-01 00:00:00')
+);
+
+alter table _ttl_tmp_ttl_t1 add partition (
+PARTITION `p202308` VALUES LESS THAN ('2023-09-01 00:00:00'),
+PARTITION `p202309` VALUES LESS THAN ('2023-10-01 00:00:00'),
+PARTITION `p202310` VALUES LESS THAN ('2023-11-01 00:00:00'),
+PARTITION `p202311` VALUES LESS THAN ('2023-12-01 00:00:00'),
+PARTITION `p202312` VALUES LESS THAN ('2024-01-01 00:00:00'),
+PARTITION `p202301` VALUES LESS THAN ('2024-02-01 00:00:00'),
+PARTITION `p202302` VALUES LESS THAN ('2024-03-01 00:00:00'),
+PARTITION `p202403` VALUES LESS THAN ('2024-04-01 00:00:00')
+);
+
+alter table _ttl_tmp_ttl_t1 drop partition
+p202310,p202311,p202312,p202401,p202402
+
+
+insert into ttl_t1 select null,b from ttl_t1;
+
+alter table ttl_t1 cleanup expired data;
+
+insert into ttl_t2 (a, b) select null, b from ttl_t2;
+
+
+ALTER TABLE no_t1
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */1 * * ?' TIMEZONE '+00:00';
+
+
+
+CREATE TABLE ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+c varchar(32) not null,
+PRIMARY KEY(a),
+UNIQUE INDEX ui_c(c)
+)
+PARTITION BY KEY(a) PARTITIONS 16;
+
+CREATE TABLE ttl_bk(
+a int not null auto_increment,
+b datetime default current_timestamp,
+PRIMARY KEY(a)
+)
+PARTITION BY KEY(a) PARTITIONS 16;
+
+insert into ttl_t1 values
+(null, '2023-01-01', c_seq.nextval),
+(null, '2023-07-05', c_seq.nextval),
+(null, '2023-08-02', c_seq.nextval),
+(null, '2023-09-03', c_seq.nextval),
+(null, '2023-10-04', c_seq.nextval),
+(null, '2023-11-11', c_seq.nextval),
+(null, '2023-12-11', c_seq.nextval),
+(null, '2024-03-12', c_seq.nextval)
+;
+
+insert into ttl_t1 select null,b,c_seq.nextval from ttl_t1;
+
+create table oss_t1
+like ttl_t1 engine = 'oss'
+archive_mode = 'ttl';
+
+
+select sum(data_length) len from information_schema.tables
+where table_name='ttl_t1' and table_schema='ttldb';
+
+
+insert into ttl_bk values
+(null, '2022-01-02'),
+(null, '2022-02-05'),
+(null, '2022-03-02'),
+(null, '2022-04-02'),
+(null, '2022-05-03'),
+(null, '2022-06-04'),
+(null, '2022-07-11'),
+(null, '2022-08-11'),
+(null, '2022-09-12'),
+(null, '2022-10-12'),
+(null, '2022-11-02'),
+(null, '2022-12-05'),
+(null, '2023-01-02'),
+(null, '2023-02-05'),
+(null, '2023-03-02'),
+(null, '2023-04-02'),
+(null, '2023-05-03'),
+(null, '2023-06-04'),
+(null, '2023-07-11'),
+(null, '2023-08-11'),
+(null, '2024-09-12'),
+(null, '2023-10-02'),
+(null, '2023-11-05'),
+(null, '2023-12-02'),
+(null, '2024-01-02'),
+(null, '2024-02-03'),
+(null, '2024-03-04'),
+(null, '2024-04-08')
+;
+
+insert into ttl_bk(a, b) select null, b from ttl_bk;
+
+insert into ttl_t1(a, b) select a, b from ttl_bk;
+
+
+create table oss_t1
+like ttl_t1 engine = 'local_disk'
+archive_mode = 'ttl';
+
+alter table ttl_t1 cleanup expired data;
+
+
+select distinct table_schema,table_name, part_name, part_arc_state from information_schema.partitions_meta where table_schema='ttldb' and table_name='_ttl_tmp_ttl_t1';
+
+select sum(data_length + index_length) len from information_schema.tables where table_schema like 'ttldb%' and table_name like '_ttl_tmp_ttl_t1%';
+
+select table_schema, table_name, data_length + index_length len from information_schema.tables where table_schema like 'ttldb%' and table_name like '_ttl_tmp_ttl_t1%';
+
+
+select count(1),b from ttl_t1 group by b order by b asc;
+select count(1),b from _ttl_tmp_ttl_t1 group by b order by b asc;
+select count(1),b from oss_t1 group by b order by b asc;
+
+
+insert into ttl_t1 (a,b) select null, '2022-05-02' from ttl_bk limit 5000;
+
+
+

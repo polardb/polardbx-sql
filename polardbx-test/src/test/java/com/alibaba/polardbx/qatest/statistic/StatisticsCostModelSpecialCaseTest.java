@@ -33,7 +33,7 @@ public class StatisticsCostModelSpecialCaseTest extends StatisticCostModelTest {
     }
 
     @Test
-    public void testCostModel() throws SQLException, IOException {
+    public void testCostModel() throws SQLException, IOException, InterruptedException {
         Collection<CheckStruct> testStructs = buildCheckStructFromFile(filePath);
 
         for (CheckStruct testStruct : testStructs) {

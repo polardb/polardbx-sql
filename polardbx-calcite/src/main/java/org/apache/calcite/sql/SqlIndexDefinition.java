@@ -75,6 +75,8 @@ public class SqlIndexDefinition extends SqlCall {
     private final SqlNode engineName;
     private final List<SqlIndexColumnName> dictColumns;
     private final boolean withImplicitTableGroup;
+    // Key should be lowercase.
+    private final Map<String, String> columnarOptions;
 
     public SqlIndexDefinition(SqlParserPos pos,
                               boolean hasConstraint,
@@ -101,7 +103,8 @@ public class SqlIndexDefinition extends SqlCall {
                               SqlNode engineName,
                               List<SqlIndexColumnName> dictColumns,
                               boolean withImplicitTableGroup,
-                              boolean visible) {
+                              boolean visible,
+                              Map<String, String> columnarOptions) {
         super(pos);
         this.hasConstraint = hasConstraint;
         this.uniqueConstraint = uniqueConstraint;
@@ -128,6 +131,7 @@ public class SqlIndexDefinition extends SqlCall {
         this.dictColumns = dictColumns;
         this.withImplicitTableGroup = withImplicitTableGroup;
         this.visible = visible;
+        this.columnarOptions = columnarOptions;
     }
 
     public SqlIndexDefinition(SqlParserPos pos,
@@ -157,7 +161,8 @@ public class SqlIndexDefinition extends SqlCall {
                               SqlNode engineName,
                               List<SqlIndexColumnName> dictColumns,
                               boolean withImplicitTableGroup,
-                              boolean visible) {
+                              boolean visible,
+                              Map<String, String> columnarOptions) {
         super(pos);
         this.hasConstraint = hasConstraint;
         this.uniqueConstraint = uniqueConstraint;
@@ -186,6 +191,7 @@ public class SqlIndexDefinition extends SqlCall {
         this.dictColumns = dictColumns;
         this.withImplicitTableGroup = withImplicitTableGroup;
         this.visible = visible;
+        this.columnarOptions = columnarOptions;
     }
 
     public static SqlIndexDefinition localIndex(SqlParserPos pos, boolean hasConstraint,
@@ -217,7 +223,8 @@ public class SqlIndexDefinition extends SqlCall {
             null,
             null,
             false,
-            true);
+            true,
+            null);
     }
 
     public static SqlIndexDefinition localIndex(SqlParserPos pos, boolean hasConstraint,
@@ -250,7 +257,8 @@ public class SqlIndexDefinition extends SqlCall {
             null,
             null,
             withImplicitTableGroup,
-            true);
+            true,
+            null);
     }
 
     public static SqlIndexDefinition globalIndex(SqlParserPos pos, boolean hasConstraint,
@@ -286,7 +294,8 @@ public class SqlIndexDefinition extends SqlCall {
             null,
             null,
             withImplicitTablegroup,
-            visible);
+            visible,
+            null);
     }
 
     public static SqlIndexDefinition clusteredIndex(SqlParserPos pos, boolean hasConstraint,
@@ -322,7 +331,8 @@ public class SqlIndexDefinition extends SqlCall {
             null,
             null,
             withImplicitTablegroup,
-            visible);
+            visible,
+            null);
     }
 
     public static SqlIndexDefinition columnarIndex(SqlParserPos pos, boolean hasConstraint,
@@ -334,7 +344,8 @@ public class SqlIndexDefinition extends SqlCall {
                                                    List<SqlIndexColumnName> clusteredKeys,
                                                    List<SqlIndexOption> options, SqlNode tableGroupName,
                                                    SqlNode engineName, List<SqlIndexColumnName> dictColumns,
-                                                   boolean withImplicitTablegroup, boolean visible) {
+                                                   boolean withImplicitTablegroup, boolean visible,
+                                                   Map<String, String> columnarOptions) {
         return new SqlIndexDefinition(pos,
             hasConstraint,
             uniqueConstraint,
@@ -360,7 +371,8 @@ public class SqlIndexDefinition extends SqlCall {
             engineName,
             dictColumns,
             withImplicitTablegroup,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     @Override
@@ -417,7 +429,6 @@ public class SqlIndexDefinition extends SqlCall {
             if (writer instanceof SqlPrettyWriter) {
                 ((SqlPrettyWriter) writer).setQuoteAllIdentifiers(false);
             }
-
             if (null != dbPartitionBy) {
                 writer.keyword("DBPARTITION BY");
                 dbPartitionBy.unparse(writer, leftPrec, rightPrec);
@@ -631,6 +642,10 @@ public class SqlIndexDefinition extends SqlCall {
         return originPartitioning;
     }
 
+    public Map<String, String> getColumnarOptions() {
+        return columnarOptions;
+    }
+
     public SqlIndexDefinition replacePartitioning(SqlNode newPartition) {
         return new SqlIndexDefinition(pos,
             hasConstraint,
@@ -659,7 +674,8 @@ public class SqlIndexDefinition extends SqlCall {
             engineName,
             dictColumns,
             withImplicitTableGroup,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     public SqlIndexDefinition replaceCovering(Collection<String> coveringColumns) {
@@ -700,7 +716,8 @@ public class SqlIndexDefinition extends SqlCall {
             engineName,
             dictColumns,
             withImplicitTableGroup,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     public SqlIndexDefinition mergeCovering(Collection<String> coveringColumns) {
@@ -755,7 +772,8 @@ public class SqlIndexDefinition extends SqlCall {
                 engineName,
                 dictColumns,
                 withImplicitTableGroup,
-                visible);
+                visible,
+                columnarOptions);
         }
 
     }
@@ -795,7 +813,8 @@ public class SqlIndexDefinition extends SqlCall {
             engineName,
             dictColumns,
             withImplicitTableGroup,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     /**
@@ -833,7 +852,8 @@ public class SqlIndexDefinition extends SqlCall {
             engineName,
             dictColumns,
             withImplicitTableGroup,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     public SqlIndexDefinition rebuildToExplicitLocal(SqlIdentifier newName) {
@@ -864,7 +884,8 @@ public class SqlIndexDefinition extends SqlCall {
             engineName,
             dictColumns,
             withImplicitTableGroup,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     public SqlNode getPartitioning() {

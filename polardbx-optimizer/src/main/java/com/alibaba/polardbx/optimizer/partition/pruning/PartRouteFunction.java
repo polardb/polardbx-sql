@@ -21,7 +21,6 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 
-import java.util.BitSet;
 import java.util.List;
 
 /**

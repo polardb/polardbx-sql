@@ -18,8 +18,6 @@ package com.alibaba.polardbx.executor.partitionmanagement.fastchecker;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
@@ -90,7 +88,7 @@ public class LogicalTableDataMigrationFastChecker extends FastChecker {
             tableMetaDst.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
 
         // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!!!
-        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMetaDst);
+        final List<String> pks = FastChecker.getOrderedPrimaryKeys(tableMetaDst);
 
         final PhysicalPlanBuilder srcBuilder = new PhysicalPlanBuilder(logicalSchemaSrc, ec);
         final PhysicalPlanBuilder dstBuilder = new PhysicalPlanBuilder(logicalSchemaDst, ec);

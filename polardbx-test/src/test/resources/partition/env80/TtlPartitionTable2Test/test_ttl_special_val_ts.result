@@ -1,0 +1,76 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set sql_mode='';
+CREATE TABLE `ttl_t1_ts_empty` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+CREATE TABLE `ttl_t2_ts_null` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+insert into ttl_t2_ts_null values (1,  0);
+CREATE TABLE `ttl_t3_ts_zero` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+insert into ttl_t3_ts_zero values (1,  '0000-00-00 00:00:00');
+CREATE TABLE `ttl_t4_ts_both` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` timestamp,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+insert into ttl_t4_ts_both values (1,  0);
+insert into ttl_t4_ts_both values (2,  9999999999999);
+insert into ttl_t4_ts_both values (3,  '0000-00-00 00:00:00');
+insert into ttl_t4_ts_both values (4,  '1970-01-01 00:00:00');
+insert into ttl_t4_ts_both values (5,  '2024-05-05 00:00:00');
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t1_ts_empty order by a;
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t2_ts_null order by a;
+a,b_val
+1,0000-00-00 00:00:00
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t3_ts_zero order by a;
+a,b_val
+1,0000-00-00 00:00:00
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t4_ts_both order by a;
+a,b_val
+1,0000-00-00 00:00:00
+2,0000-00-00 00:00:00
+3,0000-00-00 00:00:00
+4,0000-00-00 00:00:00
+5,2024-05-05 00:00:00
+create table ttl_t1_ts_empty_arc like ttl_t1_ts_empty engine='columnar' archive_mode='ttl';
+create table ttl_t2_ts_null_arc like ttl_t2_ts_null engine='columnar' archive_mode='ttl';
+create table ttl_t3_ts_zero_arc like ttl_t3_ts_zero engine='columnar' archive_mode='ttl';
+create table ttl_t4_ts_both_arc like ttl_t4_ts_both engine='columnar' archive_mode='ttl';
+alter table ttl_t1_ts_empty cleanup expired data;
+alter table ttl_t2_ts_null cleanup expired data;
+alter table ttl_t3_ts_zero cleanup expired data;
+alter table ttl_t4_ts_both cleanup expired data;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t1_ts_empty order by a;
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t2_ts_null order by a;
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t3_ts_zero order by a;
+a,b_val
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t4_ts_both order by a;
+a,b_val
+5,2024-05-05 00:00:00
+drop table ttl_t1_ts_empty;
+drop table ttl_t2_ts_null;
+drop table ttl_t3_ts_zero;
+drop table ttl_t4_ts_both;

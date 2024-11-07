@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.executor.ddl.newengine.serializable.SerializableClassMapper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
@@ -36,7 +37,9 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_EACH_DDL_TASK_FAIL_ONCE;
@@ -61,6 +64,10 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     protected transient volatile Long endRollbackTs;
 
     private transient volatile int injectTimes = 0;
+    protected String rankHint = "";
+
+    protected volatile DdlEngineResources resourceAcquired = new DdlEngineResources();
+    protected transient volatile Boolean scheduled = false;
 
     public AbstractDdlTask(final String schemaName) {
         this.schemaName = schemaName;
@@ -286,6 +293,26 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     }
 
     @Override
+    public DdlEngineResources getResourceAcquired() {
+        return resourceAcquired;
+    }
+
+    @Override
+    public void setResourceAcquired(DdlEngineResources resourceAcquired) {
+        this.resourceAcquired = resourceAcquired;
+    }
+
+    @Override
+    public Boolean getScheduled() {
+        return scheduled;
+    }
+
+    @Override
+    public void setScheduled(Boolean scheduled) {
+        this.scheduled = scheduled;
+    }
+
+    @Override
     public void setState(DdlTaskState ddlTaskState) {
         this.state = ddlTaskState;
     }
@@ -414,5 +441,15 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
      */
     protected boolean isSkipRollback() {
         return false;
+    }
+
+    @Override
+    public String getRankHint() {
+        return rankHint;
+    }
+
+    @Override
+    public void setRankHint(String rankHint) {
+        this.rankHint = rankHint;
     }
 }

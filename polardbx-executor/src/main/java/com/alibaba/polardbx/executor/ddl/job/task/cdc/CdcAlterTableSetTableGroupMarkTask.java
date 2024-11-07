@@ -24,11 +24,17 @@ import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableSetOption;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableSetTableGroupChangeMetaOnlyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -56,14 +62,16 @@ public class CdcAlterTableSetTableGroupMarkTask extends BaseDdlTask {
     private final String primaryTableName;
     private final String gsiTableName;
     private final boolean gsi;
+    private final boolean withImplicitTablegroup;
 
     @JSONCreator
     public CdcAlterTableSetTableGroupMarkTask(String schemaName, String primaryTableName, String gsiTableName,
-                                              boolean gsi) {
+                                              boolean gsi, boolean withImplicitTablegroup) {
         super(schemaName);
         this.primaryTableName = primaryTableName;
         this.gsiTableName = gsiTableName;
         this.gsi = gsi;
+        this.withImplicitTablegroup = withImplicitTablegroup;
     }
 
     @Override
@@ -77,6 +85,10 @@ public class CdcAlterTableSetTableGroupMarkTask extends BaseDdlTask {
         if (gsi) {
             executionContext.getExtraCmds().put(ICdcManager.CDC_IS_GSI, true);
             ddl = tryRewriteTableName(ddl);
+        }
+
+        if (withImplicitTablegroup) {
+            ddl = tryRewriteTableGroupName(ddl);
         }
 
         CdcManagerHelper.getInstance()
@@ -103,6 +115,42 @@ public class CdcAlterTableSetTableGroupMarkTask extends BaseDdlTask {
                 String newTableName = primaryTableName + "." + unwrapGsiName(gsiTableName);
                 alterTableStatement.setName(new SQLIdentifierExpr(newTableName));
                 return SQLUtils.toSQLString(alterTableStatement, DbType.mysql, new SQLUtils.FormatOption(true, false));
+            }
+        }
+        return ddl;
+    }
+
+    private String tryRewriteTableGroupName(String ddl) {
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(ddl));
+        List<SQLStatement> parseResult = parser.parseStatementList();
+        if (!parseResult.isEmpty() && parseResult.get(0) instanceof SQLAlterTableStatement) {
+            SQLAlterTableStatement alterTableStatement = (SQLAlterTableStatement) parseResult.get(0);
+            if (alterTableStatement.getItems().size() == 1) {
+                SQLAlterTableItem sqlAlterTableItem = alterTableStatement.getItems().get(0);
+                if (sqlAlterTableItem instanceof SQLAlterTableSetOption) {
+                    SQLAlterTableSetOption item = (SQLAlterTableSetOption) sqlAlterTableItem;
+                    if (item.isAlterTableGroup()) {
+                        DdlJobManager jobManager = new DdlJobManager();
+                        List<DdlTask> prevTasks = jobManager.getTasksFromMetaDB(getJobId(),
+                            (new AlterTableSetTableGroupChangeMetaOnlyTask(null, null, null, null, false, false, null,
+                                false)).getName());
+                        if (prevTasks.size() == 1) {
+                            AlterTableSetTableGroupChangeMetaOnlyTask setTableGroupChangeMetaOnlyTask =
+                                (AlterTableSetTableGroupChangeMetaOnlyTask) prevTasks.get(0);
+                            //get the targetTableGroup from AlterTableSetTableGroupChangeMetaOnlyTask in the some job
+                            String targetTableGroup = setTableGroupChangeMetaOnlyTask.getTargetTableGroup();
+
+                            SQLAssignItem option = item.getOptions().get(0);
+                            String value = SQLUtils.normalizeNoTrim(option.getValue().toString());
+                            if (!targetTableGroup.equalsIgnoreCase(value)) {
+                                option.setValue(new SQLIdentifierExpr(targetTableGroup));
+                                item.setImplicit(true);
+                                return SQLUtils.toSQLString(alterTableStatement, DbType.mysql,
+                                    new SQLUtils.FormatOption(true, false));
+                            }
+                        }
+                    }
+                }
             }
         }
         return ddl;

@@ -890,6 +890,8 @@ public enum ErrorCode {
 
     ERR_CREATE_SELECT_WITH_OSS(ErrorType.Executor, 4668),
 
+    ERR_CREATE_TABLE_WITH_TTL(ErrorType.Executor, 4710),
+
     // ============= server 从4700下标开始================
     ERR_SERVER(ErrorType.Server, 4700),
 
@@ -955,6 +957,8 @@ public enum ErrorCode {
 
     // 事务超时
     ERR_TRANS_IDLE_TIMEOUT(ErrorType.Transaction, 5016),
+
+    ERR_FLASHBACK_AREA(ErrorType.Transaction, 5017),
     // ================权限相关异常从5101开始==================
     /**
      * 暂时不支持的权限点
@@ -1256,6 +1260,8 @@ public enum ErrorCode {
 
     ERR_REPLICA_NOT_SUPPORT(ErrorType.CDC, 9205),
     ERR_INSTANCE_READ_ONLY_OPTION_SET_FAILED(ErrorType.CDC, 9206),
+    ERR_CDC_INVALID_PARAMS(ErrorType.CDC, 9207),
+    ERR_SQL_LOG_BIN_NOT_SUPPORT_AUTO_COMMIT(ErrorType.CDC, 9208),
 
     ERR_PARTITION_MANAGEMENT(ErrorType.Executor, 9300),
 
@@ -1306,6 +1312,13 @@ public enum ErrorCode {
     ERR_REDUNDANCY_SUBPARTITION_DEFINITION(ErrorType.Executor, 9339),
     ERR_AUTO_CREATE_TABLEGROUP(ErrorType.Executor, 9340),
 
+    // ============= TTL Exceptions, Error Code from 9380 ~ 9399 ================
+    ERR_TTL(ErrorType.Executor, 9380),
+    ERR_TTL_INTERRUPTED(ErrorType.Executor, 9381),
+    ERR_TTL_TABLE_NOT_FOUND(ErrorType.Executor, 9382),
+    ERR_TTL_COLUMN_NOT_FOUND(ErrorType.Executor, 9383),
+    ERR_TTL_PARAMS(ErrorType.Executor, 9384),
+
     // ============= 私有协议 从10000下标开始================
     ERR_X_PROTOCOL_BAD_PACKET(ErrorType.Xprotocol, 10000),
 
@@ -1341,7 +1354,11 @@ public enum ErrorCode {
     ERR_LOAD_DEL_FILE(ErrorType.ColumnarAccess, 12003),
     ERR_LOAD_ORC_FILE(ErrorType.ColumnarAccess, 12004),
     ERR_COLUMNAR_SNAPSHOT(ErrorType.GMS, 12005),
-    ERR_COLUMNAR_SCHEMA(ErrorType.GMS, 12006);
+    ERR_COLUMNAR_SCHEMA(ErrorType.GMS, 12006),
+
+    ERR_COLUMNAR_DROP_PARTITION(ErrorType.Executor, 12011),
+    ERR_COLUMNAR_MODIFY_PARTITION_DROP_VALUE(ErrorType.Executor, 12012),
+    ERR_COLUMNAR_TRUNCATE_PARTITION(ErrorType.Executor, 12013);
 
     private static final String errorMessagePre = "ERR-CODE: [PXC-";
     private final int code;

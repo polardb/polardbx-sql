@@ -30,14 +30,12 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.util.StringUtils;
-import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.AccessPathRule;
@@ -66,6 +64,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterStoragePool;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterSystemSetConfig;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableAddPartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableArchivePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableDropPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableExtractPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupAddPartition;
@@ -75,6 +74,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupExtract
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMergePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupModifyPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMovePartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupOptimizePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupRenamePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupReorgPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSetLocality;
@@ -85,6 +85,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupTruncat
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMergePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableModifyPartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableMovePartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableOptimizePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTablePartitionCount;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRemovePartitioning;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableRenamePartition;
@@ -139,8 +140,6 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTables;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalSequenceDdl;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalUnArchive;
-import com.alibaba.polardbx.optimizer.hint.operator.HintCmdIndex;
-import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
@@ -160,6 +159,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.DDL;
@@ -180,6 +180,7 @@ import org.apache.calcite.rel.ddl.AlterRule;
 import org.apache.calcite.rel.ddl.AlterStoragePool;
 import org.apache.calcite.rel.ddl.AlterSystemSetConfig;
 import org.apache.calcite.rel.ddl.AlterTable;
+import org.apache.calcite.rel.ddl.AlterTableArchivePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupAddPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupAddTable;
 import org.apache.calcite.rel.ddl.AlterTableGroupDropPartition;
@@ -187,6 +188,7 @@ import org.apache.calcite.rel.ddl.AlterTableGroupExtractPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMergePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupModifyPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
+import org.apache.calcite.rel.ddl.AlterTableGroupOptimizePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupReorgPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSetLocality;
@@ -247,6 +249,7 @@ import org.apache.calcite.rel.logical.LogicalMinus;
 import org.apache.calcite.rel.logical.LogicalOutFile;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalRecyclebin;
+import org.apache.calcite.rel.logical.LogicalTableLookup;
 import org.apache.calcite.rel.logical.LogicalTableModify;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -265,6 +268,7 @@ import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableModifySubPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
+import org.apache.calcite.sql.SqlAlterTableOptimizePartition;
 import org.apache.calcite.sql.SqlAlterTableRemoveLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableReorgPartition;
@@ -272,6 +276,8 @@ import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlCheckColumnarIndex;
 import org.apache.calcite.sql.SqlCheckGlobalIndex;
 import org.apache.calcite.sql.SqlCreateTable;
@@ -293,8 +299,10 @@ import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -307,6 +315,7 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_DML_WITH_SUBQUERY;
+import static org.apache.calcite.sql.parser.SqlParserPos.ZERO;
 
 /**
  * 对RelNode进行转换,将其底层TableScan转换为 LogicalView
@@ -372,6 +381,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean existsGroupingSets;
     private boolean modifyWithLimitOffset = false;
     private boolean existsOSSTable;
+    private boolean existForceColumnar = false;
+    private boolean allTableHaveColumnar = true;
 
     private boolean existsCheckSum = false;
     private boolean existsUnpushableAgg = false;
@@ -380,6 +391,13 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean outFileStatistics = false;
 
     private boolean existsUnPushedDynamicValues = false;
+
+    /**
+     * insert select 中select包含as of tso时，在RR隔离级别下，下推执行DN会将select变成当前读，快照失效了，这里禁止下推，RC隔离级别没事。
+     */
+    private boolean insertSelectWithFlashback = false;
+
+    private boolean hasLocalForceIndex = false;
 
     public ToDrdsRelVisitor() {
     }
@@ -417,6 +435,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         setShouldRemoveSchemaName(qualifiedName);
 
         final String schemaName = qualifiedName.size() == 2 ? qualifiedName.get(0) : null;
+        final String schemaNameNotNull =
+            schemaName == null ? this.plannerContext.getExecutionContext().getSchemaName() : schemaName;
 
         // Ensure that schema name not null.
         final RelNode scanOrLookup = buildTableAccess(scan, tableName,
@@ -454,32 +474,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 existsNonPushDownFunc = true;
             }
         }
+        if (!CBOUtil.hasCci(schemaNameNotNull, tableName, this.plannerContext.getExecutionContext())) {
+            this.allTableHaveColumnar = false;
+        }
         return scanOrLookup;
-    }
-
-    private boolean isGsiVisible(String schema, String table, String indexName) {
-        if (StringUtils.isEmpty(indexName)) {
-            return true;
-        }
-        SchemaManager sm = this.plannerContext.getExecutionContext().getSchemaManager(schema);
-        if (sm == null) {
-            return true;
-        }
-        TableMeta tableMeta = sm.getTable(table);
-        if (tableMeta == null) {
-            return true;
-        }
-        final Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = tableMeta.getGsiPublished();
-        if (gsiPublished == null) {
-            return true;
-        }
-
-        if (gsiPublished.containsKey(indexName)
-            && gsiPublished.get(indexName).visibility == IndexVisibility.INVISIBLE) {
-            return false;
-        } else {
-            return true;
-        }
     }
 
     private RelNode buildTableAccess(TableScan scan, String tableName, String schemaName) {
@@ -504,116 +502,346 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 }
             }
         }
-        final Engine engine = this.plannerContext.getExecutionContext()
-            .getSchemaManager(schemaName).getTable(tableName).getEngine();
-        return Optional.ofNullable(scan.getIndexNode())
-            // FORCE INDEX
-            .filter(indexNode -> indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0)
-            // If more than one index specified, choose first one only
-            .map(indexNode -> (SqlIndexHint) ((SqlNodeList) indexNode).get(0))
-            // only support force index
-            .filter(SqlIndexHint::forceIndex)
-            .filter(hint -> {
-                    final String indexName =
-                        GlobalIndexMeta.getIndexName(RelUtils.lastStringValue(hint.getIndexList()));
-                    final String unwrapped = GlobalIndexMeta
-                        .getGsiWrappedName(tableName, indexName, schemaName, plannerContext.getExecutionContext());
-                    return isGsiVisible(schemaName, tableName, StringUtils.isEmpty(unwrapped) ? indexName : unwrapped);
+        final TableMeta tMeta =
+            this.plannerContext.getExecutionContext().getSchemaManager(schemaName).getTable(tableName);
+        final Engine engine = tMeta.getEngine();
+
+        // try index hint first
+        hasLocalForceIndex = false;
+        RelNode scanOrLookup = buildForceIndexByIndexHint(catalog, scan, schemaName, tMeta, engine);
+        if (scanOrLookup != null) {
+            if (hasLocalForceIndex) {
+                // meaning index hint is working, we need to forbid the direct plan and post planner
+                this.plannerContext.setLocalIndexHint(true);
+            }
+            return scanOrLookup;
+        }
+
+        // try force index
+        scanOrLookup = buildForceIndexByForceIndex(catalog, scan, schemaName, tMeta, engine);
+        if (scanOrLookup != null) {
+            return scanOrLookup;
+        }
+
+        // remove all force index
+        removeForceIndex(scan);
+        return RelUtils.createLogicalView(scan, lockMode, engine);
+    }
+
+    /**
+     * remove force index hint
+     */
+    protected void removeForceIndex(TableScan scan) {
+        SqlNode indexNode = scan.getIndexNode();
+        if (indexNode instanceof SqlNodeList) {
+            SqlNodeList sqlNodeList = (SqlNodeList) indexNode;
+            // use one new list in case of immutable list cannot be modified
+            SqlNodeList newList = new SqlNodeList(sqlNodeList.getParserPosition());
+            boolean needReset = false;
+
+            for (SqlNode node : sqlNodeList.getList()) {
+                if (isForceIndex(node)) {
+                    needReset = true;
+                } else {
+                    newList.add(node);
                 }
-            )
-            // Dealing with force index(`xxx`), `xxx` will decoded as string.
-            .map(indexNode -> GlobalIndexMeta.getIndexName(RelUtils.lastStringValue(indexNode.getIndexList().get(0))))
-            .flatMap(indexName -> {
-                // check columnar index first
-                final String columnarIndexNameUnwrapped = GlobalIndexMeta.getColumnarWrappedName(tableName, indexName,
-                    schemaName, plannerContext.getExecutionContext());
-                if (columnarIndexNameUnwrapped != null) {
-                    indexName = columnarIndexNameUnwrapped;
-                }
-                if (GlobalIndexMeta.getColumnarIndexType(tableName, indexName,
-                    schemaName, plannerContext.getExecutionContext()) == IndexType.PUBLISHED_COLUMNAR) {
-                    final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, indexName));
-                    final LogicalTableScan columnarTableScan =
-                        LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null,
-                            scan.getFlashback(), scan.getFlashbackOperator(),
-                            null);
-                    this.withIndexHint = true;
-                    // remove force index for physical sql
+            }
+            if (needReset) {
+                if (newList.size() == 0) {
                     scan.setIndexNode(null);
-                    return Optional.of(new OSSTableScan(columnarTableScan, lockMode));
+                } else {
+                    scan.setIndexNode(newList);
                 }
+            }
+        }
+    }
 
-                final String unwrapped = GlobalIndexMeta
-                    .getGsiWrappedName(tableName, indexName, schemaName, plannerContext.getExecutionContext());
-                if (unwrapped != null) {
-                    indexName = unwrapped;
+    private boolean isForceIndex(SqlNode node) {
+        return node instanceof SqlIndexHint && ((SqlIndexHint) node).forceIndex();
+    }
+
+    protected RelNode buildForceIndexByIndexHint(RelOptSchema catalog, TableScan scan, String schemaName,
+                                                 TableMeta tMeta,
+                                                 Engine engine) {
+        // get index hint
+        SqlCall indexHint = getIndexHint(scan);
+        if (indexHint == null) {
+            return null;
+        }
+
+        List<SqlNode> args = indexHint.getOperandList();
+        String tablePart = args.get(1).toString();
+        String indexPart = null;
+        if (args.size() > 2) {
+            indexPart = args.get(2).toString();
+        }
+        if (indexPart == null) {
+            return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart);
+        } else {
+            return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, indexPart);
+        }
+    }
+
+    private SqlCall getIndexHint(TableScan scan) {
+        SqlNodeList sqlNodes = scan.getHints();
+        if (sqlNodes == null) {
+            return null;
+        }
+        for (SqlNode node : sqlNodes) {
+            if (node instanceof SqlCall) {
+                SqlCall call = (SqlCall) node;
+                if (call.getOperator().getName().equalsIgnoreCase("index")) {
+                    if (call.getOperandList().size() < 2) {
+                        // throw new IllegalArgumentException("wrong args num in index hint");
+                        return null;
+                    }
+                    return call;
                 }
-                final IndexType indexType = GlobalIndexMeta
-                    .getIndexType(tableName, indexName, schemaName, plannerContext.getExecutionContext());
+            }
+        }
+        return null;
+    }
 
-                switch (indexType) {
-                case PUBLISHED_GSI:
-                    break;
-                case UNPUBLISHED_GSI:
-                    // Gsi whose table not finished creating
-                case NONE:
-                    // Gsi is removed but sql not updated or
-                    scan.setIndexNode(null);
-                case LOCAL:
-                default:
-                    return Optional.empty();
+    /**
+     * Constructs a RelNode with the specified forced index applied.
+     *
+     * @param catalog Catalog object
+     * @param scan Initial TableScan node
+     * @param schemaName Schema name
+     * @param tMeta Table metadata
+     * @param engine Execution engine
+     * @return RelNode with the enforced index
+     */
+    protected RelNode buildForceIndexByForceIndex(RelOptSchema catalog, TableScan scan, String schemaName,
+                                                  TableMeta tMeta, Engine engine) {
+        SqlIdentifier indexId = getForceIndex(scan);
+        if (indexId != null) {
+            this.withIndexHint = true;
+            String tablePart = indexId.names.get(0);
+            String indexPart = indexId.names.size() > 1 ? indexId.names.get(1) : null;
+
+            if (indexPart == null) {
+                return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart);
+            } else {
+                return buildForceIndex(catalog, scan, schemaName, tMeta, engine, tablePart, indexPart);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Builds a RelNode with the specified forced index applied. support gsi and main table local index
+     * <p>
+     * if indexName is primary or a local index in main table, return a logical view for main table with the same index node
+     * if indexName is a gsi, return one gsi lookup node
+     * otherwise, return null
+     *
+     * @param catalog Catalog object
+     * @param scan Initial TableScan node
+     * @param schemaName Schema name
+     * @param tMeta Table metadata
+     * @param engine Execution engine
+     * @param indexName logical table index, might be a gsi or primary or local index
+     * @return RelNode with the enforced index
+     */
+    AbstractRelNode buildForceIndex(RelOptSchema catalog, TableScan scan, String schemaName, TableMeta tMeta,
+                                    Engine engine, @NotNull String indexName) {
+        GsiMetaManager.GsiIndexMetaBean gsi = tMeta.findGlobalSecondaryIndexByName(indexName);
+        if (gsi == null) {
+            System.out.println("test");
+            // force index table.local_index
+            IndexMeta localIndex = tMeta.findLocalIndexByName(indexName);
+            if (localIndex != null) {
+                hasLocalForceIndex = true;
+                scan.setIndexNode(buildForceIndex(localIndex.getPhysicalIndexName()));
+                return RelUtils.createLogicalView(scan, lockMode, engine);
+            } else {
+                return null;
+            }
+        } else {
+            if (gsi.columnarIndex) {
+                // forbid force CCI with delete
+                return this.sqlKind == SqlKind.DELETE && !this.getPlannerContext().getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_DELETE_FORCE_CC_INDEX) ? null :
+                    buildOSSTableScan(catalog, scan, schemaName, engine, gsi);
+            } else {
+                return buildLogicalTableLookup(catalog, scan, schemaName, engine, gsi, null);
+            }
+        }
+    }
+
+    /**
+     * Builds a RelNode with the specified forced index applied. support gsi and its local index
+     * <p>
+     * if gsiPart was PRIMARY, return main table logicalview with index node of lsi/primary identified by lsiPart.
+     * if gsiPart was a gsi, return gsi lookup node and the index scan node got the index node of lsi/primary identified by lsiPart.
+     * <p>
+     * if any index(gsiPart or lsiPart) was not found, return null
+     *
+     * @param catalog Catalog object
+     * @param scan Initial TableScan node
+     * @param schemaName Schema name
+     * @param tMeta Table metadata
+     * @param engine Execution engine
+     * @param gsiPart gsi or primary
+     * @param lsiPart physical table index, might be a primary or local index
+     * @return RelNode with the enforced index
+     */
+    private AbstractRelNode buildForceIndex(RelOptSchema catalog, TableScan scan, String schemaName, TableMeta tMeta,
+                                            Engine engine, @NotNull String gsiPart,
+                                            @NotNull String lsiPart) {
+        // try gsi.local
+        GsiMetaManager.GsiIndexMetaBean gsi = tMeta.findGlobalSecondaryIndexByName(gsiPart);
+        if (gsi != null) {
+            TableMeta gsiMeta = this.getPlannerContext().getExecutionContext().getSchemaManager(schemaName)
+                .getTable(gsi.indexTableName);
+            IndexMeta gsiLocalIndex = gsiMeta.findLocalIndexByName(lsiPart);
+            if (gsiLocalIndex == null) {
+                // error gsi local index doesn't exist
+                return null;
+            } else {
+                if (gsi.columnarIndex) {
+                    // CCI should not reach here since CCI must not have local index
+                    return null;
+                } else {
+                    hasLocalForceIndex = true;
+                    return buildLogicalTableLookup(catalog, scan, schemaName, engine, gsi, lsiPart);
                 }
+            }
+        }
 
-                // remove force index for physical sql
-                scan.setIndexNode(null);
-                final LogicalView primary = RelUtils.createLogicalView(scan, lockMode, engine);
-                final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, indexName));
+        // try primary.local index
+        if (GeneralUtil.isPrimary(gsiPart)) {
+            // try primary.local
+            IndexMeta primaryLocalIndex = tMeta.findLocalIndexByName(lsiPart);
+            if (primaryLocalIndex != null) {
+                hasLocalForceIndex = true;
+                scan.setIndexNode(buildForceIndex(primaryLocalIndex.getPhysicalIndexName()));
+            } else {
+                // local index were not found any match for tblPath
+                return null;
+            }
+            hasLocalForceIndex = true;
+            // force index(primary) equals force index(primary.primary)
+            LogicalView lv = RelUtils.createLogicalView(scan, lockMode, engine);
+            lv.setFromForceIndex(true);
+            return lv;
+        }
+        return null;
+    }
 
-                final LogicalTableScan indexTableScan =
-                    LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null, scan.getFlashback(),
-                        scan.getFlashbackOperator(), null);
-                final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
-                this.withIndexHint = true;
+    /**
+     * Builds a LogicalTableLookup based on the provided components.
+     *
+     * @param catalog Catalog object
+     * @param scan Original table scan
+     * @param schemaName Schema name
+     * @param engine Execution engine
+     * @param gsi Global Secondary Index metadata
+     * @param localIndexPath Local index path (if any)
+     * @return A new LogicalTableLookup instance
+     */
+    @NotNull
+    protected LogicalTableLookup buildLogicalTableLookup(RelOptSchema catalog, TableScan scan, String schemaName,
+                                                         Engine engine, GsiMetaManager.GsiIndexMetaBean gsi,
+                                                         String localIndexPath) {
+        // Create a logical view from the original table scan, and remove its index node
+        scan.setIndexNode(null);
+        LogicalView primary = RelUtils.createLogicalView(scan, lockMode, engine);
 
-                return Optional.of((RelNode) RelUtils.createTableLookup(primary, index, index.getTable()));
-            })
-            // INDEX HINT
-            .orElseGet(() -> Optional.ofNullable(scan.getHints())
-                .map(hints -> HintConverter
-                    .convertCmd(hints, new ArrayList<>(), false, plannerContext.getExecutionContext()).cmdHintResult)
-                .flatMap(cmdHints -> cmdHints.stream()
-                    .filter(hint -> hint instanceof HintCmdIndex)
-                    .map(hint -> (HintCmdIndex) hint)
-                    .filter(hint -> TStringUtil.equalsIgnoreCase(tableName, hint.tableNameLast()))
-                    .filter(hint -> {
-                        final String unwrapped = GlobalIndexMeta.getGsiWrappedName(hint.tableNameLast(),
-                            hint.indexNameLast(), schemaName, plannerContext.getExecutionContext());
-                        return GlobalIndexMeta.isPublishedPrimaryAndIndex(hint.tableNameLast(),
-                            null == unwrapped ? hint.indexNameLast() : unwrapped,
-                            schemaName, plannerContext.getExecutionContext());
-                    })
-                    // If more than one index specified, choose first one only
-                    .findFirst()
-                    .map(hint -> {
-                        final String unwrapped = GlobalIndexMeta.getGsiWrappedName(hint.tableNameLast(),
-                            hint.indexNameLast(), schemaName, plannerContext.getExecutionContext());
-                        final List<String> indexTableNames;
-                        if (null == unwrapped) {
-                            indexTableNames = hint.indexName.names;
-                        } else {
-                            indexTableNames = ImmutableList.of(schemaName, unwrapped);
-                        }
-                        final LogicalView primary = RelUtils.createLogicalView(scan, lockMode, engine);
-                        final RelOptTable indexTable = catalog.getTableForMember(indexTableNames);
-                        final LogicalTableScan indexTableScan =
-                            LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null,
-                                scan.getFlashback(), scan.getFlashbackOperator(), null);
-                        final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
-                        this.withIndexHint = true;
+        // Obtain the index table and create a corresponding table scan
+        RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsi.indexName));
+        LogicalTableScan indexTableScan = LogicalTableScan.create(scan.getCluster(),
+            indexTable,
+            scan.getHints(),
+            StringUtils.isEmpty(localIndexPath) ? null : buildForceIndex(localIndexPath),
+            scan.getFlashback(),
+            scan.getFlashbackOperator(),
+            null);
 
-                        return (RelNode) RelUtils.createTableLookup(primary, index, index.getTable());
-                    }))
-                .orElse(RelUtils.createLogicalView(scan, lockMode, engine)));
+        // Create index lookup scan node
+        final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
+        this.withIndexHint = true;
+        return RelUtils.createTableLookup(primary, index, index.getTable());
+    }
+
+    @NotNull
+    OSSTableScan buildOSSTableScan(RelOptSchema catalog, TableScan scan, String schemaName, Engine engine,
+                                   GsiMetaManager.GsiIndexMetaBean gsi) {
+        final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsi.indexName));
+        final LogicalTableScan columnarTableScan = LogicalTableScan.create(
+            scan.getCluster(),
+            indexTable,
+            scan.getHints(),
+            null,
+            scan.getFlashback(),
+            scan.getFlashbackOperator(),
+            null
+        );
+        this.withIndexHint = true;
+        this.existForceColumnar = true;
+        scan.setIndexNode(null);
+        return new OSSTableScan(columnarTableScan, this.lockMode);
+    }
+
+    /**
+     * Constructs a SQL node list containing a force index hint for the specified local index path.
+     *
+     * @param localIndexPath The path of the local index to be forced in the query
+     * @return A SQL node list with the force index hint
+     */
+    @NotNull
+    private SqlNodeList buildForceIndex(@NotNull String localIndexPath) {
+        return new SqlNodeList(
+            Collections.singletonList(
+                new SqlIndexHint(
+                    SqlCharStringLiteral.createCharString("FORCE INDEX", ZERO),
+                    null,
+                    SqlNodeList.of(new SqlIdentifier(localIndexPath, ZERO)),
+                    ZERO)
+            ),
+            ZERO
+        );
+    }
+
+    /**
+     * get force index info, or return null if not exists
+     *
+     * @param scan Original table scan
+     * @return force index info, null if there is no force index in table scan
+     */
+    protected SqlIdentifier getForceIndex(TableScan scan) {
+        if (!(scan.getIndexNode() instanceof SqlNodeList)) {
+            return null;
+        }
+
+        SqlNodeList indexNodes = (SqlNodeList) scan.getIndexNode();
+        if (indexNodes == null || indexNodes.size() == 0) {
+            return null;
+        }
+
+        // get first force index hint
+        SqlIndexHint sqlIndexHint = null;
+        for (SqlNode node : indexNodes) {
+            if (node instanceof SqlIndexHint && ((SqlIndexHint) node).forceIndex()) {
+                sqlIndexHint = (SqlIndexHint) node;
+                break;
+            }
+        }
+
+        if (sqlIndexHint == null) {
+            return null;
+        }
+
+        SqlNodeList indexList = sqlIndexHint.getIndexList();
+
+        if (indexList != null &&
+            indexList.size() > 0 &&
+            indexList.get(0) instanceof SqlIdentifier) {
+            return (SqlIdentifier) indexList.get(0);
+        }
+
+        return null;
     }
 
     @Override
@@ -687,6 +915,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         this.existsWindow |= replaceTableScanInFilterSubQueryFinder.isExistsWindow();
         this.existsNonPushDownFunc |= replaceTableScanInFilterSubQueryFinder.isExistsNonPushDownFunc();
         this.existsOSSTable |= replaceTableScanInFilterSubQueryFinder.existsOSSTable();
+        this.existForceColumnar |= replaceTableScanInFilterSubQueryFinder.isExistForceColumnar();
+        this.allTableHaveColumnar &= replaceTableScanInFilterSubQueryFinder.isAllTableHaveColumnar();
         return LogicalProject.create(logicalProject.getInput(0),
             rexNodeList,
             logicalProject.getRowType(),
@@ -756,6 +986,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         this.containComplexExpression |= replaceTableScanInFilterSubQueryFinder.isContainComplexExpression();
         this.existsNonPushDownFunc |= replaceTableScanInFilterSubQueryFinder.isExistsNonPushDownFunc();
         this.existsOSSTable |= replaceTableScanInFilterSubQueryFinder.existsOSSTable();
+        this.existForceColumnar |= replaceTableScanInFilterSubQueryFinder.isExistForceColumnar();
+        this.allTableHaveColumnar &= replaceTableScanInFilterSubQueryFinder.isAllTableHaveColumnar();
         this.existsWindow |= replaceTableScanInFilterSubQueryFinder.isExistsWindow();
         return filter.copy(logicalFilter.getTraitSet(), logicalFilter.getInput(0), rexNode).setHints(filter.getHints());
     }
@@ -763,7 +995,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     @Override
     public final RelNode visit(RelNode other) {
         if ((other instanceof LogicalTableModify)) {
-
+            this.allTableHaveColumnar = false;
             LogicalTableModify modify = (LogicalTableModify) super.visit(other);
             setShouldRemoveSchemaName(modify.getTable().getQualifiedName());
             TableModify.Operation operation = modify.getOperation();
@@ -812,6 +1044,13 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
                 if (modifyFkReferenced) {
                     logicalInsert.setModifyForeignKey(true);
+                }
+
+                if (logicalInsert.isSourceSelect() && !this.plannerContext.getExecutionContext().getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_INSERT_SELECT_WITH_FLASHBACK_PUSH_DOWN)) {
+                    if (RelUtils.containFlashback(logicalInsert.getInput())) {
+                        insertSelectWithFlashback = true;
+                    }
                 }
 
             } else { // UPDATE / DELETE
@@ -1141,6 +1380,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                         return LogicalAlterTableDropPartition.create(ddl);
                     } else if (sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableTruncatePartition) {
                         return LogicalAlterTableTruncatePartition.create(ddl);
+                    } else if (sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableOptimizePartition) {
+                        return LogicalAlterTableOptimizePartition.create(ddl);
                     } else if (sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableReorgPartition) {
                         return LogicalAlterTableReorgPartition.create(ddl);
                     } else if (sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableModifyPartitionValues) {
@@ -1229,6 +1470,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             } else if (ddl instanceof AlterTableGroupTruncatePartition) {
                 return LogicalAlterTableGroupTruncatePartition.create(ddl);
 
+            } else if (ddl instanceof AlterTableGroupOptimizePartition) {
+                return LogicalAlterTableGroupOptimizePartition.create(ddl);
+
             } else if (ddl instanceof AlterTableGroupReorgPartition) {
                 return LogicalAlterTableGroupReorgPartition.create(ddl);
 
@@ -1246,6 +1490,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
             } else if (ddl instanceof AlterTableRepartition) {
                 return LogicalAlterTableRepartition.create((AlterTableRepartition) ddl);
+
+            } else if (ddl instanceof AlterTableArchivePartition) {
+                return LogicalAlterTableArchivePartition.create((AlterTableArchivePartition) ddl);
 
             } else if (ddl instanceof AlterTableGroupSplitPartitionByHotValue) {
                 return LogicalAlterTableGroupSplitPartitionByHotValue.create(ddl);
@@ -1605,6 +1852,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return modifyForeignKey;
     }
 
+    public PlannerContext getPlannerContext() {
+        return plannerContext;
+    }
+
     public static class ReplaceTableScanInFilterSubQueryFinder extends RexShuttle {
 
         private final PlannerContext plannerContext;
@@ -1625,6 +1876,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         private LockMode lockMode = LockMode.UNDEF;
         private List<String> schemaNames;
         private boolean existsOSSTable;
+        private boolean existForceColumnar = false;
+        private boolean allTableHaveColumnar = true;
         private boolean existsWindow = false;
         private Long allTableSingleTgId = null;
 
@@ -1673,6 +1926,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             this.allTableBroadcast = visitor.allTableBroadcast;
             this.allTableSingleNoBroadcast = visitor.allTableSingleNoBroadcast;
             this.existsOSSTable = visitor.existsOSSTable;
+            this.existForceColumnar |= visitor.existForceColumnar;
+            this.allTableHaveColumnar &= visitor.allTableHaveColumnar;
             this.allTableSingleTgId = visitor.allTableSingleTgId;
             this.existsNonPushDownFunc |= visitor.existsNonPushDownFunc;
             this.existsWindow |= visitor.existsWindow;
@@ -1713,6 +1968,14 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
         public boolean existsOSSTable() {
             return existsOSSTable;
+        }
+
+        public boolean isExistForceColumnar() {
+            return existForceColumnar;
+        }
+
+        public boolean isAllTableHaveColumnar() {
+            return allTableHaveColumnar;
         }
 
         public boolean isAllTableBroadcast() {
@@ -1798,7 +2061,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             existsIntersect ||
             existsMinus || existsCheckSum || existsUnpushableAgg || existsNonPushDownFunc ||
             (modifyBroadcastTable && containUncertainValue) || existsCheckSumV2 ||
-            existsUnPushedDynamicValues;
+            existsUnPushedDynamicValues || insertSelectWithFlashback;
     }
 
     public boolean isContainOnlineModifyColumnTable() {
@@ -1820,6 +2083,15 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     public boolean existsOSSTable() {
         return existsOSSTable;
     }
+
+    public boolean isExistForceColumnar() {
+        return existForceColumnar;
+    }
+
+    public boolean isAllTableHaveColumnar() {
+        return allTableHaveColumnar;
+    }
+
     public boolean isExistsCheckSum() {
         return existsCheckSum;
     }

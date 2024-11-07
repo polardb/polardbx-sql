@@ -440,7 +440,7 @@ public class SpmTest extends BaseTestCase {
     /**
      * this test method should be the last one to be executed in this case
      */
-    @Test
+    @Ignore("this case will drop database and affect other test cases")
     public void testDropDB() throws Exception {
         try (Connection c = getPolardbxConnection(DB_NAME)) {
             // drop database

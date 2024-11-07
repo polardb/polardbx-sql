@@ -5,8 +5,8 @@
     <#list operator.types as type>
 
         <#assign className = "${operator.classHeader}${type.inputDataType1}Col${type.inputDataType2}ConstVectorizedExpression">
-        <@pp.changeOutputFile name="/com/alibaba/polardbx/executor/vectorized/comparison/${className}.java" />
-package com.alibaba.polardbx.executor.vectorized.math;
+        <@pp.changeOutputFile name="/com/alibaba/polardbx/executor/vectorized/compare/${className}.java" />
+package com.alibaba.polardbx.executor.vectorized.compare;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 

@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4InsertOverwrite;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
@@ -97,6 +98,9 @@ public class LogicalInsertOverwriteHandler extends LogicalCommonDdlHandler {
         truncateTableWithGsiPreparedData.setTmpIndexTableMap(tmpIndexTableMap);
         truncateTableWithGsiPreparedData.setLogicalCreateTable(logicalCreateTable);
         truncateTableWithGsiPreparedData.setTmpTableSuffix(tmpTableSuffix);
+        if (truncateTableWithGsiPreparedData.isHasColumnarIndex()) {
+            truncateTableWithGsiPreparedData.setVersionId(DdlUtils.generateVersionId(executionContext));
+        }
 
         return new InsertOverwriteJobFactory(truncateTableWithGsiPreparedData, executionContext.getOriginSql(),
             executionContext).create();

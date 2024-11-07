@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -30,7 +31,6 @@ import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.GsiBackfill;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
@@ -65,14 +65,19 @@ public class GsiBackfillHandler extends HandlerCommon {
         String baseTableName = backfill.getBaseTableName();
         List<String> indexNames = backfill.getIndexNames();
         List<String> columnsName = backfill.getColumns();
-        Map<String, String> virtualColumnMap = backfill.getVirtualColumnMap();
-        Map<String, String> backfillColumnMap = backfill.getBackfillColumnMap();
+        Map<String, String> srcCheckColumnMap = backfill.getSrcCheckColumnMap();
+        Map<String, String> dstCheckColumnMap = backfill.getDstCheckColumnMap();
         List<String> modifyStringColumns = backfill.getModifyStringColumns();
         boolean useChangeSet = backfill.isUseChangeSet();
-        boolean modifyColumn = backfill.isModifyColumn();
+        boolean onlineModifyColumn = backfill.isOnlineModifyColumn();
 
         BackfillExecutor backfillExecutor = new BackfillExecutor((List<RelNode> inputs,
                                                                   ExecutionContext executionContext1) -> {
+            // backfill batch insert 开启 group concurrent，在有前端流量时，会产生主键冲突，在 RR 下会产生 GAP 锁，容易发生死锁。
+            // 关闭改参数，还原为以前的 SEQUENTIAL，减少死锁
+            // 后续会将 backfill batch insert 事务改成 XA + RC 避免 gap 锁
+            executionContext1.getExtraCmds()
+                .put(ConnectionProperties.ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION, false);
             QueryConcurrencyPolicy queryConcurrencyPolicy = getQueryConcurrencyPolicy(executionContext1);
             if (Loader.canUseBackfillReturning(executionContext1, schemaName)) {
                 queryConcurrencyPolicy = QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
@@ -87,7 +92,7 @@ public class GsiBackfillHandler extends HandlerCommon {
         boolean canUseReturning = Loader.canUseBackfillReturning(executionContext, schemaName);
 
         // online modify column, does not clear sql_mode
-        if (modifyColumn) {
+        if (onlineModifyColumn) {
             executionContext = setChangeSetApplySqlMode(executionContext.copy());
             if (!useBinary && !omcForce) {
                 // select + insert, need encoding
@@ -119,13 +124,13 @@ public class GsiBackfillHandler extends HandlerCommon {
             assert 1 == indexNames.size();
             affectRows =
                 backfillExecutor.mirrorCopyGsiBackfill(schemaName, baseTableName, indexNames.get(0), useChangeSet,
-                    useBinary, executionContext);
+                    useBinary, onlineModifyColumn, executionContext);
         } else {
             // Normal creating GSI.
             assert 1 == indexNames.size();
             affectRows =
                 backfillExecutor.backfill(schemaName, baseTableName, indexNames.get(0), useBinary, useChangeSet,
-                    canUseReturning, modifyStringColumns, executionContext);
+                    canUseReturning, modifyStringColumns, onlineModifyColumn, executionContext);
         }
 
         // Check GSI immediately after creation by default.
@@ -140,28 +145,20 @@ public class GsiBackfillHandler extends HandlerCommon {
 
         // TODO(moyi) separate check to another task
         for (String indexName : indexNames) {
-            baseTableName = getPrimaryTableName(schemaName, baseTableName, backfill.isMirrorCopy(), executionContext);
             boolean isPrimaryBroadCast =
                 OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(baseTableName);
             boolean isGsiBroadCast = OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(indexName);
 
             CheckGsiTask checkTask =
                 new CheckGsiTask(schemaName, baseTableName, indexName, lockMode, lockMode, params, false, "",
-                    isPrimaryBroadCast, isGsiBroadCast, virtualColumnMap, backfillColumnMap);
-
+                    isPrimaryBroadCast, isGsiBroadCast, onlineModifyColumn);
+            if (onlineModifyColumn) {
+                checkTask.setSrcCheckColumnMap(srcCheckColumnMap);
+                checkTask.setDstCheckColumnMap(dstCheckColumnMap);
+            }
             checkTask.checkInBackfill(executionContext);
         }
 
         return new AffectRowCursor(affectRows);
-    }
-
-    public static String getPrimaryTableName(String schemaName, String baseTableName, boolean mirrorCopy,
-                                             ExecutionContext executionContext) {
-        String primaryTableName = baseTableName;
-        TableMeta sourceTableMeta = executionContext.getSchemaManager(schemaName).getTable(baseTableName);
-        if (mirrorCopy && sourceTableMeta.isGsi()) {
-            primaryTableName = sourceTableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
-        }
-        return primaryTableName;
     }
 }

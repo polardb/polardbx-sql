@@ -88,13 +88,6 @@ public interface CollationHandler {
     }
 
     /**
-     * match pattern '%xxx%'
-     */
-    default boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
-        return false;
-    }
-
-    /**
      * Hash code of utf8 string should obey all three criteria in the contract:
      * 1. internal consistency: the value of hashCode() may only change if a property that is in equals() changes
      * 2. equals consistency: objects that are equal to each other must return the same hashCode

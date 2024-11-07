@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.qatest.cdc;
 
-import org.springframework.jdbc.support.JdbcUtils;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -30,9 +30,9 @@ public class DataSourceUtil {
     private final static int QUERY_TIMEOUT = 7200;
 
     public static void closeQuery(ResultSet rs, Statement stmt, Connection conn) {
-        JdbcUtils.closeResultSet(rs);
-        JdbcUtils.closeStatement(stmt);
-        JdbcUtils.closeConnection(conn);
+        JdbcUtil.close(rs);
+        JdbcUtil.close(stmt);
+        JdbcUtil.closeConnection(conn);
     }
 
     public static ResultSet query(Connection conn, String sql, int fetchSize)

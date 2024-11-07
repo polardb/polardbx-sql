@@ -46,7 +46,6 @@ public class DirectPhysicalSqlPlanBuilder extends DdlPhyPlanBuilder {
             buildExistingTableRule(tableName);
             buildChangedTableTopology(schemaName, tableName);
         }
-
     }
 
     @Override

@@ -62,7 +62,8 @@ public class ColumnarExchange extends Exchange {
      */
     public ColumnarExchange(RelInput input) {
         super(input);
-        traitSet = traitSet.replace(DrdsConvention.INSTANCE).replace(input.getPartitionWise());
+        traitSet =
+            traitSet.replace(DrdsConvention.INSTANCE).replace(input.getPartitionWise()).replace(getDistribution());
         this.rowType = input.getRowType("rowType");
     }
 

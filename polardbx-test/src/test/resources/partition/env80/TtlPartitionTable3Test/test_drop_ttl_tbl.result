@@ -1,0 +1,31 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+create table test_drop_ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition( TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 2 ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a) partitions 2
+show create table test_drop_ttl_t1
+Table,Create Table
+test_drop_ttl_t1,CREATE TABLE `test_drop_ttl_t1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+create table test_drop_ttl_t1_bk like test_drop_ttl_t1 engine='columnar' archive_mode='ttl'
+## error_msg: $# Forbid to drop #$
+drop table test_drop_ttl_t1_bk
+Forbid to drop
+## error_msg: $# Forbid to drop #$
+drop table test_drop_ttl_t1
+Forbid to drop
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false
+drop table test_drop_ttl_t1_bk
+drop table test_drop_ttl_t1;

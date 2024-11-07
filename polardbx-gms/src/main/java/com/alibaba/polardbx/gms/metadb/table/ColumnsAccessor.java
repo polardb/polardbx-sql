@@ -76,6 +76,9 @@ public class ColumnsAccessor extends AbstractAccessor {
 
     private static final String WHERE_SCHEMA_TABLE_COLUMNS = WHERE_SCHEMA_TABLE + " and `column_name` in (%s)";
 
+    private static final String WHERE_SCHEMA_TABLE_COLUMNS_NOT_IN =
+        WHERE_SCHEMA_TABLE + " and `column_name` not in (%s)";
+
     private static final String WHERE_SCHEMA_TABLES_COLUMNS = WHERE_SCHEMA_TABLES + " and `column_name` in (%s)";
 
     private static final String WHERE_SCHEMA_TABLES_COLUMNS_STATUS = WHERE_SCHEMA_TABLES_COLUMNS + " and `status` = ?";
@@ -193,6 +196,8 @@ public class ColumnsAccessor extends AbstractAccessor {
     private static final String DELETE_COLUMNS_ALL_TABLES = DELETE_COLUMNS + WHERE_SCHEMA_TABLE;
 
     private static final String DELETE_COLUMNS_SPECIFIED = DELETE_COLUMNS + WHERE_SCHEMA_TABLE_COLUMNS;
+
+    private static final String DELETE_COLUMNS_NOT_SPECIFIED = DELETE_COLUMNS + WHERE_SCHEMA_TABLE_COLUMNS_NOT_IN;
 
     private static final String SELECT_MAX_COLUMN_POSITION =
         "select max(ordinal_position) from " + COLUMNS_TABLE + WHERE_SCHEMA_TABLE;
@@ -558,6 +563,11 @@ public class ColumnsAccessor extends AbstractAccessor {
     public int delete(String tableSchema, String tableName, List<String> columnNames) {
         Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, columnNames);
         return delete(String.format(DELETE_COLUMNS_SPECIFIED, concatParams(columnNames)), COLUMNS_TABLE, params);
+    }
+
+    public int deleteNotIn(String tableSchema, String tableName, List<String> columnNames) {
+        Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, columnNames);
+        return delete(String.format(DELETE_COLUMNS_NOT_SPECIFIED, concatParams(columnNames)), COLUMNS_TABLE, params);
     }
 
     public long queryMaxColumnPosition(String tableSchema, String tableName) {

@@ -24,9 +24,7 @@ public enum ScanPolicy {
 
     FILTER_PRIORITY(2),
 
-    MERGE_IO(3),
-
-    DELETED_SCAN(4);
+    MERGE_IO(3);
 
     private final int policyId;
 
@@ -40,8 +38,6 @@ public enum ScanPolicy {
 
     public static ScanPolicy of(final int policyId) {
         switch (policyId) {
-        case 4:
-            return DELETED_SCAN;
         case 2:
             return FILTER_PRIORITY;
         case 3:

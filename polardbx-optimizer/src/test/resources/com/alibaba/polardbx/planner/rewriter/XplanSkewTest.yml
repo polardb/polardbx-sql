@@ -10,7 +10,7 @@ SQL:
   - sql: |
       /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_int_32=1;
     plan: |
-      null
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_int_32_c_varchar_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
   - sql: |
       /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_varchar='1';
     plan: |
@@ -18,7 +18,7 @@ SQL:
   - sql: |
       /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_int_32=1 and c_varchar='1';
     plan: |
-      null
+      {"plan": {"plan_type": "filter","filter": {"sub_read_plan": {"plan_type": "table_project","table_project": {"sub_read_plan": {"plan_type": "get","get_plan": {"table_info": {"name": {"type": "v_placeholder","v_position": 0},"schema_name": {"type": "v_placeholder","v_position": 1}},"index_info": {"name": {"type": "v_string","v_string": {"value": "c_int_32_c_varchar_idx","collation": 45}}},"keys": [{"keys": [{"field": {"type": "v_string","v_string": {"value": "c_int_32","collation": 45}},"value": {"type": "v_sint","v_signed_int": 1}},{"field": {"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},"value": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}]}},"fields": [{"type": "v_string","v_string": {"value": "c_int_32_un","collation": 45}},{"type": "v_string","v_string": {"value": "c_char","collation": 45}},{"type": "v_string","v_string": {"value": "id","collation": 45}},{"type": "v_string","v_string": {"value": "c_datetime","collation": 45}},{"type": "v_string","v_string": {"value": "c_varchar","collation": 45}},{"type": "v_string","v_string": {"value": "c_int_32","collation": 45}}]}},"expr": {"type": "operator","operator": {"name": "&&","param": [{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 5},{"type": "literal","literal": {"type": "v_sint","v_signed_int": 1}}]}},{"type": "operator","operator": {"name": "==","param": [{"type": "ref","ref_id": 4},{"type": "literal","literal": {"type": "v_string","v_string": {"value": "1","collation": 45}}}]}}]}}}},"parameters": [{"type": "v_string","v_string": {"value": "xplan","collation": 45}},{"type": "v_string","v_string": {"value": "optest","collation": 45}}]}
   - sql: |
       /*+TDDL:cmd_extra(merge_union=false)*/select * from xplan where c_datetime='2023-01-01';
     plan: |
@@ -172,6 +172,8 @@ STATISTICS:
   xplan.id.composite_cardinality:
     200726
 CONFIG:
+  ENABLE_AUTO_FORCE_INDEX:
+    true
   ENABLE_BKA_JOIN:
     true
   MPP_METRIC_LEVEL:

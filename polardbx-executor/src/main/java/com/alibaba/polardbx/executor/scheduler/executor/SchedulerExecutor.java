@@ -16,17 +16,18 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor;
 
-import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticHllScheduledJob;
-import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableScheduledJob;
-import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.scheduler.executor.spm.SPMBaseLineSyncScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticHllScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticInfoSchemaTablesScheduleJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticRowCountCollectionScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
 import com.alibaba.polardbx.executor.scheduler.executor.trx.CleanLogTableScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.trx.GenerateColumnarSnapshotScheduledJob;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
@@ -34,6 +35,7 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public abstract class SchedulerExecutor {
 
@@ -45,6 +47,11 @@ public abstract class SchedulerExecutor {
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.LOCAL_PARTITION.name())) {
             return new LocalPartitionScheduledJob(job);
         }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.TTL_JOB.name())) {
+            return new TtlArchivedDataScheduledJob(job);
+        }
+
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(), ScheduledJobExecutorType.PURGE_OSS_FILE.name())) {
             return new PurgeOssFileScheduledJob(job);
         }
@@ -93,6 +100,26 @@ public abstract class SchedulerExecutor {
         if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
             ScheduledJobExecutorType.CLEAN_LOG_TABLE_V2.name())) {
             return new CleanLogTableScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.CHECK_CCI.name())) {
+            return new CheckCciScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.GENERATE_COLUMNAR_SNAPSHOT.name())) {
+            return new GenerateColumnarSnapshotScheduledJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.STATISTIC_INFO_SCHEMA_TABLES.name())) {
+            return new StatisticInfoSchemaTablesScheduleJob(job);
+        }
+
+        if (StringUtils.equalsIgnoreCase(job.getExecutorType(),
+            ScheduledJobExecutorType.LOG_SYSTEM_METRICS.name())) {
+            return new LogSystemMetricsScheduledJob(job);
         }
         return null;
     }

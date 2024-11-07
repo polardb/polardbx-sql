@@ -20,8 +20,8 @@ import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.executor.mpp.execution.QueryState;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
+import com.alibaba.polardbx.gms.node.MppScope;
 import com.alibaba.polardbx.gms.node.Node;
-import com.alibaba.polardbx.gms.node.NodeState;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -102,7 +102,7 @@ public class ClusterStatsResource {
     @Produces(MediaType.APPLICATION_JSON)
     public ClusterStats getClusterStats() {
         long activeNodes = 0;
-        for (Node node : nodeManager.getNodes(NodeState.ACTIVE, true)) {
+        for (Node node : nodeManager.getAllNodes().getAllWorkers(MppScope.ALL)) {
             if (node.isWorker()) {
                 activeNodes++;
             }
@@ -126,27 +126,16 @@ public class ClusterStatsResource {
 
         @JsonCreator
         public ClusterStats(
-            @JsonProperty("totalQueries")
-            long totalQueries, //总的query数目
-            @JsonProperty("runningQueries")
-            long runningQueries, //运行query数目
-            @JsonProperty("blockedQueries")
-            long blockedQueries, //blocked query数目
-            @JsonProperty("queuedQueries")
-            long queuedQueries,
-            @JsonProperty("activeWorkers")
-            long activeWorkers,
-            @JsonProperty("runningDrivers")
-            long runningDrivers,
-            @JsonProperty("reservedMemory")
-            double reservedMemory,
-            @JsonProperty("rowInputRate")
-            double rowInputRate,
-            @JsonProperty("byteInputRate")
-            double byteInputRate,
-            @JsonProperty("cpuTimeRate")
-            double cpuTimeRate
-        ) {
+            @JsonProperty("totalQueries") long totalQueries, //总的query数目
+            @JsonProperty("runningQueries") long runningQueries, //运行query数目
+            @JsonProperty("blockedQueries") long blockedQueries, //blocked query数目
+            @JsonProperty("queuedQueries") long queuedQueries,
+            @JsonProperty("activeWorkers") long activeWorkers,
+            @JsonProperty("runningDrivers") long runningDrivers,
+            @JsonProperty("reservedMemory") double reservedMemory,
+            @JsonProperty("rowInputRate") double rowInputRate,
+            @JsonProperty("byteInputRate") double byteInputRate,
+            @JsonProperty("cpuTimeRate") double cpuTimeRate) {
             this.totalQueries = totalQueries;
             this.runningQueries = runningQueries;
             this.blockedQueries = blockedQueries;

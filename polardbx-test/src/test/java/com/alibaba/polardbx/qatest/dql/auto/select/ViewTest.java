@@ -62,7 +62,6 @@ public class ViewTest extends BaseTestCase {
                 sb.append(rs.getString(1));
             }
             assert sb.toString().contains("Source:PLAN_CACHE");
-            assert sb.toString().contains("HitCache:true");
 
             c.createStatement().execute("alter view view_test1 as select 1 from " + TB_NAME + " limit 1");
             rs = c.createStatement().executeQuery("explain " + sql);

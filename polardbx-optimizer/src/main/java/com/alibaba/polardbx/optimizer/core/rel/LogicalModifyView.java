@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import lombok.Getter;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableModify;
@@ -36,14 +37,21 @@ import java.util.Map;
  * @author lingce.ldm 2018-01-31 13:48
  */
 public class LogicalModifyView extends LogicalView {
+    @Getter
+    private final LogicalModify.ModifyTopNInfo modifyTopNInfo;
 
     public LogicalModifyView(LogicalView logicalView) {
+        this(logicalView, null);
+    }
+
+    public LogicalModifyView(LogicalView logicalView, LogicalModify.ModifyTopNInfo modifyTopNInfo) {
         super(logicalView);
         this.tableNames = logicalView.getTableNames();
         this.pushDownOpt = logicalView.getPushDownOpt().copy(this, logicalView.getPushedRelNode());
         this.finishShard = logicalView.getFinishShard();
         this.hints = logicalView.getHints();
         this.hintContext = logicalView.getHintContext();
+        this.modifyTopNInfo = modifyTopNInfo;
     }
 
     @Override
@@ -99,11 +107,15 @@ public class LogicalModifyView extends LogicalView {
         return getInput(executionContext);
     }
 
+    public List<RelNode> getInput(SqlNode sqlTemplate, ExecutionContext executionContext) {
+        return getInput(sqlTemplate, false, executionContext);
+    }
+
     /**
      * getInput with sqlTemplate. Why not cache sqlTemplate: LogicalModifyView
      * is put into planCache, so sqlTemplate should be recreated.
      */
-    public List<RelNode> getInput(SqlNode sqlTemplate, ExecutionContext executionContext) {
+    public List<RelNode> getInput(SqlNode sqlTemplate, boolean noMergeGroupNode, ExecutionContext executionContext) {
         List<Map<Integer, ParameterContext>> params;
         if (executionContext.getParams() == null) {
             params = Collections.singletonList(null);
@@ -135,7 +147,7 @@ public class LogicalModifyView extends LogicalView {
                 pruningMap);
             relNodes.addAll(phyTableModifyBuilder.build(executionContext));
         }
-        if (relNodes.size() > 1 && relNodes.get(0) instanceof PhyTableOperation) {
+        if (relNodes.size() > 1 && relNodes.get(0) instanceof PhyTableOperation && !noMergeGroupNode) {
             return mergeGroupNode(relNodes, executionContext);
         } else {
             return relNodes;
@@ -151,13 +163,14 @@ public class LogicalModifyView extends LogicalView {
         return this.pushDownOpt.getTableModify();
     }
 
-    public boolean hasHint() {
-        return targetTablesHintCache != null && !targetTablesHintCache.isEmpty();
+    public boolean optimizeModifyTopNByReturning() {
+        return null != modifyTopNInfo && modifyTopNInfo.isOptimizeByReturning();
     }
 
     @Override
     public LogicalModifyView copy(RelTraitSet traitSet) {
-        LogicalModifyView logicalModifyView = new LogicalModifyView(this);
+        LogicalModifyView logicalModifyView =
+            new LogicalModifyView(this, this.modifyTopNInfo);
         logicalModifyView.traitSet = traitSet;
         logicalModifyView.pushDownOpt = pushDownOpt.copy(this, this.getPushedRelNode());
         return logicalModifyView;

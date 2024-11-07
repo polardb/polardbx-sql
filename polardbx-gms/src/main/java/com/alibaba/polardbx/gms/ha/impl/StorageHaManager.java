@@ -144,7 +144,7 @@ public class StorageHaManager extends AbstractLifecycle {
 
     protected HaSwitcher metaDbHaSwitcher;
     protected final static int MAX_QUEUE_LEN = 10000;
-    protected volatile int checkStorageTaskPeriod = 5000; // 5s
+    protected volatile int checkStorageTaskPeriod = 2000; // 5s
 
     protected int refreshStorageInfoOfMetaDbTaskIntervalDelay = checkStorageTaskPeriod * 3; // 15s
     protected int refreshStorageInfoOfMetaDbTaskInterval = checkStorageTaskPeriod * 12; // 60s
@@ -209,7 +209,16 @@ public class StorageHaManager extends AbstractLifecycle {
 
     private boolean allowFollowRead;
 
+    public interface StorageInfoConfigSubListener extends ConfigListener {
+        String getSubListenerName();
+    }
+
+    protected Map<String, StorageInfoConfigSubListener> storageInfoSubListenerMap = new ConcurrentHashMap<>();
+
     protected static class StorageInfoConfigListener implements ConfigListener {
+
+        public StorageInfoConfigListener() {
+        }
 
         @Override
         public void onHandleConfig(String dataId, long newOpVersion) {
@@ -220,7 +229,54 @@ public class StorageHaManager extends AbstractLifecycle {
             if (ConfigDataMode.isMasterMode()) {
                 StorageHaManager.getInstance().updateGroupConfigVersion();
             }
+
+            try {
+                Map<String, StorageInfoConfigSubListener> storageInfoSubListenerMap =
+                    StorageHaManager.getInstance().getStorageInfoSubListenerMap();
+                for (Map.Entry<String, StorageInfoConfigSubListener> subListenerItem : storageInfoSubListenerMap.entrySet()) {
+                    String subListenerName = subListenerItem.getKey();
+                    StorageInfoConfigSubListener subListenerVal = subListenerItem.getValue();
+                    try {
+                        subListenerVal.onHandleConfig(dataId, newOpVersion);
+                    } catch (Throwable ex) {
+                        logger.warn(String.format("Failed to handle subListener[%s], err is %s", subListenerName,
+                            ex.getMessage()), ex);
+                    }
+                }
+            } catch (Throwable ex) {
+                logger.warn(ex);
+            }
         }
+    }
+
+    protected Map<String, StorageInfoConfigSubListener> getStorageInfoSubListenerMap() {
+        return storageInfoSubListenerMap;
+    }
+
+    /**
+     * Register a sub-listener
+     * <pre>
+     * The list of sub-listeners which is called by StorageInfoConfigListener,
+     * sub-listeners is used for those non-gms module to handle the change of rw-dn-list.
+     * the sub-listener should just to refresh some in-memory meta data.
+     * </pre>
+     */
+    public void registerStorageInfoSubListener(StorageInfoConfigSubListener subListener) {
+        if (subListener == null) {
+            return;
+        }
+        String subListenerName = subListener.getSubListenerName();
+        storageInfoSubListenerMap.putIfAbsent(subListenerName, subListener);
+    }
+
+    /**
+     * Unegister a sub-listener
+     */
+    public void unregisterStorageInfoSubListener(String subListenerName) {
+        if (StringUtils.isEmpty(subListenerName)) {
+            return;
+        }
+        storageInfoSubListenerMap.remove(subListenerName);
     }
 
     public static StorageHaManager getInstance() {

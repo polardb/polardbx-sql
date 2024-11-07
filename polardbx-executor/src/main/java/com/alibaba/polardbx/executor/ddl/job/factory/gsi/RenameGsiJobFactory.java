@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcGsiDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
@@ -48,20 +49,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
+
 public class RenameGsiJobFactory extends DdlJobFactory {
 
     private final String schemaName;
     private final String gsiName;
     private final String newGsiName;
     private final ExecutionContext executionContext;
-    private final RenameTablePreparedData preparedData;
 
     public RenameGsiJobFactory(RenameTablePreparedData preparedData, ExecutionContext executionContext) {
         this.schemaName = preparedData.getSchemaName();
         this.gsiName = preparedData.getTableName();
         this.newGsiName = preparedData.getNewTableName();
         this.executionContext = executionContext;
-        this.preparedData = preparedData;
     }
 
     @Override
@@ -69,6 +71,7 @@ public class RenameGsiJobFactory extends DdlJobFactory {
         GsiValidator.validateGsi(schemaName, gsiName);
         GsiValidator.validateCreateOnGsi(schemaName, newGsiName, executionContext);
         GsiValidator.validateAllowRenameOnTable(schemaName, gsiName, executionContext);
+
     }
 
     @Override
@@ -91,16 +94,24 @@ public class RenameGsiJobFactory extends DdlJobFactory {
         TableMeta primaryTableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
         if (!primaryTableMeta.isAutoPartition()) {
-            //mark gsi task
+            // mark gsi task
             PhysicalPlanData physicalPlanData = new PhysicalPlanData();
             physicalPlanData.setKind(SqlKind.RENAME_TABLE);
-            physicalPlanData.setLogicalTableName(newGsiName);
+            physicalPlanData.setLogicalTableName(primaryTableName);
             physicalPlanData.setSchemaName(schemaName);
             CdcGsiDdlMarkTask cdcDdlMarkTask =
                 new CdcGsiDdlMarkTask(schemaName, physicalPlanData, primaryTableName, executionContext.getOriginSql());
             taskList.add(cdcDdlMarkTask);
+        } else {
+            // mark local index task
+            PhysicalPlanData physicalPlanData = new PhysicalPlanData();
+            physicalPlanData.setKind(SqlKind.ALTER_TABLE);
+            physicalPlanData.setLogicalTableName(primaryTableName);
+            physicalPlanData.setSchemaName(schemaName);
+            CdcDdlMarkTask cdcDdlMarkTask =
+                new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
+            taskList.add(cdcDdlMarkTask);
         }
-
         taskList.add(syncTask);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
@@ -149,18 +160,23 @@ public class RenameGsiJobFactory extends DdlJobFactory {
         SQLAlterTableStatement stmt = (SQLAlterTableStatement) statementList.get(0);
 
         for (SQLAlterTableItem item : stmt.getItems()) {
-            ((SQLAlterTableRenameIndex) item).setName(new SQLIdentifierExpr(preparedData.getOrgIndexName()));
-            ((SQLAlterTableRenameIndex) item).setTo(new SQLIdentifierExpr(preparedData.getNewIndexName()));
+            ((SQLAlterTableRenameIndex) item).setName(
+                new SQLIdentifierExpr(surroundWithBacktick(preparedData.getOrgIndexName())));
+            ((SQLAlterTableRenameIndex) item).setTo(
+                new SQLIdentifierExpr(surroundWithBacktick(preparedData.getNewIndexName())));
         }
         String newRenameIndex = stmt.toString();
 
         for (SQLAlterTableItem item : stmt.getItems()) {
-            ((SQLAlterTableRenameIndex) item).setName(new SQLIdentifierExpr(preparedData.getNewIndexName()));
-            ((SQLAlterTableRenameIndex) item).setTo(new SQLIdentifierExpr(preparedData.getOrgIndexName()));
+            ((SQLAlterTableRenameIndex) item).setName(
+                new SQLIdentifierExpr(surroundWithBacktick(preparedData.getNewIndexName())));
+            ((SQLAlterTableRenameIndex) item).setTo(
+                new SQLIdentifierExpr(surroundWithBacktick(preparedData.getOrgIndexName())));
         }
         String rollbackRenameIndex = stmt.toString();
         SubJobTask ddlTask = new SubJobTask(schemaName, newRenameIndex, rollbackRenameIndex);
         ddlTask.setParentAcquireResource(true);
+        ddlTask.setSkipCdcMarkTask(true);
         return ddlTask;
     }
 }

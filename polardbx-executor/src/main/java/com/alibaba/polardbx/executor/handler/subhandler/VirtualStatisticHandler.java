@@ -124,7 +124,8 @@ public class VirtualStatisticHandler extends BaseVirtualViewSubClassHandler {
                 for (IndexMeta indexMeta : tableMeta.getIndexes()) {
                     Set<String> cols = indexMeta.getKeyColumns().stream().map(ColumnMeta::getOriginColumnName)
                         .collect(Collectors.toSet());
-                    if (cols.size() == 1) {
+                    //80 函数索引没有列名
+                    if (cols.size() <= 1) {
                         continue;
                     }
                     String columnsName = StatisticUtils.buildColumnsName(cols);

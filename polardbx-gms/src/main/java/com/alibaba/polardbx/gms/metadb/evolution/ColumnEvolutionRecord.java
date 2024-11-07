@@ -22,11 +22,11 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.util.FileStorageUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import org.eclipse.jetty.util.StringUtil;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -120,7 +120,7 @@ public class ColumnEvolutionRecord implements SystemTableRecord {
 
     public static ColumnsRecord deserializeFromJson(String json) {
         try {
-            if (StringUtil.isEmpty(json)) {
+            if (StringUtils.isEmpty(json)) {
                 return null;
             }
             ColumnsRecord columnsRecord = new ColumnsRecord();

@@ -46,10 +46,6 @@ import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.google.common.collect.ImmutableList;
 import org.apache.commons.collections.CollectionUtils;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -59,6 +55,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
 
@@ -151,6 +149,14 @@ public class OSSTaskUtils {
             .getPartitionInfo().getPhysicalPartitionTopology(ImmutableList.of())
             .values().forEach(partitionInfos::addAll);
         return partitionInfos;
+    }
+
+    public static List<PhysicalPartitionInfo> getFlattenedPartitionInfo(String schema, String table,
+                                                                        List<String> partNames) {
+        Set<String> partNamesSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        partNamesSet.addAll(partNames);
+        return getFlattenedPartitionInfo(schema, table).stream().filter(e -> partNamesSet.contains(e.getPartName()))
+            .collect(Collectors.toList());
     }
 
     public static List<PhysicalPartitionInfo> getOrderedPartitionInfo(List<PhysicalPartitionInfo> partitionInfos,
@@ -271,18 +277,5 @@ public class OSSTaskUtils {
         }
         tasks.add(tableSyncTask);
         return tasks;
-    }
-
-    public static long getTsFromTimestampWithTimeZone(String timestamp, TimeZone timeZone) {
-        String utcTimeStampString =
-            TimestampUtils.convertBetweenTimeZones(timestamp, timeZone, TimeZone.getTimeZone("UTC"), 0);
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        LocalDateTime localDateTime = LocalDateTime.parse(utcTimeStampString, formatter);
-        Instant instant = localDateTime.toInstant(ZoneOffset.UTC);
-        if (instant.toEpochMilli() < 0) {
-            throw new IllegalArgumentException("timestamp should greater than 1970-01-01 00:00:01");
-        }
-        long ts = instant.toEpochMilli() << BITS_LOGICAL_TIME;
-        return ts;
     }
 }

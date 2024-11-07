@@ -2,12 +2,14 @@ package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+@NotThreadSafe
 public class AlterTableRollbackTest extends DDLBaseNewDBTestCase {
 
     private String tableName = "wumu_test";

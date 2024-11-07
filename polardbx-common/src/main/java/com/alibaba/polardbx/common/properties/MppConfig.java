@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_MPP_UI;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_ALLOCATOR_SIZE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_AP_PRIORITY;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.MPP_CLUSTER_NAME;
@@ -274,11 +275,13 @@ public class MppConfig {
             case MPP_CLUSTER_NAME:
                 defaultCluster = parseValue(value, String.class, DEFAULT_MPP_CLUSTER_NAME);
                 break;
-
             case MPP_SPILL_PATHS:
                 List<String> spillPathsSplit = ImmutableList.copyOf(
                     Splitter.on(",").trimResults().omitEmptyStrings().split(value));
                 spillPaths = spillPathsSplit.stream().map(path -> Paths.get(path)).collect(Collectors.toList());
+                break;
+            case ENABLE_MPP_UI:
+                this.enableMppUI = parseValue(value, Boolean.class, DEFAULT_ENABLE_MPP_UI);
                 break;
             default:
                 logger.warn("unknown mpp config:" + key + ",value=" + value);
@@ -286,7 +289,18 @@ public class MppConfig {
         }
     }
 
+    //-------------------------------------------- web UI ----------------------------------------------------
+    private static final boolean DEFAULT_ENABLE_MPP_UI = true;
+    /**
+     * Requires restart
+     */
+    private boolean enableMppUI = DEFAULT_ENABLE_MPP_UI;
 
+    public boolean isEnableMppUI() {
+        return enableMppUI;
+    }
+
+    //-------------------------------------------- query thread pool------------------------------------------
 
     private static final int DEFAULT_MPP_QUERY_MANAGER_THREAD_POOL_SIZE = 1;
     private int queryManagerThreadPoolSize = DEFAULT_MPP_QUERY_MANAGER_THREAD_POOL_SIZE;

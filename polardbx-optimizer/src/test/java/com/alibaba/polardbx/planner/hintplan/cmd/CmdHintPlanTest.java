@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.planner.hintplan.cmd;
 
 import com.alibaba.polardbx.planner.common.EclipseParameterized;
-import com.alibaba.polardbx.planner.hintplan.HintPlanTestCommon;
+import com.alibaba.polardbx.planner.hintplan.index.ParameterizedHintTestCommon;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized.Parameters;
 
@@ -27,7 +27,7 @@ import java.util.List;
  * @author chenmo.cm
  */
 @RunWith(EclipseParameterized.class)
-public class CmdHintPlanTest extends HintPlanTestCommon {
+public class CmdHintPlanTest extends ParameterizedHintTestCommon {
     public CmdHintPlanTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);
     }

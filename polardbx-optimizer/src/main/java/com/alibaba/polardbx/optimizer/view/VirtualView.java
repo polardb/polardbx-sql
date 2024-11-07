@@ -113,6 +113,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaModuleEvent(cluster, traitSet);
         case MODULE:
             return new InformationSchemaModule(cluster, traitSet);
+        case METRIC:
+            return new InformationSchemaMetric(cluster, traitSet);
         case VIRTUAL_STATISTIC:
             return new VirtualStatistic(cluster, traitSet);
         case INFORMATION_SCHEMA_TABLES:
@@ -179,6 +181,10 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaPartitions(cluster, traitSet);
         case PARTITIONS_META:
             return new InformationSchemaPartitionsMeta(cluster, traitSet);
+        case TTL_INFO:
+            return new InformationSchemaTtlInfo(cluster, traitSet);
+        case TTL_SCHEDULE:
+            return new InformationSchemaTtlSchedule(cluster, traitSet);
         case LOCAL_PARTITIONS:
             return new InformationSchemaLocalPartitions(cluster, traitSet);
         case LOCAL_PARTITIONS_SCHEDULE:
@@ -295,7 +301,6 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaTableGroup(cluster, traitSet);
         case FULL_TABLE_GROUP:
             return new InformationSchemaFullTableGroup(cluster, traitSet);
-
         case TABLE_DETAIL:
             return new InformationSchemaTableDetail(cluster, traitSet);
         case LOCALITY_INFO:
@@ -366,6 +371,8 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaTableJoinClosure(cluster, traitSet);
         case POLARDBX_TRX:
             return new InformationSchemaPolardbxTrx(cluster, traitSet);
+        case DEADLOCKS:
+            return new InformationSchemaDeadlocks(cluster, traitSet);
         case STORAGE_PROPERTIES:
             return new InformationSchemaStorageProperties(cluster, traitSet);
         case PREPARED_TRX_BRANCH:
@@ -374,6 +381,12 @@ public class VirtualView extends AbstractRelNode {
             return new InformationSchemaReplicaStat(cluster, traitSet);
         case SHOW_HELP:
             return new InformationSchemaShowHelp(cluster, traitSet);
+        case RPL_SYNC_POINT:
+            return new InformationSchemaRplSyncPoint(cluster, traitSet);
+        case DDL_SCHEDULER:
+            return new InformationSchemaDdlScheduler(cluster, traitSet);
+        case DDL_ENGINE_RESOURCE:
+            return new InformationSchemaDdlEngineResources(cluster, traitSet);
         default:
             throw new AssertionError();
         }

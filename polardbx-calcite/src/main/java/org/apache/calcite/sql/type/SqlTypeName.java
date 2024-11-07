@@ -18,6 +18,7 @@ package org.apache.calcite.sql.type;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -69,9 +70,9 @@ public enum SqlTypeName {
     YEAR(PrecScale.NO_NO, false, Types.INTEGER, SqlTypeFamily.NUMERIC),
     DECIMAL(PrecScale.NO_NO | PrecScale.YES_NO | PrecScale.YES_YES, false, Types.DECIMAL,
         SqlTypeFamily.NUMERIC),
-    FLOAT(PrecScale.NO_NO, false, Types.FLOAT, SqlTypeFamily.NUMERIC),
+    FLOAT(PrecScale.NO_NO | PrecScale.YES_NO | PrecScale.YES_YES, false, Types.FLOAT, SqlTypeFamily.NUMERIC),
     REAL(PrecScale.NO_NO, false, Types.REAL, SqlTypeFamily.NUMERIC),
-    DOUBLE(PrecScale.NO_NO, false, Types.DOUBLE, SqlTypeFamily.NUMERIC),
+    DOUBLE(PrecScale.NO_NO | PrecScale.YES_NO | PrecScale.YES_YES, false, Types.DOUBLE, SqlTypeFamily.NUMERIC),
 
     UNSIGNED(PrecScale.NO_NO, false, Types.BIGINT, SqlTypeFamily.NUMERIC),
     SIGNED(PrecScale.NO_NO, false, Types.BIGINT, SqlTypeFamily.NUMERIC),
@@ -416,6 +417,9 @@ public enum SqlTypeName {
     }
 
     public boolean allowsPrec() {
+        if (SqlTypeName.APPROX_TYPES.contains(this) && !DynamicConfig.getInstance().isEnableFloatingTypePrecision()) {
+            return false;
+        }
         return allowsPrecScale(true, true) || allowsPrecScale(true, false);
     }
 

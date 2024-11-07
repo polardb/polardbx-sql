@@ -109,7 +109,6 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
             .maximumSize(MAXIMUM_IN_FLIGHT_ENTRIES)
             .removalListener((RemovalListener<Long, BlockCache>) (longValue, blockCache, removalCause) -> {
                 // decrement memory size when invalidate block cache.
-                size.getAndAdd(-(LONG_OBJECT_IN_BYTES + blockCache.memorySize()));
             })
             .expireAfterWrite(IN_FLIGHT_CACHE_TTL_IN_SECOND, TimeUnit.SECONDS)
             .build(new CacheLoader<Long, BlockCache>() {
@@ -118,7 +117,6 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
 
                     // calculate memory size of block cache and cache key
                     BlockCache result = new BlockCache();
-                    size.getAndAdd(result.memorySize() + LONG_OBJECT_IN_BYTES);
                     return result;
                 }
             });
@@ -451,7 +449,6 @@ public class SimpleBlockCacheManager implements BlockCacheManager<Block> {
 
                 // Try to put block into block cache. It will strictly check the alignment and validity of block.
                 boolean completed = inFlight.put(block, totalRows, position, rows, chunkLimit);
-                size.addAndGet(block.getElementUsedBytes());
 
                 // move the block-cache from in-flight cache into valid cache.
                 if (completed) {

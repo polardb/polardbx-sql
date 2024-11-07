@@ -239,7 +239,7 @@ public class EQVarcharColCharConstVectorizedExpression extends AbstractVectorize
                                  long[] output, int batchSize, boolean isSelectionInUse, int[] sel) {
         int operandDictIdx;
         for (operandDictIdx = 0; operandDictIdx < sliceBlock.getDictionary().size(); operandDictIdx++) {
-            if (operand.compareTo(sliceBlock.getDictionary().getValue(operandDictIdx)) == 0) {
+            if (operand.equals(sliceBlock.getDictionary().getValue(operandDictIdx))) {
                 break;
             }
         }

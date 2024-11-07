@@ -118,7 +118,7 @@ public class SplitPartitionStats {
         float cmdExtraSamplePercentage = sampleRate * 100;
         String hint = "";
         if (withHint) {
-            hint = String.format("/*+sample_percentage(%f)*/ ", cmdExtraSamplePercentage);
+            hint = String.format("/*+sample_percentage(%s)*/ ", GeneralUtil.formatSampleRate(cmdExtraSamplePercentage));
         }
         List<String> columnMetaNames =
             columnMetaList.stream().map(o -> "`" + o.getName() + "`").collect(Collectors.toList());

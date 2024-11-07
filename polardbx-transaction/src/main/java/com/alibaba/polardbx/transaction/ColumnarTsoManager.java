@@ -143,4 +143,15 @@ public class ColumnarTsoManager extends AbstractLifecycle {
         }
 
     }
+
+    @Override
+    protected void doDestroy() {
+        if (columnarTsoUpdateTaskExecutor != null) {
+            columnarTsoUpdateTaskExecutor.shutdown();
+        }
+
+        if (columnarTsoPurgeTaskExecutor != null) {
+            columnarTsoPurgeTaskExecutor.shutdown();
+        }
+    }
 }

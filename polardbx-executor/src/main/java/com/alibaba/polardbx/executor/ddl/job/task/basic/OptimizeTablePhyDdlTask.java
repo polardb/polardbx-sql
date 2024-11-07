@@ -39,12 +39,34 @@ public class OptimizeTablePhyDdlTask extends BasePhyDdlTask {
         onExceptionTryRollback();
     }
 
-    public List<OptimizeTablePhyDdlTask> partition(int physicalTableCount) {
+    public List<OptimizeTablePhyDdlTask> partition(int parallelism) {
 
-        List<Map<String, List<List<String>>>> topos = this.physicalPlanData.partitionTableTopology(physicalTableCount);
+        /**
+         * <pre>
+         *     Convert to data_struct from
+         *          Map{GrpKey,List<log_name_list_with_same_phy_index}
+         *              grp0->[[t1_0,t2_0,t3_0],[t1_2,t2_2,t3_2],...]
+         *              grp1->[[t1_1,t2_1,t3_1],[t1_3,t2_2,t3_3],...]
+         *     to
+         *          SubMap1{grpKey, List[log_name_list_with_same_phy_index]}
+         *              grp0->[[t1_0,t2_0,t3_0],...]
+         *              grp1->[[t1_1,t2_1,t3_1],...]
+         *          SubMap2{grpKey, List[log_name_list_with_same_phy_index]}
+         *              grp0->[[t1_2,t2_2,t3_2],...]
+         *              grp1->[[t1_3,t2_2,t3_3],...]
+         *     by
+         *      the parallelism
+         *
+         * </pre>
+         */
+        List<Map<String, List<List<String>>>> topos = this.physicalPlanData.partitionTableTopology(parallelism);
         List<List<Map<Integer, ParameterContext>>> params =
-            this.physicalPlanData.partitionParamsList(physicalTableCount);
+            this.physicalPlanData.partitionParamsList(parallelism);
 
+        /**
+         * Split one physicalPlanData into multi physicalPlanData by
+         * the submap list of topos.
+         */
         List<OptimizeTablePhyDdlTask> result = new ArrayList<>();
         for (int i = 0; i < topos.size(); i++) {
             PhysicalPlanData p = this.physicalPlanData.clone();

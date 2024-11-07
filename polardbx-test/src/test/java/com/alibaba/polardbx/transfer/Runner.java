@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -33,6 +32,12 @@ public class Runner {
             return;
         }
 
+        runAllPlugins();
+
+        System.exit(BasePlugin.success() ? 0 : 1);
+    }
+
+    public static void runAllPlugins() {
         List<IPlugin> plugins = loadPlugins();
         for (IPlugin plugin : plugins) {
             plugin.run();
@@ -41,7 +46,7 @@ public class Runner {
         Thread monitorThread = new Thread(() -> monitor(plugins), "Monitor");
         monitorThread.start();
 
-        long timeout = TomlConfig.getConfig().getLong("timeout");
+        long timeout = TomlConfig.getConfig().getLong("timeout", 60L);
         try {
             BasePlugin.waitUtilTimeout(timeout * 1000);
         } catch (Throwable t) {
@@ -58,16 +63,36 @@ public class Runner {
 
     private static boolean loadConfig(String[] args) {
         // Get config file path.
-        String configFilePath;
+        String configFilePath = "config.toml";
         boolean prepare = false;
-        try {
-            CommandLineParser parser = new DefaultParser();
-            CommandLine cmd = parser.parse(CmdOptions.getOptions(), args);
-            configFilePath = cmd.getOptionValue("config");
-            prepare = "prepare".equalsIgnoreCase(cmd.getOptionValue("op", "run"));
-        } catch (Throwable t) {
-            logger.warn("Cant parse config file path in cmd line, use default config.toml .");
-            configFilePath = "config.toml";
+
+        // Compatible with old version
+        boolean legacy = false;
+        if (args.length > 0) {
+            if ("prepare".equalsIgnoreCase(args[0])) {
+                prepare = true;
+                legacy = true;
+            } else if ("run".equalsIgnoreCase(args[0])) {
+                legacy = true;
+            }
+            if (legacy && args[1].startsWith("-config=")) {
+                configFilePath = args[1].substring("-config=".length());
+            } else if (legacy && args[1].startsWith("--config ")) {
+                configFilePath = args[1].substring("--config ".length()).trim();
+            } else if (legacy && args[1].startsWith("-config ")) {
+                configFilePath = args[1].substring("-config ".length()).trim();
+            }
+        }
+
+        if (!legacy) {
+            try {
+                CommandLineParser parser = new DefaultParser();
+                CommandLine cmd = parser.parse(CmdOptions.getOptions(), args);
+                configFilePath = cmd.getOptionValue("config");
+                prepare = "prepare".equalsIgnoreCase(cmd.getOptionValue("op", "run"));
+            } catch (Throwable t) {
+                logger.warn("Cant parse config file path in cmd line, use default config.toml .");
+            }
         }
 
         // Read config from file.
@@ -80,7 +105,7 @@ public class Runner {
         String pluginPackage = "com.alibaba.polardbx.transfer.plugin";
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         List<String> classNames;
-        if ("local".equalsIgnoreCase(TomlConfig.getConfig().getString("runmode"))) {
+        if ("local".equalsIgnoreCase(TomlConfig.getConfig().getString("runmode", "docker"))) {
             classNames = Utils.getClassName(pluginPackage, classLoader);
         } else {
             classNames = Utils.getClassNameFromJar(pluginPackage);
@@ -111,7 +136,7 @@ public class Runner {
     }
 
     private static void monitor(Collection<IPlugin> plugins) {
-        long reportInterval = TomlConfig.getConfig().getLong("report_interval");
+        long reportInterval = TomlConfig.getConfig().getLong("report_interval", 5L);
 
         try {
             do {

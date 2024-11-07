@@ -100,61 +100,6 @@ public class ColumnarAccessorTest {
         }
     }
 
-    private void doTest(Connection connection) {
-        // checkpoints write
-        ColumnarCheckpointsAccessor checkpointsAccessor = new ColumnarCheckpointsAccessor();
-        checkpointsAccessor.setConnection(connection);
-
-        List<ColumnarCheckpointsRecord> checkpointsRecords = new ArrayList<>();
-        ColumnarCheckpointsRecord checkpointsRecord = new ColumnarCheckpointsRecord();
-        checkpointsRecord.logicalSchema = "s1";
-        checkpointsRecord.checkpointTso = 1000_000L;
-        checkpointsRecord.checkpointType = "stream";
-        checkpointsRecord.offset = "{\"server_id\": \"1\", \"pos\": 10}";
-        checkpointsRecords.add(checkpointsRecord);
-
-        checkpointsAccessor.insert(checkpointsRecords);
-
-        // checkpoints read
-        List<ColumnarCheckpointsRecord> checkpointsResults =
-            checkpointsAccessor.queryByLastTso(1000_000L - 1, "s1");
-
-        // Assert
-        Assert.assertEquals(checkpointsRecords.size(), checkpointsResults.size());
-
-        // appended file write
-        ColumnarAppendedFilesAccessor appendedFilesAccessor = new ColumnarAppendedFilesAccessor();
-        appendedFilesAccessor.setConnection(connection);
-
-        List<ColumnarAppendedFilesRecord> appendedFilesRecords = new ArrayList<>();
-        ColumnarAppendedFilesRecord appendedFilesRecord = new ColumnarAppendedFilesRecord();
-        appendedFilesRecord.checkpointTso = 999_999L;
-        appendedFilesRecord.logicalSchema = "s1";
-        appendedFilesRecord.logicalTable = "t1";
-        appendedFilesRecord.physicalSchema = "ps1";
-        appendedFilesRecord.physicalTable = "pt1";
-        appendedFilesRecord.partName = "p0";
-        appendedFilesRecord.fileName = "file1";
-        appendedFilesRecord.engine = "OSS";
-        appendedFilesRecord.fileType = "csv";
-        appendedFilesRecord.fileLength = 1000_000;
-        appendedFilesRecord.appendOffset = 1000_000 - 100;
-        appendedFilesRecord.appendLength = 100;
-        appendedFilesRecords.add(appendedFilesRecord);
-
-        appendedFilesAccessor.insert(appendedFilesRecords);
-
-        // read
-        List<ColumnarAppendedFilesRecord> appendedFilesResults = appendedFilesAccessor.queryByTso(
-            0L, "s1", "t1", "p0");
-
-        // Assert
-        Assert.assertEquals(appendedFilesRecords.size(), appendedFilesResults.size());
-
-        System.out.println(appendedFilesRecord);
-        System.out.println(checkpointsRecord);
-    }
-
     private void doDataConsistencyLockTest(Connection connection) {
         final ColumnarDataConsistencyLockAccessor accessor = new ColumnarDataConsistencyLockAccessor();
         accessor.setConnection(connection);

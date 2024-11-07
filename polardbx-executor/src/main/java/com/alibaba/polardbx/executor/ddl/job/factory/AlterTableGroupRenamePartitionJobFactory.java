@@ -22,17 +22,18 @@ import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableGroupRenamePa
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupRenamePartitionChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
 import com.google.common.collect.Lists;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
@@ -61,7 +62,13 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-
+        TableGroupConfig tableGroupConfig =
+            OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
+                .getTableGroupConfigByName(preparedData.getTableGroupName());
+        for (String tableName : tableGroupConfig.getAllTables()) {
+            TableValidator.validateTableWithCCI(preparedData.getSchemaName(), tableName, executionContext,
+                SqlKind.RENAME_PARTITION);
+        }
     }
 
     @Override

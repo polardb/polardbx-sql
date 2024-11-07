@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.config.meta.TableScanIOEstimator;
@@ -30,6 +31,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OSSMergeIndexRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -61,6 +65,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.fun.SqlRuntimeFilterFunction;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -69,6 +74,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 
 public class OSSTableScan extends LogicalView {
 
@@ -687,5 +693,67 @@ public class OSSTableScan extends LogicalView {
         return super.explainTerms(pw)
             .itemIf("ossRuntimeFilter", this.runtimeFilter, this.runtimeFilter != null)
             .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop());
+    }
+
+    public boolean isFlashbackQuery() {
+        if (flashbackOperator == null && flashback == null) {
+            return false;
+        }
+
+        if (flashback == null) {
+            throw new RuntimeException("Flashback query timestamp or tso expression should not be empty");
+        }
+
+        return true;
+    }
+
+    public Long getFlashbackQueryTso(ExecutionContext context) {
+        if (flashbackOperator == null && flashback == null) {
+            // no flashback expression
+            return null;
+        }
+
+        if (flashback == null) {
+            throw new RuntimeException("Flashback query timestamp or tso expression should not be empty");
+        }
+
+        if (flashbackOperator == null || flashbackOperator == SqlStdOperatorTable.AS_OF) {
+            // as of timestamp
+            if (!(flashback instanceof RexDynamicParam)) {
+                throw new RuntimeException("Illegal timestamp expression: " + flashback.toString());
+            }
+            String timestampString = context.getParams().getCurrentParameter()
+                .get(((RexDynamicParam) flashback).getIndex() + 1).getValue().toString();
+            TimeZone fromTimeZone;
+            if (context.getTimeZone() != null) {
+                fromTimeZone = context.getTimeZone().getTimeZone();
+            } else {
+                fromTimeZone = TimeZone.getDefault();
+            }
+            return TimestampUtils.getTsFromTimestampWithTimeZone(timestampString, fromTimeZone);
+        } else if (flashbackOperator == SqlStdOperatorTable.AS_OF_57
+            || flashbackOperator == SqlStdOperatorTable.AS_OF_80) {
+            // as of tso
+            try {
+                Object value =
+                    RexUtils.getValueFromRexNode(flashback, context, context.getParams().getCurrentParameter());
+                if (value instanceof Long) {
+                    return (Long) value;
+                } else if (value instanceof Number) {
+                    return ((Number) value).longValue();
+                } else {
+                    throw new RuntimeException("Illegal tso param type: " + value.getClass());
+                }
+            } catch (Throwable t) {
+                throw new RuntimeException("Illegal tso expression: " + flashback.toString(), t);
+            }
+        } else {
+            throw new RuntimeException("Unexpected flashback operator: " + flashbackOperator.getName());
+        }
+    }
+
+    public RelShardInfo getCciRelShardInfo(ExecutionContext ec, PartitionInfo cciPartInfo) {
+        // TODO: add pruneStepCache
+        return getPushDownOpt().getCciRelShardInfo(ec, cciPartInfo);
     }
 }

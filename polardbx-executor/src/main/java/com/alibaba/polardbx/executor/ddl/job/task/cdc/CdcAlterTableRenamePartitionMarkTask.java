@@ -38,6 +38,7 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.CDC_IS_CCI;
 import static com.alibaba.polardbx.common.cdc.ICdcManager.CDC_IS_GSI;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
@@ -54,12 +55,17 @@ public class CdcAlterTableRenamePartitionMarkTask extends BaseDdlTask {
 
     private final String tableName;
     private final boolean placeHolder;
+    private boolean isColumnarIndex;
+    private Long versionId;
 
     @JSONCreator
-    public CdcAlterTableRenamePartitionMarkTask(String schemaName, String tableName, boolean placeHolder) {
+    public CdcAlterTableRenamePartitionMarkTask(String schemaName, String tableName, boolean placeHolder,
+                                                boolean isColumnarIndex, Long versionId) {
         super(schemaName);
         this.tableName = tableName;
         this.placeHolder = placeHolder;
+        this.isColumnarIndex = isColumnarIndex;
+        this.versionId = versionId;
     }
 
     @Override
@@ -83,7 +89,11 @@ public class CdcAlterTableRenamePartitionMarkTask extends BaseDdlTask {
             SQLAlterTableStatement stmt = (SQLAlterTableStatement) parseResult.get(0);
             if (stmt.getAlterIndexName() != null) {
                 markTableName = SQLUtils.normalize(stmt.getTableName());
-                param.put(CDC_IS_GSI, true);
+                if (!isColumnarIndex) {
+                    param.put(CDC_IS_GSI, true);
+                } else {
+                    param.put(CDC_IS_CCI, true);
+                }
             }
         }
 

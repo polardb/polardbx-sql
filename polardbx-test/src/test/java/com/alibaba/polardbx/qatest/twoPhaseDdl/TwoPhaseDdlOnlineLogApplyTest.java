@@ -71,10 +71,10 @@ public class TwoPhaseDdlOnlineLogApplyTest extends DDLBaseNewDBTestCase {
 
     // two_phase_ddl_test1.online_log_apply, 1 * 640W
     @Test
-    public void test01AlterTableAddColumn() throws SQLException, InterruptedException {
+    public void test01AlterTableAddColumn() throws Exception {
         String schemaName = "two_phase_ddl_test1";
         String mytable = schemaPrefix + "online_log_apply";
-        // prepare data
+        /* prepare data */
         prepareData(tddlConnection, schemaName, mytable, 64_000_00, DataManipulateUtil.TABLE_TYPE.SINGLE_TABLE);
         List<Integer> beforeCheckSum = checkData(tddlConnection, schemaName, mytable);
         //
@@ -84,7 +84,7 @@ public class TwoPhaseDdlOnlineLogApplyTest extends DDLBaseNewDBTestCase {
         String columName = randomTableName("column", 2);
         String ddl = String.format("alter table %s add column %s int, ALGORITHM=INPLACE", mytable, columName);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         log.info("alter table stmt emmitted: " + enableTwoPhaseDdlHint + ddl);
         Long jobId = DdlStateCheckUtil.getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 4;
@@ -144,7 +144,7 @@ public class TwoPhaseDdlOnlineLogApplyTest extends DDLBaseNewDBTestCase {
 
     // two_phase_ddl_test1.online_log_apply, 1 * 640W
     @Test
-    public void test11AlterTableAddIndex() throws SQLException, InterruptedException {
+    public void test11AlterTableAddIndex() throws Exception {
         String schemaName = "two_phase_ddl_test1";
         String mytable = schemaPrefix + "online_log_apply";
         // prepare data
@@ -157,7 +157,7 @@ public class TwoPhaseDdlOnlineLogApplyTest extends DDLBaseNewDBTestCase {
         String indexName = randomTableName("index", 4);
         String ddl = String.format("alter table %s add local index %s(a, b)", mytable, indexName);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         log.info("alter table stmt emmitted: " + enableTwoPhaseDdlHint + ddl);
         Long jobId = DdlStateCheckUtil.getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 4;

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.mpp.Session;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LocalBufferExecutorFactory;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
 import com.alibaba.polardbx.executor.mpp.util.MoreExecutors;
 import com.alibaba.polardbx.executor.operator.spill.MemorySpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.node.MppScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
@@ -116,9 +118,13 @@ public class PlanUtils {
             builder.append(formatFragment(
                 executionContext, fragment, session.getClientContext().getParams().getCurrentParameter()));
             if (executionContext.getParamManager().getBoolean(ConnectionParams.SHOW_PIPELINE_INFO_UNDER_MPP)) {
+                boolean columnarMode = session.getClientContext().getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCHEDULE);
                 int mppNodeSize = executionContext.getParamManager().getInt(ConnectionParams.MPP_NODE_SIZE);
                 if (mppNodeSize <= 0) {
-                    mppNodeSize = ExecUtils.getActiveNodeCount();
+                    MppScope mppScope = ExecUtils.getMppSchedulerScope(!columnarMode);
+                    mppNodeSize = ServiceProvider.getInstance().getServer()
+                        .getNodeManager().getAllNodes().getAllWorkers(mppScope).size();
                 }
                 int parallelism = fragment.getPartitioning().getPartitionCount() / mppNodeSize;
                 outputLocalFragment(executionContext, Math.max(1, parallelism), fragment.getRootNode(), builder);

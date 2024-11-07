@@ -40,6 +40,7 @@ public class ColumnsInfoSchemaRecord implements SystemTableRecord {
     public long characterOctetLength;
     public long numericPrecision;
     public long numericScale;
+    public boolean numericScaleNull;
     public long datetimePrecision;
     public String characterSetName;
     public String collationName;
@@ -63,6 +64,8 @@ public class ColumnsInfoSchemaRecord implements SystemTableRecord {
         this.characterOctetLength = rs.getLong("character_octet_length");
         this.numericPrecision = rs.getLong("numeric_precision");
         this.numericScale = rs.getLong("numeric_scale");
+        // record the null state of scale
+        this.numericScaleNull = rs.wasNull();
         this.datetimePrecision = rs.getLong("datetime_precision");
         this.characterSetName = rs.getString("character_set_name");
         this.collationName = rs.getString("collation_name");

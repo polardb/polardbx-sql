@@ -62,12 +62,10 @@
     from t1 where c1 = 1;
 
   plan: |
-
     project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
       hashwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
         exchange(distribution=hash[0], collation=[])
-          logicalview(tables="optest_0001.t1", sql="select `c1`, `c2` from `t1` as `t1` where (`c1` = 1)")
-
+          logicalview(tables="optest_0001.t1", sql="select `c1`, `c2` from `t1` as `t1` force index(`auto_shard_key_c1`) where (`c1` = 1)")
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_HASH_WINDOW=FALSE)*/
     select c1,
@@ -125,13 +123,11 @@
     from t1 order by c1;
 
   plan: |
-
     project(c1="c1", $1="f2w0$o0", $2="f3w0$o1")
       exchange(distribution=single, collation=[0 asc-nulls-first])
         sortwindow(c1="c1", c2="c2", f2w0$o0="window#0sum($1)", f3w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
           exchange(distribution=hash[0], collation=[0 asc-nulls-first])
-            logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` order by `c1`")
-
+            logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` force index(`auto_shard_key_c1`) order by `c1`")
 # window with scalar function
 - sql: |
     SELECT (3.14 DIV (   sum(     FROM_DAYS(248630980553))   OVER()   ) );
@@ -188,15 +184,13 @@
     );
 
   plan: |
-
     materializedsemijoin(condition="c1 = $0", type="semi")
-      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (`c1` in (...))")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` force index(`auto_shard_key_c1`) where (`c1` in (...))")
       exchange(distribution=broadcast, collation=[])
         project($0="f2w0$o0")
           hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
             exchange(distribution=hash[0], collation=[])
               logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
-
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
     select *       
@@ -224,15 +218,13 @@
     );
 
   plan: |
-
     materializedsemijoin(condition="c1 = $0", type="semi")
-      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (`c1` in (...))")
+      logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` force index(`auto_shard_key_c1`) where (`c1` in (...))")
       exchange(distribution=broadcast, collation=[])
         project($0="f2w0$o0")
           hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
             exchange(distribution=hash[0], collation=[])
               logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
-
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/
     select *       
@@ -261,14 +253,12 @@
     ) t3 on t1.c1 = t3.max_c2;
 
   plan: |
-
     project(c10="c10", c2="c20", c1="c1", $1="f2w0$o0")
       bkajoin(condition="f2w0$o0 = c1", type="inner")
         hashwindow(c1="c1", c2="c2", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
           exchange(distribution=hash[0], collation=[])
             logicalview(tables="[0000-0003].t2", shardcount=4, sql="select `c1`, `c2` from `t2` as `t2`")
-        logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` where (`c1` in (...))")
-
+        logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `c1`, `c2` from `t1` as `t1` force index(`auto_shard_key_c1`) where (`c1` in (...))")
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=FALSE ENABLE_BROADCAST_JOIN=FALSE ENABLE_SORT_WINDOW=FALSE)*/
     select *       
@@ -356,14 +346,12 @@
     from t_gsi force index(g_t_gsi);
 
   plan: |
-
     hashwindow(c1="c1", c2="c2", c3="c3", f3w0$o0="window#0sum($1)", f4w0$o1="window#0avg($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [sum($1), avg($1)])")
       exchange(distribution=hash[0], collation=[])
         project(c1="c1", c2="c2", c3="c3")
           bkajoin(condition="c1 = c1", type="inner")
             indexscan(tables="[0000-0003].g_t_gsi", shardcount=4, sql="select `c1`, `c2` from `g_t_gsi` as `g_t_gsi`")
-            logicalview(tables="[0000-0003].t_gsi", shardcount=4, sql="select `c1`, `c3` from `t_gsi` as `t_gsi` where (`c1` in (...))")
-
+            logicalview(tables="[0000-0003].t_gsi", shardcount=4, sql="select `c1`, `c3` from `t_gsi` as `t_gsi` force index(`primary`) where (`c1` in (...))")
 # with insert
 - sql: |
     /*+TDDL:cmd_extra(ENABLE_SORT_WINDOW=FALSE)*/

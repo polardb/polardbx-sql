@@ -407,10 +407,6 @@ public class CreateGlobalIndexBuilder {
                                         "multiple primary key definition");
                                 }
                                 pkList.add(new SQLSelectOrderByItem(columnDefinition.getName()));
-                                if (unique) {
-                                    // Remove pk constrain.
-                                    constraintIt.remove();
-                                }
                             } else if (constraint instanceof SQLColumnReference) {
                                 // remove foreign key
                                 constraintIt.remove();
@@ -429,20 +425,14 @@ public class CreateGlobalIndexBuilder {
                 }
             } else if (tableElement instanceof MySqlPrimaryKey) {
                 withoutPk = false;
-                if (gsiPreparedData.getPrimaryPartitionInfo() != null &&
-                    gsiPreparedData.getIndexPartitionInfo() != null) {
-                    final MySqlPrimaryKey primaryKey = (MySqlPrimaryKey) tableElement;
-                    if (!pkList.isEmpty() && !isColumnar) {
-                        throw new TddlRuntimeException(
-                            ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
-                            "multiple primary key definition");
-                    }
-                    pkList.addAll(primaryKey.getColumns());
-                    if (unique) {
-                        // Remove PK.
-                        it.remove();
-                    }
+
+                final MySqlPrimaryKey primaryKey = (MySqlPrimaryKey) tableElement;
+                if (!pkList.isEmpty() && !isColumnar) {
+                    throw new TddlRuntimeException(
+                        ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_UNSUPPORTED_PRIMARY_TABLE_DEFINITION,
+                        "multiple primary key definition");
                 }
+                pkList.addAll(primaryKey.getColumns());
             } else if (tableElement instanceof MySqlKey) {
                 final MySqlKey key = (MySqlKey) tableElement;
 
@@ -473,18 +463,6 @@ public class CreateGlobalIndexBuilder {
 
                 it.remove();
             }
-        }
-
-        // Generate simple index of pk on unique GSI.
-        if (unique && !pkList.isEmpty()) {
-            final MySqlTableIndex index = new MySqlTableIndex();
-            index.getIndexDefinition().setIndex(true);
-            index.getIndexDefinition().setName(new SQLIdentifierExpr(UGSI_PK_INDEX_NAME));
-            index.getIndexDefinition().getColumns().addAll(pkList);
-            index.getIndexDefinition().getOptions().setIndexType("BTREE");
-            index.getIndexDefinition().setParent(index);
-            index.setParent(indexTableStmt);
-            indexTableStmt.getTableElementList().add(index);
         }
 
         final PlannerContext context = (PlannerContext) relDdl.getCluster().getPlanner().getContext();
@@ -726,7 +704,7 @@ public class CreateGlobalIndexBuilder {
             updateAddIndex(sqlAlterTable, 0, addIndex, newIndexDef);
         }
 
-        final List<String> indexShardKey = gsiPreparedData.getIndexTableRule().getShardColumns();
+        final List<String> indexShardKey = gsiPreparedData.getShardColumns();
         if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             SqlCreateTable.addCompositeIndex(indexColumnMap, indexTableStmt, unique, options, true, indexShardKey,
                 false, "");

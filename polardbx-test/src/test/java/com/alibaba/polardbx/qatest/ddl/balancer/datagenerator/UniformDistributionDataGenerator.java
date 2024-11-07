@@ -48,8 +48,17 @@ public class UniformDistributionDataGenerator implements DataGenerator {
                 TimeStampGenerator.millisToZonedDateTime(timeStampGenerator.generateTs(1000 * 6000),
                     ZoneId.systemDefault()).toLocalDateTime()
             );
-
-        } else {
+        } else if (StringUtils.containsIgnoreCase(fieldType, "decimal")) {
+            data = randomInt.uniformDistribution(100_0000, 0);
+        } else if (StringUtils.containsIgnoreCase(fieldType, "time")) {
+            data = Timestamp.valueOf(
+                TimeStampGenerator.millisToZonedDateTime(timeStampGenerator.generateTs(1000 * 6000),
+                    ZoneId.systemDefault()).toLocalDateTime());
+        } else if(StringUtils.containsIgnoreCase(fieldType, "year")) {
+            data = randomInt.uniformDistribution(50, 50);
+        } else if(StringUtils.containsIgnoreCase(fieldType, "binary")) {
+            data = String.valueOf(randomInt.uniformDistribution(100_0000, 0));
+        } else{
             throw new RuntimeException("not supported");
         }
 

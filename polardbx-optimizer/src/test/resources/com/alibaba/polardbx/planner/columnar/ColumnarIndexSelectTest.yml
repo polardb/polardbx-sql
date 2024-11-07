@@ -1,0 +1,20 @@
+-
+  sql: |
+
+    /*+TDDL:enable_columnar_optimizer=true*/select count(*) from t_order force index(`cc_i_seller`);
+
+  plan: |
+    
+    hashagg(count(*)="count()")
+      gather(concurrent=true)
+        osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id` from `cc_i_seller` as `cc_i_seller`")
+
+
+- sql: |
+    /*+TDDL:enable_columnar_optimizer=true */ select  count(*) from lineitem force index(`lineitem_col_index`);
+
+
+  plan: |
+    hashagg(count(*)="count()")
+      gather(concurrent=true)
+        osstablescan(tables="lineitem_col_index[p1,p2,p3,...p16]", shardcount=16, sql="select `l_orderkey` from `lineitem_col_index` as `lineitem_col_index`")

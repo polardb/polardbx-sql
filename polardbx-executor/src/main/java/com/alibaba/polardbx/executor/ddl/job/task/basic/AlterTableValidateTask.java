@@ -18,15 +18,11 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.ddl.Attribute;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameColumn;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
@@ -34,9 +30,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -44,15 +39,12 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
-import com.alibaba.polardbx.optimizer.utils.MetaUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlAddColumn;
@@ -67,7 +59,6 @@ import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableDropIndex;
 import org.apache.calcite.sql.SqlAlterTableRenameIndex;
-import org.apache.calcite.sql.SqlBinaryStringLiteral;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlChangeColumn;
 import org.apache.calcite.sql.SqlColumnDeclaration;
@@ -75,17 +66,12 @@ import org.apache.calcite.sql.SqlConvertToCharacterSet;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlDropColumn;
 import org.apache.calcite.sql.SqlDropForeignKey;
-import org.apache.calcite.sql.SqlDropPrimaryKey;
-import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlModifyColumn;
-import org.apache.commons.collections.CollectionUtils;
 
-import java.sql.Types;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -203,6 +189,11 @@ public class AlterTableValidateTask extends BaseValidateTask {
             tableMeta.getAllIndexes().stream().map(i -> i.getPhysicalIndexName()).collect(Collectors.toList()));
         indexesBeforeDdl.addAll(
             tableMeta.getAllIndexes().stream().map(i -> i.getPhysicalIndexName()).collect(Collectors.toList()));
+        // add cci original name
+        if (tableMeta.getColumnarIndexPublished() != null) {
+            indexes.addAll(tableMeta.getColumnarIndexPublished().keySet().stream()
+                .map(TddlSqlToRelConverter::unwrapGsiName).collect(Collectors.toList()));
+        }
 
         GsiMetaManager.GsiMetaBean gsiMetaBean =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getGsi(tableName, IndexStatus.ALL);
@@ -322,12 +313,12 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 break;
 
             case ALTER_RENAME_INDEX:
-                final SqlAlterTableRenameIndex renameIndex = (SqlAlterTableRenameIndex) alterItem;
-                if (null != renameIndex.getOriginIndexName() && tableMeta.withCci(
-                    renameIndex.getOriginIndexName().getLastName())) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Do not support rename cci "
-                        + renameIndex.getOriginIndexName().getLastName());
-                }
+//                final SqlAlterTableRenameIndex renameIndex = (SqlAlterTableRenameIndex) alterItem;
+//                if (null != renameIndex.getOriginIndexName() && tableMeta.withCci(
+//                    renameIndex.getOriginIndexName().getLastName())) {
+//                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Do not support rename cci "
+//                        + renameIndex.getOriginIndexName().getLastName());
+//                }
 
                 checkIndexExists(indexes, ((SqlAlterTableRenameIndex) alterItem).getIndexName().getLastName());
                 indexes.remove(((SqlAlterTableRenameIndex) alterItem).getIndexName().getLastName());
@@ -469,7 +460,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
             case MODIFY_COLUMN:
                 if (((SqlModifyColumn) alterItem).getAfterColumn() != null) {
                     String afterName = ((SqlModifyColumn) alterItem).getAfterColumn().getLastName();
-                    if (!newColumns.contains(afterName)) {
+                    if (!containsColumnNameIgnoreCase(newColumns, afterName)) {
                         throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_COLUMN, afterName, tableName);
                     }
                 }
@@ -478,7 +469,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
             case CHANGE_COLUMN:
                 if (((SqlChangeColumn) alterItem).getAfterColumn() != null) {
                     String afterName = ((SqlChangeColumn) alterItem).getAfterColumn().getLastName();
-                    if (!newColumns.contains(afterName)) {
+                    if (!containsColumnNameIgnoreCase(newColumns, afterName)) {
                         throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_COLUMN, afterName, tableName);
                     }
                 }
@@ -489,7 +480,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
                 // which would not be adjusted.
                 if (((SqlAddColumn) alterItem).getAfterColumn() != null) {
                     String afterName = ((SqlAddColumn) alterItem).getAfterColumn().getLastName();
-                    if (!newColumns.contains(afterName)) {
+                    if (!containsColumnNameIgnoreCase(newColumns, afterName)) {
                         throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_COLUMN, afterName, tableName);
                     }
                     afterColumns.add(Pair.of(((SqlAddColumn) alterItem).getColName().getLastName(),
@@ -504,12 +495,12 @@ public class AlterTableValidateTask extends BaseValidateTask {
         for (Pair<String, String> afterColumn : afterColumns) {
             String columnName = afterColumn.getKey();
             String afterColumnName = afterColumn.getValue();
-            int index = newColumns.indexOf(columnName);
+            int index = indexOfColumnNameIgnoreCase(newColumns, columnName);
             if (index == -1) {
                 throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_COLUMN, columnName, tableName);
             }
             newColumns.remove(index);
-            index = newColumns.indexOf(afterColumnName);
+            index = indexOfColumnNameIgnoreCase(newColumns, afterColumnName);
             if (index == -1) {
                 throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_COLUMN, afterColumnName, tableName);
             }
@@ -629,7 +620,7 @@ public class AlterTableValidateTask extends BaseValidateTask {
     }
 
     private void validateNewColumns(List<String> newColumns) {
-        if (newColumns.size() == 1 && newColumns.contains(TddlConstants.IMPLICIT_COL_NAME)
+        if (newColumns.size() == 1 && containsColumnNameIgnoreCase(newColumns, TddlConstants.IMPLICIT_COL_NAME)
             || newColumns.isEmpty()) { // no columns without implicit primary key
             throw new TddlRuntimeException(ErrorCode.ERR_DROP_ALL_COLUMNS);
         }
@@ -640,6 +631,26 @@ public class AlterTableValidateTask extends BaseValidateTask {
             }
             newColumnSet.add(name);
         }
+    }
+
+    public static Boolean containsColumnNameIgnoreCase(List<String> columnNames, String toFindColumnName) {
+        for (String columnName : columnNames) {
+            if (columnName.equalsIgnoreCase(toFindColumnName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static int indexOfColumnNameIgnoreCase(List<String> columnNames, String toFindColumnName) {
+        int index = 0;
+        for (String columnName : columnNames) {
+            if (columnName.equalsIgnoreCase(toFindColumnName)) {
+                return index;
+            }
+            index++;
+        }
+        return -1;
     }
 
     private void validateNewIndexes(List<String> newIndexes) {

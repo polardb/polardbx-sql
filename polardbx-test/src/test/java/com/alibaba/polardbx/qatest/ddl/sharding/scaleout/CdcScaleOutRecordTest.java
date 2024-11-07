@@ -120,7 +120,8 @@ public class CdcScaleOutRecordTest extends CdcBaseTest {
             e.printStackTrace();
         }
 
-        String sql = "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true)*/ %s,%s to '%s'";
+        String sql =
+            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false)*/ %s,%s to '%s'";
         if (storageGroupsInfo.size() > 1) {
             Map.Entry<String, List<String>> first = null;
             Map.Entry<String, List<String>> second = null;

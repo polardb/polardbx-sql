@@ -22,6 +22,7 @@ import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -40,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare;
 
+@Ignore("2024-08-08 之后update由串行改成group并发执行物理sql，此用例预期内会概率出现死锁，忽略")
 public class XATransactionStressTest extends CrudBasedLockTestCase {
 
     private static final int MAX_DATA_SIZE = 1000;

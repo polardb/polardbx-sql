@@ -24,7 +24,10 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.google.common.collect.ImmutableList;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.Arrays;
 import java.util.List;
@@ -125,6 +128,37 @@ public class InformationSchemaViewManager extends ViewManager {
 
         defineCaseSensitiveView(InstConfUtil.getBool(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES));
 
+        defineView("COLUMNAR_SNAPSHOTS",
+            new String[] {
+                "SCHEMA_NAME",
+                "TABLE_NAME",
+                "INDEX_NAME",
+                "TSO"
+            },
+            String.format("select "
+                + "mapping.table_schema as schema_name, "
+                + "mapping.table_name as table_name, "
+                + "mapping.index_name as index_name, "
+                + "checkpoints.binlog_tso as tso "
+                + "from "
+                + "%s.columnar_table_mapping mapping, %s.columnar_checkpoints checkpoints "
+                + "where "
+                + "mapping.table_id = checkpoints.logical_table "
+                + "and mapping.table_schema = checkpoints.logical_schema "
+                + "and checkpoints.info = 'force' "
+                + "and mapping.status = 'PUBLIC' "
+                + "and mapping.type = 'snapshot' "
+                + "union all "
+                + "select "
+                + "'polardbx', '__global__', '__global__', checkpoints.binlog_tso as tso "
+                + "from "
+                + "%s.columnar_checkpoints checkpoints "
+                + "where "
+                + "checkpoints.info = 'force' "
+                + "and logical_schema = 'polardbx' "
+                + "and logical_table is NULL",
+                MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME));
+
         defineView("CHARACTER_SETS", null, String.format("select * from %s.CHARACTER_SETS", MetaDbSchema.NAME));
 
         defineVirtualView(VirtualViewType.COLLATION_CHARACTER_SET_APPLICABILITY, new String[] {
@@ -162,6 +196,14 @@ public class InformationSchemaViewManager extends ViewManager {
             "SCHEDULE_JOBS",
             "VIEWS",
             "WORKLOAD"
+        });
+
+        defineVirtualView(VirtualViewType.METRIC, new String[] {
+            "INST",
+            "HOST",
+            "NAME",
+            "TYPE",
+            "VALUE"
         });
 
         defineVirtualView(VirtualViewType.MODULE_EVENT, new String[] {
@@ -406,6 +448,14 @@ public class InformationSchemaViewManager extends ViewManager {
                 + "on C.TABLE_SCHEMA = S.SCHEMA_NAME and C.TABLE_NAME = S.TABLE_NAME "
                 + "and C.COLUMN_NAME = S.COLUMN_NAME");
 
+        defineView("DEADLOCKS", new String[] {
+                "ID",
+                "TYPE",
+                "GMT_CREATED",
+                "LOG"
+            },
+            "select ID, TYPE, GMT_CREATED, LOG from " + MetaDbSchema.NAME + "." + GmsSystemTables.DEADLOCKS);
+
         defineView("FILES", new String[] {
                 "FILE_ID",
                 "FILE_NAME",
@@ -504,6 +554,28 @@ public class InformationSchemaViewManager extends ViewManager {
             "WORKER_IP",
             "UPDATE_TIME"
         });
+
+        defineVirtualView(VirtualViewType.DDL_SCHEDULER, new String[] {
+            "JOB_ID",
+            "TASK_ID",
+            "TASK_NAME",
+            "TASK_INFO",
+            "TASK_STATE",
+            "EXECUTION_TIME",
+            "NODE_IP",
+            "RESOURCES",
+            "EXTRA",
+            "DDL_STMT",
+        });
+
+        defineVirtualView(VirtualViewType.DDL_ENGINE_RESOURCE, new String[] {
+            "HOST",
+            "RESOURCE_TYPE",
+            "TOTAL_AMOUNT",
+            "RESIDUE",
+            "ACTIVE_TASK",
+            "DETAIL",
+        });
     }
 
     public synchronized void defineCaseSensitiveView(boolean currentEnableLower) {
@@ -575,7 +647,10 @@ public class InformationSchemaViewManager extends ViewManager {
                         + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
                         + "TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
                         + "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, CHECKSUM, "
-                        + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables"
+                        + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables "
+                        + "UNION ALL "
+                        + "select catalog_name, LOWER(schema_name), LOWER(view_name), 'VIEW' as table_type, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'VIEW' as table_comment, 'NO' as auto_partition "
+                        + "from %s.views"
                     :
                     "select T.TABLE_CATALOG, T.TABLE_SCHEMA, T.TABLE_NAME, T.TABLE_TYPE, T.ENGINE, T.VERSION, T.ROW_FORMAT, "
                         + "T.TABLE_ROWS, T.AVG_ROW_LENGTH, T.DATA_LENGTH, T.MAX_DATA_LENGTH, T.INDEX_LENGTH, T.DATA_FREE, "
@@ -597,8 +672,11 @@ public class InformationSchemaViewManager extends ViewManager {
                         + "select TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, "
                         + "TABLE_ROWS, AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE, "
                         + "AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, CHECK_TIME, TABLE_COLLATION, CHECKSUM, "
-                        + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables"
-                , MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME)
+                        + "CREATE_OPTIONS, TABLE_COMMENT, 'NO' as AUTO_PARTITION from information_schema.information_schema_tables "
+                        + "UNION ALL "
+                        + "select catalog_name, schema_name, view_name, 'VIEW' as table_type, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'VIEW' as table_comment, 'NO' as auto_partition "
+                        + "from %s.views"
+                , MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME, MetaDbSchema.NAME)
         );
 
         defineView("COLUMNS", new String[] {
@@ -1712,6 +1790,38 @@ public class InformationSchemaViewManager extends ViewManager {
             "TABLES"
         });
 
+        defineVirtualView(VirtualViewType.TTL_INFO, new String[] {
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "TTL_ENABLE",
+            "TTL_COL",
+            "TTL_EXPR",
+            "TTL_CRON",
+            "ARCHIVE_TYPE",
+            "ARCHIVE_TABLE_SCHEMA",
+            "ARCHIVE_TABLE_NAME",
+            "ARCHIVE_TABLE_PRE_ALLOCATE",
+            "ARCHIVE_TABLE_POST_ALLOCATE"
+        });
+
+//        defineVirtualView(VirtualViewType.TTL_SCHEDULE, new String[] {
+//            "SCHEDULE_ID",
+//            "TABLE_SCHEMA",
+//            "TABLE_NAME",
+//            "STATUS",
+//            "SCHEDULE_EXPR",
+//            "SCHEDULE_COMMENT",
+//            "TIME_ZONE",
+//            "LAST_FIRE_TIME",
+//            "NEXT_FIRE_TIME"
+//        });
+        defineVirtualView(VirtualViewType.TTL_SCHEDULE, new String[] {
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "METRIC_KEY",
+            "METRIC_VAL"
+        });
+
         defineVirtualView(VirtualViewType.LOCAL_PARTITIONS, new String[] {
             "TABLE_SCHEMA",
             "TABLE_NAME",
@@ -1785,6 +1895,7 @@ public class InformationSchemaViewManager extends ViewManager {
             "TABLE_ROWS",
             "DATA_LENGTH",
             "INDEX_LENGTH",
+            "DATA_FREE",
             "BOUND_VALUE",
             "SUB_BOUND_VALUE",
             "PERCENT",
@@ -1843,6 +1954,7 @@ public class InformationSchemaViewManager extends ViewManager {
             "PART_NAME",
             "PART_POSI",
             "PART_DESC",
+            "PART_ARC_STATE",
 
             "SUBPART_METHOD",
             "SUBPART_COL",
@@ -1853,6 +1965,7 @@ public class InformationSchemaViewManager extends ViewManager {
             "SUBPART_TEMP_NAME",
             "SUBPART_POSI",
             "SUBPART_DESC",
+            "SUBPART_ARC_STATE",
 
             "PG_NAME",
             "PHY_GROUP",
@@ -2463,6 +2576,13 @@ public class InformationSchemaViewManager extends ViewManager {
 
             defineVirtualView(VirtualViewType.SHOW_HELP, new String[] {
                 "STATEMENT",
+            });
+
+            defineVirtualView(VirtualViewType.RPL_SYNC_POINT, new String[] {
+                "ID",
+                "PRIMARY_TSO",
+                "SECONDARY_TSO",
+                "CREATE_TIME"
             });
         }
 }

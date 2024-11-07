@@ -1,33 +1,3 @@
-#-
-#  sql: |
-#    select
-#      l_returnflag,
-#      l_linestatus,
-#      sum(l_quantity) as sum_qty,
-#      sum(l_extendedprice) as sum_base_price,
-#      sum(l_extendedprice*(1-l_discount)) as sum_disc_price,
-#      sum(l_extendedprice*(1-l_discount)*(1+l_tax)) as sum_charge,
-#      avg(l_quantity) as avg_qty,
-#      avg(l_extendedprice) as avg_price,
-#      avg(l_discount) as avg_disc,
-#      count(*) as count_order
-#    from
-#      lineitem
-#    where
-#      l_shipdate <= date_add(cast('1998-12-01' as date ), Interval -90 day )
-#    group by
-#      l_returnflag,
-#      l_linestatus
-#    order by
-#      l_returnflag,
-#      l_linestatus;
-#
-#  plan: |
-#    MemSort(sort="l_returnflag ASC,l_linestatus ASC")
-#      Project(l_returnflag="l_returnflag", l_linestatus="l_linestatus", sum_qty="sum_qty", sum_base_price="sum_base_price", sum_disc_price="sum_disc_price", sum_charge="sum_charge", avg_qty="sum_pushed_sum / sum_pushed_count", avg_price="sum_pushed_sum_0 / sum_pushed_count_0", avg_disc="sum_pushed_sum_1 / sum_pushed_count_1", count_order="count_order")
-#        HashAgg(group="l_returnflag,l_linestatus", sum_qty="SUM(sum_qty)", sum_base_price="SUM(sum_base_price)", sum_disc_price="SUM(sum_disc_price)", sum_charge="SUM(sum_charge)", sum_pushed_sum="SUM(pushed_sum)", sum_pushed_sum_0="SUM(pushed_sum_0)", sum_pushed_sum_1="SUM(pushed_sum_1)", count_order="SUM(count_order)", sum_pushed_count="SUM(pushed_count)", sum_pushed_count_0="SUM(pushed_count_0)", sum_pushed_count_1="SUM(pushed_count_1)")
-#          Gather(concurrent=true)
-#            LogicalView(tables="[0000-0003].lineitem_[00-15]", shardCount=16, sql="SELECT `l_returnflag`, `l_linestatus`, SUM(`l_quantity`) AS `sum_qty`, SUM(`l_extendedprice`) AS `sum_base_price`, SUM((`l_extendedprice` * (1 - `l_discount`))) AS `sum_disc_price`, SUM(((`l_extendedprice` * (1 - `l_discount`)) * (1 + `l_tax`))) AS `sum_charge`, SUM(`l_quantity`) AS `pushed_sum`, SUM(`l_extendedprice`) AS `pushed_sum_0`, SUM(`l_discount`) AS `pushed_sum_1`, COUNT(*) AS `count_order`, COUNT(`l_quantity`) AS `pushed_count`, COUNT(`l_extendedprice`) AS `pushed_count_0`, COUNT(`l_discount`) AS `pushed_count_1` FROM `lineitem` AS `lineitem` WHERE (`l_shipdate` <= DATE_ADD(CAST('1998-12-01' AS DATE), INTERVAL -90 DAY)) GROUP BY `l_returnflag`, `l_linestatus`")
 
 - sql: |
     select
@@ -75,6 +45,7 @@
       p_partkey;
 
   plan: |
+
     exchange(distribution=single, collation=[0 desc-nulls-last, 2 asc-nulls-first, 1 asc-nulls-first, 3 asc-nulls-first])
       memsort(sort="s_acctbal desc,n_name asc,s_name asc,p_partkey asc")
         project(s_acctbal="s_acctbal", s_name="s_name", n_name="n_name", p_partkey="p_partkey", p_mfgr="p_mfgr", s_address="s_address", s_phone="s_phone", s_comment="s_comment")
@@ -120,6 +91,7 @@
       o_orderdate;
 
   plan: |
+
     project(l_orderkey="l_orderkey", revenue="revenue", o_orderdate="o_orderdate", o_shippriority="o_shippriority")
       exchange(distribution=single, collation=[3 desc-nulls-last, 1 asc-nulls-first])
         memsort(sort="revenue desc,o_orderdate asc")
@@ -145,12 +117,12 @@
     ) group by o_orderpriority order by o_orderpriority;
 
   plan: |
+
     exchange(distribution=single, collation=[0 asc-nulls-first])
       memsort(sort="o_orderpriority asc")
         hashagg(group="o_orderpriority", order_count="sum(order_count)")
           exchange(distribution=hash[0], collation=[])
-            partialhashagg(group="o_orderpriority", order_count="count()")
-              logicalview(tables="orders[p1,p2,p3,p4],lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderpriority` from `orders` as `orders` where ((`o_orderdate` < date_add('1993-07-01', interval 3 month)) and (`o_orderdate` >= '1993-07-01') and (exists (select `l_orderkey` from `lineitem` as `lineitem` where ((`l_orderkey` = `orders`.`o_orderkey`) and (`l_commitdate` < `l_receiptdate`)))))")
+            logicalview(tables="orders[p1,p2,p3,p4],lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderpriority`, count(*) as `order_count` from `orders` as `orders` where ((`o_orderdate` < date_add('1993-07-01', interval 3 month)) and (`o_orderdate` >= '1993-07-01') and (exists (select `l_orderkey` from `lineitem` as `lineitem` where ((`l_orderkey` = `orders`.`o_orderkey`) and (`l_commitdate` < `l_receiptdate`))))) group by `o_orderpriority`")
 
 - sql: |
     select
@@ -166,6 +138,7 @@
     revenue desc;
 
   plan: |
+
     exchange(distribution=single, collation=[1 desc-nulls-last])
       memsort(sort="revenue desc")
         hashagg(group="n_name", revenue="sum(revenue)")
@@ -193,6 +166,7 @@
     and l_discount between 0.06 - 0.01 and 0.06 + 0.01 and l_quantity < 24;
 
   plan: |
+
     hashagg(revenue="sum(revenue)")
       exchange(distribution=single, collation=[])
         logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select sum((`l_extendedprice` * `l_discount`)) as `revenue` from `lineitem` as `lineitem` where ((`l_discount` between (0.06 - 0.01) and (0.06 + 0.01)) and (`l_shipdate` < date_add(cast('1994-01-01' as date), interval 1 year)) and (`l_quantity` < 24) and (`l_shipdate` >= '1994-01-01'))")
@@ -241,23 +215,24 @@
       l_year;
 
   plan: |
-    Exchange(distribution=single, collation=[0 ASC-nulls-first, 1 ASC-nulls-first, 2 ASC-nulls-first])
-      MemSort(sort="n_name ASC,n_name0 ASC,EXTRACT ASC")
-        HashAgg(group="n_name,n_name0,EXTRACT", revenue="SUM(revenue)")
-          Exchange(distribution=hash[0, 1, 2], collation=[])
-            PartialHashAgg(group="n_name,n_name0,EXTRACT", revenue="SUM(__*__)")
-              Project(s_suppkey="s_suppkey", n_name="n_name", n_nationkey0="n_nationkey0", n_name0="n_name0", c_custkey="c_custkey", c_nationkey="c_nationkey", l_suppkey="l_suppkey", o_custkey="o_custkey", EXTRACT="EXTRACT", __*__="__*__")
-                HashJoin(condition="o_custkey = c_custkey AND n_nationkey0 = c_nationkey", type="inner")
-                  Exchange(distribution=hash[0, 1], collation=[])
-                    LogicalView(tables="customer[p1,p2,p3,p4]", shardCount=4, sql="SELECT `c_custkey`, `c_nationkey` FROM `customer` AS `customer`")
-                  Exchange(distribution=hash[5, 2], collation=[])
-                    Project(s_suppkey="s_suppkey", n_name="n_name", n_nationkey0="n_nationkey0", n_name0="n_name0", l_suppkey="l_suppkey", o_custkey="o_custkey", EXTRACT="EXTRACT", __*__="__*__")
-                      HashJoin(condition="l_suppkey = s_suppkey", type="inner")
-                        Filter(condition="BLOOMFILTER(l_suppkey)")
-                          LogicalView(tables="lineitem[p1,p2,p3,p4],orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `lineitem`.`l_suppkey`, `orders`.`o_custkey`, EXTRACT(YEAR FROM `lineitem`.`l_shipdate`) AS `EXTRACT`, (`lineitem`.`l_extendedprice` * (1 - `lineitem`.`l_discount`)) AS `__*__` FROM `lineitem` AS `lineitem` INNER JOIN `orders` AS `orders` ON ((`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) AND (`lineitem`.`l_shipdate` BETWEEN '1995-01-01' AND '1996-12-31'))")
-                        Exchange(distribution=broadcast, collation=[])
-                          RuntimeFilterBuilder(condition="RUNTIME_FILTER_BUILDER_[0](s_suppkey)")
-                            LogicalView(tables="supplier[p1,p2,p3,p4],nation,nation", shardCount=4, sql="SELECT `supplier`.`s_suppkey`, `nation`.`n_name`, `nation0`.`n_nationkey` AS `n_nationkey0`, `nation0`.`n_name` AS `n_name0` FROM `supplier` AS `supplier` INNER JOIN `nation` AS `nation` ON (`supplier`.`s_nationkey` = `nation`.`n_nationkey`) INNER JOIN `nation` AS `nation0` ON (((`nation`.`n_name` = 'FRANCE') AND (`nation0`.`n_name` = 'GERMANY')) OR ((`nation`.`n_name` = 'GERMANY') AND (`nation0`.`n_name` = 'FRANCE')))")
+
+    exchange(distribution=single, collation=[0 asc-nulls-first, 1 asc-nulls-first, 2 asc-nulls-first])
+      memsort(sort="n_name asc,n_name0 asc,extract asc")
+        hashagg(group="n_name,n_name0,extract", revenue="sum(revenue)")
+          exchange(distribution=hash[0, 1, 2], collation=[])
+            partialhashagg(group="n_name,n_name0,extract", revenue="sum(__*__)")
+              project(s_suppkey="s_suppkey", n_name="n_name", n_nationkey0="n_nationkey0", n_name0="n_name0", c_custkey="c_custkey", c_nationkey="c_nationkey", l_suppkey="l_suppkey", o_custkey="o_custkey", extract="extract", __*__="__*__")
+                hashjoin(condition="o_custkey = c_custkey and n_nationkey0 = c_nationkey", type="inner")
+                  exchange(distribution=hash[0, 1], collation=[])
+                    logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_nationkey` from `customer` as `customer`")
+                  exchange(distribution=hash[5, 2], collation=[])
+                    project(s_suppkey="s_suppkey", n_name="n_name", n_nationkey0="n_nationkey0", n_name0="n_name0", l_suppkey="l_suppkey", o_custkey="o_custkey", extract="extract", __*__="__*__")
+                      hashjoin(condition="l_suppkey = s_suppkey", type="inner")
+                        filter(condition="bloomfilter(l_suppkey)")
+                          logicalview(tables="lineitem[p1,p2,p3,p4],orders[p1,p2,p3,p4]", shardcount=4, sql="select `lineitem`.`l_suppkey`, `orders`.`o_custkey`, extract(year from `lineitem`.`l_shipdate`) as `extract`, (`lineitem`.`l_extendedprice` * (1 - `lineitem`.`l_discount`)) as `__*__` from `lineitem` as `lineitem` inner join `orders` as `orders` on ((`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) and (`lineitem`.`l_shipdate` between '1995-01-01' and '1996-12-31'))")
+                        exchange(distribution=broadcast, collation=[])
+                          runtimefilterbuilder(condition="runtime_filter_builder_[0](s_suppkey)")
+                            logicalview(tables="supplier[p1,p2,p3,p4],nation,nation", shardcount=4, sql="select `supplier`.`s_suppkey`, `nation`.`n_name`, `nation0`.`n_nationkey` as `n_nationkey0`, `nation0`.`n_name` as `n_name0` from `supplier` as `supplier` inner join `nation` as `nation` on (`supplier`.`s_nationkey` = `nation`.`n_nationkey`) inner join `nation` as `nation0` on (((`nation`.`n_name` = 'france') and (`nation0`.`n_name` = 'germany')) or ((`nation`.`n_name` = 'germany') and (`nation0`.`n_name` = 'france')))")
 
 - sql: |
     select
@@ -286,28 +261,29 @@
     o_year;
 
   plan: |
-    Exchange(distribution=single, collation=[0 ASC-nulls-first])
-      MemSort(sort="o_year ASC")
-        Project(o_year="EXTRACT", mkt_share="$f1 / $f2")
-          HashAgg(group="EXTRACT", $f1="SUM($f1)", $f2="SUM($f2)")
-            Exchange(distribution=hash[0], collation=[])
-              PartialHashAgg(group="EXTRACT", $f1="SUM(CASE)", $f2="SUM(__*__)")
-                Project(o_custkey="o_custkey", EXTRACT="EXTRACT", CASE="CASE($8, $6, CAST(0):DECIMAL(37, 4) NOT NULL)", __*__="__*__", c_custkey="c_custkey")
-                  HashJoin(condition="o_custkey = c_custkey", type="inner")
-                    Exchange(distribution=hash[0], collation=[])
-                      LogicalView(tables="customer[p1,p2,p3,p4],nation,region", shardCount=4, sql="SELECT `customer`.`c_custkey` FROM `customer` AS `customer` INNER JOIN `nation` AS `nation` ON (`customer`.`c_nationkey` = `nation`.`n_nationkey`) INNER JOIN `region` AS `region` ON ((`nation`.`n_regionkey` = `region`.`r_regionkey`) AND (`region`.`r_name` = 'AMERICA'))")
-                    Exchange(distribution=hash[3], collation=[])
-                      HashJoin(condition="s_suppkey = l_suppkey", type="inner")
-                        Exchange(distribution=hash[2], collation=[])
-                          Project(p_partkey="p_partkey", l_partkey="l_partkey", l_suppkey="l_suppkey", o_custkey="o_custkey", EXTRACT="EXTRACT", __*__="__*__")
-                            HashJoin(condition="p_partkey = l_partkey", type="inner")
-                              Filter(condition="BLOOMFILTER(l_partkey)")
-                                LogicalView(tables="lineitem[p1,p2,p3,p4],orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `lineitem`.`l_partkey`, `lineitem`.`l_suppkey`, `orders`.`o_custkey`, EXTRACT(YEAR FROM `orders`.`o_orderdate`) AS `EXTRACT`, (`lineitem`.`l_extendedprice` * (1 - `lineitem`.`l_discount`)) AS `__*__` FROM `lineitem` AS `lineitem` INNER JOIN `orders` AS `orders` ON ((`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) AND (`orders`.`o_orderdate` BETWEEN '1995-01-01' AND '1996-12-31'))")
-                              Exchange(distribution=broadcast, collation=[])
-                                RuntimeFilterBuilder(condition="RUNTIME_FILTER_BUILDER_[0](p_partkey)")
-                                  LogicalView(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey` FROM `part` AS `part` WHERE (`p_type` = 'ECONOMY ANODIZED STEEL')")
-                        Exchange(distribution=hash[0], collation=[])
-                          LogicalView(tables="supplier[p1,p2,p3,p4],nation", shardCount=4, sql="SELECT `supplier`.`s_suppkey`, (`nation`.`n_name` = 'BRAZIL') AS `=` FROM `supplier` AS `supplier` INNER JOIN `nation` AS `nation` ON (`supplier`.`s_nationkey` = `nation`.`n_nationkey`)")
+
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      memsort(sort="o_year asc")
+        project(o_year="extract", mkt_share="$f1 / $f2")
+          hashagg(group="extract", $f1="sum($f1)", $f2="sum($f2)")
+            exchange(distribution=hash[0], collation=[])
+              partialhashagg(group="extract", $f1="sum(case)", $f2="sum(__*__)")
+                project(o_custkey="o_custkey", extract="extract", case="case($8, $6, cast(0):decimal(37, 4) not null)", __*__="__*__", c_custkey="c_custkey")
+                  hashjoin(condition="o_custkey = c_custkey", type="inner")
+                    exchange(distribution=hash[0], collation=[])
+                      logicalview(tables="customer[p1,p2,p3,p4],nation,region", shardcount=4, sql="select `customer`.`c_custkey` from `customer` as `customer` inner join `nation` as `nation` on (`customer`.`c_nationkey` = `nation`.`n_nationkey`) inner join `region` as `region` on ((`nation`.`n_regionkey` = `region`.`r_regionkey`) and (`region`.`r_name` = 'america'))")
+                    exchange(distribution=hash[3], collation=[])
+                      hashjoin(condition="s_suppkey = l_suppkey", type="inner")
+                        exchange(distribution=hash[2], collation=[])
+                          project(p_partkey="p_partkey", l_partkey="l_partkey", l_suppkey="l_suppkey", o_custkey="o_custkey", extract="extract", __*__="__*__")
+                            hashjoin(condition="p_partkey = l_partkey", type="inner")
+                              filter(condition="bloomfilter(l_partkey)")
+                                logicalview(tables="lineitem[p1,p2,p3,p4],orders[p1,p2,p3,p4]", shardcount=4, sql="select `lineitem`.`l_partkey`, `lineitem`.`l_suppkey`, `orders`.`o_custkey`, extract(year from `orders`.`o_orderdate`) as `extract`, (`lineitem`.`l_extendedprice` * (1 - `lineitem`.`l_discount`)) as `__*__` from `lineitem` as `lineitem` inner join `orders` as `orders` on ((`lineitem`.`l_orderkey` = `orders`.`o_orderkey`) and (`orders`.`o_orderdate` between '1995-01-01' and '1996-12-31'))")
+                              exchange(distribution=broadcast, collation=[])
+                                runtimefilterbuilder(condition="runtime_filter_builder_[0](p_partkey)")
+                                  logicalview(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey` from `part` as `part` where (`p_type` = 'economy anodized steel')")
+                        exchange(distribution=hash[0], collation=[])
+                          logicalview(tables="supplier[p1,p2,p3,p4],nation", shardcount=4, sql="select `supplier`.`s_suppkey`, (`nation`.`n_name` = 'brazil') as `=` from `supplier` as `supplier` inner join `nation` as `nation` on (`supplier`.`s_nationkey` = `nation`.`n_nationkey`)")
 
 - sql: |
     select
@@ -343,6 +319,7 @@
       o_year desc;
 
   plan: |
+
     exchange(distribution=single, collation=[0 asc-nulls-first, 1 desc-nulls-last])
       sortagg(group="nation,o_year", sum_profit="sum(amount)")
         memsort(sort="nation asc,o_year desc")
@@ -389,22 +366,23 @@
       value desc;
 
   plan: |
-    Exchange(distribution=single, collation=[1 DESC-nulls-last])
-      MemSort(sort="value DESC")
-        Project(ps_partkey="ps_partkey", value="value")
-          NlJoin(condition="value > $f0 * 0.0001", type="inner")
-            HashAgg(group="ps_partkey", value="SUM(__*__)")
-              Exchange(distribution=hash[1], collation=[])
-                BKAJoin(condition="ps_suppkey = s_suppkey", type="inner")
-                  LogicalView(tables="supplier[p1,p2,p3,p4],nation", shardCount=4, sql="SELECT `supplier`.`s_suppkey` FROM `supplier` AS `supplier` INNER JOIN `nation` AS `nation` ON ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) AND (`nation`.`n_name` = 'GERMANY'))")
-                  LogicalView(tables="partsupp[p1,p2,p3,p4]", shardCount=4, sql="SELECT `ps_partkey`, `ps_suppkey`, (`ps_supplycost` * `ps_availqty`) AS `__*__` FROM `partsupp` AS `partsupp` WHERE (`ps_suppkey` IN (...))")
-            Exchange(distribution=broadcast, collation=[])
-              HashAgg($f0="SUM($f0)")
-                Exchange(distribution=single, collation=[])
-                  PartialHashAgg($f0="SUM(__*__)")
-                    BKAJoin(condition="ps_suppkey = s_suppkey", type="inner")
-                      LogicalView(tables="supplier[p1,p2,p3,p4],nation", shardCount=4, sql="SELECT `supplier`.`s_suppkey` FROM `supplier` AS `supplier` INNER JOIN `nation` AS `nation` ON ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) AND (`nation`.`n_name` = 'GERMANY'))")
-                      LogicalView(tables="partsupp[p1,p2,p3,p4]", shardCount=4, sql="SELECT `ps_suppkey`, (`ps_supplycost` * `ps_availqty`) AS `__*__` FROM `partsupp` AS `partsupp` WHERE (`ps_suppkey` IN (...))")
+
+    exchange(distribution=single, collation=[1 desc-nulls-last])
+      memsort(sort="value desc")
+        project(ps_partkey="ps_partkey", value="value")
+          nljoin(condition="value > $f0 * 0.0001", type="inner")
+            hashagg(group="ps_partkey", value="sum(__*__)")
+              exchange(distribution=hash[1], collation=[])
+                bkajoin(condition="ps_suppkey = s_suppkey", type="inner")
+                  logicalview(tables="supplier[p1,p2,p3,p4],nation", shardcount=4, sql="select `supplier`.`s_suppkey` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany'))")
+                  logicalview(tables="partsupp[p1,p2,p3,p4]", shardcount=4, sql="select `ps_partkey`, `ps_suppkey`, (`ps_supplycost` * `ps_availqty`) as `__*__` from `partsupp` as `partsupp` force index(`idx_partsupp_suppkey`) where (`ps_suppkey` in (...))")
+            exchange(distribution=broadcast, collation=[])
+              hashagg($f0="sum($f0)")
+                exchange(distribution=single, collation=[])
+                  partialhashagg($f0="sum(__*__)")
+                    bkajoin(condition="ps_suppkey = s_suppkey", type="inner")
+                      logicalview(tables="supplier[p1,p2,p3,p4],nation", shardcount=4, sql="select `supplier`.`s_suppkey` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany'))")
+                      logicalview(tables="partsupp[p1,p2,p3,p4]", shardcount=4, sql="select `ps_suppkey`, (`ps_supplycost` * `ps_availqty`) as `__*__` from `partsupp` as `partsupp` force index(`idx_partsupp_suppkey`) where (`ps_suppkey` in (...))")
 
 - sql: |
     select
@@ -430,6 +408,7 @@
     group by l_shipmode
     order by l_shipmode;
   plan: |
+
     exchange(distribution=single, collation=[0 asc-nulls-first])
       sortagg(group="l_shipmode", high_line_count="sum(high_line_count)", low_line_count="sum(low_line_count)")
         exchange(distribution=hash[0], collation=[0 asc-nulls-first])
@@ -452,15 +431,16 @@
     custdist desc, c_count desc;
 
   plan: |
-    Exchange(distribution=single, collation=[1 DESC-nulls-last, 0 DESC-nulls-last])
-      MemSort(sort="custdist DESC,c_count DESC")
-        HashAgg(group="c_count", custdist="COUNT()")
-          Exchange(distribution=hash[1], collation=[])
-            HashGroupJoin(condition="c_custkey = o_custkey", type="left")
-              Exchange(distribution=hash[0], collation=[])
-                LogicalView(tables="customer[p1,p2,p3,p4]", shardCount=4, sql="SELECT `c_custkey` FROM `customer` AS `customer`")
-              Exchange(distribution=hash[1], collation=[])
-                LogicalView(tables="orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey`, `o_custkey` FROM `orders` AS `orders` WHERE (`o_comment` NOT LIKE '%special%requests%')")
+
+    exchange(distribution=single, collation=[1 desc-nulls-last, 0 desc-nulls-last])
+      memsort(sort="custdist desc,c_count desc")
+        hashagg(group="c_count", custdist="count()")
+          exchange(distribution=hash[1], collation=[])
+            hashgroupjoin(condition="c_custkey = o_custkey", type="left")
+              exchange(distribution=hash[0], collation=[])
+                logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey` from `customer` as `customer`")
+              exchange(distribution=hash[1], collation=[])
+                logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey` from `orders` as `orders` where (`o_comment` not like '%special%requests%')")
 
 - sql: |
     select
@@ -478,16 +458,17 @@
       and l_shipdate < date_add(cast('1995-09-01' as date ), Interval 1 year );
 
   plan: |
-    Project(promo_revenue="100.00 * $f0 / $f1")
-      HashAgg($f0="SUM($f0)", $f1="SUM($f1)")
-        Exchange(distribution=single, collation=[])
-          PartialHashAgg($f0="SUM($f0)", $f1="SUM($f1)")
-            Project($f0="CASE($3, $1, CAST(0):DECIMAL(37, 4) NOT NULL)", $f1="__*__")
-              HashJoin(condition="l_partkey = p_partkey", type="inner")
-                Exchange(distribution=hash[0], collation=[])
-                  LogicalView(tables="lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `l_partkey`, (`l_extendedprice` * (1 - `l_discount`)) AS `__*__` FROM `lineitem` AS `lineitem` WHERE ((`l_shipdate` >= '1995-09-01') AND (`l_shipdate` < DATE_ADD(CAST('1995-09-01' AS DATE), INTERVAL 1 YEAR)))")
-                Exchange(distribution=hash[0], collation=[])
-                  LogicalView(tables="part[p1,p2,p3,p4]", shardCount=4, sql="SELECT `p_partkey`, (`p_type` LIKE 'PROMO%') AS `LIKE` FROM `part` AS `part`")
+
+    project(promo_revenue="100.00 * $f0 / $f1")
+      hashagg($f0="sum($f0)", $f1="sum($f1)")
+        exchange(distribution=single, collation=[])
+          partialhashagg($f0="sum($f0)", $f1="sum($f1)")
+            project($f0="case($3, $1, cast(0):decimal(37, 4) not null)", $f1="__*__")
+              hashjoin(condition="l_partkey = p_partkey", type="inner")
+                exchange(distribution=hash[0], collation=[])
+                  logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, (`l_extendedprice` * (1 - `l_discount`)) as `__*__` from `lineitem` as `lineitem` where ((`l_shipdate` >= '1995-09-01') and (`l_shipdate` < date_add(cast('1995-09-01' as date), interval 1 year)))")
+                exchange(distribution=hash[0], collation=[])
+                  logicalview(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey`, (`p_type` like 'promo%') as `like` from `part` as `part`")
 
 - sql: |
     select
@@ -527,25 +508,26 @@
     s_suppkey;
 
   plan: |
+
     project(s_suppkey="s_suppkey", s_name="s_name", s_address="s_address", s_phone="s_phone", total_revenue="total_revenue")
       exchange(distribution=single, collation=[0 asc-nulls-first])
         hashjoin(condition="supplier_no = s_suppkey", type="inner")
           exchange(distribution=hash[0], collation=[0 asc-nulls-first])
-            logicalview(tables="supplier[p1,p2,p3,p4]", shardcount=4, sql="select `s_suppkey`, `s_name`, `s_address`, `s_phone` from `supplier` as `supplier` order by `s_suppkey`")
+            logicalview(tables="supplier[p1,p2,p3,p4]", shardcount=4, sql="select `s_suppkey`, `s_name`, `s_address`, `s_phone` from `supplier` as `supplier` force index(`primary`) order by `s_suppkey`")
           project(max(total_revenue)="max(total_revenue)", supplier_no="supplier_no", total_revenue="total_revenue")
             hashjoin(condition="max(total_revenue) = total_revenue", type="inner")
               filter(condition="bloomfilter(total_revenue)")
-                hashagg(group="supplier_no", total_revenue="sum($f1)")
+                hashagg(group="supplier_no", total_revenue="sum(total_revenue)")
                   exchange(distribution=hash[0], collation=[])
-                    logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_suppkey` as `supplier_no`, (`l_extendedprice` * (1 - `l_discount`)) as `$f1` from `lineitem` as `lineitem` where ((`l_shipdate` >= '1996-01-01') and (`l_shipdate` < date_add('1996-01-01', interval 3 month)))")
+                    logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_suppkey` as `supplier_no`, sum((`l_extendedprice` * (1 - `l_discount`))) as `total_revenue` from `lineitem` as `lineitem` where ((`l_shipdate` >= '1996-01-01') and (`l_shipdate` < date_add('1996-01-01', interval 3 month))) group by `l_suppkey`")
               exchange(distribution=broadcast, collation=[])
                 runtimefilterbuilder(condition="runtime_filter_builder_[0](max(total_revenue))")
                   hashagg(max(total_revenue)="max(max(total_revenue))")
                     exchange(distribution=single, collation=[])
                       partialhashagg(max(total_revenue)="max(total_revenue)")
-                        hashagg(group="supplier_no", total_revenue="sum($f1)")
+                        hashagg(group="supplier_no", total_revenue="sum(total_revenue)")
                           exchange(distribution=hash[0], collation=[])
-                            logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_suppkey` as `supplier_no`, (`l_extendedprice` * (1 - `l_discount`)) as `$f1` from `lineitem` as `lineitem` where ((`l_shipdate` >= '1996-01-01') and (`l_shipdate` < date_add(cast('1996-01-01' as date), interval 3 month)))")
+                            logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_suppkey` as `supplier_no`, sum((`l_extendedprice` * (1 - `l_discount`))) as `total_revenue` from `lineitem` as `lineitem` where ((`l_shipdate` >= '1996-01-01') and (`l_shipdate` < date_add(cast('1996-01-01' as date), interval 3 month))) group by `l_suppkey`")
 
 - sql: |
     select
@@ -583,14 +565,14 @@
     exchange(distribution=single, collation=[3 desc-nulls-last, 0 asc-nulls-first, 1 asc-nulls-first, 2 asc-nulls-first])
       memsort(sort="supplier_cnt desc,p_brand asc,p_type asc,p_size asc")
         hashagg(group="p_brand,p_type,p_size", supplier_cnt="count(ps_suppkey)")
-          exchange(distribution=hash[0, 1, 2], collation=[])
-            hashagg(group="p_brand,p_type,p_size,ps_suppkey")
+          hashagg(group="p_brand,p_type,p_size,ps_suppkey")
+            exchange(distribution=hash[1], collation=[])
               project(p_brand="p_brand", p_type="p_type", p_size="p_size", ps_suppkey="ps_suppkey")
                 semihashjoin(condition="ps_suppkey = s_suppkey", type="anti", build="inner")
-                  exchange(distribution=hash[0], collation=[])
-                    logicalview(tables="partsupp[p1,p2,p3,p4],part[p1,p2,p3,p4]", shardcount=4, sql="select `partsupp`.`ps_suppkey`, `part`.`p_brand`, `part`.`p_type`, `part`.`p_size` from `partsupp` as `partsupp` inner join `part` as `part` on ((`partsupp`.`ps_partkey` = `part`.`p_partkey`) and (`part`.`p_brand` <> 'brand#45') and (`part`.`p_type` not like 'medium polished') and (`part`.`p_size` in(49, 14, 23, 45, 19, 3, 36, 9)))")
-                  exchange(distribution=hash[0], collation=[])
+                  logicalview(tables="partsupp[p1,p2,p3,p4],part[p1,p2,p3,p4]", shardcount=4, sql="select `partsupp`.`ps_suppkey`, `part`.`p_brand`, `part`.`p_type`, `part`.`p_size` from `partsupp` as `partsupp` inner join `part` as `part` on ((`partsupp`.`ps_partkey` = `part`.`p_partkey`) and (`part`.`p_brand` <> 'brand#45') and (`part`.`p_type` not like 'medium polished') and (`part`.`p_size` in(49, 14, 23, 45, 19, 3, 36, 9)))")
+                  exchange(distribution=broadcast, collation=[])
                     logicalview(tables="supplier[p1,p2,p3,p4]", shardcount=4, sql="select `s_suppkey` from `supplier` as `supplier` where (`s_comment` like '%customer%complaints%')")
+
 - sql: |
     select
       sum(l_extendedprice) / 7.0 as avg_yearly
@@ -611,47 +593,17 @@
       );
 
   plan: |
+
     project(avg_yearly="$f0 / 7.0")
       hashagg($f0="sum($f0)")
         exchange(distribution=single, collation=[])
-          PartialHashAgg($f0="sum(l_extendedprice)")
+          partialhashagg($f0="sum(l_extendedprice)")
             filter(condition="l_quantity < 0.2 * f16w0$o0")
               hashwindow(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", f4w0$o0="window#0avg($2)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded following aggs [avg($2)])")
                 exchange(distribution=hash[1], collation=[])
                   bkajoin(condition="l_partkey = p_partkey", type="inner")
                     logicalview(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey` from `part` as `part` where ((`p_container` = 'med box') and (`p_brand` = 'brand#23'))")
-                    logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem` where (`l_partkey` in (...))")
-
-#- sql: |
-#    select
-#    c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice, sum(l_quantity)
-#    from
-#    customer,
-#    orders,
-#    lineitem where
-#    o_orderkey in ( select
-#    l_orderkey from
-#    lineitem group by
-#    l_orderkey having
-#    sum(l_quantity) > 300
-#    )
-#    and c_custkey = o_custkey and o_orderkey = l_orderkey
-#    group by c_name,
-#    c_custkey, o_orderkey, o_orderdate, o_totalprice
-#    order by
-#    o_totalprice desc,
-#    o_orderdate;
-#
-#  plan: |
-#    Project(c_name="c_name", c_custkey="c_custkey", o_orderkey="o_orderkey", o_orderdate="o_orderdate", o_totalprice="o_totalprice", sum(l_quantity)="$f8")
-#      Exchange(distribution=single, collation=[3 DESC-nulls-last, 2 ASC-nulls-first])
-#        MemSort(sort="o_totalprice DESC,o_orderdate ASC")
-#          Project(c_custkey="c_custkey", o_orderkey="o_orderkey", o_orderdate="o_orderdate", o_totalprice="o_totalprice", c_name="c_name", $f8="$f2 * sum(l_quantity)")
-#            HashJoin(condition="o_custkey = c_custkey", type="inner")
-#              Exchange(distribution=hash[0], collation=[])
-#                LogicalView(tables="customer[p1,p2,p3,p4]", shardCount=4, sql="SELECT `c_custkey`, (`c_name`) AS `c_name`, COUNT(*) AS `$f2` FROM `customer` AS `customer` GROUP BY `c_custkey`")
-#              Exchange(distribution=hash[1], collation=[])
-#                LogicalView(tables="orders[p1,p2,p3,p4],lineitem[p1,p2,p3,p4],lineitem[p1,p2,p3,p4]", shardCount=4, sql="SELECT `orders`.`o_orderkey`, `orders`.`o_custkey`, (`orders`.`o_orderdate`) AS `o_orderdate`, (`orders`.`o_totalprice`) AS `o_totalprice`, SUM(`lineitem`.`l_quantity`) AS `sum(l_quantity)` FROM `orders` AS `orders` INNER JOIN `lineitem` AS `lineitem` ON (`orders`.`o_orderkey` = `lineitem`.`l_orderkey`) WHERE (`orders`.`o_orderkey` IN (SELECT `l_orderkey` FROM (SELECT `l_orderkey`, SUM(`l_quantity`) AS `$f1` FROM `lineitem` AS `lineitem0` GROUP BY `l_orderkey` HAVING (SUM(`l_quantity`) > 300)) AS `t1`)) GROUP BY `orders`.`o_orderkey`, `orders`.`o_custkey`")
+                    logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem` force index(`i_l_partkey`) where (`l_partkey` in (...))")
 
 - sql: |
     select
@@ -687,6 +639,7 @@
     );
 
   plan: |
+
     hashagg(revenue="sum(revenue)")
       exchange(distribution=single, collation=[])
         partialhashagg(revenue="sum(__*__)")
@@ -736,6 +689,7 @@
       s_name;
 
   plan: |
+
     exchange(distribution=single, collation=[0 asc-nulls-first])
       memsort(sort="s_name asc")
         project(s_name="s_name", s_address="s_address")
@@ -744,10 +698,10 @@
             exchange(distribution=broadcast, collation=[])
               project(ps_suppkey="ps_suppkey")
                 hashjoin(condition="l_partkey = ps_partkey and l_suppkey = ps_suppkey and ps_availqty > 0.5 * $f2", type="inner")
-                  hashagg(group="l_partkey,l_suppkey", $f2="sum(l_quantity)")
-                    exchange(distribution=hash[1, 2], collation=[])
+                  hashagg(group="l_partkey,l_suppkey", $f2="sum($f2)")
+                    exchange(distribution=hash[0, 1], collation=[])
                       filter(condition="bloomfilter(l_partkey) and bloomfilter(l_suppkey)")
-                        logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_quantity`, `l_partkey`, `l_suppkey` from `lineitem` as `lineitem` where ((`l_shipdate` < date_add(cast('1994-01-01' as date), interval 1 year)) and (`l_shipdate` >= '1994-01-01'))")
+                        logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_suppkey`, sum(`l_quantity`) as `$f2` from `lineitem` as `lineitem` where ((`l_shipdate` < date_add(cast('1994-01-01' as date), interval 1 year)) and (`l_shipdate` >= '1994-01-01')) group by `l_partkey`, `l_suppkey`")
                   exchange(distribution=hash[0, 1], collation=[])
                     runtimefilterbuilder(condition="runtime_filter_builder_[0](ps_partkey) and runtime_filter_builder_[1](ps_suppkey)")
                       logicalview(tables="partsupp[p1,p2,p3,p4],part[p1,p2,p3,p4]", shardcount=4, sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty` from `partsupp` as `partsupp` where (`ps_partkey` in (select `p_partkey` from `part` as `part` where ((`p_name` like 'forest%') and (`partsupp`.`ps_partkey` = `p_partkey`))))")
@@ -794,6 +748,7 @@
       s_name;
 
   plan: |
+
     exchange(distribution=single, collation=[1 desc-nulls-last, 0 asc-nulls-first])
       memsort(sort="numwait desc,s_name asc")
         hashagg(group="s_name", numwait="count()")
@@ -806,12 +761,14 @@
                   exchange(distribution=broadcast, collation=[])
                     runtimefilterbuilder(condition="runtime_filter_builder_[0](s_suppkey)")
                       logicalview(tables="supplier[p1,p2,p3,p4],nation", shardcount=4, sql="select `supplier`.`s_suppkey`, `supplier`.`s_name` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'saudi arabia'))")
-              logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` where (`l_orderkey` in (...))")
+              logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` force index(`primary`) where (`l_orderkey` in (...))")
+
 - sql: |
     /*+TDDL:ENABLE_RUNTIME_FILTER=false */
     select x.tt from customer join (select sum(o_custkey)+1 as tt from orders group by o_orderkey) x on c_nationkey > x.tt;
 
   plan: |
+
     project(tt="$f1 + 1")
       nljoin(condition="c_nationkey > $f1 + 1", type="inner")
         exchange(distribution=single, collation=[])
@@ -824,6 +781,7 @@
     select x.tt from customer join (select sum(o_custkey)+1 as tt from orders group by o_orderkey) x on c_nationkey = x.tt;
 
   plan: |
+
     project(tt="tt")
       hashjoin(condition="tt = c_nationkey", type="inner")
         exchange(distribution=hash[0], collation=[])
@@ -832,54 +790,3 @@
           exchange(distribution=hash[1], collation=[])
             project(c_nationkey="c_nationkey", c_nationkey_shuffle__="cast(c_nationkey)")
               logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_nationkey` from `customer` as `customer`")
-#-
-#  sql: |
-#    select
-#      cntrycode,
-#      count(*) as numcust,
-#      sum(c_acctbal) as totacctbal
-#    from
-#      (
-#      select
-#        substring(c_phone ,1, 2) as cntrycode,
-#        c_acctbal
-#      from
-#        customer
-#      where
-#        substring(c_phone ,1, 2) in ('13','31','23','29','30','18','17')
-#        and c_acctbal > (
-#          select
-#            avg(c_acctbal)
-#          from
-#            customer
-#          where
-#            c_acctbal > 0.00
-#            and substring (c_phone , 1, 2) in ('13','31','23','29','30','18','17')
-#        )
-#        and not exists (
-#          select
-#            *
-#          from
-#            orders
-#          where
-#            o_custkey = c_custkey
-#        )
-#      ) as custsale
-#    group by
-#      cntrycode
-#    order by
-#      cntrycode;
-#
-#  plan: |
-#    MemSort(sort="cntrycode ASC")
-#      HashAgg(group="cntrycode", numcust="COUNT()", totacctbal="SUM(c_acctbal)")
-#        Project(cntrycode="SUBSTRING(c_phone, 1, 2)", c_acctbal="c_acctbal")
-#          NlJoin(condition="c_acctbal > sum_pushed_sum / sum_pushed_count", type="inner")
-#            SemiHashJoin(condition="c_custkey = o_custkey", type="anti")
-#              Gather(concurrent=true)
-#                LogicalView(tables="[0000-0003].customer_[00-15]", shardCount=16, sql="SELECT `c_custkey`, `c_phone`, `c_acctbal` FROM `customer` AS `customer` WHERE ((SUBSTRING(`c_phone`, 1, 2)) IN('13', '31', '23', '29', '30', '18', '17'))")
-#              Gather(concurrent=true)
-#                LogicalView(tables="[0000-0003].orders_[00-15]", shardCount=16, sql="SELECT `o_custkey` FROM `orders` AS `orders`")
-#            HashAgg(sum_pushed_sum="SUM(pushed_sum)", sum_pushed_count="SUM(pushed_count)")
-#              Gather(concurrent=true)
-#                LogicalView(tables="[0000-0003].customer_[00-15]", shardCount=16, sql="SELECT SUM(`c_acctbal`) AS `pushed_sum`, COUNT(`c_acctbal`) AS `pushed_count` FROM `customer` AS `customer` WHERE ((`c_acctbal` > 0.00) AND ((SUBSTRING(`c_phone`, 1, 2)) IN('13', '31', '23', '29', '30', '18', '17')))")

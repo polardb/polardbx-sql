@@ -1,11 +1,11 @@
 package com.alibaba.polardbx.qatest.ddl.auto.omc;
 
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
@@ -50,7 +50,7 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             + " alter table %s modify column b bigint";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN)
                 + "replace into %%s values(%d + %d, %d,null,null)",
             count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
@@ -164,7 +164,7 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN)
                 + "replace into %%s values(%d + %d, %d,null,null)",
             count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
@@ -220,7 +220,7 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint, change column c cc char(10) character set utf8, drop column d, add column f varchar(10) default \"def d\"";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator = (count) -> String.format(
-            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING, ENABLE_LOCAL_UK_FULL_TABLE_SCAN)
                 + "replace into %%s values(%d + %d, %d, \"def c\", \"def d\")",
             count, FILL_COUNT, count);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
@@ -248,5 +248,72 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             1);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
             1);
+    }
+
+    @Test
+    public void singleChangeMultiWithReplace() throws Exception {
+        String tableName = "omc_single_with_replace";
+        String colDef = "int default 3";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") single",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint default 4, change column c f char(10) character set utf8mb4 default 'wumu'";
+        String selectSql = "select * from %s order by a";
+        Function<Integer, String> generator = (count) -> String.format(
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING) + "replace into %%s(a) values(%d)", count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
+                && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("wumu"));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker, true,
+            false, 1, createSql);
+    }
+
+    @Test
+    public void broadcastChangeMultiWithReplace() throws Exception {
+        String tableName = "omc_broadcast_with_replace";
+        String colDef = "int default 3";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") broadcast",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint default 4, change column c f char(10) character set utf8mb4 default 'wumu'";
+        String selectSql = "select * from %s order by a";
+        Function<Integer, String> generator = (count) -> String.format(
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING) + "replace into %%s(a) values(%d)", count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
+                && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("wumu"));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker, true,
+            false, 1, createSql);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "omc 精度变更导致cdc数据校验无法通过")
+    public void changeWithReplace4() throws Exception {
+        String tableName = "omc_with_replace_4";
+        String colDef = "float(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s modify column b decimal(9,3)";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator = (count) -> String.format(
+            buildCmdExtra(USE_LOGICAL_EXECUTION, DISABLE_DML_RETURNING)
+                + "replace into %%s values(%d, %f + %d,null,null)", count, count / 7.0, FILL_COUNT);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
+            1, false, false, null);
     }
 }

@@ -62,6 +62,7 @@ public class ArchiveOSSTableDataWithPauseTask extends ArchiveOSSTableDataTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
 
         new FileStorageAccessorDelegate<Integer>() {
             @Override

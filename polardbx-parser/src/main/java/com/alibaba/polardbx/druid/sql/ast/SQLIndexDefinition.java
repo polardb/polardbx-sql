@@ -24,7 +24,9 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 import com.alibaba.polardbx.druid.util.FnvHash;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @version 1.0
@@ -72,6 +74,11 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     private SQLName engineName;
     // Compatible layer.
     private List<SQLAssignItem> compatibleOptions = new ArrayList<SQLAssignItem>();
+    private final Map<String, String> columnarOptions = new HashMap<>();
+
+    public Map<String, String> getColumnarOptions() {
+        return columnarOptions;
+    }
 
     public SQLName getEngineName() {
         return engineName;
@@ -482,6 +489,14 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
             assignItem.setParent(this);
         }
         getCompatibleOptions().add(assignItem);
+    }
+
+    public void addColumnarOption(String name, String value) {
+        getColumnarOptions().put(name.toUpperCase(), value.toUpperCase());
+    }
+
+    public void addColumnarOption(Map<String, String> options) {
+        getColumnarOptions().putAll(options);
     }
 
     public SQLExpr getOption(String name) {

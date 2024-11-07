@@ -36,10 +36,12 @@ public class LogicalIndexScan extends LogicalView {
         this.flashback = primaryScan.getFlashback();
     }
 
-    public LogicalIndexScan(RelNode rel, RelOptTable table, SqlNodeList hints, LockMode lockMode, RexNode flashback) {
+    public LogicalIndexScan(RelNode rel, RelOptTable table, SqlNodeList hints, LockMode lockMode, RexNode flashback,
+                            boolean aggIsPushed) {
         super(rel, table, hints, lockMode, null);
         this.flashback = flashback;
         this.pushDownOpt.calculateRowType();
+        this.pushDownOpt.setAggIsPushed(aggIsPushed);
     }
 
     public LogicalIndexScan(LogicalView logicalView) {

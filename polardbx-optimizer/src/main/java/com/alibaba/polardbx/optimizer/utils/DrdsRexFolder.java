@@ -23,10 +23,11 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprVisitor;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
-import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
+
+import static com.alibaba.polardbx.optimizer.utils.OptimizerUtils.getParametersForOptimizer;
 
 /**
  * DrdsRexFolder folds constant in RexNode including RexDynamicParams
@@ -38,10 +39,7 @@ public abstract class DrdsRexFolder {
     private static final Logger logger = LoggerFactory.getLogger(DrdsRexFolder.class);
 
     public static Object fold(RexNode rex, PlannerContext plannerContext) {
-        Parameters parameters = RelMetadataQuery.THREAD_PARAMETERS.get();
-        if (parameters == null) {
-            parameters = plannerContext.getParams();
-        }
+        Parameters parameters = getParametersForOptimizer(plannerContext);
         ExecutionContext context = new ExecutionContext();
         context.setParams(parameters);
         return fold(rex, context);

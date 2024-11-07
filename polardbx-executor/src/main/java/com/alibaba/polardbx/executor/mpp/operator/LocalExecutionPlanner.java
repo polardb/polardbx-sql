@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -75,6 +77,7 @@ import com.alibaba.polardbx.executor.mpp.planner.FragmentRFManager;
 import com.alibaba.polardbx.executor.mpp.planner.LocalExchange;
 import com.alibaba.polardbx.executor.mpp.planner.PipelineFragment;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
+import com.alibaba.polardbx.executor.mpp.planner.RangeScanUtils;
 import com.alibaba.polardbx.executor.mpp.planner.RemoteSourceNode;
 import com.alibaba.polardbx.executor.mpp.planner.SimpleFragmentRFManager;
 import com.alibaba.polardbx.executor.mpp.planner.WrapPipelineFragment;
@@ -84,8 +87,10 @@ import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpression;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
@@ -119,9 +124,15 @@ import com.alibaba.polardbx.optimizer.core.rel.SortWindow;
 import com.alibaba.polardbx.optimizer.core.rel.TopN;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.ColumnarExchange;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
+import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfo;
+import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfoOneTable;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -162,15 +173,18 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.util.ImmutableBitSet;
+import org.apache.calcite.util.ImmutableIntList;
 import org.apache.calcite.util.Pair;
 
 import java.net.URI;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -233,6 +247,8 @@ public class LocalExecutionPlanner {
 
     private SplitManager splitManager;
 
+    private final boolean isSimpleMergeSort;
+
     public LocalExecutionPlanner(ExecutionContext context, ExchangeClientSupplier exchangeClientSupplier,
                                  int defaultParallelism, int bkaJoinParallelism, int taskNumber, int prefetch,
                                  Executor notificationExecutor, SpillerFactory spillerFactory,
@@ -241,6 +257,20 @@ public class LocalExecutionPlanner {
                                  boolean enableRuntimeFilter,
                                  int localPartitionCount, int totalPartitionCount,
                                  Map<String, Integer> splitCountMap, SplitManager splitManager) {
+        this(context, exchangeClientSupplier, defaultParallelism, bkaJoinParallelism, taskNumber, prefetch,
+            notificationExecutor, spillerFactory, httpClient, runtimeFilterUpdateUri, enableRuntimeFilter,
+            localPartitionCount, totalPartitionCount, splitCountMap, splitManager, false);
+    }
+
+    public LocalExecutionPlanner(ExecutionContext context, ExchangeClientSupplier exchangeClientSupplier,
+                                 int defaultParallelism, int bkaJoinParallelism, int taskNumber, int prefetch,
+                                 Executor notificationExecutor, SpillerFactory spillerFactory,
+                                 HttpClient httpClient,
+                                 URI runtimeFilterUpdateUri,
+                                 boolean enableRuntimeFilter,
+                                 int localPartitionCount, int totalPartitionCount,
+                                 Map<String, Integer> splitCountMap, SplitManager splitManager,
+                                 boolean isSimpleMergeSort) {
         this.exchangeClientSupplier = exchangeClientSupplier;
         this.totalPartitionCount = totalPartitionCount;
         this.pagesSerdeFactory = new PagesSerdeFactory(false);
@@ -263,6 +293,7 @@ public class LocalExecutionPlanner {
         this.localPartitionCount = localPartitionCount;
         this.splitCountMap = splitCountMap;
         this.splitManager = splitManager;
+        this.isSimpleMergeSort = isSimpleMergeSort;
     }
 
     public void setForbidMultipleReadConn(boolean forbidMultipleReadConn) {
@@ -685,7 +716,7 @@ public class LocalExecutionPlanner {
         SplitInfo splitInfo = splitManager.getSingleSplit(logicalView, context);
         pipelineFragment.putSource(logicalView.getRelatedId(), splitInfo);
         return createViewFactory(
-            parent, logicalView, pipelineFragment, spillerFactory, 1, false);
+            parent, logicalView, pipelineFragment, spillerFactory, 1, false, null);
     }
 
     private ExecutorFactory visitUnion(RelNode parent, LogicalUnion union, PipelineFragment pipelineFragment) {
@@ -957,7 +988,11 @@ public class LocalExecutionPlanner {
             }
         }
 
-        boolean useRF = context.getParamManager().getBoolean(ConnectionParams.ENABLE_NEW_RF);
+        // During the stage of configuring columnar parameters for the PlanExecutor, it's impossible to know the actual
+        // execution mode (MPP or AP_LOCAL). Therefore, when the ENABLE_NEW_RF parameter is actually invoked,
+        // the execution mode should be checked again. If it's AP_LOCAL mode, the runtime filter should be disabled.
+        boolean useRF = context.getParamManager().getBoolean(ConnectionParams.ENABLE_NEW_RF)
+            && context.getExecuteMode() == ExecutorMode.MPP;
         final boolean useXXHashRFinBuild =
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_XXHASH_RF_IN_BUILD);
         final boolean useXXHashRFinFilter =
@@ -1632,8 +1667,10 @@ public class LocalExecutionPlanner {
             logicalView.setExpandView(true);
         }
         int prefetch = totalPrefetch;
+        RangeScanMode rangeScanMode = null;
         if (isCluster) {
             if (isUnderMergeSort || logicalView.pushedRelNodeIsSort()) {
+                rangeScanMode = RangeScanUtils.useRangeScan(logicalView, context);
                 holdCollation = true;
                 pipelineFragment.holdSingleTonParallelism();
             }
@@ -1650,7 +1687,23 @@ public class LocalExecutionPlanner {
             if (logicalView.fromTableOperation() != null) {
                 splitInfo = splitManager.getSingleSplit(logicalView, context);
             } else {
+                if (isUnderMergeSort && logicalView.pushedRelNodeIsSort()) {
+                    rangeScanMode = RangeScanUtils.useRangeScan(logicalView, context, isSimpleMergeSort);
+                }
+
+                int mergeUnionSize = context.getParamManager().getInt(ConnectionParams.MERGE_UNION_SIZE);
+
+                // range scan can not union physical sql
+                if (rangeScanMode != null) {
+                    context.putIntoHintCmds(ConnectionProperties.MERGE_UNION_SIZE, 1);
+                }
+
                 splitInfo = splitManager.getSplits(logicalView, context, false);
+
+                if (rangeScanMode != null) {
+                    // reset merge union size
+                    context.putIntoHintCmds(ConnectionProperties.MERGE_UNION_SIZE, mergeUnionSize);
+                }
             }
 
             if (logicalView.pushedRelNodeIsSort()) {
@@ -1699,7 +1752,8 @@ public class LocalExecutionPlanner {
         }
 
         LogicalViewExecutorFactory logicalViewExecutorFactory =
-            createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, prefetch, isUnderMergeSort);
+            createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, prefetch, isUnderMergeSort,
+                rangeScanMode);
 
         boolean isProbeSideOfJoin =
             parent != null && parent instanceof HashJoin && ((HashJoin) parent).getOuter() == logicalView;
@@ -1809,14 +1863,14 @@ public class LocalExecutionPlanner {
 
     private LogicalViewExecutorFactory createViewFactory(
         RelNode parent, LogicalView logicalView, PipelineFragment pipelineFragment, SpillerFactory spillerFactory,
-        int prefetch, boolean isUnderMergeSort) {
+        int prefetch, boolean isUnderMergeSort, RangeScanMode rangeScanMode) {
         long fetched = Long.MAX_VALUE;
         long offset = 0;
-        boolean bSort = false;
+        boolean bSort = logicalView.pushedRelNodeIsSort();
 
         Map<Integer, ParameterContext> params = context.getParams().getCurrentParameter();
         Sort sort = null;
-        if (logicalView.pushedRelNodeIsSort()) {
+        if (bSort) {
             sort = (Sort) logicalView.getOptimizedPushedRelNodeForMetaQuery();
             if (isUnderMergeSort) {
                 sort = (Sort) parent;
@@ -1827,10 +1881,6 @@ public class LocalExecutionPlanner {
                     }
                 }
             }
-        }
-
-        if (sort != null) {
-            bSort = true;
         }
 
         long maxRowCount = ExecUtils.getMaxRowCount(sort, context);
@@ -1851,10 +1901,25 @@ public class LocalExecutionPlanner {
                 break;
             }
         }
+
+        // if number rows to fetch is too large, should not use serialize mode
+        if (rangeScanMode != null && !rangeScanMode.isNormalMode() && fetched > context.getParamManager()
+            .getInt(ConnectionParams.RANGE_SCAN_SERIALIZE_LIMIT)) {
+            rangeScanMode = RangeScanMode.NORMAL;
+        }
+
+        if (rangeScanMode == RangeScanMode.SERIALIZE) {
+            prefetch = 1;
+        }
+
+        if (rangeScanMode != null) {
+            randomSplits = false;
+        }
+
         return new LogicalViewExecutorFactory(pipelineFragment, logicalView, prefetch,
             pipelineFragment.getParallelism(),
             maxRowCount, bSort, sort, fetched, offset, spillerFactory, bloomFilterExpressionMap, enableRuntimeFilter,
-            randomSplits);
+            randomSplits, rangeScanMode);
     }
 
     private ExecutorFactory visitProject(Project project, PipelineFragment pipelineFragment) {

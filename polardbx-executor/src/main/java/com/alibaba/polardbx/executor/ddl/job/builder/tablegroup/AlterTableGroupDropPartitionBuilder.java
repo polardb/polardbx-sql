@@ -36,19 +36,16 @@ public class AlterTableGroupDropPartitionBuilder extends AlterTableGroupBaseBuil
     public void buildTablesPhysicalPlans() {
         List<String> allTables = getAllTableNames();
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
-        generateNewPhysicalTableNames(allTables);
         for (String tableName : allTables) {
             AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
                 createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);
-            AlterTableGroupItemBuilder itemBuilder =
-                new AlterTableGroupDropPartitionItemBuilder(relDdl, alterTableGroupItemPreparedData, executionContext);
-            List<PhyDdlTableOperation> phyDdlTableOperations = itemBuilder.build().getPhysicalPlans();
-            tablesTopologyMap.put(tableName, itemBuilder.getTableTopology());
-            sourceTablesTopology.put(tableName, itemBuilder.getSourcePhyTables());
-            targetTablesTopology.put(tableName, itemBuilder.getTargetPhyTables());
-            newPartitionsPhysicalPlansMap.put(tableName, phyDdlTableOperations);
+
+            tablesTopologyMap.put(tableName, null);
+            sourceTablesTopology.put(tableName, null);
+            targetTablesTopology.put(tableName, null);
+            newPartitionsPhysicalPlansMap.put(tableName, null);
             tablesPreparedData.put(tableName, alterTableGroupItemPreparedData);
-            orderedTargetTablesLocations.put(tableName, itemBuilder.getOrderedTargetTableLocations());
+            orderedTargetTablesLocations.put(tableName, null);
         }
     }
 }

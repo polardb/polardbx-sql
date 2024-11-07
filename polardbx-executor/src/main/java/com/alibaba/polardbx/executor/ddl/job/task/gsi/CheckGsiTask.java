@@ -39,6 +39,7 @@ import com.alibaba.polardbx.executor.gsi.corrector.Corrector;
 import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
 import com.alibaba.polardbx.executor.gsi.corrector.GsiReporter;
 import com.alibaba.polardbx.executor.gsi.fastchecker.GsiFastChecker;
+import com.alibaba.polardbx.executor.gsi.fastchecker.OmcFastChecker;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
@@ -47,6 +48,7 @@ import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableMap;
 import lombok.Getter;
+import lombok.Setter;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -56,7 +58,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
@@ -67,6 +68,7 @@ import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyP
  * @since 2021/07
  */
 @Getter
+@Setter
 @TaskName(name = "CheckGsiTask")
 public class CheckGsiTask extends BaseBackfillTask {
 
@@ -81,8 +83,10 @@ public class CheckGsiTask extends BaseBackfillTask {
     private final String extraCmd;
     private final boolean primaryBroadCast;
     private final boolean gsiBroadCast;
-    private Map<String, String> virtualColumnMap;
-    private Map<String, String> backfillColumnMap;
+
+    private final boolean onlineModifyColumn;
+    private Map<String, String> srcCheckColumnMap;
+    private Map<String, String> dstCheckColumnMap;
 
     public static CheckGsiTask create(CheckGsiPrepareData prepareData) {
         return new CheckGsiTask(
@@ -103,8 +107,7 @@ public class CheckGsiTask extends BaseBackfillTask {
             prepareData.getExtraCmd(),
             false,
             false,
-            null,
-            null
+            false
         );
     }
 
@@ -119,8 +122,7 @@ public class CheckGsiTask extends BaseBackfillTask {
                         String extraCmd,
                         boolean primaryBroadCast,
                         boolean gsiBroadCast,
-                        Map<String, String> virtualColumnMap,
-                        Map<String, String> backfillColumnMap) {
+                        boolean onlineModifyColumn) {
         super(schemaName);
         this.tableName = tableName;
         this.indexName = indexName;
@@ -131,23 +133,18 @@ public class CheckGsiTask extends BaseBackfillTask {
         this.extraCmd = extraCmd;
         this.primaryBroadCast = primaryBroadCast;
         this.gsiBroadCast = gsiBroadCast;
-        this.virtualColumnMap = virtualColumnMap;
-        this.backfillColumnMap = backfillColumnMap;
+        this.onlineModifyColumn = onlineModifyColumn;
     }
 
     @Override
     protected void executeImpl(ExecutionContext ec) {
         ec = ec.copy();
         ec.setBackfillId(getTaskId());
+        ec.setTaskId(getTaskId());
 
         // fast checker
         if (isUseFastChecker(ec) && fastCheck(ec)) {
             return;
-        }
-
-        if (MapUtils.isNotEmpty(virtualColumnMap) || MapUtils.isNotEmpty(backfillColumnMap)) {
-            throw GeneralUtil.nestedException(
-                "Fast checker failed. Please try to rollback/recover this job");
         }
 
         // slow checker
@@ -222,7 +219,7 @@ public class CheckGsiTask extends BaseBackfillTask {
             return;
         }
 
-        if (MapUtils.isNotEmpty(virtualColumnMap) || MapUtils.isNotEmpty(backfillColumnMap)) {
+        if (MapUtils.isNotEmpty(srcCheckColumnMap) || MapUtils.isNotEmpty(dstCheckColumnMap)) {
             throw GeneralUtil.nestedException(
                 "Fast checker failed. Please try to rollback/recover this job");
         }
@@ -271,8 +268,13 @@ public class CheckGsiTask extends BaseBackfillTask {
             .format("FastChecker for GSI, schema [{0}] logical src table [{1}] logic dst table [{2}] start",
                 schemaName, tableName, indexName));
 
-        FastChecker fastChecker =
-            GsiFastChecker.create(schemaName, tableName, indexName, virtualColumnMap, backfillColumnMap, ec);
+        FastChecker fastChecker;
+        if (onlineModifyColumn) {
+            fastChecker =
+                OmcFastChecker.create(schemaName, tableName, indexName, srcCheckColumnMap, dstCheckColumnMap, ec);
+        } else {
+            fastChecker = GsiFastChecker.create(schemaName, tableName, indexName, ec);
+        }
         if (dstPhyDbAndTables != null) {
             fastChecker.setDstPhyDbAndTables(dstPhyDbAndTables);
         }

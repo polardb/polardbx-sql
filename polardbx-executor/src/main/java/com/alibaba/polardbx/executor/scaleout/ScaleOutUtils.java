@@ -30,15 +30,25 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
+import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
+import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DiscardTableSpaceDdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
@@ -63,6 +73,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.MessageFormat;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -70,12 +81,15 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class ScaleOutUtils {
 
     public static final int RETRY_COUNT = 3;
     public static final long[] RETRY_WAIT = new long[RETRY_COUNT];
+
+    public static int QUERY_TIMEOUT = 600;
 
     static {
         IntStream.range(0, RETRY_COUNT).forEach(i -> RETRY_WAIT[i] = Math.round(Math.pow(2, i)));
@@ -88,6 +102,9 @@ public class ScaleOutUtils {
     private static final String DROP_TABLE_IF_EXISTS = "drop table if exists ";
     // 不能和逻辑表的backfill共用一个线程池，防止死锁，因为backfill是其子任务
     private static final BackFillThreadPool LOGICAL_TABLE_PARALLEL_INSTANCE_POOL = new BackFillThreadPool();
+
+    private static final String CHECK_TABLE_EXISTENCE =
+        "SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?  AND TABLE_NAME = ?";
 
     private static SqlNode getSqlTemplate(String primaryTableDefinition, ExecutionContext ec) {
         final SqlCreateTable primaryTableNode = (SqlCreateTable) new FastsqlParser()
@@ -322,13 +339,47 @@ public class ScaleOutUtils {
         return getScaleoutTaskParallelismImpl(ec, ConnectionParams.SCALEOUT_TASK_PARALLELISM);
     }
 
+    public static boolean checkTableExistence(String schemaName, String groupName, String physicalTb) {
+        IGroupExecutor ge = null;
+        DbGroupInfoRecord record = DbGroupInfoManager.getInstance().queryGroupInfo(schemaName, groupName);
+        String physicalDb = record.phyDbName;
+        try {
+            ExecutorContext ec = ExecutorContext.getContext(schemaName);
+            ge = ec.getTopologyExecutor().getGroupExecutor(groupName);
+        } catch (Throwable e) {
+            throw GeneralUtil.nestedException(
+                String.format("query group %s with check table %s.%s existence failed: %s", groupName, physicalTb,
+                    physicalTb, e.getMessage()), e);
+        }
+
+        try (Connection conn = ge.getDataSource().getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(CHECK_TABLE_EXISTENCE)) {
+            pstmt.setString(1, physicalDb);
+            pstmt.setString(2, physicalTb);
+            pstmt.setQueryTimeout(QUERY_TIMEOUT);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return true;
+                }
+            }
+        } catch (Throwable e) {
+            // 注意：这里对异常信息的处理应避免泄露过多细节，特别是在线上环境中
+            throw GeneralUtil.nestedException("Error checking table existence for " + physicalDb + "." + physicalTb, e);
+        }
+
+        return false;
+
+    }
+
     /**
-     * Min(NumCpuCores, Max(4, NumStorageNodes * 2))
+     * Min(NumCpuCores, Max(8, NumStorageNodes * 2)) * NumComputeNodes
      */
     private static int getScaleoutTaskParallelismImpl(ExecutionContext ec, LongConfigParam param) {
-        final int minParallelism = 4;
         long parallelism = ec.getParamManager().getLong(param);
-        if (parallelism > 0) {
+        int numComputeNode = GsiUtils.getAvaliableNodeNum(null, null,
+            ec);
+        if (parallelism > 0 && numComputeNode < 2) {
             return (int) parallelism;
         }
         int numCpuCores = ThreadCpuStatUtil.NUM_CORES;
@@ -338,6 +389,42 @@ public class ScaleOutUtils {
             .filter(StorageInstHaContext::isAllReplicaReady)
             .count();
         numStorageNodes = Math.max(1, numStorageNodes);
-        return Math.min(numCpuCores, Math.max(minParallelism, numStorageNodes * 2));
+        final int minParallelism = 10;
+        final int maxParallelism = 16;
+        return Math.min(Math.max(numCpuCores, minParallelism), maxParallelism) * Math.max(numComputeNode, numStorageNodes);
+    }
+
+    public static int getTaskPipelineSize(ExecutionContext ec) {
+        long pipelineSize = ec.getParamManager().getLong(ConnectionParams.PHYSICAL_BACKFILL_PIPELINE_SIZE);
+        if (pipelineSize > 0) {
+            return (int) pipelineSize;
+        }
+        return getTableGroupTaskParallelism(ec);
+    }
+
+    public static List<DdlTask> generateDiscardTableSpaceDdlTask(String schemaName,
+                                                                 Map<String, List<List<String>>> tableTopology,
+                                                                 List<PhyDdlTableOperation> discardTableSpaceOperations,
+                                                                 ExecutionContext executionContext) {
+        List<DdlTask> tasks = new ArrayList<>();
+        Map<String, String> groupNameToStorageInstMap = DbTopologyManager.getGroupNameToStorageInstIdMap(schemaName);
+        for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
+            String groupName = entry.getKey();
+            String storageInst = groupNameToStorageInstMap.get(groupName);
+            List<List<String>> physicalTbs = entry.getValue();
+            Map<String, List<List<String>>> newTableTopology = new HashMap<>();
+            newTableTopology.put(groupName, physicalTbs);
+            List<PhyDdlTableOperation> newDiscardTableSpaceOperations =
+                discardTableSpaceOperations.stream().filter(o -> o.getDbIndex().equalsIgnoreCase(groupName)).collect(
+                    Collectors.toList());
+            PhysicalPlanData physicalPlanData =
+                DdlJobDataConverter.convertToPhysicalPlanData(newTableTopology, newDiscardTableSpaceOperations,
+                    executionContext);
+            DdlTask phyDdlTask =
+                new DiscardTableSpaceDdlTask(schemaName, physicalPlanData.getLogicalTableName(), storageInst,
+                    physicalPlanData);
+            tasks.add(phyDdlTask);
+        }
+        return tasks;
     }
 }

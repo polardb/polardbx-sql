@@ -432,6 +432,7 @@ public class DriverContext {
             outputBufferInfo,
             ImmutableSet.of(),
             taskStats,
+            null,
             false,
             state.isDone(),
             taskStats.getCompletedPipelineExecs(),

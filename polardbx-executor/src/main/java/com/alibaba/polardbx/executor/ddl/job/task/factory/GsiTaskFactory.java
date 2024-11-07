@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.factory;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
@@ -28,43 +29,64 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.executor.backfill.BackfillStats;
 import com.alibaba.polardbx.executor.changeset.ChangeSetManager;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreateGsiCheckTask;
+import com.alibaba.polardbx.executor.ddl.job.factory.gsi.OmcCheckTask;
+import com.alibaba.polardbx.executor.ddl.job.factory.gsi.RebuildTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableColumnBackFillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTableGsiPkRangeBackfillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.backfill.LogicalTablePhysicalPartitionBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcGsiDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetCatchUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetStartTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterGsiAddLocalIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropColumnCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertColumnMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiPkRangeBackfillLogTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexColumnStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.SperateCheckGsiTask;
+import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyLogTask;
+import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.gsi.corrector.GsiChecker;
+import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.sun.org.apache.xpath.internal.operations.Bool;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.executor.backfill.BackfillSampleManager.toValue;
 import static com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils.genChangeSetCatchUpTasks;
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
 /**
  * an interesting gsi-relevant task generator
@@ -101,21 +123,33 @@ public class GsiTaskFactory {
      */
     public static List<DdlTask> addGlobalIndexTasks(String schemaName,
                                                     String primaryTableName,
-                                                    String oldIndexName,
+                                                    String backfillSourceTableName,
                                                     String indexName,
                                                     boolean stayAtDeleteOnly,
                                                     boolean stayAtWriteOnly,
                                                     boolean stayAtBackFill,
-                                                    Map<String, String> virtualColumns,
-                                                    Map<String, String> backfillColumnMap,
+                                                    Map<String, String> srcVirtualColumns,
+                                                    Map<String, String> dstVirtualColumns,
+                                                    Map<String, SQLColumnDefinition> dstColumnNewDefinitions,
                                                     List<String> modifyStringColumns,
                                                     PhysicalPlanData physicalPlanData,
                                                     TableMeta tableMeta,
-                                                    boolean repartition,
-                                                    boolean modifyColumn,
+                                                    boolean gsiCdcMark,
+                                                    boolean onlineModifyColumn,
                                                     boolean mirrorCopy,
                                                     String originalDdl) {
         List<DdlTask> taskList = new ArrayList<>();
+
+        if (onlineModifyColumn) {
+            assert MapUtils.isNotEmpty(dstColumnNewDefinitions);
+            List<DdlTask> checkerTasks = RebuildTableJobFactory.genGeneratedColumn4CheckTasks(schemaName, indexName,
+                dstVirtualColumns, dstColumnNewDefinitions, physicalPlanData);
+            if (CollectionUtils.isNotEmpty(checkerTasks)) {
+                taskList.addAll(checkerTasks);
+            }
+        }
+
+        backfillSourceTableName = backfillSourceTableName == null ? primaryTableName : backfillSourceTableName;
 
         DdlTask deleteOnlyTask = new GsiUpdateIndexStatusTask(
             schemaName,
@@ -160,16 +194,23 @@ public class GsiTaskFactory {
         if (stayAtWriteOnly) {
             return taskList;
         }
-        String backFillSourceTableName = mirrorCopy ? oldIndexName : primaryTableName;
         taskList.add(
-            new LogicalTableBackFillTask(schemaName, backFillSourceTableName, indexName, virtualColumns,
-                backfillColumnMap, modifyStringColumns, false, mirrorCopy, modifyColumn));
+            new LogicalTableBackFillTask(schemaName, backfillSourceTableName, indexName, srcVirtualColumns,
+                dstVirtualColumns, modifyStringColumns, false, mirrorCopy, onlineModifyColumn));
+        if (onlineModifyColumn) {
+            assert MapUtils.isNotEmpty(dstColumnNewDefinitions);
+            DdlTask dropCheckColumnTask = RebuildTableJobFactory.genDropColumn4CheckTasks(schemaName, indexName,
+                dstVirtualColumns, physicalPlanData);
+            if (dropCheckColumnTask != null) {
+                taskList.add(dropCheckColumnTask);
+            }
+        }
         if (stayAtBackFill) {
             return taskList;
         }
         taskList.add(writeReOrgTask);
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
-        if (!tableMeta.isAutoPartition() && !repartition) {
+        if (!tableMeta.isAutoPartition() && gsiCdcMark) {
             CdcGsiDdlMarkTask cdcDdlMarkTask =
                 new CdcGsiDdlMarkTask(schemaName, physicalPlanData, primaryTableName, originalDdl);
             taskList.add(cdcDdlMarkTask);
@@ -179,36 +220,300 @@ public class GsiTaskFactory {
         return taskList;
     }
 
+    public static ExecutableDdlJob addGlobalIndexTasks(String schemaName,
+                                                       String primaryTableName,
+                                                       String oldIndexName,
+                                                       String indexName,
+                                                       boolean stayAtDeleteOnly,
+                                                       boolean stayAtWriteOnly,
+                                                       boolean stayAtBackFill,
+                                                       Map<String, String> virtualColumns,
+                                                       Map<String, String> backfillColumnMap,
+                                                       List<String> modifyStringColumns,
+                                                       PhysicalPlanData physicalPlanData,
+                                                       PhysicalPlanData physicalPlanDataForLocalIndex,
+                                                       TableMeta tableMeta,
+                                                       boolean gsiCdcMark,
+                                                       boolean modifyColumn,
+                                                       boolean mirrorCopy,
+                                                       String originalDdl,
+                                                       GsiChecker.Params params,
+                                                       Boolean splitByPkRange,
+                                                       Boolean splitByPartition,
+                                                       Boolean enableSample,
+                                                       long maxTaskPkRangeSize,
+                                                       long maxPkRangeSize,
+                                                       long maxSampleRows,
+                                                       long maxPkRangeSampleRows,
+                                                       int totalThreadCount,
+                                                       int cpuAcquired) {
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        DdlTask deleteOnlyTask = new GsiUpdateIndexStatusTask(
+            schemaName,
+            primaryTableName,
+            indexName,
+            IndexStatus.CREATING,
+            IndexStatus.DELETE_ONLY,
+            true
+        ).onExceptionTryRecoveryThenRollback();
+        DdlTask writeOnlyTask = new GsiUpdateIndexStatusTask(
+            schemaName,
+            primaryTableName,
+            indexName,
+            IndexStatus.DELETE_ONLY,
+            IndexStatus.WRITE_ONLY,
+            true
+        ).onExceptionTryRecoveryThenRollback();
+        DdlTask writeReOrgTask = new GsiUpdateIndexStatusTask(
+            schemaName,
+            primaryTableName,
+            indexName,
+            IndexStatus.WRITE_ONLY,
+            IndexStatus.WRITE_REORG,
+            true
+        ).onExceptionTryRecoveryThenRollback();
+        DdlTask publicTask = new GsiUpdateIndexStatusTask(
+            schemaName,
+            primaryTableName,
+            indexName,
+            IndexStatus.WRITE_REORG,
+            IndexStatus.PUBLIC,
+            true
+        ).onExceptionTryRecoveryThenRollback();
+
+        AlterGsiAddLocalIndexTask alterGsiPhyTable = null;
+        if (physicalPlanDataForLocalIndex != null) {
+            alterGsiPhyTable =
+                new AlterGsiAddLocalIndexTask(schemaName, primaryTableName, indexName, physicalPlanDataForLocalIndex
+                );
+        }
+
+        executableDdlJob.appendTask(deleteOnlyTask);
+        executableDdlJob.labelAsHead(deleteOnlyTask);
+        TableSyncTask tableSyncTask = new TableSyncTask(schemaName, primaryTableName);
+        executableDdlJob.appendTask(tableSyncTask);
+        if (stayAtDeleteOnly) {
+            if (alterGsiPhyTable != null) {
+                executableDdlJob.appendTask(alterGsiPhyTable);
+                executableDdlJob.labelAsTail(alterGsiPhyTable);
+            } else {
+                executableDdlJob.labelAsTail(tableSyncTask);
+            }
+            return executableDdlJob;
+        }
+        executableDdlJob.appendTask(writeOnlyTask);
+        tableSyncTask = new TableSyncTask(schemaName, primaryTableName);
+        executableDdlJob.appendTask(tableSyncTask);
+        if (stayAtWriteOnly) {
+            if (alterGsiPhyTable != null) {
+                executableDdlJob.appendTask(alterGsiPhyTable);
+                executableDdlJob.labelAsTail(alterGsiPhyTable);
+            } else {
+                executableDdlJob.labelAsTail(tableSyncTask);
+            }
+            return executableDdlJob;
+        }
+        String backFillSourceTableName = mirrorCopy ? oldIndexName : primaryTableName;
+        generateLogicalTableGsiBackfillTask(executableDdlJob, alterGsiPhyTable, schemaName, backFillSourceTableName,
+            indexName,
+            virtualColumns,
+            backfillColumnMap, modifyStringColumns, false, mirrorCopy,
+            modifyColumn, params, splitByPkRange, splitByPartition, enableSample, maxTaskPkRangeSize, maxPkRangeSize,
+            maxSampleRows, maxPkRangeSampleRows, tableMeta, totalThreadCount, cpuAcquired);
+        if (stayAtBackFill) {
+            // the tail has been tag inside generateLogicalTableGsiBackfillTask
+            return executableDdlJob;
+        }
+        executableDdlJob.appendTask(writeReOrgTask);
+        executableDdlJob.appendTask(new TableSyncTask(schemaName, primaryTableName));
+        if (!tableMeta.isAutoPartition() && gsiCdcMark) {
+            CdcGsiDdlMarkTask cdcDdlMarkTask =
+                new CdcGsiDdlMarkTask(schemaName, physicalPlanData, primaryTableName, originalDdl);
+            executableDdlJob.appendTask(cdcDdlMarkTask);
+        }
+        executableDdlJob.appendTask(publicTask);
+        tableSyncTask = new TableSyncTask(schemaName, primaryTableName);
+        executableDdlJob.appendTask(tableSyncTask);
+        executableDdlJob.labelAsTail(tableSyncTask);
+        return executableDdlJob;
+    }
+
+    public static Boolean generateLogicalTableGsiBackfillTask(ExecutableDdlJob executableDdlJob,
+                                                              DdlTask alterGsiPhyTable,
+                                                              String schemaName, String backfillSourceTableName,
+                                                              String indexName,
+                                                              Map<String, String> virtualColumns,
+                                                              Map<String, String> backfillColumnMap,
+                                                              List<String> modifyStringColumns,
+                                                              Boolean changeset, Boolean mirrorCopy,
+                                                              Boolean modifyColumn,
+                                                              GsiChecker.Params params,
+                                                              Boolean splitByPkRange,
+                                                              Boolean splitByPartition, Boolean enableSample,
+                                                              long maxTaskPkRangeSize,
+                                                              long maxPkRangeSize, long maxSampleRows,
+                                                              long maxPkRangeSampleRows,
+                                                              TableMeta tableMeta,
+                                                              int totalThreadCount,
+                                                              int cpuAcquired) {
+        List<BackfillStats.SplitBound> splitPoints = new ArrayList<>();
+        List<String> pkColumns = tableMeta.getPrimaryKey().stream().map(o -> o.getName()).collect(Collectors.toList());
+        Map<String, Integer> pkColumnIndexes = new HashMap<>();
+        List<ColumnMeta> columnMetas = tableMeta.getAllColumns();
+        for (int i = 0; i < columnMetas.size(); i++) {
+            pkColumnIndexes.put(columnMetas.get(i).getName(), i);
+        }
+        List<Integer> pkColumnIndexList =
+            pkColumns.stream().map(o -> pkColumnIndexes.get(o)).collect(Collectors.toList());
+        DdlTask headTask = new EmptyTask(schemaName);
+        DdlTask emptyLogTask = new EmptyLogTask(schemaName, "logical backfill finished!");
+        String lockMode = SqlSelect.LockMode.UNDEF.toString();
+        boolean isPrimaryBroadCast =
+            OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(backfillSourceTableName);
+        boolean isGsiBroadCast = OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(indexName);
+        DdlTask checkTask =
+            new SperateCheckGsiTask(schemaName, backfillSourceTableName, indexName, lockMode, lockMode, params, false,
+                "",
+                isPrimaryBroadCast, isGsiBroadCast, virtualColumns, backfillColumnMap);
+        executableDdlJob.appendTask(headTask);
+        BackfillStats backfillStats =
+            BackfillStats.createForLogicalBackfill(schemaName, backfillSourceTableName, tableMeta, maxSampleRows);
+        if (splitByPkRange && backfillStats.checkAndSplitLogicalTable(schemaName, backfillSourceTableName, tableMeta,
+            splitPoints,
+            enableSample, maxTaskPkRangeSize, maxSampleRows)) {
+            Map<Integer, ParameterContext> leftRow = Transformer.buildColumnsParam(null);
+            Map<Integer, ParameterContext> rightRow = Transformer.buildColumnsParam(null);
+            int i = 0;
+            if (splitPoints.size() <= 0) {
+                String rankHint = String.format("backfill on %s, %03d", backfillSourceTableName, i);
+                LogicalTableGsiPkRangeBackfillTask pkRangeBackfillTask = new LogicalTableGsiPkRangeBackfillTask(
+                    schemaName,
+                    backfillSourceTableName,
+                    indexName,
+                    virtualColumns,
+                    backfillColumnMap,
+                    modifyStringColumns,
+                    pkColumnIndexList,
+                    changeset,
+                    mirrorCopy,
+                    modifyColumn,
+                    toValue(leftRow),
+                    toValue(rightRow),
+                    rankHint,
+                    backfillStats.rangeRows,
+                    backfillStats.rangeSize,
+                    maxPkRangeSize,
+                    maxPkRangeSampleRows,
+                    totalThreadCount,
+                    cpuAcquired
+                );
+                executableDdlJob.addTaskRelationship(headTask, pkRangeBackfillTask);
+            } else {
+                while (i < splitPoints.size()) {
+                    BackfillStats.SplitBound splitBound = splitPoints.get(i);
+                    String rankHint = String.format("backfill on %s, %03d", backfillSourceTableName, i);
+                    LogicalTableGsiPkRangeBackfillTask pkRangeBackfillTask = new LogicalTableGsiPkRangeBackfillTask(
+                        schemaName,
+                        backfillSourceTableName,
+                        indexName,
+                        virtualColumns,
+                        backfillColumnMap,
+                        modifyStringColumns,
+                        pkColumnIndexList,
+                        changeset,
+                        mirrorCopy,
+                        modifyColumn,
+                        toValue(splitBound.left),
+                        toValue(splitBound.right),
+                        rankHint,
+                        splitBound.rows,
+                        splitBound.size,
+                        maxPkRangeSize,
+                        maxSampleRows,
+                        totalThreadCount,
+                        cpuAcquired
+                    );
+                    executableDdlJob.addTaskRelationship(headTask, pkRangeBackfillTask);
+                    i++;
+                }
+            }
+            //the tail tag would get overwrite later, we set it here to adapt to 'stayAt' hint.
+        } else if (splitByPartition) {
+            int i = 0;
+            // TODO split task by balance stats
+            //  BalanceStats balanceStats = collectBalanceStatsOfTable(schemaName, backfillSourceTableName);
+            List<PartitionSpec> partitionSpecs = tableMeta.getPartitionInfo().getPartitionBy().getPhysicalPartitions();
+            while (i < partitionSpecs.size()) {
+                String rankHint = String.format("backfill on %s, %04d", backfillSourceTableName, i);
+                LogicalTablePhysicalPartitionBackFillTask partitionBackfillTask =
+                    new LogicalTablePhysicalPartitionBackFillTask(
+                        schemaName,
+                        backfillSourceTableName,
+                        indexName,
+                        virtualColumns,
+                        backfillColumnMap,
+                        modifyStringColumns,
+                        changeset,
+                        mirrorCopy,
+                        modifyColumn,
+                        Collections.singletonList(partitionSpecs.get(i).getName()),
+                        cpuAcquired
+                    );
+                partitionBackfillTask.setRankHint(rankHint);
+                executableDdlJob.addTaskRelationship(headTask, partitionBackfillTask);
+                i++;
+            }
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "failed to generate mpp task for logical table " + backfillSourceTableName);
+        }
+        executableDdlJob.appendTask(emptyLogTask);
+        executableDdlJob.addTaskRelationship(emptyLogTask, checkTask);
+
+        Boolean withLocalIndexTask = false;
+        if (alterGsiPhyTable != null) {
+            executableDdlJob.addTaskRelationship(checkTask, alterGsiPhyTable);
+            withLocalIndexTask = true;
+        }
+
+        GsiPkRangeBackfillLogTask gsiPkRangeBackfillLogTask = new GsiPkRangeBackfillLogTask(schemaName, "fastchecker and local index task finished!");
+        executableDdlJob.appendTask(gsiPkRangeBackfillLogTask);
+        executableDdlJob.labelAsTail(gsiPkRangeBackfillLogTask);
+        return withLocalIndexTask;
+    }
+
     public static List<DdlTask> addGlobalIndexTasksChangeSet(String schemaName,
                                                              String primaryTableName,
-                                                             String oldIndexName,
+                                                             String backfillSourceTableName,
                                                              String indexName,
                                                              boolean stayAtDeleteOnly,
                                                              boolean stayAtWriteOnly,
                                                              boolean stayAtBackFill,
-                                                             Map<String, String> virtualColumns,
-                                                             Map<String, String> backfillColumnMap,
+                                                             Map<String, String> srcVirtualColumns,
+                                                             Map<String, String> dstVirtualColumns,
+                                                             Map<String, SQLColumnDefinition> dstColumnNewDefinitions,
                                                              List<String> modifyStringColumns,
-                                                             boolean modifyColumn,
+                                                             boolean onlineModifyColumn,
                                                              boolean mirrorCopy,
                                                              PhysicalPlanData physicalPlanData,
                                                              PartitionInfo indexPartitionInfo) {
         List<DdlTask> taskList = new ArrayList<>();
         // start
         Long changeSetId = ChangeSetManager.getChangeSetId();
-        Map<String, Set<String>> sourcePhyTableNames = GsiUtils.getPhyTables(schemaName, oldIndexName);
+        Map<String, Set<String>> sourcePhyTableNames = GsiUtils.getPhyTables(schemaName, backfillSourceTableName);
         Map<String, String> targetTableLocations =
-            GsiUtils.getPhysicalTableMapping(schemaName, oldIndexName, null, physicalPlanData, indexPartitionInfo);
+            GsiUtils.getPhysicalTableMapping(schemaName, backfillSourceTableName, null, physicalPlanData,
+                indexPartitionInfo);
 
         ChangeSetStartTask changeSetStartTask = new ChangeSetStartTask(
-            schemaName, oldIndexName, sourcePhyTableNames,
+            schemaName, backfillSourceTableName, sourcePhyTableNames,
             ComplexTaskMetaManager.ComplexTaskType.ONLINE_MODIFY_COLUMN,
             changeSetId
         );
 
         Map<String, ChangeSetCatchUpTask> catchUpTasks = genChangeSetCatchUpTasks(
             schemaName,
-            oldIndexName,
+            backfillSourceTableName,
             indexName,
             sourcePhyTableNames,
             targetTableLocations,
@@ -216,8 +521,18 @@ public class GsiTaskFactory {
             changeSetId
         );
 
-        CreateGsiCheckTask createGsiCheckTask =
-            new CreateGsiCheckTask(schemaName, primaryTableName, indexName, virtualColumns, backfillColumnMap);
+        if (onlineModifyColumn) {
+            assert MapUtils.isNotEmpty(dstColumnNewDefinitions);
+            List<DdlTask> checkerTasks =
+                RebuildTableJobFactory.genGeneratedColumn4CheckTasks(schemaName, backfillSourceTableName,
+                    dstVirtualColumns, dstColumnNewDefinitions, physicalPlanData);
+            if (CollectionUtils.isNotEmpty(checkerTasks)) {
+                taskList.addAll(checkerTasks);
+            }
+        }
+
+        OmcCheckTask omcCheckTask =
+            new OmcCheckTask(schemaName, backfillSourceTableName, indexName, srcVirtualColumns, dstVirtualColumns);
 
         DdlTask absentTask = new GsiUpdateIndexStatusTask(
             schemaName,
@@ -269,8 +584,8 @@ public class GsiTaskFactory {
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
         // backfill
         taskList.add(
-            new LogicalTableBackFillTask(schemaName, oldIndexName, indexName, virtualColumns, backfillColumnMap,
-                modifyStringColumns, true, mirrorCopy, modifyColumn));
+            new LogicalTableBackFillTask(schemaName, backfillSourceTableName, indexName, srcVirtualColumns,
+                dstVirtualColumns, modifyStringColumns, true, mirrorCopy, onlineModifyColumn));
         taskList.add(catchUpTasks.get(ChangeSetManager.ChangeSetCatchUpStatus.ABSENT.toString()));
         taskList.add(deleteOnlyTask);
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
@@ -285,7 +600,15 @@ public class GsiTaskFactory {
         if (stayAtWriteOnly) {
             return taskList;
         }
-        taskList.add(createGsiCheckTask);
+        taskList.add(omcCheckTask);
+        if (onlineModifyColumn) {
+            assert MapUtils.isNotEmpty(dstColumnNewDefinitions);
+            DdlTask dropCheckColumnTask = RebuildTableJobFactory.genDropColumn4CheckTasks(schemaName, indexName,
+                dstVirtualColumns, physicalPlanData);
+            if (dropCheckColumnTask != null) {
+                taskList.add(dropCheckColumnTask);
+            }
+        }
         if (stayAtBackFill) {
             return taskList;
         }
@@ -439,18 +762,18 @@ public class GsiTaskFactory {
             throw new TddlRuntimeException(ErrorCode.ERR_DUPLICATE_COLUMN, columns.toString());
         }
 
-        StringBuilder alterGsiTableSql = new StringBuilder("alter table " + indexName + " add column ");
-        alterGsiTableSql.append(StringUtils.join(columnsDef.toArray(), ", add column "));
-
-        return alterGsiTableSql.toString();
+        return "alter table " + surroundWithBacktick(indexName) + " add column " +
+            StringUtils.join(columnsDef, ", add column ");
     }
 
     public static String genAlterGlobalIndexDropColumnsSql(String indexName, List<String> columns) {
         if (indexName == null || columns == null || columns.isEmpty()) {
             return null;
         }
-        String hint = "/*+TDDL:CMD_EXTRA(DDL_ON_GSI=true)*/";
-        return hint + "alter table " + indexName + " drop column " + StringUtils.join(columns, ", drop column ");
+        List<String> columnsWithBacktick =
+            columns.stream().map(SqlIdentifier::surroundWithBacktick).collect(Collectors.toList());
+        return "/*+TDDL:CMD_EXTRA(DDL_ON_GSI=true)*/alter table " + surroundWithBacktick(indexName) + " drop column " +
+            StringUtils.join(columnsWithBacktick, ", drop column ");
     }
 
     private static String extractCurrentTimestamp(String onUpdate, SQLExpr onUpdateExpr) {

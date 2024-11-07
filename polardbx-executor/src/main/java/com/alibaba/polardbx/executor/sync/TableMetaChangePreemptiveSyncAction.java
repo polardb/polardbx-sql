@@ -37,6 +37,8 @@ public class TableMetaChangePreemptiveSyncAction implements ISyncAction {
     private Long interval;
     private TimeUnit timeUnit;
 
+    private Boolean forceSyncFailed;
+
     public TableMetaChangePreemptiveSyncAction() {
 
     }
@@ -48,13 +50,24 @@ public class TableMetaChangePreemptiveSyncAction implements ISyncAction {
         this.initWait = initWait;
         this.interval = interval;
         this.timeUnit = timeUnit;
+        this.forceSyncFailed = false;
+    }
+
+    public TableMetaChangePreemptiveSyncAction(String schemaName, String tableName, Long initWait, Long interval,
+                                               TimeUnit timeUnit, Boolean forceSyncFailed) {
+        this.schemaName = schemaName;
+        this.primaryTableName = tableName;
+        this.initWait = initWait;
+        this.interval = interval;
+        this.timeUnit = timeUnit;
+        this.forceSyncFailed = forceSyncFailed;
     }
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         ((GmsTableMetaManager) oldSchemaManager).tonewversion(primaryTableName, true, initWait, interval, timeUnit,
-            true);
+            true, forceSyncFailed);
         return null;
     }
 
@@ -100,5 +113,13 @@ public class TableMetaChangePreemptiveSyncAction implements ISyncAction {
 
     public void setTimeUnit(TimeUnit timeUnit) {
         this.timeUnit = timeUnit;
+    }
+
+    public Boolean getForceSyncFailed() {
+        return forceSyncFailed;
+    }
+
+    public void setForceSyncFailed(Boolean forceSyncFailed) {
+        this.forceSyncFailed = forceSyncFailed;
     }
 }

@@ -145,12 +145,36 @@ public class ZoneMapIndex extends BaseColumnIndex {
      * @param end upper value
      * @param includeEnd is upper value included
      */
-    public void prune(int colId, Object start, boolean includeStart, Object end, boolean includeEnd,
+    public void prune(int colId, Object startObj, boolean includeStart, Object endObj, boolean includeEnd,
                       RoaringBitmap cur) {
-        try {
-            start = paramTransform(start, dtMap.get(colId));
-            end = paramTransform(end, dtMap.get(colId));
-        } catch (IllegalArgumentException e) {
+        //startObj/endObj == null means lowerBound/UpperBound is unlimited
+        // paramTransform() == null means type of startObj is unsupported
+        Object start;
+        if (startObj == null) {
+            //lower bound is unlimited
+            start = null;
+        } else {
+            start = paramTransform(startObj, dtMap.get(colId), Long.class);
+            //type is unsupported
+            if (start == null) {
+                return;
+            }
+        }
+
+        Object end;
+        if (endObj == null) {
+            //upper bound is unlimited
+            end = null;
+        } else {
+            end = paramTransform(endObj, dtMap.get(colId), Long.class);
+            //type is unsupported
+            if (end == null) {
+                return;
+            }
+        }
+        DataType dt = dtMap.get(colId);
+        if (start != null && end != null && dt.compare(start, end) > 0) {
+            cur.and(new RoaringBitmap());
             return;
         }
         if (includeStart) {

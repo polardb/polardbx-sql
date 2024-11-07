@@ -19,7 +19,6 @@ package com.alibaba.polardbx.optimizer.statis;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -27,8 +26,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author fangwu
  */
 public class ColumnarPruneRecord {
-    private String tableName;
-    private String filter;
+    public String tableName;
+    public String filter;
     public AtomicLong initIndexTime = new AtomicLong();
     public AtomicLong indexPruneTime = new AtomicLong();
     public AtomicInteger fileNum = new AtomicInteger();
@@ -44,22 +43,6 @@ public class ColumnarPruneRecord {
         String filter
     ) {
         this.tableName = tableName;
-        this.filter = filter;
-    }
-
-    public String getTableName() {
-        return tableName;
-    }
-
-    public void setTableName(String tableName) {
-        this.tableName = tableName;
-    }
-
-    public String getFilter() {
-        return filter;
-    }
-
-    public void setFilter(String filter) {
         this.filter = filter;
     }
 
@@ -89,4 +72,135 @@ public class ColumnarPruneRecord {
         this.bitMapPruneNum = bitMapPruneNum;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof ColumnarPruneRecord)) {
+            return false;
+        }
+        ColumnarPruneRecord that = (ColumnarPruneRecord) o;
+        return this.tableName.equals(that.tableName) &&
+            this.filter.equals(that.filter) &&
+            this.initIndexTime.get() == that.initIndexTime.get() &&
+            this.indexPruneTime.get() == that.indexPruneTime.get() &&
+            this.fileNum.get() == that.fileNum.get() &&
+            this.stripeNum.get() == that.stripeNum.get() &&
+            this.rgNum.get() == that.rgNum.get() &&
+            this.rgLeftNum.get() == that.rgLeftNum.get() &&
+            this.sortKeyPruneNum.get() == that.sortKeyPruneNum.get() &&
+            this.zoneMapPruneNum.get() == that.zoneMapPruneNum.get() &&
+            this.bitMapPruneNum.get() == that.bitMapPruneNum.get();
+    }
+
+    @JsonProperty
+    public String getTableName() {
+        return tableName;
+    }
+
+    @JsonProperty
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
+    }
+
+    @JsonProperty
+    public String getFilter() {
+        return filter;
+    }
+
+    @JsonProperty
+    public void setFilter(String filter) {
+        this.filter = filter;
+    }
+
+    @JsonProperty
+    public AtomicLong getInitIndexTime() {
+        return initIndexTime;
+    }
+
+    @JsonProperty
+    public void setInitIndexTime(AtomicLong initIndexTime) {
+        this.initIndexTime = initIndexTime;
+    }
+
+    @JsonProperty
+    public AtomicLong getIndexPruneTime() {
+        return indexPruneTime;
+    }
+
+    @JsonProperty
+    public void setIndexPruneTime(AtomicLong indexPruneTime) {
+        this.indexPruneTime = indexPruneTime;
+    }
+
+    @JsonProperty
+    public AtomicInteger getFileNum() {
+        return fileNum;
+    }
+
+    @JsonProperty
+    public void setFileNum(AtomicInteger fileNum) {
+        this.fileNum = fileNum;
+    }
+
+    @JsonProperty
+    public AtomicInteger getStripeNum() {
+        return stripeNum;
+    }
+
+    @JsonProperty
+    public void setStripeNum(AtomicInteger stripeNum) {
+        this.stripeNum = stripeNum;
+    }
+
+    @JsonProperty
+    public AtomicInteger getRgNum() {
+        return rgNum;
+    }
+
+    @JsonProperty
+    public void setRgNum(AtomicInteger rgNum) {
+        this.rgNum = rgNum;
+    }
+
+    @JsonProperty
+    public AtomicInteger getRgLeftNum() {
+        return rgLeftNum;
+    }
+
+    @JsonProperty
+    public void setRgLeftNum(AtomicInteger rgLeftNum) {
+        this.rgLeftNum = rgLeftNum;
+    }
+
+    @JsonProperty
+    public AtomicInteger getSortKeyPruneNum() {
+        return sortKeyPruneNum;
+    }
+
+    @JsonProperty
+    public void setSortKeyPruneNum(AtomicInteger sortKeyPruneNum) {
+        this.sortKeyPruneNum = sortKeyPruneNum;
+    }
+
+    @JsonProperty
+    public AtomicInteger getZoneMapPruneNum() {
+        return zoneMapPruneNum;
+    }
+
+    @JsonProperty
+    public void setZoneMapPruneNum(AtomicInteger zoneMapPruneNum) {
+        this.zoneMapPruneNum = zoneMapPruneNum;
+    }
+
+    @JsonProperty
+    public AtomicInteger getBitMapPruneNum() {
+        return bitMapPruneNum;
+    }
+
+    @JsonProperty
+    public void setBitMapPruneNum(AtomicInteger bitMapPruneNum) {
+        this.bitMapPruneNum = bitMapPruneNum;
+    }
 }

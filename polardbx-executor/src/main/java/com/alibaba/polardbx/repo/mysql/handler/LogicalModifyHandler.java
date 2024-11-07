@@ -17,15 +17,19 @@
 package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.SQLMode;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.cursor.impl.GroupConcurrentUnionCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -37,7 +41,11 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.BroadcastModifyWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ShardingModifyWriter;
@@ -52,12 +60,15 @@ import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.IDistributedTransaction;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
+import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.repo.mysql.handler.execute.ExecuteJob;
 import com.alibaba.polardbx.repo.mysql.handler.execute.LogicalModifyExecuteJob;
 import com.alibaba.polardbx.repo.mysql.handler.execute.ParallelExecutor;
+import com.alibaba.polardbx.repo.mysql.spi.MyPhyTableModifyCursor;
 import com.clearspring.analytics.util.Lists;
+import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
@@ -66,11 +77,14 @@ import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mappings;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -85,11 +99,16 @@ import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ALLOW_EXTRA_READ_CONN;
+import static com.alibaba.polardbx.executor.columns.ColumnBackfillExecutor.isAllDnUseXDataSource;
 import static com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx.BLOCK_SIZE;
+import static org.apache.calcite.plan.RelOptRule.none;
+import static org.apache.calcite.plan.RelOptRule.operand;
 
 /**
  * Created by minggong.zm on 19/3/14. Execute UPDATE/DELETE that cannot be
@@ -110,8 +129,9 @@ public class LogicalModifyHandler extends HandlerCommon {
         final RelNode input = modify.getInput();
         checkModifyLimitation(modify, executionContext);
 
-        TableMeta tableMeta =
-            executionContext.getSchemaManager(modify.getSchemaName()).getTable(modify.getLogicalTableName());
+        final String schemaName = modify.getSchemaName();
+        final TableMeta tableMeta =
+            executionContext.getSchemaManager(schemaName).getTable(modify.getLogicalTableName());
         final boolean checkForeignKey =
             executionContext.foreignKeyChecks() && (tableMeta.hasForeignKey() || tableMeta.hasReferencedForeignKey());
         final boolean foreignKeyChecksForUpdateDelete =
@@ -119,13 +139,13 @@ public class LogicalModifyHandler extends HandlerCommon {
 
         // Batch size, default 1000 * groupCount
         final int groupCount =
-            ExecutorContext.getContext(modify.getSchemaName()).getTopologyHandler().getMatrix().getGroups().size();
+            ExecutorContext.getContext(schemaName).getTopologyHandler().getMatrix().getGroups().size();
         final long batchSize =
             executionContext.getParamManager().getLong(ConnectionParams.UPDATE_DELETE_SELECT_BATCH_SIZE) * groupCount;
         final Object history = executionContext.getExtraCmds().get(ALLOW_EXTRA_READ_CONN);
 
         //广播表不支持多线程Modify
-        final TddlRuleManager or = Objects.requireNonNull(OptimizerContext.getContext(modify.getSchemaName()))
+        final TddlRuleManager or = Objects.requireNonNull(OptimizerContext.getContext(schemaName))
             .getRuleManager();
         List<String> tables = modify.getTargetTableNames();
         boolean haveBroadcast = tables.stream().anyMatch(or::isBroadCast);
@@ -133,14 +153,14 @@ public class LogicalModifyHandler extends HandlerCommon {
             !haveBroadcast && executionContext.getParamManager().getBoolean(ConnectionParams.MODIFY_SELECT_MULTI);
 
         boolean haveGeneratedColumn = tables.stream().anyMatch(
-            tableName -> executionContext.getSchemaManager(modify.getSchemaName()).getTable(tableName)
+            tableName -> executionContext.getSchemaManager(schemaName).getTable(tableName)
                 .hasLogicalGeneratedColumn());
 
         // To make it concurrently execute to avoid inserting before some
         // selecting, which could make data duplicate.
         final ExecutionContext modifyEc = executionContext.copy();
         modifyEc.setModifySelect(true);
-        PhyTableOperationUtil.enableIntraGroupParallelism(modify.getSchemaName(), modifyEc);
+        PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, modifyEc);
         final ExecutionContext selectEc = modifyEc.copy();
         selectEc.getExtraCmds().put(ALLOW_EXTRA_READ_CONN, true);
 
@@ -159,9 +179,42 @@ public class LogicalModifyHandler extends HandlerCommon {
         final boolean checkJsonByStringCompare =
             executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
+        // Check for optimize delete by returning
+        final ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        final TopologyHandler topologyHandler = executorContext.getTopologyHandler();
+
+        LogicalModifyView primaryLmv = null;
+        if (modify.getMultiWriteInfo().isOptimizeByReturning()) {
+            primaryLmv = checkLogicalModifyPlanAndBuildLmvForReturning(modify);
+        }
+
+        boolean canUseReturning = primaryLmv != null
+            && executorContext.getStorageInfoManager().supportsReturning()
+            && executionContext.getParamManager().getBoolean(ConnectionParams.DML_USE_RETURNING)
+            && executionContext.getParamManager().getBoolean(ConnectionParams.OPTIMIZE_DELETE_BY_RETURNING)
+            // TODO support broadcast
+            && !haveBroadcast
+            && !checkForeignKey
+            && isAllDnUseXDataSource(topologyHandler)
+            // forbid delete returning with multi table or with alias, DN will execute error
+            && ((SqlDelete)primaryLmv.getSqlTemplate(executionContext)).singleTable();
+
         int affectRows = 0;
         Cursor selectCursor = null;
         try {
+            // Delete Primary returning + delete gsi with pk
+            if (canUseReturning) {
+                affectRows += executeWithReturning(
+                    modify,
+                    primaryLmv,
+                    modifyEc,
+                    memoryAllocator,
+                    (i) -> executionContext.setPhySqlId(executionContext.getPhySqlId() + 1));
+
+                return new AffectRowCursor(affectRows);
+            }
+
+            // Select + delete primary with pk + delete gsi with pk
             // Do select
             selectCursor = ExecutorHelper.execute(input, selectEc, true);
 
@@ -253,6 +306,140 @@ public class LogicalModifyHandler extends HandlerCommon {
 
             executionContext.getExtraCmds().put(ALLOW_EXTRA_READ_CONN, history);
         }
+    }
+
+    private int executeWithReturning(LogicalModify modify,
+                                     LogicalModifyView primaryLmv,
+                                     ExecutionContext modifyEc,
+                                     MemoryAllocatorCtx memoryAllocator,
+                                     Consumer<Integer> physicalSqlIdIncrementor) {
+        int affectedRows = 0;
+
+        final String schemaName = modify.getSchemaName();
+        final RelNode input = modify.getInput();
+
+        // Cache current returning switch states
+        final String currentReturning = modifyEc.getReturning();
+
+        // TODO only return pk + sk of gsi
+        // Build returning columns and enable returning
+        modifyEc.setReturning(String.join(",", input.getRowType().getFieldNames()));
+
+        // Build Physical plan for primary
+        final Map<Integer, ParameterContext> params = modifyEc.getParams().getCurrentParameter();
+        final ReplaceCallWithLiteralVisitor visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
+            params,
+            RexUtils.getEvalFunc(modifyEc),
+            true);
+        final SqlNode sqlTemplate = primaryLmv.getSqlTemplate(visitor, modifyEc);
+        final List<RelNode> inputs = primaryLmv.getInput(sqlTemplate, true, modifyEc);
+
+        final List<List<Object>> values = new ArrayList<>();
+        final List<ColumnMeta> returnColumns = new ArrayList<>();
+        try {
+
+            // Get concurrency policy
+            final QueryConcurrencyPolicy queryConcurrencyPolicy = ExecUtils.getQueryConcurrencyPolicy(modifyEc);
+
+            final List<Cursor> inputCursors = new ArrayList<>(inputs.size());
+            executeWithConcurrentPolicy(modifyEc, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
+
+            assert !inputCursors.isEmpty();
+
+            for (Cursor cursor : inputCursors) {
+                if (cursor instanceof GroupConcurrentUnionCursor) {
+                    final GroupConcurrentUnionCursor groupConcurrentUnionCursor = (GroupConcurrentUnionCursor) cursor;
+                    int rowCount = 0;
+                    Row rs;
+                    while ((rs = groupConcurrentUnionCursor.next()) != null) {
+                        // Allocator memory
+                        if ((++rowCount) % TddlConstants.DML_SELECT_BATCH_SIZE_DEFAULT == 0) {
+                            memoryAllocator.allocateReservedMemory(
+                                MemoryEstimator.calcSelectValuesMemCost(rowCount, input.getRowType()));
+                            rowCount = 0;
+                        }
+
+                        final List<Object> rawValues = rs.getValues();
+                        final List<Object> outValues = new ArrayList<>(rawValues.size());
+                        final List<ColumnMeta> columnMetas = groupConcurrentUnionCursor.getReturnColumns();
+                        for (int i = 0; i < rawValues.size(); i++) {
+                            outValues.add(DataTypeUtil.toJavaObject(
+                                GeneralUtil.isNotEmpty(columnMetas) ? columnMetas.get(i) : null, rawValues.get(i)));
+                        }
+                        values.add(outValues);
+                        if (returnColumns.isEmpty()
+                            && null != groupConcurrentUnionCursor.getCurrentCursor()
+                            && null != groupConcurrentUnionCursor.getCurrentCursor().getReturnColumns()) {
+                            returnColumns.addAll(groupConcurrentUnionCursor.getCurrentCursor().getReturnColumns());
+                        }
+                    }
+                } else if (cursor instanceof MyPhyTableModifyCursor) {
+                    try {
+                        final List<List<Object>> rows = getQueryResult(cursor,
+                            (rowCount) -> memoryAllocator.allocateReservedMemory(
+                                MemoryEstimator.calcSelectValuesMemCost(rowCount, input.getRowType())));
+
+                        values.addAll(rows);
+
+                        if (returnColumns.isEmpty()) {
+                            returnColumns.addAll(cursor.getReturnColumns());
+                        }
+                    } catch (Exception e) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e, "error when close result");
+                    } finally {
+                        cursor.close(new ArrayList<>());
+                    }
+                } else {
+                    // Do not support broadcast now
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        "unsupported cursor type " + cursor.getClass().getName());
+                }
+            }
+
+            // Increase physical sql id
+            physicalSqlIdIncrementor.accept(1);
+        } finally {
+            modifyEc.setReturning(currentReturning);
+        }
+
+        if (!values.isEmpty()) {
+            affectedRows += values.size();
+
+            // Handle index
+            final RowSet rowSet = new RowSet(values, returnColumns);
+            modify.getGsiModifyWriters().forEach(w -> execute(w, rowSet, modifyEc));
+        }
+        return affectedRows;
+    }
+
+    /**
+     * Check logical modify plan structure and build LogicalModifyView for returning
+     * Acceptable plan structure:
+     * <pre>
+     * 1. Multi partition modify
+     * LogicalModify
+     *   Gather
+     *     LogicalView
+     * <pre>
+     * 2. Single partition modify
+     * LogicalModify
+     *   LogicalView
+     * <pre>
+     * 3. Modify with sort and no limit
+     * LogicalModify
+     *   MergeSort
+     *     LogicalView
+     * <pre>
+     * 4. TODO modify with sort and limit , sorted by partition key and partition is ordered by partition key
+     * @param modify logical modify plan
+     * @return null if cannot handler plan structure of current logical modify
+     */
+    private @Nullable LogicalModifyView checkLogicalModifyPlanAndBuildLmvForReturning(LogicalModify modify) {
+        final RelUtils.LogicalModifyViewBuilder lmvBuilder = modify.getMultiWriteInfo().getLmvBuilder();
+
+        final List<RelNode> bindings = lmvBuilder.bindPlan(modify);
+
+        return bindings.isEmpty() ? null : lmvBuilder.buildForPrimary(bindings);
     }
 
     private int doModifyExecuteMulti(LogicalModify modify, ExecutionContext executionContext,

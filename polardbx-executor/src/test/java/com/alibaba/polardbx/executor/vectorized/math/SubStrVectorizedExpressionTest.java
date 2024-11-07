@@ -10,12 +10,15 @@ import com.alibaba.polardbx.executor.chunk.SliceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
 import com.alibaba.polardbx.executor.operator.BaseExecTest;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
+import com.alibaba.polardbx.executor.vectorized.SubStrCharVectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.SubStrVarcharVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
 import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.google.common.collect.ImmutableList;
@@ -53,39 +56,48 @@ public class SubStrVectorizedExpressionTest extends BaseExecTest {
 
     @Test
     public void test1() {
-        doTest(2, 5);
+        doTest(2, 5, true);
+        doTest(2, 5, false);
     }
 
     @Test
     public void test2() {
-        doTest(-5, 2);
+        doTest(-5, 2, true);
+        doTest(-5, 2, false);
     }
 
     @Test
     public void test3() {
-        doTest(-3, 4);
+        doTest(-3, 4, true);
+        doTest(-3, 4, false);
     }
 
     @Test
     public void test4() {
-        doTest(-1, 3);
+        doTest(-1, 3, true);
+        doTest(-1, 3, false);
     }
 
-    protected void doTest(int startPos, int subStrLen) {
+    /**
+     * @param isVarchar is isVarchar or char
+     */
+    protected void doTest(int startPos, int subStrLen, boolean isVarchar) {
         final SliceType sliceType = new SliceType();
+        final CharType charType = new CharType();
         final int positionCount = context.getExecutorChunkLimit();
         final int nullCount = 20;
         final int lowerBound = 0; // 0.00
         final int upperBound = 1000; // 10.00
         final SqlOperator operator = TddlOperatorTable.SUBSTRING;
 
-        List<DataType<?>> inputTypes = ImmutableList.of(sliceType);
+        List<DataType<?>> inputTypes = isVarchar ? ImmutableList.of(sliceType) : ImmutableList.of(charType);
 
         RexNode root = REX_BUILDER.makeCall(
             TYPE_FACTORY.createSqlType(SqlTypeName.VARCHAR),
             operator,
             ImmutableList.of(
-                REX_BUILDER.makeInputRef(TYPE_FACTORY.createSqlType(SqlTypeName.VARCHAR), 0),
+                REX_BUILDER.makeInputRef(isVarchar ? TYPE_FACTORY.createSqlType(SqlTypeName.VARCHAR)
+                    : TYPE_FACTORY.createSqlType(SqlTypeName.CHAR), 0),
                 REX_BUILDER.makeBigIntLiteral(Long.valueOf(startPos)),
                 REX_BUILDER.makeBigIntLiteral(Long.valueOf(subStrLen))
             ));
@@ -97,6 +109,11 @@ public class SubStrVectorizedExpressionTest extends BaseExecTest {
             new Rex2VectorizedExpressionVisitor(context, inputTypes.size());
 
         VectorizedExpression expression = root.accept(converter);
+        if (isVarchar) {
+            Assert.assertEquals(SubStrVarcharVectorizedExpression.class, expression.getClass());
+        } else {
+            Assert.assertEquals(SubStrCharVectorizedExpression.class, expression.getClass());
+        }
 
         MutableChunk preAllocatedChunk = MutableChunk.newBuilder(positionCount)
             .addEmptySlots(inputTypes)

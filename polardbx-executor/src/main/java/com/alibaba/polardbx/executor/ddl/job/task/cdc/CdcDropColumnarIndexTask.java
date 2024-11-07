@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
@@ -49,8 +50,8 @@ public class CdcDropColumnarIndexTask extends BaseDdlTask {
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         SQLDropIndexStatement stmt = new SQLDropIndexStatement();
-        stmt.setTableName(new SQLIdentifierExpr(logicalTableName));
-        stmt.setIndexName(new SQLIdentifierExpr(indexName));
+        stmt.setTableName(new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(logicalTableName)));
+        stmt.setIndexName(new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(indexName)));
 
         String markSql = CdcMarkUtil.buildVersionIdHint(versionId) + stmt;
         CdcMarkUtil.useDdlVersionId(executionContext, versionId);

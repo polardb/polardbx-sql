@@ -42,6 +42,7 @@ public abstract class AdvisorUserCaseTestCommon extends PlanTestCommon {
             executionContext.getGroupHint());
 
         executionContext.setParams(new Parameters());
+        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, enableAutoForceIndex);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
         executionContext.getExtraCmds().put(ConnectionProperties.PARALLELISM, enableParallelQuery ? -1 : 0);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_JOIN_CLUSTERING, enableJoinClustering);
@@ -72,7 +73,7 @@ public abstract class AdvisorUserCaseTestCommon extends PlanTestCommon {
         ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
         executionPlan = PostPlanner.getInstance().optimize(executionPlan, executionContext);
 
-        IndexAdvisor indexAdvisor = new IndexAdvisor(executionPlan, executionContext);
+        IndexAdvisor indexAdvisor = new IndexAdvisor(executionPlan, plannerContext.getExecutionContext());
 
         AdviceResult bestResult = null;
         IndexAdvisor.AdviseType[] types = {

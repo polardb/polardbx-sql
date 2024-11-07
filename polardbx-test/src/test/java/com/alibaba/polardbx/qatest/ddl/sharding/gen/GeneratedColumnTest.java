@@ -667,7 +667,7 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
                 .get();
 
         String tddlSql = String.format(
-            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=false)*/ %s to '%s'",
+            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=false)*/ %s to '%s'",
             srcGroup, dstStorageId);
         JdbcUtil.executeUpdateSuccess(conn, tddlSql);
 
@@ -735,7 +735,7 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
                 .get();
 
         String tddlSql = String.format(
-            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=true)*/ %s to '%s'",
+            "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, CN_ENABLE_CHANGESET=true)*/ %s to '%s'",
             srcGroup, dstStorageId);
         JdbcUtil.executeUpdateSuccess(conn, tddlSql);
 

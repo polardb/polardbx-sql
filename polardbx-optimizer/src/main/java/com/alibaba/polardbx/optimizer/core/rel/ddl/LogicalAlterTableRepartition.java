@@ -54,13 +54,7 @@ import org.apache.calcite.rel.ddl.AlterTablePartitionCount;
 import org.apache.calcite.rel.ddl.AlterTableRemovePartitioning;
 import org.apache.calcite.rel.ddl.AlterTableRepartition;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlAddIndex;
-import org.apache.calcite.sql.SqlAddUniqueIndex;
-import org.apache.calcite.sql.SqlAlterTableRepartition;
-import org.apache.calcite.sql.SqlCreateTable;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlIndexDefinition;
-import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.*;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang.StringUtils;
 
@@ -71,10 +65,14 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+
+import static org.apache.calcite.sql.SqlCreateTable.getIndexColumnName;
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
 /**
  * @author wumu
@@ -181,16 +179,21 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
             localPartitionDefinitionInfo.setTableName(indexTableName);
         }
         SqlNode tableGroup = null;
-        if (this.relDdl != null && this.relDdl.sqlNode != null
-            && this.relDdl.sqlNode instanceof SqlAlterTableRepartition) {
-            if (((SqlAlterTableRepartition) this.relDdl.sqlNode).isAlignToTableGroup()) {
-                tableGroup = ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTableGroupName();
-            } else {
-                String implicitTableGroupName =
-                    ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTargetImplicitTableGroupName();
-                if (StringUtils.isNotEmpty(implicitTableGroupName)) {
-                    tableGroup = new SqlIdentifier(implicitTableGroupName, SqlParserPos.ZERO);
+        boolean removePartitioning = false;
+        if (this.relDdl != null && this.relDdl.sqlNode != null) {
+            if (this.relDdl.sqlNode instanceof SqlAlterTableRepartition) {
+                if (((SqlAlterTableRepartition) this.relDdl.sqlNode).isAlignToTableGroup()) {
+                    tableGroup = ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTableGroupName();
+                } else {
+                    String implicitTableGroupName =
+                            ((SqlAlterTableRepartition) this.relDdl.sqlNode).getTargetImplicitTableGroupName();
+                    if (StringUtils.isNotEmpty(implicitTableGroupName)) {
+                        tableGroup = new SqlIdentifier(implicitTableGroupName, SqlParserPos.ZERO);
+                    }
                 }
+            } else if (this.relDdl.sqlNode instanceof SqlAlterTableRemovePartitioning) {
+                tableGroup = indexDef.getTableGroupName();
+                removePartitioning = true;
             }
         }
         CreateGlobalIndexPreparedData preparedData =
@@ -216,7 +219,7 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
                 null,   // add index engine
                 locality,
                 partBoundExprInfo,
-                sqlAlterTableRepartition != null ? sqlAlterTableRepartition.getSourceSql() : null
+                removePartitioning ? ((SqlAlterTableRemovePartitioning) this.relDdl.sqlNode).getSourceSql() : (sqlAlterTableRepartition != null ? sqlAlterTableRepartition.getSourceSql() : null)
             );
         if (preparedData.isWithImplicitTableGroup()) {
             TableGroupInfoManager tableGroupInfoManager =
@@ -226,9 +229,7 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
             assert tableGroupName != null;
             if (tableGroupInfoManager.getTableGroupConfigByName(tableGroupName) == null) {
                 preparedData.getRelatedTableGroupInfo().put(tableGroupName, true);
-                preparedData.getRelatedTableGroupInfo().put(tableGroupName, true);
             } else {
-                preparedData.getRelatedTableGroupInfo().put(tableGroupName, false);
                 preparedData.getRelatedTableGroupInfo().put(tableGroupName, false);
             }
         }
@@ -322,10 +323,10 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
             }
 
             for (GsiMetaManager.GsiIndexColumnMetaBean indexColumn : indexDetail.indexColumns) {
-                localIndex.add(SqlIdentifier.surroundWithBacktick(indexColumn.columnName));
+                localIndex.add(surroundWithBacktick(indexColumn.columnName));
             }
 
-            gsiInfo.put(SqlIdentifier.surroundWithBacktick(TddlSqlToRelConverter.unwrapGsiName(indexName)),
+            gsiInfo.put(surroundWithBacktick(TddlSqlToRelConverter.unwrapGsiName(indexName)),
                 new Pair<>(localIndex, indexDetail.nonUnique));
         }
     }
@@ -440,7 +441,8 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
     private List<String> genNewShardColumns4OptimizeKey(PartitionInfo primaryPartitionInfo,
                                                         PartitionInfo targetPartitionInfo) {
         // only partition table
-        if (primaryPartitionInfo.isPartitionedTable() && targetPartitionInfo.isPartitionedGsiTable()) {
+        if (primaryPartitionInfo.isPartitionedTable() &&
+            (targetPartitionInfo.isPartitionedGsiTable() || targetPartitionInfo.isPartitionedColumnarTable())) {
             PartitionByDefinition targetPartitionBy = targetPartitionInfo.getPartitionBy();
             PartitionByDefinition primaryPartitionBy = primaryPartitionInfo.getPartitionBy();
             List<List<String>> allLevelActualPartCols = primaryPartitionInfo.getAllLevelActualPartCols();
@@ -479,7 +481,7 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
     /**
      * 生成用于改变local index的sql语句
      */
-    private void genChangeLocalIndexSql4OptimizeKey(String gsiTableDefinition, List<String> newShardColumns) {
+    public void genChangeLocalIndexSql4OptimizeKey(String gsiTableDefinition, List<String> newShardColumns) {
         String sql;
         String rollbackSql;
 
@@ -523,8 +525,8 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
             if (indexingColumns.size() == newShardColumns.size()) {
                 int i = 0;
                 for (SQLSelectOrderByItem item : indexingColumns) {
-                    String colName = SqlCreateTable.getIndexColumnName(item);
-                    if (!colName.equalsIgnoreCase(newShardColumns.get(i))) {
+                    String colName = getIndexColumnName(item);
+                    if (colName == null || !colName.equalsIgnoreCase(newShardColumns.get(i))) {
                         break;
                     }
                     i++;
@@ -532,10 +534,12 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
 
                 // 如果跟自动生成的index name 相同，说明需要添加
                 if (i == indexingColumns.size() && StringUtils.equalsIgnoreCase(indexName, autoIndexName)) {
-                    sql = String.format("alter table `%s`.`%s` add index `%s` USING BTREE (%s);",
-                        schemaName, tableName, autoIndexName, StringUtils.join(newShardColumns, ","));
-                    rollbackSql =
-                        String.format("alter table `%s`.`%s` drop index `%s`;", schemaName, tableName, autoIndexName);
+                    sql = String.format("alter table %s.%s add index %s USING BTREE (%s);",
+                        surroundWithBacktick(schemaName), surroundWithBacktick(tableName),
+                        surroundWithBacktick(autoIndexName), StringUtils.join(newShardColumns, ","));
+                    rollbackSql = String.format("alter table %s.%s drop index %s;",
+                        surroundWithBacktick(schemaName), surroundWithBacktick(tableName),
+                        surroundWithBacktick(autoIndexName));
                     repartitionPrepareData.setAddLocalIndexSql(new Pair<>(sql, rollbackSql));
                 }
             }
@@ -545,7 +549,7 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
     /**
      * drop 由shard key自动生成的local index
      */
-    private void genDropIndexSql4OptimizeKey(String primaryTableDefinition) {
+    public void genDropIndexSql4OptimizeKey(String primaryTableDefinition) {
         String sql;
         String rollbackSql;
 
@@ -561,7 +565,13 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
                 final MySqlTableIndex tableIndex = (MySqlTableIndex) sqlTableElement;
                 indexName = ((SQLIdentifierExpr) tableIndex.getName()).normalizedName();
 
-                indexColumns = tableIndex.getColumns().stream().map(SqlCreateTable::getIndexColumnName)
+                if (tableIndex.getColumns().stream().anyMatch(c -> getIndexColumnName(c) == null)) {
+                    //函数索引，忽略
+                    continue;
+                }
+
+                indexColumns = tableIndex.getColumns().stream()
+                    .map(e -> surroundWithBacktick(Objects.requireNonNull(getIndexColumnName(e))))
                     .collect(Collectors.toList());
             } else if (sqlTableElement instanceof MySqlPrimaryKey) {
                 // do nothing
@@ -569,14 +579,23 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
                 final MySqlKey key = (MySqlKey) sqlTableElement;
                 indexName = ((SQLIdentifierExpr) key.getName()).normalizedName();
 
-                indexColumns = key.getColumns().stream().map(SqlCreateTable::getIndexColumnName)
+                if (key.getColumns().stream().anyMatch(c -> getIndexColumnName(c) == null)) {
+                    //函数索引，忽略
+                    continue;
+                }
+
+                indexColumns = key.getColumns().stream()
+                    .map(e -> surroundWithBacktick(Objects.requireNonNull(getIndexColumnName(e))))
                     .collect(Collectors.toList());
             }
 
             if (indexName != null && indexName.contains(TddlConstants.AUTO_SHARD_KEY_PREFIX)) {
-                sql = String.format("alter table `%s`.`%s` drop index `%s`;", schemaName, tableName, indexName);
-                rollbackSql = String.format("alter table `%s`.`%s` add index %s USING BTREE (%s);",
-                    schemaName, tableName, indexName, StringUtils.join(indexColumns, ","));
+                sql = String.format("alter table %s.%s drop index %s;",
+                    surroundWithBacktick(schemaName), surroundWithBacktick(tableName),
+                    surroundWithBacktick(indexName));
+                rollbackSql = String.format("alter table %s.%s add index %s USING BTREE (%s);",
+                    surroundWithBacktick(schemaName), surroundWithBacktick(tableName), surroundWithBacktick(indexName),
+                    StringUtils.join(indexColumns, ","));
 
                 repartitionPrepareData.setDropLocalIndexSql(new Pair<>(sql, rollbackSql));
             }
@@ -621,26 +640,28 @@ public class LogicalAlterTableRepartition extends LogicalTableOperation {
         genDropForeignKeySql(removeFks);
     }
 
-    private void genAddForeignKeySql(Set<ForeignKeyData> foreignKeys) {
+    public void genAddForeignKeySql(Set<ForeignKeyData> foreignKeys) {
         String sql;
         String rollbackSql;
         for (ForeignKeyData data : foreignKeys) {
-            sql = String.format("ALTER TABLE `%s`.`%s` ADD ",
-                data.schema, data.tableName) + data.toString() + PARTITION_FK_SUB_JOB;
-            rollbackSql = String.format("ALTER TABLE `%s`.`%s` DROP FOREIGN KEY `%s`",
-                data.schema, data.tableName, data.constraint) + PARTITION_FK_SUB_JOB;
+            sql = String.format("ALTER TABLE %s.%s ADD ",
+                surroundWithBacktick(data.schema), surroundWithBacktick(data.tableName)) + data + PARTITION_FK_SUB_JOB;
+            rollbackSql = String.format("ALTER TABLE %s.%s DROP FOREIGN KEY %s",
+                surroundWithBacktick(data.schema), surroundWithBacktick(data.tableName),
+                surroundWithBacktick(data.constraint)) + PARTITION_FK_SUB_JOB;
             repartitionPrepareData.getAddForeignKeySql().add(new Pair<>(sql, rollbackSql));
         }
     }
 
-    private void genDropForeignKeySql(Set<ForeignKeyData> foreignKeys) {
+    public void genDropForeignKeySql(Set<ForeignKeyData> foreignKeys) {
         String sql;
         String rollbackSql;
         for (ForeignKeyData data : foreignKeys) {
-            sql = String.format("ALTER TABLE `%s`.`%s` DROP FOREIGN KEY `%s`",
-                data.schema, data.tableName, data.constraint) + PARTITION_FK_SUB_JOB;
-            rollbackSql = String.format("ALTER TABLE `%s`.`%s` ADD ",
-                data.schema, data.tableName) + data.toString() + PARTITION_FK_SUB_JOB;
+            sql = String.format("ALTER TABLE %s.%s DROP FOREIGN KEY %s",
+                surroundWithBacktick(data.schema), surroundWithBacktick(data.tableName),
+                surroundWithBacktick(data.constraint)) + PARTITION_FK_SUB_JOB;
+            rollbackSql = String.format("ALTER TABLE %s.%s ADD ",
+                surroundWithBacktick(data.schema), surroundWithBacktick(data.tableName)) + data + PARTITION_FK_SUB_JOB;
             repartitionPrepareData.getDropForeignKeySql().add(new Pair<>(sql, rollbackSql));
             Set<String> tables = repartitionPrepareData.getForeignKeyChildTable()
                 .computeIfAbsent(data.schema, x -> new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER));

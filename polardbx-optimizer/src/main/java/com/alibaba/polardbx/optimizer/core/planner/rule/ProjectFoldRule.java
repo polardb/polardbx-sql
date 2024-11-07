@@ -21,7 +21,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.plan.RelOptRule;
@@ -58,8 +58,14 @@ public class ProjectFoldRule extends RelOptRule {
         Project project = (Project) call.rels[0];
         RelNode input = project.getInput();
         RexBuilder rb = call.builder().getRexBuilder();
+
+        ExecutionContext ec = PlannerContext.getPlannerContext(project).getExecutionContext();
+        // don't apply this rule if it will be cached
+        if (CBOUtil.useColPlanCache(ec)) {
+            return;
+        }
         RexConstantFoldShuttle rexConstantFoldShuttle =
-            new RexConstantFoldShuttle(rb, PlannerContext.getPlannerContext(project).getExecutionContext());
+            new RexConstantFoldShuttle(rb, ec);
         if (project.getProjects() == null) {
             return;
         }
@@ -75,6 +81,8 @@ public class ProjectFoldRule extends RelOptRule {
         if (!changed) {
             return;
         }
+        // set constant fold flag to avoid cache this plan
+        PlannerContext.getPlannerContext(project).setHasConstantFold(true);
         call.transformTo(project.copy(project.getTraitSet(), input, foldedProjects, project.getRowType()));
     }
 

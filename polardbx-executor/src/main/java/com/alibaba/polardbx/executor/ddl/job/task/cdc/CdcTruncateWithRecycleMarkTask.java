@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -43,7 +44,7 @@ import static com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTable.che
 @TaskName(name = "CdcTruncateWithRecycleMarkTask")
 @Getter
 @Setter
-public class CdcTruncateWithRecycleMarkTask extends BaseDdlTask {
+public class CdcTruncateWithRecycleMarkTask extends BaseCdcTask {
     public static final String CDC_RECYCLE_HINTS = "/* RECYCLEBIN_INTERMEDIATE_DDL=true */";
 
     private final String sourceTableName;

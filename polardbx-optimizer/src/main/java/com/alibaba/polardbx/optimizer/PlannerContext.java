@@ -16,9 +16,14 @@
 
 package com.alibaba.polardbx.optimizer;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticTrace;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
@@ -36,6 +41,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.util.JsonBuilder;
 import org.apache.calcite.util.PlannerContextWithParam;
 import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 
@@ -149,11 +155,28 @@ public class PlannerContext implements Context, PlannerContextWithParam {
     private Map<String, Set<String>> viewMap = null;
     private Set<Integer> constantParamIndex = null;
 
+    /**
+     * enable the rule counter in cbo
+     * there is no need to copy the value
+     */
+    private boolean enableRuleCounter = false;
+    /**
+     * record the times of rules called in cbo
+     * there is no need to copy the value
+     */
+    private long ruleCount = 0;
+
+    private boolean hasConstantFold = false;
+
+    private boolean useColumnarPlanCache = false;
+
+    private boolean inExprToLookupJoin = false;
+
     private int columnarMaxShardCnt = 20;
 
     private boolean useColumnar = false;
 
-    private boolean inExprToLookupJoin = false;
+    private boolean localIndexHint = false;
 
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
@@ -197,6 +220,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.isInSubquery = isInSubquery;
 
         this.addForcePrimary = executionContext.isTsoTransaction() && executionContext.enableForcePrimaryForTso();
+        this.useColumnarPlanCache = executionContext.isColumnarPlanCache();
     }
 
     protected PlannerContext(ExecutionContext executionContext,
@@ -206,8 +230,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
                              SqlKind sqlkind,
                              boolean isInSubquery,
                              boolean shouldUseHeuOrder,
-                             WorkloadType workloadType,
-                             boolean useColumnar) {
+                             WorkloadType workloadType) {
         this.executionContext = executionContext;
         this.schemaName = executionContext.getSchemaName();
         this.extraCmds = extraCmds;
@@ -219,7 +242,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.isInSubquery = isInSubquery;
         this.shouldUseHeuOrder = shouldUseHeuOrder;
         this.workloadType = workloadType;
-        this.useColumnar = useColumnar;
+        this.useColumnarPlanCache = executionContext.isColumnarPlanCache();
     }
 
     public PlannerContext copyWithInSubquery() {
@@ -230,8 +253,7 @@ public class PlannerContext implements Context, PlannerContextWithParam {
             sqlKind,
             isInSubquery,
             shouldUseHeuOrder,
-            workloadType,
-            useColumnar);
+            workloadType);
         ret.isInSubquery = true;
         ret.joinCount = joinCount;
         return ret;
@@ -418,6 +440,61 @@ public class PlannerContext implements Context, PlannerContextWithParam {
     @Override
     public Object getExecContext() {
         return executionContext;
+    }
+
+    /**
+     * Encodes context-specific extended parameters into a JSON string.
+     *
+     * @return A JSON-formatted string representation of the parameters.
+     */
+    public String encodeExtendedParametersToJson() {
+        // Instantiate a builder object for constructing JSON content
+        final JsonBuilder jsonBuilder = new JsonBuilder();
+
+        // Create a map to hold parameters to be encoded
+        Map<String, Object> extendedParams = new HashMap<>();
+
+        // Add parameters to the map
+        extendedParams.put("useColumnar", this.isUseColumnar());
+        extendedParams.put("columnarMaxShardCnt", this.getColumnarMaxShardCnt());
+
+        try {
+            // Convert the map to a JSON string using the JsonBuilder
+            return jsonBuilder.toJsonString(extendedParams);
+        } catch (Exception e) {
+            // Handle any potential exceptions during conversion
+            ModuleLogInfo.getInstance().logRecord(Module.SPM, LogPattern.UNEXPECTED,
+                new String[] {"encoding arguments to JSON", e.getMessage()}, LogLevel.CRITICAL);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Parses an extension argument string to configure query context settings related to columnar storage.
+     *
+     * @param extend The extension argument string containing configuration information for columnar storage.
+     */
+    public void decodeArguments(String extend) {
+        // If the extension parameter is null or has zero length, simply return without further processing.
+        if (extend == null || extend.isEmpty()) {
+            return;
+        }
+
+        try {
+            // Parse the extension argument string into a Map object.
+            Map<String, Object> extendMap = JSON.parseObject(extend, HashMap.class);
+
+            // Set whether to use columnar storage, defaulting to false.
+            this.useColumnar = (Boolean) extendMap.getOrDefault("useColumnar", false);
+
+            // Set the maximum number of shards for columnar storage, defaulting to 20
+            this.columnarMaxShardCnt = (Integer) extendMap.getOrDefault("columnarMaxShardCnt", 20);
+        } catch (Exception e) {
+            // Handle any potential exceptions during conversion
+            ModuleLogInfo.getInstance().logRecord(Module.SPM, LogPattern.UNEXPECTED,
+                new String[] {"decoding arguments", e.getMessage()}, LogLevel.CRITICAL);
+            throw new RuntimeException(e);
+        }
     }
 
     public boolean isSkipPostOpt() {
@@ -613,6 +690,22 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         return sb.toString();
     }
 
+    public boolean isEnableRuleCounter() {
+        return enableRuleCounter;
+    }
+
+    public void setEnableRuleCounter(boolean enableRuleCounter) {
+        this.enableRuleCounter = enableRuleCounter;
+    }
+
+    public void setRuleCount(long ruleCount) {
+        this.ruleCount = ruleCount;
+    }
+
+    public long getRuleCount() {
+        return ruleCount;
+    }
+
     /**
      * is plan contains recursive cte
      */
@@ -642,6 +735,10 @@ public class PlannerContext implements Context, PlannerContextWithParam {
         this.useColumnar = useColumnar;
     }
 
+    public boolean isUseColumnarPlanCache() {
+        return useColumnarPlanCache;
+    }
+
     public Set<Integer> getConstantParamIndex() {
         return constantParamIndex;
     }
@@ -656,5 +753,21 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setInExprToLookupJoin(boolean inExprToLookupJoin) {
         this.inExprToLookupJoin = inExprToLookupJoin;
+    }
+
+    public boolean isHasConstantFold() {
+        return hasConstantFold;
+    }
+
+    public void setHasConstantFold(boolean hasConstantFold) {
+        this.hasConstantFold = hasConstantFold;
+    }
+
+    public boolean hasLocalIndexHint() {
+        return localIndexHint;
+    }
+
+    public void setLocalIndexHint(boolean localIndexHint) {
+        this.localIndexHint = localIndexHint;
     }
 }

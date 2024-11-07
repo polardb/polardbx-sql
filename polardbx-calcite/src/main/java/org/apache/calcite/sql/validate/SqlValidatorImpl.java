@@ -5444,6 +5444,10 @@ SqlValidatorImpl implements SqlValidatorWithHints {
             }
 
             if (GeneralUtil.isNotEmpty(createTable.getColumnarKeys())) {
+                //support columnar index in UT
+//                if (!ConfigDataMode.isPolarDbX()) {
+//                    throw new NotSupportException("Creating Clustered Columnar Index on DRDS mode");
+//                }
                 createTable.getColumnarKeys().forEach(s -> gsiNames.add(s.getKey().getLastName()));
             }
 
@@ -7411,13 +7415,6 @@ SqlValidatorImpl implements SqlValidatorWithHints {
     }
 
     public void validateUpdate(SqlUpdate call) {
-        if (call.getSourceExpressionList() != null) {
-            for (SqlNode node : call.getSourceExpressionList()) {
-                if (node instanceof SqlSelect) { // Don't allow sub-query in update set clause.
-                    throw newValidationError(node, RESOURCE.updateNotSupport(node.toString()));
-                }
-            }
-        }
         if (call.singleTable()) {
             final SqlValidatorNamespace targetNamespace = getNamespace(call);
             validateNamespace(targetNamespace, unknownType);

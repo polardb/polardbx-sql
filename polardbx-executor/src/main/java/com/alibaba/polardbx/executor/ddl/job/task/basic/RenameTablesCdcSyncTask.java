@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.cdc.TablesExtInfo;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.sync.LockTablesSyncAction;
@@ -53,6 +54,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
     private List<String> collates;
     private List<TablesExtInfo> cdcMetas;
     private List<Map<String, Set<String>>> newTableTopologies;
+    private final List<Long> versionIds;
 
     public RenameTablesCdcSyncTask(String schemaName,
                                    List<String> tableNames,
@@ -64,7 +66,8 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
                                    List<String> newTableNames,
                                    List<String> collates,
                                    List<TablesExtInfo> cdcMetas,
-                                   List<Map<String, Set<String>>> newTableTopologies
+                                   List<Map<String, Set<String>>> newTableTopologies,
+                                   List<Long> versionIds
     ) {
         super(schemaName, tableNames, preemptive, initWait, interval, timeUnit);
         this.oldTableNames = oldTableNames;
@@ -72,6 +75,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
         this.collates = collates;
         this.cdcMetas = cdcMetas;
         this.newTableTopologies = newTableTopologies;
+        this.versionIds = versionIds;
     }
 
     @Override
@@ -135,7 +139,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
 
             CdcManagerHelper.getInstance()
                 .notifyDdlNew(schemaName, tableName, "RENAME_TABLE",
-                    ddlSql, ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
+                    getDdlStmt(ddlSql, versionIds.get(i)), ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
                     CdcDdlMarkVisibility.Public, params, true, newTableTopologies.get(i),
                     new Pair<>(collates.get(i), cdcMetas.get(i)));
         }
@@ -185,5 +189,12 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
             LOGGER.error(errMsg);
             throw GeneralUtil.nestedException(e);
         }
+    }
+
+    private String getDdlStmt(String ddl, Long versionId) {
+        if (CdcMarkUtil.isVersionIdInitialized(versionId)) {
+            return CdcMarkUtil.buildVersionIdHint(versionId) + ddl;
+        }
+        return ddl;
     }
 }

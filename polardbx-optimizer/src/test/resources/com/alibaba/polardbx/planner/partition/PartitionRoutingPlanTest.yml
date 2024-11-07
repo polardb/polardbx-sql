@@ -37,9 +37,7 @@
     select * from rng_col_tbl a where (a,b) in ((300,2000), (600,5000))
   plan: |
     gather(concurrent=true)
-      logicalview(tables="rng_col_tbl[p3,p6]", shardcount=2, sql="select `a`, `b`, `c`, `d`, `e` from `rng_col_tbl` as `rng_col_tbl` where (((`a`, `b`)) in((300, 2000),(600, 5000)))")
-
-
+      logicalview(tables="rng_col_tbl[p3,p6]", shardcount=2, sql="select `a`, `b`, `c`, `d`, `e` from `rng_col_tbl` as `rng_col_tbl` force index(`primary`) where (((`a`, `b`)) in((300, 2000),(600, 5000)))")
 - sql: |
     select * from rng_tbl a where (b, e, c) in ((1,2,3),(4,5,6))
   plan: |

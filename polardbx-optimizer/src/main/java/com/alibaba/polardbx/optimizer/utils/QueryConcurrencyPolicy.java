@@ -33,6 +33,11 @@ public enum QueryConcurrencyPolicy {
     CONCURRENT,
 
     /**
+     * DDL分表级并发
+     */
+    DDL_CONCURRENT,
+
+    /**
      * 宽松的库间并发，适用于Auto数据库的分片的读写
      * <pre>
      *     该并发策略的并发度是介乎于 GROUP_CONCURRENT_BLOCK 与 CONCURRENT 之间，

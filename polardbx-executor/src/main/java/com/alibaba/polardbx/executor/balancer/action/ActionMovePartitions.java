@@ -132,9 +132,15 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
 
         for (Map.Entry<String, List<ActionMovePartition>> entry : actions.entrySet()) {
             ExecutableDdlJob subJob = new ExecutableDdlJob();
-            for (ActionMovePartition move : entry.getValue()) {
-                ExecutableDdlJob ddlTask = move.toDdlJob(ec);
+            if (ec.getParamManager().getBoolean(ConnectionParams.SCALE_OUT_GENERATE_MULTIPLE_TO_GROUP_JOB)) {
+                ExecutableDdlJob ddlTask = ActionMovePartition.movesToDdlJob(entry.getKey(), entry.getValue(), ec);
                 subJob.appendJob2(ddlTask);
+            } else {
+                for (ActionMovePartition move : entry.getValue()) {
+                    ExecutableDdlJob ddlTask = move.toDdlJob(ec);
+                    subJob.appendJob2(ddlTask);
+                }
+
             }
             Set<String> relatedTableGroup;
             if (!tableGroupTaskInfo.containsKey(entry.getKey())) {

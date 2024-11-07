@@ -36,12 +36,14 @@ EXPLAIN SELECT id
 FROM s3
 WHERE id IN ('12abc');
 Logical ExecutionPlan
-PhyTableOperation(tables="s3[p5]", sql="SELECT `s3`.`id` AS `id` FROM ? AS `s3` WHERE (`s3`.`id` IN (?))", params="Raw('12abc')")
+Gather(concurrent=true)
+  LogicalView(tables="s3[p5]", sql="SELECT `id` FROM `s3` AS `s3` WHERE (`id` IN(?))")
 EXPLAIN SELECT id
 FROM s3
 WHERE id IN ('34abc');
 Logical ExecutionPlan
-PhyTableOperation(tables="s3[p5]", sql="SELECT `s3`.`id` AS `id` FROM ? AS `s3` WHERE (`s3`.`id` IN (?))", params="Raw('34abc')")
+Gather(concurrent=true)
+  LogicalView(tables="s3[p5]", sql="SELECT `id` FROM `s3` AS `s3` WHERE (`id` IN(?))")
 EXPLAIN SELECT id
 FROM s3
 WHERE id > '12abc';

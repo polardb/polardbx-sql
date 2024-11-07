@@ -16,18 +16,28 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.dag;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.base.Joiner;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
-import com.google.common.base.Joiner;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph.Edge;
 import static com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph.Vertex;
+import static com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources.normalizeServerKey;
 
 /**
  * use this class to make sure tasks are executed in right dependency order
@@ -58,6 +68,17 @@ public class TaskScheduler extends AbstractLifecycle {
 
     private final DirectedAcyclicGraph daGraph;
     private final int count;
+
+    public enum ScheduleStatus {
+        SCHEDULED,
+        RUNNABLE,
+        CANDIDATE,
+        WAITING
+    }
+
+    public static DdlEngineResources resourceToAllocate = new DdlEngineResources();
+    public static Map<String, Integer> runningRemoteTaskNums = new ConcurrentHashMap<>();
+    private static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
 
     private TaskScheduler(DirectedAcyclicGraph daGraph) {
         this.count = daGraph.vertexCount();
@@ -151,6 +172,70 @@ public class TaskScheduler extends AbstractLifecycle {
         }
     }
 
+    public void releaseResource(DdlTask ddlTask) {
+        if (ddlTask == null) {
+            return;
+        }
+        synchronized (daGraph) {
+            DdlEngineResources resourcesAcquired = ddlTask.getResourceAcquired();
+            synchronized (resourceToAllocate) {
+                resourceToAllocate.free(resourcesAcquired);
+                if (ddlTask instanceof RemoteExecutableDdlTask) {
+                    String serverKey = normalizeServerKey(resourcesAcquired.getServerKey());
+                    runningRemoteTaskNums.put(serverKey,
+                        runningRemoteTaskNums.getOrDefault(runningRemoteTaskNums.get(serverKey), 1) - 1);
+                }
+            }
+        }
+    }
+
+    public DdlTask pollByResource() {
+        synchronized (daGraph) {
+            // which can be scheduled now.
+            if (CollectionUtils.isEmpty(zeroInDegreeVertexes)) {
+                return null;
+            }
+            for (Vertex vertex : zeroInDegreeVertexes) {
+                DdlEngineResources resourcesAcquired = vertex.object.getResourceAcquired();
+
+                synchronized (resourceToAllocate) {
+                    String logInfo;
+                    if (vertex.object instanceof RemoteExecutableDdlTask) {
+                        String serverKey =
+                            ((RemoteExecutableDdlTask) vertex.object).detectServerFromCandidate(runningRemoteTaskNums);
+                        resourcesAcquired.setServerKey(serverKey);
+                    }
+                    if (resourceToAllocate.cover(resourcesAcquired)) {
+//                        logInfo =
+//                            String.format("ddl engine resource covered {%s}       {%s} for task", resourcesAcquired,
+//                                resourceToAllocate);
+//                        LOGGER.info(logInfo);
+                        resourceToAllocate.allocate(resourcesAcquired);
+                        if (vertex.object instanceof RemoteExecutableDdlTask) {
+                            String serverKey = normalizeServerKey(resourcesAcquired.getServerKey());
+                            runningRemoteTaskNums.put(serverKey,
+                                runningRemoteTaskNums.getOrDefault(serverKey, 0) + 1);
+                        }
+                        vertex.object.setScheduled(false);
+                        executingVertexes.add(vertex);
+                        zeroInDegreeVertexes.remove(vertex);
+                        return vertex.object;
+                    }
+                    Long taskId = vertex.object.getTaskId();
+                    if (!DdlEngineResources.markNotCoverredBefore(taskId)) {
+//                        logInfo = String.format("ddl engine resource covered not for task {%s}: {%s}",
+//                            vertex.object.executionInfo(),
+//                            DdlEngineResources.digestCoverInfo(resourcesAcquired, resourceToAllocate));
+//                        LOGGER.info(logInfo);
+                    }
+                }
+            }
+            // we need to upgrade task order everytime we update executing task, not always in this order.
+            // so we will try to do this soon.
+        }
+        return null;
+    }
+
     public List<DdlTask> pollBatch() {
         synchronized (daGraph) {
             List<DdlTask> result = new ArrayList<>();
@@ -158,6 +243,54 @@ public class TaskScheduler extends AbstractLifecycle {
                 result.add(poll());
             }
             return result;
+        }
+    }
+
+    public List<DdlTask> pollBatchByResource() {
+        final int PULL_BATCH_SIZE = 3;
+        int taskCount = 0;
+        synchronized (daGraph) {
+            List<DdlTask> result = new ArrayList<>();
+            while (hasMoreExecutable() && taskCount <= PULL_BATCH_SIZE) {
+                DdlTask ddlTask = pollByResource();
+                result.add(ddlTask);
+                taskCount++;
+            }
+            return result;
+        }
+    }
+
+    public Map<ScheduleStatus, Set<DdlTask>> queryActiveTasks() {
+        // There would be a spot to call so many stream and HashMap.get, however, it's called by hand, we would tolerate
+        // this performance decrease.
+        synchronized (daGraph) {
+            Set<DdlTask> runnableTasks = executingVertexes.stream().map(o -> o.object).collect(Collectors.toSet());
+            Set<DdlTask> candidateTasks = zeroInDegreeVertexes.stream().map(o -> o.object).collect(Collectors.toSet());
+            candidateTasks.removeAll(runnableTasks);
+            Set<DdlTask> scheduledTasks =
+                runnableTasks.stream().filter(o -> o.getScheduled()).collect(Collectors.toSet());
+            runnableTasks.removeAll(scheduledTasks);
+            Map<DdlTask, Integer> waitingTaskMap = new HashMap<>();
+            for (Vertex executingVertex : executingVertexes) {
+                List<Edge> outgoingEdges = executingVertex.outgoingEdges;
+                for (Edge edge : outgoingEdges) {
+                    DdlTask waitingTask = edge.target.object;
+                    if (waitingTaskMap.containsKey(waitingTask)) {
+                        waitingTaskMap.put(waitingTask, waitingTaskMap.get(waitingTask) - 1);
+                    } else {
+                        waitingTaskMap.put(waitingTask, edge.target.inDegree - 1);
+                    }
+                }
+            }
+            Set<DdlTask> waitingTasks =
+                waitingTaskMap.keySet().stream().filter(o -> waitingTaskMap.get(o) == 0).collect(
+                    Collectors.toSet());
+            Map<ScheduleStatus, Set<DdlTask>> results = new HashMap<>();
+            results.put(ScheduleStatus.SCHEDULED, scheduledTasks);
+            results.put(ScheduleStatus.RUNNABLE, runnableTasks);
+            results.put(ScheduleStatus.CANDIDATE, candidateTasks);
+            results.put(ScheduleStatus.WAITING, waitingTasks);
+            return results;
         }
     }
 
@@ -206,5 +339,6 @@ public class TaskScheduler extends AbstractLifecycle {
             }
         }
     }
+
 
 }

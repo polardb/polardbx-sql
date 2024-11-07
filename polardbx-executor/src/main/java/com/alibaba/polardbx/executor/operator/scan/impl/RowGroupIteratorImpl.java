@@ -60,7 +60,7 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
     /**
      * Stripe id of this row-group iterator.
      */
-    private final int stripeId;
+    protected final int stripeId;
     /**
      * The effective row-group count starting from the given startRowGroupId.
      */
@@ -83,7 +83,7 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
     private final ExecutorService ioExecutor;
     private final FileSystem fileSystem;
     private final Configuration configuration;
-    private final Path filePath;
+    protected final Path filePath;
     // for compression
     private final int compressionSize;
     private final CompressionKind compressionKind;
@@ -92,18 +92,18 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
     // context for stripe parser
     private final StripeInformation stripeInformation;
     private final long startRowOfStripe;
-    private final TypeDescription fileSchema;
+    protected final TypeDescription fileSchema;
     private final OrcFile.WriterVersion version;
     private final ReaderEncryption encryption;
-    private final OrcProto.ColumnEncoding[] encodings;
+    protected final OrcProto.ColumnEncoding[] encodings;
     private final boolean ignoreNonUtf8BloomFilter;
     private final long maxBufferSize;
     private final int indexStride;
-    private final boolean[] columnIncluded;
-    private final int chunkLimit;
-    private final BlockCacheManager<Block> blockCacheManager;
-    private final OSSColumnTransformer ossColumnTransformer;
-    private final ExecutionContext context;
+    protected final boolean[] columnIncluded;
+    protected final int chunkLimit;
+    protected final BlockCacheManager<Block> blockCacheManager;
+    protected final OSSColumnTransformer ossColumnTransformer;
+    protected final ExecutionContext context;
     private final boolean enableMetrics;
     private final boolean enableDecimal64;
     private final int maxDiskRangeChunkLimit;
@@ -113,21 +113,21 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
     /**
      * Metrics in scan-work level.
      */
-    private RuntimeMetrics metrics;
+    protected RuntimeMetrics metrics;
     private OrcIndex orcIndex;
     private StripeLoader stripeLoader;
     /**
      * The mapping from columnId to column-reader.
      */
-    private Map<Integer, ColumnReader> columnReaders;
+    protected Map<Integer, ColumnReader> columnReaders;
     /**
      * The Mapping from columnId to cache-reader.
      */
-    private Map<Integer, CacheReader<Block>> cacheReaders;
+    protected Map<Integer, CacheReader<Block>> cacheReaders;
     /**
      * The current effective group id.
      */
-    private int currentGroupId;
+    protected int currentGroupId;
     private int nextGroupId;
     /**
      * The fetched row group count must be less than or equal to effectiveGroupCount.
@@ -136,7 +136,7 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
     /**
      * To store the fetched row-groups with it's groupId.
      */
-    private Map<Integer, LogicalRowGroup<Block, ColumnStatistics>> rowGroupMap;
+    protected Map<Integer, LogicalRowGroup<Block, ColumnStatistics>> rowGroupMap;
 
     public RowGroupIteratorImpl(
         RuntimeMetrics metrics,
@@ -732,7 +732,7 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
         }
     }
 
-    private int getRowCount(int groupId) {
+    protected int getRowCount(int groupId) {
         final long rowsInStripe = stripeInformation.getNumberOfRows();
         int groupsInStripe = (int) ((rowsInStripe + indexStride - 1) / indexStride);
 
@@ -743,7 +743,7 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
         }
     }
 
-    private int startRowId(int groupId) {
+    protected int startRowId(int groupId) {
         return (int) (groupId * indexStride + startRowOfStripe);
     }
 

@@ -70,7 +70,8 @@ public class FailPoint {
         }
     }
 
-    public static void inject(String key, ExecutionContext executionContext, Runnable runnable) {
+    public static void injectFromHintWithEnableKeyCheck(String key, ExecutionContext executionContext,
+                                                        Runnable runnable) {
         try {
             assert
                 !(isKeyEnable(key) && isKeyEnableFromHint(key, executionContext))
@@ -209,9 +210,17 @@ public class FailPoint {
         });
     }
 
-    public static void injectExceptionFromHintWithKeyEnable(String key, ExecutionContext executionContext) {
-        inject(key, executionContext, () -> {
+    public static void injectExceptionFromHintWithKeyEnableCheck(String key, ExecutionContext executionContext) {
+        injectFromHintWithEnableKeyCheck(key, executionContext, () -> {
             throw new RuntimeException("injected failure from " + key);
+        });
+    }
+
+    public static void injectExceptionWithTableName(String tableName, String key, ExecutionContext executionContext) {
+        injectFromHint(key, executionContext, (k, v) -> {
+            if (StringUtils.equalsIgnoreCase(tableName, v)) {
+                throw new RuntimeException("injected failure from " + key);
+            }
         });
     }
 

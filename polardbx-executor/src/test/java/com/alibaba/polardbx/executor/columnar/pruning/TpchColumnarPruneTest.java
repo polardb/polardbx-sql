@@ -323,7 +323,7 @@ public class TpchColumnarPruneTest extends ColumnarPruneTest {
         int rgNum = 0;
         while (it.hasNext()) {
             Long date = it.next();
-            indexPrunerBuilder.appendSortKeyIndex(date, date);
+            indexPrunerBuilder.appendMockSortKeyIndex(date, date, DataTypes.LongType);
             rgNum++;
         }
         indexPrunerBuilder.setRgNum(rgNum);

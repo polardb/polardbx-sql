@@ -103,12 +103,14 @@ public class MysqlSchemaViewManager extends ViewManager {
                 "password_last_changed",
                 "password_lifetime",
                 "account_locked",
+                //navicat need to fetch password column
+                "password"
             },
             "select host, user_name, select_priv, insert_priv, update_priv, delete_priv, create_priv, drop_priv, NULL, NULL, NULL, NULL, grant_priv, NULL, index_priv, alter_priv,"
                 +
                 " NULL, NULL, NULL, NULL, NULL, NULL, NULL, create_view_priv, show_view_priv, NULL, NULL, create_user_priv, NULL, NULL, NULL, "
                 +
-                " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL from "
+                " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, password from "
                 + MetaDbSchema.NAME + ".user_priv");
 
         defineView("tables_priv", new String[] {
@@ -152,6 +154,21 @@ public class MysqlSchemaViewManager extends ViewManager {
                 +
                 "index_priv, alter_priv, NULL, NULL, create_view_priv, NULL, NULL, NULL, NULL, NULL, NULL from "
                 + MetaDbSchema.NAME + ".db_priv");
+
+        //DataGrip use this view to judge whether connection if keep alive
+        defineView("procs_priv", new String[] {
+                "Host",
+                "Db",
+                "User",
+                "Routine_name",
+                "Routine_type",
+                "Grantor",
+                "Proc_priv",
+                "Timestamp",
+            },
+            "select NULL, routine_schema, NULL, routine_name, routine_type, NULL, NULL, created from "
+                + MetaDbSchema.NAME
+                + ".routines");
     }
 
     @Override

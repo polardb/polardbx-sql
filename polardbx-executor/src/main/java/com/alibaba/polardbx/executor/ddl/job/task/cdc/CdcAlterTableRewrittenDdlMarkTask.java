@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
@@ -41,7 +42,7 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 @TaskName(name = "CdcAlterTableRewrittenDdlMarkTask")
 @Getter
 @Setter
-public class CdcAlterTableRewrittenDdlMarkTask extends BaseDdlTask {
+public class CdcAlterTableRewrittenDdlMarkTask extends BaseCdcTask {
 
     private PhysicalPlanData physicalPlanData;
     private String logicalSql;

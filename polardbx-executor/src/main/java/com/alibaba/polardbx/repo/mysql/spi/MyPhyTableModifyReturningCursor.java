@@ -22,18 +22,33 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.repo.mysql.handler.MySingleTableModifyReturningHandler;
 
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.List;
 
 public class MyPhyTableModifyReturningCursor extends MyPhyTableModifyCursor {
+    // Execution context.
+    private final long oldLastInsertId;
+    private final Long lastInsertId;
+    private final Long returnedLastInsertId;
+
     public MyPhyTableModifyReturningCursor(ExecutionContext ec,
                                            BaseTableOperation logicalPlan,
-                                           MyRepository repo) {
+                                           MyRepository repo,
+                                           long oldLastInsertId,
+                                           Long lastInsertId,
+                                           Long returnedLastInsertId) {
         super(ec, logicalPlan, repo);
         this.returnColumns = null;
         this.cursorMeta = null;
+        this.oldLastInsertId = oldLastInsertId;
+        this.lastInsertId = lastInsertId;
+        this.returnedLastInsertId = returnedLastInsertId;
+        if (!isDelayInit(ec)) {
+            init();
+        }
     }
 
     @Override
@@ -58,6 +73,9 @@ public class MyPhyTableModifyReturningCursor extends MyPhyTableModifyCursor {
             return;
         }
         allocateMemoryForCursorInit(plan);
+        // Execute physical DML here.
+        MySingleTableModifyReturningHandler.executeBatchUpdate(plan, ec, this,
+            oldLastInsertId, lastInsertId, returnedLastInsertId);
         inited = true;
     }
 
@@ -88,6 +106,5 @@ public class MyPhyTableModifyReturningCursor extends MyPhyTableModifyCursor {
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
-
     }
 }

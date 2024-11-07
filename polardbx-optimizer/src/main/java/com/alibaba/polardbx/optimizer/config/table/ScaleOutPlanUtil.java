@@ -221,6 +221,20 @@ public class ScaleOutPlanUtil {
         }
     }
 
+    public static List<String> getStorageInstReady() {
+        Map<String, StorageInstHaContext> storageInstHaCtxCache =
+            StorageHaManager.getInstance().refreshAndGetStorageInstHaContextCache();
+        List<String> storageInstIds = new ArrayList<>();
+        for (String storageInstId : storageInstHaCtxCache.keySet()) {
+            StorageInstHaContext ctx = storageInstHaCtxCache.get(storageInstId);
+            if (ctx == null || !ctx.isAllReplicaReady()) {
+            } else if (ctx.isDNMaster()) {
+                storageInstIds.add(storageInstId);
+            }
+        }
+        return storageInstIds;
+    }
+
     public static DbGroupInfoRecord getDbGroupInfoByGroupName(String groupName) {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             GroupDetailInfoAccessor detailInfoAccessor = new GroupDetailInfoAccessor();
@@ -377,4 +391,5 @@ public class ScaleOutPlanUtil {
             }
         }
     }
+
 }

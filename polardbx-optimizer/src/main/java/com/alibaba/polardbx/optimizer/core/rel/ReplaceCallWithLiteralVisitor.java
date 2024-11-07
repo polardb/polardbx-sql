@@ -167,7 +167,9 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             logicalModify.getPrimaryModifyWriters(),
             logicalModify.getGsiModifyWriters(),
             logicalModify.isWithoutPk(),
-            logicalModify.isModifyForeignKey());
+            logicalModify.isModifyForeignKey(),
+            logicalModify.getModifyTopNInfo(),
+            logicalModify.getMultiWriteInfo());
     }
 
     @Override

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.operator.Driver;
 import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
@@ -42,6 +43,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -145,7 +147,7 @@ public class SqlQueryLocalExecution extends QueryExecution {
                 new LocalExecutionPlanner(context, null, parallelism, parallelism, 1,
                     context.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS), notificationExecutor,
                     taskContext.isSpillable() ? spillerFactory : null, null, null, false,
-                    -1, -1, ImmutableMap.of(), new SplitManagerImpl());
+                    -1, -1, ImmutableMap.of(), new SplitManagerImpl(), RelUtils.isSimpleMergeSortPlan(physicalPlan));
             returnColumns = CalciteUtils.buildColumnMeta(physicalPlan, "Last");
 
             boolean syncMode = stateMachine.getSession().isLocalResultIsSync();
@@ -298,7 +300,7 @@ public class SqlQueryLocalExecution extends QueryExecution {
                     List<List<Split>> taskLocalSplits = new ArrayList<>();
                     filterDrivers.stream().forEach(driver -> taskLocalSplits.add(new ArrayList<>()));
                     List<Split> splits = splitInfo.getSplits().iterator().next();
-                    int start = ThreadLocalRandom.current().nextInt(splits.size());
+                    int start = getRandomStart(splits);
                     for (int i = 0; i < taskLocalSplits.size(); i++) {
                         int index = i + start;
                         for (int j = 0; j < splits.size(); j++) {
@@ -329,6 +331,15 @@ public class SqlQueryLocalExecution extends QueryExecution {
                 }
             }
         }
+    }
+
+    /**
+     * Chooses a starting point randomly from the given split list for processing elements.
+     *
+     * @param splits The split list, which must not be null.
+     */
+    int getRandomStart(@NotNull List<Split> splits) {
+        return splits.isEmpty() ? 0 : ThreadLocalRandom.current().nextInt(splits.size());
     }
 
     private void enqueueDrivers(List<DriverSplitRunner> runners, boolean highPriority) {

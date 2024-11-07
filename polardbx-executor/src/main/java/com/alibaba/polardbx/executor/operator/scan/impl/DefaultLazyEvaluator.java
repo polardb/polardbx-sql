@@ -527,7 +527,7 @@ public class DefaultLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
             for (int i = 0; i < batchSize; i++) {
                 int j = preSelection[i];
                 if (longInputArray[j] != 0 &&
-                    (nulls == null || !nulls[i])) {
+                    (nulls == null || !nulls[j])) {
                     result.set(j);
                 }
             }
@@ -536,7 +536,7 @@ public class DefaultLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
             for (int i = 0; i < batchSize; i++) {
                 int j = preSelection[i];
                 if (intInputArray[j] != 0 &&
-                    (nulls == null || !nulls[i])) {
+                    (nulls == null || !nulls[j])) {
                     result.set(j);
                 }
             }
@@ -627,7 +627,7 @@ public class DefaultLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
             for (int i = 0; i < batchSize; i++) {
                 int j = preSelection[i];
                 if (longInputArray[j] != 0 &&
-                    (nulls == null || !nulls[i])) {
+                    (nulls == null || !nulls[j])) {
                     bitmap[j] = true;
                     selectCount++;
                 }
@@ -637,7 +637,7 @@ public class DefaultLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
             for (int i = 0; i < batchSize; i++) {
                 int j = preSelection[i];
                 if (intInputArray[j] != 0 &&
-                    (nulls == null || !nulls[i])) {
+                    (nulls == null || !nulls[j])) {
                     bitmap[j] = true;
                     selectCount++;
                 }
@@ -657,22 +657,47 @@ public class DefaultLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
         int selectCount = 0;
 
         int batchSize = preAllocatedChunk.batchSize();
+        boolean selectionInUse = preAllocatedChunk.isSelectionInUse();
         if (resultBlock instanceof LongBlock) {
             long[] longInputArray = ((LongBlock) resultBlock).longArray();
-            for (int i = 0; i < batchSize; i++) {
-                if (longInputArray[i] != 0 &&
-                    (nulls == null || !nulls[i])) {
-                    bitmap[i] = true;
-                    selectCount++;
+            if (selectionInUse) {
+                int[] sel = preAllocatedChunk.selection();
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    if (longInputArray[j] != 0 &&
+                        (nulls == null || !nulls[j])) {
+                        bitmap[j] = true;
+                        selectCount++;
+                    }
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    if (longInputArray[i] != 0 &&
+                        (nulls == null || !nulls[i])) {
+                        bitmap[i] = true;
+                        selectCount++;
+                    }
                 }
             }
         } else if (resultBlock instanceof IntegerBlock) {
             int[] intInputArray = ((IntegerBlock) resultBlock).intArray();
-            for (int i = 0; i < batchSize; i++) {
-                if (intInputArray[i] != 0 &&
-                    (nulls == null || !nulls[i])) {
-                    bitmap[i] = true;
-                    selectCount++;
+            if (selectionInUse) {
+                int[] sel = preAllocatedChunk.selection();
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    if (intInputArray[j] != 0 &&
+                        (nulls == null || !nulls[j])) {
+                        bitmap[j] = true;
+                        selectCount++;
+                    }
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    if (intInputArray[i] != 0 &&
+                        (nulls == null || !nulls[i])) {
+                        bitmap[i] = true;
+                        selectCount++;
+                    }
                 }
             }
         } else {

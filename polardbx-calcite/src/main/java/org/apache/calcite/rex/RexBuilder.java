@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.rex;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
@@ -906,6 +907,12 @@ public class RexBuilder {
         SqlTypeName.SYMBOL);
   }
 
+  public RexLiteral makeCharNullLiteral() {
+    RelDataType type = typeFactory.createSqlType(SqlTypeName.CHAR);
+    type = typeFactory.createTypeWithNullability(type, true);
+    return new RexLiteral(null, type, SqlTypeName.CHAR);
+  }
+
   /**
    * Internal method to create a call to a literal. Code outside this package
    * should call one of the type-specific methods such as
@@ -1634,6 +1641,10 @@ public class RexBuilder {
     case INTERVAL_SECOND:
       if (o instanceof BigDecimal) {
         return o;
+      }
+      if (o instanceof Decimal) {
+        // avoid precision loss
+        return ((Decimal) o).toBigDecimal();
       }
       return new BigDecimal(((Number) o).longValue());
     case FLOAT:

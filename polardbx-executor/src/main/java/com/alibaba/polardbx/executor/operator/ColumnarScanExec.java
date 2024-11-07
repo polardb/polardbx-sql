@@ -25,7 +25,6 @@ import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFManager;
@@ -41,13 +40,14 @@ import com.alibaba.polardbx.executor.operator.scan.WorkPool;
 import com.alibaba.polardbx.executor.operator.scan.impl.CsvColumnarSplit;
 import com.alibaba.polardbx.executor.operator.scan.impl.DefaultLazyEvaluator;
 import com.alibaba.polardbx.executor.operator.scan.impl.DefaultScanPreProcessor;
+import com.alibaba.polardbx.executor.operator.scan.impl.FlashbackScanPreProcessor;
 import com.alibaba.polardbx.executor.operator.scan.impl.MorselColumnarSplit;
 import com.alibaba.polardbx.executor.operator.scan.impl.SimpleWorkPool;
+import com.alibaba.polardbx.executor.operator.scan.impl.SpecifiedDeleteBitmapPreProcessor;
 import com.alibaba.polardbx.executor.operator.scan.metrics.RuntimeMetrics;
 import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
-import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -58,7 +58,6 @@ import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -66,11 +65,11 @@ import org.apache.hadoop.fs.Path;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -83,7 +82,7 @@ public class ColumnarScanExec extends SourceExec {
     private static final Logger LOGGER = LoggerFactory.getLogger("oss");
     private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
 
-    private static final ExecutorService IO_EXECUTOR =
+    protected static final ExecutorService IO_EXECUTOR =
         Executors.newFixedThreadPool(CPU_CORES * CPU_CORES, new NamedThreadFactory(
             "columnar-io"
         ));
@@ -92,7 +91,7 @@ public class ColumnarScanExec extends SourceExec {
         Executors.newFixedThreadPool(CPU_CORES * CPU_CORES, new NamedThreadFactory(
             "columnar-scan"
         ));
-    private static final AtomicLong SNAPSHOT_FILE_ACCESS_COUNT = new AtomicLong(0);
+    protected static final AtomicLong SNAPSHOT_FILE_ACCESS_COUNT = new AtomicLong(0);
 
     public static final double DEFAULT_RATIO = .3D;
     public static final double DEFAULT_GROUPS_RATIO = 1D;
@@ -102,10 +101,10 @@ public class ColumnarScanExec extends SourceExec {
     private List<DataType> outputDataTypes;
 
     // Shared by all scan operators of one partition in one server node.
-    private WorkPool<ColumnarSplit, Chunk> workPool;
+    protected WorkPool<ColumnarSplit, Chunk> workPool;
     private ExecutorService scanExecutor;
 
-    private ScanPreProcessor preProcessor;
+    protected ScanPreProcessor preProcessor;
     private ListenableFuture preProcessorFuture;
     private Supplier<ListenableFuture<?>> blockedSupplier;
 
@@ -116,7 +115,7 @@ public class ColumnarScanExec extends SourceExec {
     private volatile boolean lastWorkNotExecutable;
     private volatile boolean noAvailableWork;
     private Map<String, ScanWork<ColumnarSplit, Chunk>> finishedWorks;
-    private List<Split> splitList;
+    protected List<Split> splitList;
 
     /**
      * NOTE: The current IO status does not necessarily come from the current scan work.
@@ -140,10 +139,12 @@ public class ColumnarScanExec extends SourceExec {
 
     // memory management.
     private MemoryPool memoryPool;
-    private MemoryAllocatorCtx memoryAllocator;
+    protected MemoryAllocatorCtx memoryAllocator;
 
     // plan fragment level runtime filter manager.
-    private volatile FragmentRFManager fragmentRFManager;
+    protected volatile FragmentRFManager fragmentRFManager;
+
+    protected Set<String> filterSet;
 
     public ColumnarScanExec(OSSTableScan ossTableScan, ExecutionContext context, List<DataType> outputDataTypes) {
         super(context);
@@ -168,59 +169,29 @@ public class ColumnarScanExec extends SourceExec {
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_METRICS);
         this.enableIndexPruning =
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_INDEX_PRUNING);
-        this.enableDebug = LOGGER.isDebugEnabled();
+        this.enableDebug =
+            LOGGER.isDebugEnabled() || context.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_DEBUG);
         this.splitList = new ArrayList<>();
 
         this.memoryPool = MemoryPoolUtils
             .createOperatorTmpTablePool("ColumnarScanExec@" + System.identityHashCode(this),
                 context.getMemoryPool());
         this.memoryAllocator = memoryPool.getMemoryAllocatorCtx();
+
+        String fileListStr = context.getParamManager().getString(ConnectionParams.FILE_LIST);
+        if (!"ALL".equalsIgnoreCase(fileListStr)) {
+            filterSet = Arrays.stream(fileListStr.split(","))
+                .map(String::trim)
+                .collect(Collectors.toSet());
+        }
     }
 
     public void setFragmentRFManager(FragmentRFManager fragmentRFManager) {
         this.fragmentRFManager = fragmentRFManager;
     }
 
-    private List<String> getOrcFiles(OssSplit ossSplit) {
-        List<String> fileNames = ossSplit.getDesignatedFile();
-
-        if (fileNames != null && ossTableScan.getFlashback() instanceof RexDynamicParam) {
-            String timestampString = context.getParams().getCurrentParameter()
-                .get(((RexDynamicParam) ossTableScan.getFlashback()).getIndex() + 1).getValue().toString();
-            TimeZone fromTimeZone;
-            if (context.getTimeZone() != null) {
-                fromTimeZone = context.getTimeZone().getTimeZone();
-            } else {
-                fromTimeZone = TimeZone.getDefault();
-            }
-
-            long readTs = OSSTaskUtils.getTsFromTimestampWithTimeZone(timestampString, fromTimeZone);
-            TableMeta tableMeta = context.getSchemaManager(ossSplit.getLogicalSchema()).getTable(
-                ossSplit.getLogicalTableName());
-            Set<String> filterSet = ossSplit.getFilterSet(context);
-            Map<String, List<FileMeta>> flatFileMetas = tableMeta.getFlatFileMetas();
-
-            return ossSplit.getPhyTableNameList().stream()
-                .map(flatFileMetas::get)
-                .flatMap(List::stream)
-                .filter(x -> {
-                    if (filterSet == null || filterSet.contains(x.getFileName())) {
-                        if (readTs < x.getCommitTs()) {
-                            // not committed yet at this ts
-                            return false;
-                        }
-                        // not removed yet at this ts
-                        return x.getRemoveTs() == null || readTs <= x.getRemoveTs();
-                    } else {
-                        // not designated for this split
-                        return false;
-                    }
-                })
-                .map(FileMeta::getFileName)
-                .collect(Collectors.toList());
-        } else {
-            return fileNames;
-        }
+    protected List<String> getOrcFiles(OssSplit ossSplit) {
+        return ossSplit.getPrunedOrcFiles(ossTableScan, context);
     }
 
     @Override
@@ -311,19 +282,28 @@ public class ColumnarScanExec extends SourceExec {
         final OssSplit.DeltaReadOption deltaReadOption = ossSplit.getDeltaReadOption();
 
         // Build csv split for all csv files in deltaReadOption and fill into work pool.
-        if (deltaReadOption != null) {
+        if (deltaReadOption != null && deltaReadOption.getAllCsvFiles() != null) {
             final Map<String, List<String>> allCsvFiles = deltaReadOption.getAllCsvFiles();
+            final Map<String, List<Long>> allPositions = deltaReadOption.getAllPositions();
 
             List<Integer> finalInputRefsForFilterForCsv = inputRefsForFilter;
             LazyEvaluator<Chunk, BitSet> finalEvaluatorForCsv = evaluator;
-            allCsvFiles.values().stream().flatMap(List::stream).forEach(
-                csvFile -> {
-                    Path filePath = FileSystemUtils.buildPath(fileSystem, csvFile, isColumnar);
+
+            for (Map.Entry<String, List<String>> entry : allCsvFiles.entrySet()) {
+                List<String> files = entry.getValue();
+                List<Long> positions = allPositions == null ? null : allPositions.get(entry.getKey());
+                for (int i = 0; i < files.size(); i++) {
+                    String fileName = files.get(i);
+                    if (filterSet != null && !filterSet.contains(fileName)) {
+                        continue;
+                    }
+                    Path filePath = FileSystemUtils.buildPath(fileSystem, fileName, isColumnar);
                     preProcessor.addFile(filePath);
                     workPool.addSplit(sequenceId, CsvColumnarSplit.newBuilder()
                         .executionContext(context)
                         .columnarManager(columnarManager)
                         .file(filePath, 0)
+                        .position(positions == null ? null : positions.get(i))
                         .inputRefs(finalInputRefsForFilterForCsv, inputRefsForProject)
                         .tso(ossSplit.getCheckpointTso())
                         .prepare(preProcessor)
@@ -335,12 +315,15 @@ public class ColumnarScanExec extends SourceExec {
                         .build()
                     );
                 }
-            );
+            }
         }
 
         // Build columnar style split for all orc files in oss-split and fill into work pool.
         if (orcFileNames != null) {
             for (String fileName : orcFileNames) {
+                if (filterSet != null && !filterSet.contains(fileName)) {
+                    continue;
+                }
                 // The pre-processor shared by all columnar-splits in this table scan.
                 Path filePath = FileSystemUtils.buildPath(fileSystem, fileName, isColumnar);
                 preProcessor.addFile(filePath);
@@ -387,27 +370,54 @@ public class ColumnarScanExec extends SourceExec {
                                                       FileSystem fileSystem,
                                                       Configuration configuration,
                                                       ColumnarManager columnarManager) {
-        return new DefaultScanPreProcessor(
-            configuration, fileSystem,
+        if (ossTableScan.isFlashbackQuery()) {
+            OssSplit.DeltaReadOption deltaReadOption = ossSplit.getDeltaReadOption();
 
-            // for pruning
-            logicalSchema,
-            logicalTableName,
-            enableIndexPruning,
-            context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE),
-            tableMeta.getAllColumns(),
-            ossTableScan.getOrcNode().getOriFilters(),
-            ossSplit.getParams(),
+            return new FlashbackScanPreProcessor(
+                configuration, fileSystem,
 
-            // for mock
-            DEFAULT_GROUPS_RATIO,
-            DEFAULT_DELETION_RATIO,
+                // for pruning
+                logicalSchema,
+                logicalTableName,
+                enableIndexPruning,
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE),
+                tableMeta.getAllColumns(),
+                ossTableScan.getOrcNode().getOriFilters(),
+                ossSplit.getParams(),
 
-            // for columnar mode.
-            columnarManager,
-            ossSplit.getCheckpointTso(),
-            tableMeta.getColumnarFieldIdList()
-        );
+                // for mock
+                DEFAULT_GROUPS_RATIO,
+                DEFAULT_DELETION_RATIO,
+
+                // for columnar mode.
+                columnarManager,
+                ossSplit.getCheckpointTso(),
+                tableMeta.getColumnarFieldIdList(),
+                deltaReadOption == null ? null : deltaReadOption.getAllDelPositions()
+            );
+        } else {
+            return new DefaultScanPreProcessor(
+                configuration, fileSystem,
+
+                // for pruning
+                logicalSchema,
+                logicalTableName,
+                enableIndexPruning,
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE),
+                tableMeta.getAllColumns(),
+                ossTableScan.getOrcNode().getOriFilters(),
+                ossSplit.getParams(),
+
+                // for mock
+                DEFAULT_GROUPS_RATIO,
+                DEFAULT_DELETION_RATIO,
+
+                // for columnar mode.
+                columnarManager,
+                ossSplit.getCheckpointTso(),
+                tableMeta.getColumnarFieldIdList()
+            );
+        }
     }
 
     @Override

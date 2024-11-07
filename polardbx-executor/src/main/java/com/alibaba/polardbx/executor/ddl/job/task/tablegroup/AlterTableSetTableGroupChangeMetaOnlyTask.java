@@ -24,7 +24,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoAccessor;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
@@ -249,6 +248,8 @@ public class AlterTableSetTableGroupChangeMetaOnlyTask extends BaseDdlTask {
                     }
                 } else if (partitionInfo.getTableType() == PartitionTableType.BROADCAST_TABLE) {
                     tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG;
+                } else if (partitionInfo.getTableType() == PartitionTableType.COLUMNAR_TABLE) {
+                    tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_COLUMNAR_TBL_TG;
                 } else {
                     tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
                 }

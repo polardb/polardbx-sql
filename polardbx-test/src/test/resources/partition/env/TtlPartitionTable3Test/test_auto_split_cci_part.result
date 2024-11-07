@@ -1,0 +1,64 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00'
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask"
+create table test_cci_split(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+ttl = ttl_definition( TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00' ARCHIVE_TABLE_PRE_ALLOCATE = 2 ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+partition by key(a) partitions 2
+show create table test_cci_split
+Table,Create Table
+test_cci_split,CREATE TABLE `test_cci_split` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+create table test_cci_split_bk like test_cci_split engine='columnar' archive_mode='ttl'
+show create table test_cci_split
+Table,Create Table
+test_cci_split,CREATE TABLE `test_cci_split` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_test_cci_split_bk` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION pstart VALUES LESS THAN ('1970-01-02 00:00:00') ENGINE = Columnar,
+		 PARTITION p202404 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202405 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202406 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202407 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202408 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = 'COLUMNAR', ARCHIVE_TABLE_NAME = 'test_cci_split_bk', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+alter table test_cci_split modify ttl set ARCHIVE_TABLE_PRE_ALLOCATE=4
+alter table test_cci_split cleanup expired data
+show create table test_cci_split
+Table,Create Table
+test_cci_split,CREATE TABLE `test_cci_split` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` datetime DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (`a`),
+	CLUSTERED COLUMNAR INDEX `arctmp_test_cci_split_bk` (`b`)
+		PARTITION BY RANGE COLUMNS(`b`)
+		(PARTITION pstart VALUES LESS THAN ('1970-01-02 00:00:00') ENGINE = Columnar,
+		 PARTITION p202404 VALUES LESS THAN ('2024-05-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202405 VALUES LESS THAN ('2024-06-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202406 VALUES LESS THAN ('2024-07-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202407 VALUES LESS THAN ('2024-08-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202408 VALUES LESS THAN ('2024-09-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202409 VALUES LESS THAN ('2024-10-01 00:00:00') ENGINE = Columnar,
+		 PARTITION p202410 VALUES LESS THAN ('2024-11-01 00:00:00') ENGINE = Columnar,
+		 PARTITION pmax VALUES LESS THAN (MAXVALUE) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 */2 * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = 'COLUMNAR', ARCHIVE_TABLE_NAME = 'test_cci_split_bk', ARCHIVE_TABLE_PRE_ALLOCATE = 4, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false
+drop table test_cci_split;

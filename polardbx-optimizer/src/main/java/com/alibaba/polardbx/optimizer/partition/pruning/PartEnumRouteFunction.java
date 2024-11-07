@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
@@ -52,13 +53,15 @@ public class PartEnumRouteFunction extends PartRouteFunction {
     public PartEnumRouteFunction(PartitionInfo partInfo,
                                  StepIntervalInfo rangeIntervalInfo,
                                  boolean inclMin,
-                                 boolean inclMax) {
+                                 boolean inclMax,
+                                 PartKeyLevel partKeyLevel) {
         this.partInfo = partInfo;
         this.rangeIntervalInfo = rangeIntervalInfo;
-        this.matchLevel = PartKeyLevel.PARTITION_KEY;
+        this.matchLevel = partKeyLevel;
         this.inclMin = inclMin;
         this.inclMax = inclMax;
-        this.partIntFunc = partInfo.getPartitionBy().getPartIntFunc();
+        this.partIntFunc = partKeyLevel == PartKeyLevel.SUBPARTITION_KEY ?
+            partInfo.getPartitionBy().getSubPartitionBy().getPartIntFunc() : partInfo.getPartitionBy().getPartIntFunc();
         this.containPartIntFunc = partIntFunc != null;
     }
 
@@ -66,7 +69,7 @@ public class PartEnumRouteFunction extends PartRouteFunction {
     public PartRouteFunction copy() {
         PartEnumRouteFunction routeFunction =
             new PartEnumRouteFunction(this.partInfo, this.rangeIntervalInfo.copy(), this.inclMin,
-                this.inclMax);
+                this.inclMax, this.matchLevel);
         return routeFunction;
     }
 
@@ -83,15 +86,20 @@ public class PartEnumRouteFunction extends PartRouteFunction {
         PartitionRouter router = getRouterByPartInfo(this.matchLevel, parentPartPosi, this.partInfo);
         BitSet allPartBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSetByPartRouter(router);
         try {
-            DataType fldDataType = partInfo.getPartitionBy().getQuerySpaceComparator().getDatumDrdsDataTypes()[0];
-            int partitionCount = partInfo.getPartitionBy().getPartitions().size();
+            PartitionByDefinition partBy = partInfo.getPartitionBy();
+            if (this.matchLevel == PartKeyLevel.SUBPARTITION_KEY) {
+                partBy = partInfo.getPartitionBy().getSubPartitionBy();
+            }
+
+            DataType fldDataType = partBy.getQuerySpaceComparator().getDatumDrdsDataTypes()[0];
+            int partitionCount = partBy.getPartitions().size();
             PartitionFieldIterator iterator =
-                PartitionFieldIterators.getIterator(fldDataType, partInfo.getPartitionBy().getIntervalType(),
+                PartitionFieldIterators.getIterator(fldDataType, partBy.getIntervalType(),
                     partIntFunc);
             iterator.range(min.getSingletonValue().getValue(), max.getSingletonValue().getValue(), inclMin, inclMax);
 
-            boolean isListOrListCol = partInfo.getPartitionBy().getStrategy() == PartitionStrategy.LIST
-                || partInfo.getPartitionBy().getStrategy() == PartitionStrategy.LIST_COLUMNS;
+            boolean isListOrListCol = partBy.getStrategy() == PartitionStrategy.LIST
+                || partBy.getStrategy() == PartitionStrategy.LIST_COLUMNS;
             while (iterator.hasNext()) {
                 PartitionField partPruningFld = null;
                 Object evalObj = iterator.next();

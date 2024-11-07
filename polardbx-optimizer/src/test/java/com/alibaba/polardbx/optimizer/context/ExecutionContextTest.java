@@ -45,4 +45,33 @@ public class ExecutionContextTest {
         Assert.assertFalse(ec.isEnableXaTso());
         Assert.assertFalse(ec.isEnableAutoCommitTso());
     }
+
+    @Test
+    public void isMarkSyncPointTest() {
+        ExecutionContext ec = new ExecutionContext();
+        ec.setExtraServerVariables(new HashMap<>());
+        ec.getExtraServerVariables().put(ConnectionProperties.MARK_SYNC_POINT, "true");
+        Assert.assertTrue(ec.isMarkSyncPoint());
+
+        ec.getExtraServerVariables().put(ConnectionProperties.MARK_SYNC_POINT, "false");
+        Assert.assertFalse(ec.isMarkSyncPoint());
+
+        ec.getExtraServerVariables().put(ConnectionProperties.MARK_SYNC_POINT, null);
+        Assert.assertFalse(ec.isMarkSyncPoint());
+
+        ec.getExtraServerVariables().remove(ConnectionProperties.MARK_SYNC_POINT);
+        Assert.assertFalse(ec.isMarkSyncPoint());
+
+        ec.setExtraServerVariables(null);
+        Assert.assertFalse(ec.isMarkSyncPoint());
+    }
+
+    @Test
+    public void flashbackAreaTest() {
+        ExecutionContext ec = new ExecutionContext();
+        ec.setFlashbackArea(true);
+        Assert.assertTrue(ec.isFlashbackArea());
+        ec.clearContextInsideTrans();
+        Assert.assertFalse(ec.isFlashbackArea());
+    }
 }
