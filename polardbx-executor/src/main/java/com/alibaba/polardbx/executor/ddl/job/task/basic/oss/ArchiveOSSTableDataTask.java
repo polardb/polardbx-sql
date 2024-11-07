@@ -93,6 +93,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         new FileStorageAccessorDelegate<Integer>() {
             @Override
             protected Integer invoke() {
@@ -169,6 +170,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
             ExecutionContext sourceDbContext = executionContext.copy();
             sourceDbContext.setSchemaName(sourceLogicalSchema);
             sourceDbContext.setBackfillId(getTaskId());
+            sourceDbContext.setTaskId(getTaskId());
 
             TableMeta sourceTableMeta =
                 executionContext.getSchemaManager(sourceLogicalSchema).getTable(sourceLogicalTable);

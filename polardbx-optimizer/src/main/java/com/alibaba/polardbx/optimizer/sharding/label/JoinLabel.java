@@ -16,24 +16,32 @@
 
 package com.alibaba.polardbx.optimizer.sharding.label;
 
-import com.alibaba.polardbx.optimizer.sharding.utils.ExtractorContext;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
 import com.alibaba.polardbx.optimizer.sharding.LabelShuttle;
+import com.alibaba.polardbx.optimizer.sharding.utils.ExtractorContext;
+import com.alibaba.polardbx.optimizer.sharding.utils.PredicateUtil;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
 import org.apache.calcite.linq4j.Ord;
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.mapping.Mapping;
 
 import javax.annotation.Nonnull;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -205,5 +213,47 @@ public class JoinLabel extends AbstractLabel {
 
     public void setValuePredicates(PredicateNode valuePredicates) {
         this.valuePredicates = valuePredicates;
+    }
+
+    @Override
+    public Label filter(RexNode predicate, Filter filter,
+                        ExtractorContext context) {
+
+        final Join join = this.getRel();
+
+        final List<RexNode> joinFilters = RelOptUtil.conjunctions(join.getCondition());
+        final List<RexNode> originFilters = RelOptUtil.conjunctions(predicate);
+        final List<RexNode> aboveFilters = RelOptUtil.conjunctions(predicate);
+        final ImmutableList<RexNode> origAboveFilters = ImmutableList.copyOf(aboveFilters);
+
+        JoinRelType joinType = join.getJoinType();
+        if (!origAboveFilters.isEmpty() && joinType != JoinRelType.INNER && !(join instanceof SemiJoin)) {
+            joinType = RelOptUtil.simplifyJoin(join, origAboveFilters, joinType);
+        }
+
+        final List<RexNode> leftFilters = new ArrayList<>();
+        final List<RexNode> rightFilters = new ArrayList<>();
+        final List<RexNode> pushFilters = new ArrayList<>();
+        // Try to push down above filters. These are typically where clause
+        // filters. They can be pushed down if they are not on the NULL
+        // generating side.
+        if (RelOptUtil.classifyFilters(join,
+            aboveFilters,
+            joinType,
+            true,
+            !joinType.generatesNullsOnLeft(),
+            !joinType.generatesNullsOnRight(),
+            joinFilters,
+            leftFilters,
+            rightFilters)) {
+            for (RexNode rexNode : originFilters) {
+                if (!aboveFilters.contains(rexNode)) {
+                    pushFilters.add(rexNode);
+                }
+            }
+            final Map<String, RexNode> deduplicatedFilters = PredicateUtil.deduplicate(pushFilters, context);
+            this.predicates.add(new PredicateNode(this.clone(), null, deduplicatedFilters, context));
+        }
+        return this;
     }
 }

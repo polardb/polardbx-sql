@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.qatest.dql.auto.spill;
 
+import com.alibaba.polardbx.qatest.ColumnarIgnore;
+import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import org.apache.commons.logging.Log;
@@ -31,7 +33,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
-
+@ColumnarIgnore // close #58321033
 public class HybridBushyJoinTest extends AutoReadBaseTestCase {
 
     private static final Log log = LogFactory.getLog(HybridBushyJoinTest.class);

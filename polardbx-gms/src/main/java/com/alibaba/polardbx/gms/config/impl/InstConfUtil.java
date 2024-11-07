@@ -133,7 +133,7 @@ public class InstConfUtil {
     }
 
     public static Boolean getBool(BooleanConfigParam c) {
-        String val = MetaDbInstConfigManager.getInstance().propertiesInfoMap.getProperty(c.getName());
+        String val = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().getProperty(c.getName());
         if (val == null) {
             val = c.getDefault();
         }
@@ -184,7 +184,7 @@ public class InstConfUtil {
     public static long getLong(LongConfigParam c) {
 
         /* See if it's specified. */
-        String val = MetaDbInstConfigManager.getInstance().propertiesInfoMap.getProperty(c.getName());
+        String val = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().getProperty(c.getName());
         if (val == null) {
             val = c.getDefault();
         }
@@ -206,7 +206,7 @@ public class InstConfUtil {
     }
 
     public static int getInt(IntConfigParam c) {
-        String val = MetaDbInstConfigManager.getInstance().propertiesInfoMap.getProperty(c.getName());
+        String val = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().getProperty(c.getName());
         if (val == null) {
             val = c.getDefault();
         }

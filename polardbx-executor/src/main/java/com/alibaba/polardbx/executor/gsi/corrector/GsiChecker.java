@@ -103,12 +103,12 @@ public class GsiChecker extends Checker {
         }
         final TableMeta baseTableMeta = sm.getTable(tableName);
 
-        if (null == baseTableMeta || !baseTableMeta.withGsi() || !indexTableMeta.isGsi()
-            || !baseTableMeta.getGsiTableMetaBean().indexMap.containsKey(indexName)) {
+        if (null == baseTableMeta) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER, "Incorrect GSI relationship.");
         }
 
-        Extractor.ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName, false, true);
+        Extractor.ExtractorInfo info =
+            Extractor.buildExtractorInfo(ec, schemaName, tableName, indexName, false, true, false);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, params.isUseBinary(), ec);
 
         final Pair<SqlSelect, PhyTableOperation> selectWithIn = builder

@@ -103,8 +103,7 @@ public class PushFilterRule extends RelOptRule {
     public void onMatch(RelOptRuleCall call) {
         Filter filter = call.rel(0);
         LogicalView logicalView = call.rel(1);
-        PlannerContext context = call.getPlanner().getContext().unwrap(PlannerContext.class);
-        if (RelUtils.isNotPushLastInsertId(context, filter)) {
+        if (RelUtils.existLastInsertId(filter)) {
             return;
         }
         if (logicalView instanceof OSSTableScan

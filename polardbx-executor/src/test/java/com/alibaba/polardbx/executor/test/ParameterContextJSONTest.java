@@ -31,7 +31,6 @@ import com.alibaba.polardbx.executor.mpp.metadata.DefinedJsonSerde;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -83,8 +82,6 @@ public class ParameterContextJSONTest {
 
     @Test
     public void testSession() throws Exception {
-        ColumnarTracer columnarTracer = new ColumnarTracer();
-        columnarTracer.tracePruneIndex("tbl", "a>10", 10, 10, 10);
         SessionRepresentation sessionRepresentation = new SessionRepresentation(
             "traceId",
             "catalog",
@@ -113,7 +110,7 @@ public class ParameterContextJSONTest {
             new HashMap<>(),
             false,
             false,
-            columnarTracer,
+            true,
             WorkloadType.TP,
             null);
 
@@ -121,8 +118,7 @@ public class ParameterContextJSONTest {
         System.out.println(json);
         SessionRepresentation target = objectMapper.readValue(json, sessionRepresentation.getClass());
         Assert.assertTrue(target.getDnLsnMap() != null);
-        Assert.assertTrue(target.getColumnarTracer() != null);
-        Assert.assertTrue(target.getColumnarTracer().pruneRecords().size() > 0);
+        Assert.assertTrue(target.getUseColumnarTracer());
     }
 
     @Test

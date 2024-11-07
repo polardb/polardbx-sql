@@ -54,25 +54,47 @@ export class WorkerStatus extends React.Component {
     refreshLoop() {
         clearTimeout(this.timeoutId); // to stop multiple series of refreshLoop from going on simultaneously
         const nodeId = getFirstParameter(window.location.search);
-        $.get('/v1/worker/' + nodeId + '/status', function (serverInfo) {
-            this.setState({
-                serverInfo: serverInfo,
-                initialized: true,
+        if (nodeId) {
+            $.get('/v1/worker/' + nodeId + '/status', function (serverInfo) {
+                this.setState({
+                    serverInfo: serverInfo,
+                    initialized: true,
 
-                processCpuLoad: addToHistory(serverInfo.processCpuLoad * 100.0, this.state.processCpuLoad),
-                systemCpuLoad: addToHistory(serverInfo.systemCpuLoad * 100.0, this.state.systemCpuLoad),
-                heapPercentUsed: addToHistory(serverInfo.heapUsed * 100.0 / serverInfo.heapAvailable, this.state.heapPercentUsed),
-                nonHeapUsed: addToHistory(serverInfo.nonHeapUsed * 100.0, this.state.nonHeapUsed),
-            });
+                    processCpuLoad: addToHistory(serverInfo.processCpuLoad * 100.0, this.state.processCpuLoad),
+                    systemCpuLoad: addToHistory(serverInfo.systemCpuLoad * 100.0, this.state.systemCpuLoad),
+                    heapPercentUsed: addToHistory(serverInfo.heapUsed * 100.0 / serverInfo.heapAvailable, this.state.heapPercentUsed),
+                    nonHeapUsed: addToHistory(serverInfo.nonHeapUsed * 100.0, this.state.nonHeapUsed),
+                });
 
-            this.resetTimer();
-        }.bind(this))
-            .error(function () {
+                this.resetTimer();
+            }.bind(this))
+                .error(function () {
                 this.setState({
                     initialized: true,
                 });
                 this.resetTimer();
-            }.bind(this));
+                }.bind(this));
+        } else {
+            $.get('/v1/status', function (serverInfo) {
+                this.setState({
+                    serverInfo: serverInfo,
+                    initialized: true,
+
+                    processCpuLoad: addToHistory(serverInfo.processCpuLoad * 100.0, this.state.processCpuLoad),
+                    systemCpuLoad: addToHistory(serverInfo.systemCpuLoad * 100.0, this.state.systemCpuLoad),
+                    heapPercentUsed: addToHistory(serverInfo.heapUsed * 100.0 / serverInfo.heapAvailable, this.state.heapPercentUsed),
+                    nonHeapUsed: addToHistory(serverInfo.nonHeapUsed * 100.0, this.state.nonHeapUsed),
+                });
+
+                this.resetTimer();
+            }.bind(this))
+                .error(function () {
+                    this.setState({
+                        initialized: true,
+                    });
+                    this.resetTimer();
+                }.bind(this));
+        }
     }
 
     componentDidMount() {

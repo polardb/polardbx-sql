@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse.Response;
 
@@ -36,15 +37,26 @@ public class DdlEngineDagExecutorMap {
 
     private static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
 
-    private static final Map<String, Map<Long, Optional<DdlEngineDagExecutor>>> DDL_DAG_EXECUTOR_MAP =
+    public static final Map<String, Map<Long, Optional<DdlEngineDagExecutor>>> DDL_DAG_EXECUTOR_MAP =
+        new ConcurrentHashMap<>();
+
+    public static final Map<String, Map<Long, Optional<DdlEngineDagExecutor>>> DDL_DAG_REMOTE_EXECUTOR_MAP =
         new ConcurrentHashMap<>();
 
     public static void register(String schemaName) {
         DDL_DAG_EXECUTOR_MAP.put(schemaName.toLowerCase(), new ConcurrentHashMap<>());
     }
 
+    public static void registerRemote(String schemaName) {
+        DDL_DAG_REMOTE_EXECUTOR_MAP.put(schemaName.toLowerCase(), new ConcurrentHashMap<>());
+    }
+
     public static void deregister(String schemaName) {
         DDL_DAG_EXECUTOR_MAP.remove(schemaName.toLowerCase());
+    }
+
+    public static void deregisterRemote(String schemaName) {
+        DDL_DAG_REMOTE_EXECUTOR_MAP.remove(schemaName.toLowerCase());
     }
 
     /**
@@ -67,7 +79,7 @@ public class DdlEngineDagExecutorMap {
             map.put(jobId, Optional.empty());
         }
         try {
-            DdlEngineDagExecutor dagExecutor = DdlEngineDagExecutor.create(jobId, executionContext);
+            DdlEngineDagExecutor dagExecutor = DdlEngineDagExecutor.create(jobId, -1L, executionContext);
             map.put(jobId, Optional.of(dagExecutor));
             return true;
         } catch (Throwable t) {
@@ -99,8 +111,31 @@ public class DdlEngineDagExecutorMap {
         }
     }
 
+    public static List<DdlEngineDagExecutor> getRemoteJobExecutors(String schemaName, long jobId) {
+        Map<Long, Optional<DdlEngineDagExecutor>> map = DDL_DAG_REMOTE_EXECUTOR_MAP.get(schemaName.toLowerCase());
+        if (map == null) {
+            return null;
+        }
+        List<DdlEngineDagExecutor> ddlEngineDagExecutors =
+            map.values().stream().filter(o -> o.isPresent() && o.get().getJobId() == jobId).map(o -> o.get())
+                .collect(Collectors.toList());
+        if (ddlEngineDagExecutors.isEmpty()) {
+            return null;
+        } else {
+            return ddlEngineDagExecutors;
+        }
+    }
+
     public static boolean contains(String schemaName, long jobId) {
         Map<Long, Optional<DdlEngineDagExecutor>> map = DDL_DAG_EXECUTOR_MAP.get(schemaName.toLowerCase());
+        if (map == null) {
+            return false;
+        }
+        return map.containsKey(jobId);
+    }
+
+    public static boolean containsRemote(String schemaName, long jobId) {
+        Map<Long, Optional<DdlEngineDagExecutor>> map = DDL_DAG_REMOTE_EXECUTOR_MAP.get(schemaName.toLowerCase());
         if (map == null) {
             return false;
         }

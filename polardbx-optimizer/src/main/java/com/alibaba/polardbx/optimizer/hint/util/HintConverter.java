@@ -84,6 +84,8 @@ public class HintConverter {
 
         private int directCount = 0;
 
+        private boolean directWithRealTableName = false;
+
         private boolean hasPlanHint = false;
 
         public int routeCount = 0;
@@ -102,6 +104,10 @@ public class HintConverter {
 
         public boolean route() {
             return nodeCount + scanCount + routeCount > 0;
+        }
+
+        public boolean routeWithoutScan() {
+            return nodeCount + routeCount > 0 && scanCount == 0;
         }
 
         public boolean usePostPlanner() {
@@ -135,6 +141,10 @@ public class HintConverter {
             return directOnly() || nodeOnly() || route();
         }
 
+        public boolean pushdownSqlOrRouteWithoutScan() {
+            return directOnly() || nodeOnly() || routeWithoutScan();
+        }
+
         public boolean hasPlanHint() {
             return hasPlanHint;
         }
@@ -147,6 +157,10 @@ public class HintConverter {
         public void addHintOperator(HintAddOperator addOperator) {
             addHintResult.add(addOperator);
             addCount++;
+        }
+
+        public boolean directWithRealTableName() {
+            return directWithRealTableName;
         }
 
         public void pushdownHintOperator(HintPushdownOperator pushdownOperator) {
@@ -172,6 +186,9 @@ public class HintConverter {
                 } else if (((HintCmdCoronaDbJson) cmdOperator).isUseRouteCondition()) {
                     routeCount++;
                 }
+                if (((HintCmdCoronaDbJson) cmdOperator).isDirectWithRealTableName()) {
+                    directWithRealTableName = true;
+                }
                 break;
             case CMD_PLAN:
                 hasPlanHint = true;
@@ -190,6 +207,7 @@ public class HintConverter {
             this.jsonCount += other.jsonCount;
             this.directCount += other.directCount;
             this.routeCount += other.routeCount;
+            this.directWithRealTableName = directWithRealTableName || other.directWithRealTableName;
             this.hasPlanHint = hasPlanHint || other.hasPlanHint;
 
             this.pushHintResult.addAll(other.pushHintResult);

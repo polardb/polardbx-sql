@@ -4,7 +4,7 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.executor.columnar.pruning.index.BitMapRowGroupIndex;
 import com.alibaba.polardbx.executor.columnar.pruning.index.IndexPruneContext;
-import com.alibaba.polardbx.executor.columnar.pruning.index.SortKeyIndex;
+import com.alibaba.polardbx.executor.columnar.pruning.index.LongSortKeyIndex;
 import com.alibaba.polardbx.executor.columnar.pruning.index.ZoneMapIndex;
 import com.alibaba.polardbx.executor.columnar.pruning.predicate.ColumnPredicatePruningInf;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
@@ -146,7 +146,8 @@ public class PruneUtilsTest {
         ColumnPredicatePruningInf columnPredicatePruningInf = PruneUtils.transformRexToIndexMergeTree(rexNodes, ipc);
 
         RoaringBitmap bitmap = RoaringBitmap.bitmapOfRange(10, 100);
-        columnPredicatePruningInf.sortKey(SortKeyIndex.build(0, new long[] {1, 10, 11, 100}, DataTypes.LongType), null,
+        columnPredicatePruningInf.sortKey(LongSortKeyIndex.build(0, new long[] {1, 10, 11, 100}, DataTypes.LongType),
+            null,
             bitmap);
         columnPredicatePruningInf.zoneMap(
             ZoneMapIndex.build(1, Maps.newHashMap(), Maps.newHashMap(), Maps.newHashMap()), null, bitmap);

@@ -25,7 +25,6 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
-import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
@@ -36,7 +35,6 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
-import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
 import java.util.Map;
@@ -75,11 +73,6 @@ public class AlterTableGroupValidateTask extends BaseValidateTask {
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
                 .getTableGroupConfigByName(tableGroupName);
-
-        for (String primaryTableName : tableGroupConfig.getAllTables()) {
-            TableValidator.validateTableWithCCI(schemaName, primaryTableName, executionContext,
-                SqlKind.ALTER_TABLEGROUP);
-        }
 
         if (GeneralUtil.isNotEmpty(tablesVersion)) {
             for (Map.Entry<String, Long> tableVersionInfo : tablesVersion.entrySet()) {

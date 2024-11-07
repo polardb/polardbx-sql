@@ -18,12 +18,15 @@ package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterColumnDefaultTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AlterTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.ModifyPartitionKeyRemoveTableStatisticTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RebuildTableChangeMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.RebuildTableCleanFlagTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcModifyPartitionKeyMarkTask;
@@ -44,6 +47,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RebuildTablePrepareData;
@@ -57,7 +61,6 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -75,17 +78,20 @@ import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 public class RebuildTableJobFactory extends DdlJobFactory {
     private final String schemaName;
     private final String primaryTableName;
+    private final String backfillSourceTableName;
     private final Map<String, String> tableNameMap;
     private final Map<String, String> tableNameMapReverse;
-    private final Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData;
+    private final List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareData;
     private final ExecutionContext executionContext;
     private List<String> alterDefaultColumns;
     private List<String> changedColumns;
 
     private boolean needDropImplicitKey;
 
-    private final Map<String, String> virtualColumnMap;
-    private final Map<String, String> columnNewDef;
+    private final Map<String, String> srcVirtualColumnMap;
+    private final Map<String, String> dstVirtualColumnMap;
+    private final Map<String, SQLColumnDefinition> srcColumnNewDef;
+    private final Map<String, SQLColumnDefinition> dstColumnNewDef;
     private final Map<String, String> backfillColumnMap;
     private final PhysicalPlanData oldPhysicalPlanData;
 
@@ -93,26 +99,32 @@ public class RebuildTableJobFactory extends DdlJobFactory {
     private final List<String> modifyStringColumns;
     private final List<String> addNewColumns;
 
-    public RebuildTableJobFactory(String schemaName, String primaryTableName,
-                                  Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData,
+    private long versionId;
+
+    public RebuildTableJobFactory(String schemaName, String primaryTableName, String backfillSourceTableName,
+                                  List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> globalIndexPrepareData,
                                   RebuildTablePrepareData rebuildTablePrepareData,
                                   PhysicalPlanData oldPhysicalPlanData,
                                   ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.primaryTableName = primaryTableName;
+        this.backfillSourceTableName = backfillSourceTableName;
         this.globalIndexPrepareData = globalIndexPrepareData;
         this.executionContext = executionContext;
         this.needDropImplicitKey = false;
         this.alterDefaultColumns = null;
         this.tableNameMap = rebuildTablePrepareData.getTableNameMap();
         this.tableNameMapReverse = rebuildTablePrepareData.getTableNameMapReverse();
-        this.virtualColumnMap = rebuildTablePrepareData.getVirtualColumnMap();
-        this.columnNewDef = rebuildTablePrepareData.getColumnNewDef();
+        this.srcVirtualColumnMap = rebuildTablePrepareData.getSrcVirtualColumnMap();
+        this.dstVirtualColumnMap = rebuildTablePrepareData.getDstVirtualColumnMap();
+        this.srcColumnNewDef = rebuildTablePrepareData.getSrcColumnNewDef();
+        this.dstColumnNewDef = rebuildTablePrepareData.getDstColumnNewDef();
         this.backfillColumnMap = rebuildTablePrepareData.getBackfillColumnMap();
         this.needRehash = rebuildTablePrepareData.getNeedReHash();
         this.modifyStringColumns = rebuildTablePrepareData.getModifyStringColumns();
         this.addNewColumns = rebuildTablePrepareData.getAddNewColumns();
         this.oldPhysicalPlanData = oldPhysicalPlanData;
+        this.versionId = rebuildTablePrepareData.getVersionId();
     }
 
     @Override
@@ -134,6 +146,8 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         final boolean enableBackFillPushDown =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_BACKFILL_OPT_FOR_OMC);
 
+        TableMeta tableMeta = executionContext.getSchemaManager().getTable(primaryTableName);
+
         ExecutableDdlJob ddlJob = new ExecutableDdlJob();
 
         assert !globalIndexPrepareData.isEmpty();
@@ -146,15 +160,14 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         tableGroupConfigs.addAll(oldTableGroupConfigs);
         // get new table groups
         tableGroupConfigs.addAll(
-            globalIndexPrepareData.values().stream()
-                .map(PhysicalPlanData::getTableGroupConfig).collect(Collectors.toList())
+            globalIndexPrepareData.stream().map(e -> e.getValue().getTableGroupConfig()).collect(Collectors.toList())
         );
         DdlTask validateTask =
             new RebuildTableValidateTask(schemaName, primaryTableName, tableNameMap, tableGroupConfigs);
 
         // 标记开始 rebuild
         RebuildTableChangeMetaTask rebuildTableChangeMetaTask =
-            new RebuildTableChangeMetaTask(schemaName, primaryTableName);
+            new RebuildTableChangeMetaTask(schemaName, primaryTableName, executionContext.getOriginSql());
         TableSyncTask rebuildSyncTask = new TableSyncTask(schemaName, primaryTableName);
 
         // for modify default column
@@ -166,42 +179,43 @@ public class RebuildTableJobFactory extends DdlJobFactory {
             beginAlterColumnDefaultSyncTask = new TableSyncTask(schemaName, primaryTableName);
         }
 
-        List<DdlTask> checkerTasks = genCheckerTasks();
+        List<DdlTask> checkerTasks =
+            genGeneratedColumn4CheckTasks(schemaName, primaryTableName, srcVirtualColumnMap, srcColumnNewDef,
+                oldPhysicalPlanData);
 
         // create gsi
         List<ExecutableDdlJob> createGsiJobs = new ArrayList<>();
         AtomicBoolean hasSubJob = new AtomicBoolean(false);
-        List<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>> listGlobalIndexPrepareData = new ArrayList<>();
-        globalIndexPrepareData.forEach((createGlobalIndexPreparedData, physicalPlanData) -> {
-            listGlobalIndexPrepareData.add(new Pair<>(createGlobalIndexPreparedData, physicalPlanData));
-        });
 
-        Collections.sort(listGlobalIndexPrepareData,
-            new Comparator<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>>() {
-                @Override
-                public int compare(Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o1,
-                                   Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o2) {
-                    CreateGlobalIndexPreparedData data1 = o1.getKey();
-                    CreateGlobalIndexPreparedData data2 = o2.getKey();
+        globalIndexPrepareData.sort(new Comparator<Pair<CreateGlobalIndexPreparedData, PhysicalPlanData>>() {
+            @Override
+            public int compare(Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o1,
+                               Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> o2) {
+                CreateGlobalIndexPreparedData data1 = o1.getKey();
+                CreateGlobalIndexPreparedData data2 = o2.getKey();
 
-                    // 检查fieldA是否为空（这里假设fieldA是String类型）
-                    boolean isData1TableGroupAlignWithTargetTableEmpty =
-                        StringUtils.isEmpty(data1.getTableGroupAlignWithTargetTable());
-                    boolean isData2TableGroupAlignWithTargetTableEmpty =
-                        StringUtils.isEmpty(data2.getTableGroupAlignWithTargetTable());
+                // 检查fieldA是否为空（这里假设fieldA是String类型）
+                boolean isData1TableGroupAlignWithTargetTableEmpty =
+                    StringUtils.isEmpty(data1.getTableGroupAlignWithTargetTable());
+                boolean isData2TableGroupAlignWithTargetTableEmpty =
+                    StringUtils.isEmpty(data2.getTableGroupAlignWithTargetTable());
 
-                    if (isData1TableGroupAlignWithTargetTableEmpty && !isData2TableGroupAlignWithTargetTableEmpty) {
-                        return -1; // data1中的TableGroupAlignWithTargetTable为空，应该排在前面
-                    } else if (!isData1TableGroupAlignWithTargetTableEmpty
-                        && isData2TableGroupAlignWithTargetTableEmpty) {
-                        return 1; // data2中的TableGroupAlignWithTargetTable为空，data1应该排在后面
-                    } else {
-                        return 0; // 两者都为空或都不为空，视为相等
-                    }
+                // 主表对应的目标表永远放在第一位
+                if (data1.isOmcRebuildPrimaryTable()) {
+                    return -1;
                 }
-            });
-        for (int i = 0; i < listGlobalIndexPrepareData.size(); i++) {
-            Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> pair = listGlobalIndexPrepareData.get(i);
+
+                if (isData1TableGroupAlignWithTargetTableEmpty && !isData2TableGroupAlignWithTargetTableEmpty) {
+                    return -1; // data1中的TableGroupAlignWithTargetTable为空，应该排在前面
+                } else if (!isData1TableGroupAlignWithTargetTableEmpty
+                    && isData2TableGroupAlignWithTargetTableEmpty) {
+                    return 1; // data2中的TableGroupAlignWithTargetTable为空，data1应该排在后面
+                } else {
+                    return 0; // 两者都为空或都不为空，视为相等
+                }
+            }
+        });
+        for (Pair<CreateGlobalIndexPreparedData, PhysicalPlanData> pair : globalIndexPrepareData) {
             PhysicalPlanData physicalPlanData = pair.getValue();
             CreateGlobalIndexPreparedData createGlobalIndexPreparedData = pair.getKey();
             if (!hasSubJob.get()) {
@@ -221,26 +235,36 @@ public class RebuildTableJobFactory extends DdlJobFactory {
                 }
 
                 CreateGsiJobFactory createGsiJobFactory =
-                    CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, executionContext);
-                createGsiJobFactory.stayAtBackFill = true;
-                createGsiJobFactory.setVirtualColumnMap(virtualColumnMap);
-                createGsiJobFactory.setBackfillColumnMap(backfillColumnMap);
-                String oldIndexName = tableNameMapReverse.get(createGlobalIndexPreparedData.getIndexTableName());
-                createGsiJobFactory.setOldIndexName(oldIndexName);
-
-                boolean mirrorCopy = !needRehash.get(createGlobalIndexPreparedData.getIndexTableName());
-                if (enableBackFillPushDown) {
-                    createGsiJobFactory.setMirrorCopy(mirrorCopy);
-                }
-                TableMeta gsiTableMeta = executionContext.getSchemaManager(schemaName).getTable(oldIndexName);
-                if (useChangeSet && ChangeSetUtils.supportUseChangeSet(
-                    ComplexTaskMetaManager.ComplexTaskType.ONLINE_MODIFY_COLUMN, gsiTableMeta)) {
-                    createGsiJobFactory.setUseChangeSet(mirrorCopy);
-                }
-
-                createGsiJobFactory.setOnlineModifyColumn(true);
+                    CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, null, executionContext);
+                createGsiJobFactory.setStayAtBackFill(true);
                 createGsiJobFactory.setModifyStringColumns(modifyStringColumns);
+                createGsiJobFactory.setOmcColumnMap(backfillColumnMap);
                 createGsiJobFactory.setAddNewColumns(addNewColumns);
+
+                if (createGlobalIndexPreparedData.isOmcRebuildPrimaryTable()) {
+                    // 特殊流程，涉及 changeset 优化、insert select backfill 优化、列名映射等流程
+                    createGsiJobFactory.setOnlineModifyColumn(true);
+                    createGsiJobFactory.setSrcVirtualColumnMap(srcVirtualColumnMap);
+                    createGsiJobFactory.setDstVirtualColumnMap(dstVirtualColumnMap);
+                    createGsiJobFactory.setDstColumnNewDefinitions(dstColumnNewDef);
+                    String oldIndexName = tableNameMapReverse.get(createGlobalIndexPreparedData.getIndexTableName());
+                    createGsiJobFactory.setBackfillSourceTableName(oldIndexName);
+
+                    boolean mirrorCopy = !needRehash.get(createGlobalIndexPreparedData.getIndexTableName());
+                    if (enableBackFillPushDown) {
+                        createGsiJobFactory.setMirrorCopy(mirrorCopy);
+                    }
+                    TableMeta gsiTableMeta = executionContext.getSchemaManager(schemaName).getTable(oldIndexName);
+                    if (useChangeSet && ChangeSetUtils.supportUseChangeSet(
+                        ComplexTaskMetaManager.ComplexTaskType.ONLINE_MODIFY_COLUMN, gsiTableMeta)) {
+                        createGsiJobFactory.setUseChangeSet(mirrorCopy);
+                    }
+                } else {
+                    // 普通重建 GSI 流程
+                    createGsiJobFactory.setOnlineModifyColumn(false);
+                    createGsiJobFactory.setBackfillSourceTableName(backfillSourceTableName);
+                }
+
                 ExecutableDdlJob gsiJob = createGsiJobFactory.create();
                 SubJobTask subJobTask = createGsiJobFactory.rerunTask;
                 if (createGlobalIndexPreparedData.isNeedToGetTableGroupLock() && !hasSubJob.get()) {
@@ -261,17 +285,22 @@ public class RebuildTableJobFactory extends DdlJobFactory {
             createGsiJobs.forEach(ddlJob::appendJob2);
             return ddlJob;
         }
-        TableMeta tableMeta = executionContext.getSchemaManager().getTable(primaryTableName);
+
         TddlRuleManager tddlRuleManager = executionContext.getSchemaManager().getTddlRuleManager();
         // cut over
         RebuildTableCutOverTask cutOverTask =
             new RebuildTableCutOverTask(schemaName, primaryTableName, tableNameMap,
                 tableMeta.isAutoPartition(),
                 tddlRuleManager.isTableInSingleDb(primaryTableName),
-                tddlRuleManager.isBroadCast(primaryTableName)
+                tddlRuleManager.isBroadCast(primaryTableName),
+                versionId
             );
         ModifyPartitionKeySyncTask
             modifyPartitionKeySyncTask = new ModifyPartitionKeySyncTask(schemaName, primaryTableName, tableNameMap);
+
+        RebuildTableCleanFlagTask rebuildTableCleanFlagTask =
+            new RebuildTableCleanFlagTask(schemaName, primaryTableName);
+        TableSyncTask cleanFlagSyncTask = new TableSyncTask(schemaName, primaryTableName);
 
         ModifyPartitionKeyRemoveTableStatisticTask removeTableStatisticTask =
             new ModifyPartitionKeyRemoveTableStatisticTask(schemaName, primaryTableName, changedColumns);
@@ -279,7 +308,7 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         // cdc
         DdlTask cdcDdlMarkTask =
             new CdcModifyPartitionKeyMarkTask(schemaName, primaryTableName, tableNameMap.get(primaryTableName),
-                SqlKind.ALTER_TABLE, tableNameMap);
+                SqlKind.ALTER_TABLE, tableNameMap, versionId);
 
         // drop gsi
         List<ExecutableDdlJob> dropGsiJobs = new ArrayList<>();
@@ -334,7 +363,9 @@ public class RebuildTableJobFactory extends DdlJobFactory {
             ddlJob.appendTask(cdcDdlMarkTask);
             ddlJob.addTaskRelationship(cdcDdlMarkTask, cutOverTask);
             ddlJob.addTaskRelationship(cutOverTask, modifyPartitionKeySyncTask);
-            ddlJob.addTaskRelationship(modifyPartitionKeySyncTask, removeTableStatisticTask);
+            ddlJob.addTaskRelationship(modifyPartitionKeySyncTask, rebuildTableCleanFlagTask);
+            ddlJob.addTaskRelationship(rebuildTableCleanFlagTask, cleanFlagSyncTask);
+            ddlJob.addTaskRelationship(cleanFlagSyncTask, removeTableStatisticTask);
         }
 
         final boolean skipCleanUp = StringUtils.equalsIgnoreCase(
@@ -387,7 +418,35 @@ public class RebuildTableJobFactory extends DdlJobFactory {
         }
     }
 
-    private List<DdlTask> genCheckerTasks() {
+    public static DdlTask genDropColumn4CheckTasks(String schemaName, String primaryTableName,
+                                                   Map<String, String> virtualColumnMap,
+                                                   PhysicalPlanData physicalPlanData) {
+        if (MapUtils.isEmpty(virtualColumnMap)) {
+            return null;
+        }
+
+        String tableNameWithBacktick = surroundWithBacktick(primaryTableName);
+        StringBuilder dropSqlFormatter = new StringBuilder();
+        dropSqlFormatter.append("ALTER TABLE %s ");
+
+        for (Map.Entry<String, String> entry : virtualColumnMap.entrySet()) {
+            String virColName = entry.getValue();
+            dropSqlFormatter.append(String.format("DROP COLUMN %s,", surroundWithBacktick(virColName)));
+        }
+
+        dropSqlFormatter.deleteCharAt(dropSqlFormatter.length() - 1);
+
+        String dropSqlTemplate = String.format(dropSqlFormatter.toString(), "?");
+        String dropSql = String.format(dropSqlFormatter.toString(), tableNameWithBacktick);
+
+        return genAlterTablePhyTask(dropSql, "", dropSqlTemplate, "", schemaName, primaryTableName,
+            "INPLACE", physicalPlanData);
+    }
+
+    public static List<DdlTask> genGeneratedColumn4CheckTasks(String schemaName, String primaryTableName,
+                                                              Map<String, String> virtualColumnMap,
+                                                              Map<String, SQLColumnDefinition> columnNewDef,
+                                                              PhysicalPlanData physicalPlanData) {
         List<DdlTask> result = new ArrayList<>();
 
         if (MapUtils.isEmpty(virtualColumnMap) || MapUtils.isEmpty(columnNewDef)) {
@@ -396,24 +455,31 @@ public class RebuildTableJobFactory extends DdlJobFactory {
 
         String tableNameWithBacktick = surroundWithBacktick(primaryTableName);
         virtualColumnMap.forEach((colName, virColName) -> {
-            String addSqlFormatter =
-                String.format("ALTER TABLE %%s ADD COLUMN `%s` %s GENERATED ALWAYS AS (ALTER_TYPE(`%s`)) VIRTUAL",
-                    virColName, columnNewDef.get(colName), colName);
-            String dropSqlFormatter = String.format("ALTER TABLE %%s DROP COLUMN `%s`", virColName);
+            SQLColumnDefinition columnDefinition = columnNewDef.get(colName);
+            String definition = TableColumnUtils.getDataDefFromColumnDefNoDefault(columnDefinition);
+            boolean notNull =
+                columnDefinition.getConstraints().stream().anyMatch(e -> e instanceof SQLNotNullConstraint);
+            String addSqlFormatter = String.format(
+                "ALTER TABLE %%s ADD COLUMN %s %s GENERATED ALWAYS AS (ALTER_TYPE(%s)) VIRTUAL %s",
+                surroundWithBacktick(virColName), definition, surroundWithBacktick(colName), notNull ? "NOT NULL" : "");
+            String dropSqlFormatter = String.format("ALTER TABLE %%s DROP COLUMN %s", surroundWithBacktick(virColName));
             String addSql = String.format(addSqlFormatter, tableNameWithBacktick);
             String dropSql = String.format(dropSqlFormatter, tableNameWithBacktick);
             String addSqlTemplate = String.format(addSqlFormatter, "?");
             String dropSqlTemplate = String.format(dropSqlFormatter, "?");
 
             result.add(
-                genAlterTablePhyTask(addSql, dropSql, addSqlTemplate, dropSqlTemplate, primaryTableName, "INPLACE"));
+                genAlterTablePhyTask(addSql, dropSql, addSqlTemplate, dropSqlTemplate, schemaName, primaryTableName,
+                    "INPLACE", physicalPlanData));
         });
 
         return result;
     }
 
-    private DdlTask genAlterTablePhyTask(String sql, String reverseSql, String sqlTemplate, String reverseSqlTemplate,
-                                         String tableName, String algorithm) {
+    public static DdlTask genAlterTablePhyTask(String sql, String reverseSql, String sqlTemplate,
+                                               String reverseSqlTemplate,
+                                               String schemaName, String tableName, String algorithm,
+                                               PhysicalPlanData physicalPlanData) {
         sql = sql + ", ALGORITHM=" + algorithm;
         if (!StringUtils.isEmpty(reverseSql)) {
             reverseSql = reverseSql + ", ALGORITHM=" + algorithm;
@@ -424,7 +490,8 @@ public class RebuildTableJobFactory extends DdlJobFactory {
             reverseSqlTemplate = reverseSqlTemplate + ", ALGORITHM=" + algorithm;
         }
 
-        PhysicalPlanData newPhysicalPlanData = oldPhysicalPlanData.clone();
+        PhysicalPlanData newPhysicalPlanData = physicalPlanData.clone();
+        newPhysicalPlanData.setKind(SqlKind.ALTER_TABLE);
         newPhysicalPlanData.setSqlTemplate(sqlTemplate);
         AlterTablePhyDdlTask task;
         task = new AlterTablePhyDdlTask(schemaName, tableName, newPhysicalPlanData);

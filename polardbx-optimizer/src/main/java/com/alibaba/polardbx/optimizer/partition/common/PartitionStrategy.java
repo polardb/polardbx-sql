@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.partition.common;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * @author chenghui.lch
  */
@@ -29,6 +32,13 @@ public enum PartitionStrategy {
     LIST_COLUMNS("LIST_COLUMNS", "LIST COLUMNS"),
     CO_HASH("CO_HASH", "CO_HASH"),
     UDF_HASH("UDF_HASH", "UDF_HASH");
+
+    private static Set<PartitionStrategy> partitionStrategyWithOrder = new HashSet<>();
+
+    static {
+        partitionStrategyWithOrder.add(RANGE);
+        partitionStrategyWithOrder.add(RANGE_COLUMNS);
+    }
 
     private String strategyStr;
     private String strategyExplainName;
@@ -96,4 +106,9 @@ public enum PartitionStrategy {
     public boolean isCoHashed() {
         return this.equals(CO_HASH);
     }
+
+    public boolean isStrategyWithOrder() {
+        return PartitionStrategy.partitionStrategyWithOrder.contains(this);
+    }
+
 }

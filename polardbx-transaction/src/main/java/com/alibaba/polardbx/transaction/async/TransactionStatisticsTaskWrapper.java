@@ -69,7 +69,7 @@ public class TransactionStatisticsTaskWrapper extends BaseTimerTaskWrapper {
 
     @Override
     protected Map<String, String> getNewParams() {
-        final Map<String, String> newParam = new HashMap<>(1);
+        final Map<String, String> newParam = new HashMap<>(2);
         newParam.put(ConnectionProperties.TRANSACTION_STATISTICS_TASK_INTERVAL,
             String.valueOf(DynamicConfig.getInstance().getTransactionStatisticsTaskInterval()));
         newParam.put(ConnectionProperties.ENABLE_TRANSACTION_STATISTICS,

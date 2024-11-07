@@ -92,7 +92,8 @@ public class AutoCommitSingleShardTsoTransaction extends AutoCommitTransaction i
             sendSnapshotSeq(conn);
         }
 
-        return conn;
+        boolean needSetFlashbackArea = executionContext.isFlashbackArea() && rw == ITransaction.RW.READ;
+        return conn.enableFlashbackArea(needSetFlashbackArea);
     }
 
     @Override

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.ttl.TtlPartArcState;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import lombok.Getter;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -41,6 +43,7 @@ import java.util.Locale;
  */
 public class PartitionMetaUtil {
 
+    @Getter
     public static class PartitionMetaRecord {
 
         public PartitionMetaRecord() {
@@ -62,6 +65,7 @@ public class PartitionMetaUtil {
         public String partName;
         public Long partPosi;
         public String partDesc;
+        public String partArcStateName;
 
         public String subPartMethod;
         public String subPartCol;
@@ -71,6 +75,7 @@ public class PartitionMetaUtil {
         public String subPartTempName;
         public Long subPartPosi;
         public String subPartDesc;
+        public String subPartArcStateName;
 
         public String partComment = "";
 
@@ -146,6 +151,8 @@ public class PartitionMetaUtil {
             String partName = partSpec.getName();
             Long partPosi = partSpec.getPosition();
             String partDesc = partSpec.getBoundSpec().toString();
+            String partArcStateName =
+                TtlPartArcState.getTtlPartArcStateByArcStateValue(partSpec.getArcState()).getArcStateName();
             if (useSubPart) {
                 List<PartitionSpec> subpartSpecs = partSpec.getSubPartitions();
                 for (int j = 0; j < subpartSpecs.size(); j++) {
@@ -155,6 +162,8 @@ public class PartitionMetaUtil {
                     Long phySpecPosi = subPartSpec.getPhyPartPosition();
                     String subPartDesc = subPartSpec.getBoundSpec().toString();
                     String subPartTempName = "";
+                    String subPartArcStatName =
+                        TtlPartArcState.getTtlPartArcStateByArcStateValue(subPartSpec.getArcState()).getArcStateName();
 
                     String pgName = subPartName;
                     String phyDbGroup = subPartSpec.getLocation().getGroupKey();
@@ -184,6 +193,7 @@ public class PartitionMetaUtil {
                     metaRec.partName = partName;
                     metaRec.partPosi = partPosi;
                     metaRec.partDesc = partDesc;
+                    metaRec.partArcStateName = partArcStateName;
 
                     metaRec.subPartMethod = subPartMethod;
                     metaRec.subPartCol = subPartCol;
@@ -193,6 +203,7 @@ public class PartitionMetaUtil {
                     metaRec.subPartTempName = subPartTempName;
                     metaRec.subPartPosi = subPartPosi;
                     metaRec.subPartDesc = subPartDesc;
+                    metaRec.subPartArcStateName = subPartArcStatName;
 
                     metaRec.pgName = pgName;
                     metaRec.phyDbGroup = phyDbGroup;
@@ -201,40 +212,6 @@ public class PartitionMetaUtil {
                     metaRec.rwDnId = rwDnId;
 
                     result.add(metaRec);
-
-//                    result.addRow(new Object[] {
-//                        phySpecPosi,
-//
-//                        dbName,
-//                        tblName,
-//                        rawGsiName,
-//                        primaryTbl,
-//                        tblType,
-//                        tgName,
-//
-//                        partMethod,
-//                        partCol,
-//                        partColType,
-//                        partExpr,
-//                        partName,
-//                        partPosi,
-//                        partDesc,
-//
-//                        subPartMethod,
-//                        subPartCol,
-//                        subPartColType,
-//                        subPartExpr,
-//                        subPartName,
-//                        subPartTempName,
-//                        subPartPosi,
-//                        subPartDesc,
-//
-//                        pgName,
-//                        phyDb,
-//                        phyTb,
-//                        rwDnId
-//
-//                    });
 
                 }
             } else {
@@ -264,6 +241,7 @@ public class PartitionMetaUtil {
                 metaRec.partName = partName;
                 metaRec.partPosi = partPosi;
                 metaRec.partDesc = partDesc;
+                metaRec.partArcStateName = partArcStateName;
 
                 metaRec.subPartMethod = null;
                 metaRec.subPartCol = null;
@@ -273,6 +251,7 @@ public class PartitionMetaUtil {
                 metaRec.subPartTempName = null;
                 metaRec.subPartPosi = null;
                 metaRec.subPartDesc = null;
+                metaRec.subPartArcStateName = null;
 
                 metaRec.pgName = pgName;
                 metaRec.phyDbGroup = phyDbGroup;
@@ -301,7 +280,7 @@ public class PartitionMetaUtil {
         return groupDs.getMasterDNId();
     }
 
-    protected static String getPhyDbByGroupName(TopologyHandler topology, String grpName) {
+    public static String getPhyDbByGroupName(TopologyHandler topology, String grpName) {
         IGroupExecutor groupExecutor = topology.get(grpName);
         if (groupExecutor == null) {
             return null;

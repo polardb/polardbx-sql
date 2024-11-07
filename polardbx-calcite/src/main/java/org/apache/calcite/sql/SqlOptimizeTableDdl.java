@@ -17,10 +17,12 @@
 package org.apache.calcite.sql;
 
 import com.google.common.base.Joiner;
+import groovy.sql.Sql;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -31,16 +33,24 @@ public class SqlOptimizeTableDdl extends SqlDdl { // Use DDL here to utilize asy
 
     private static final SqlSpecialOperator OPERATOR = new SqlOptimizeTable.SqlOptimizeTableOperator();
 
-    private final List<SqlNode>             tableNames;
-    private final boolean                   noWriteToBinlog;
-    private final boolean                   local;
+    private List<SqlNode> tableNames;
+    private final boolean noWriteToBinlog;
+    private final boolean local;
 
-    public SqlOptimizeTableDdl(SqlParserPos pos, List<SqlNode> tableNames, boolean noWriteToBinlog, boolean local){
+    public SqlOptimizeTableDdl(SqlParserPos pos, List<SqlNode> tableNames, boolean noWriteToBinlog, boolean local) {
         super(OPERATOR, pos);
         this.name = tableNames.get(0);
         this.tableNames = tableNames;
         this.noWriteToBinlog = noWriteToBinlog;
         this.local = local;
+    }
+
+    @Override
+    public void setTargetTable(SqlNode sqlIdentifier) {
+        super.setTargetTable(sqlIdentifier);
+        List<SqlNode> newTableNames = new ArrayList<>();
+        newTableNames.add(name);
+        this.tableNames = newTableNames;
     }
 
     @Override
@@ -68,7 +78,7 @@ public class SqlOptimizeTableDdl extends SqlDdl { // Use DDL here to utilize asy
 
     @Override
     public List<SqlNode> getOperandList() {
-        return Arrays.asList(name);
+        return tableNames;
     }
 
     @Override

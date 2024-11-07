@@ -19,6 +19,7 @@ package com.alibaba.polardbx.transaction.sync;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.transaction.TransactionManager;
@@ -60,6 +61,7 @@ public class FetchAllTransSyncAction implements ISyncAction {
         if (fetchSql) {
             result.addColumn("SQL", DataTypes.StringType);
         }
+        result.addColumn("DDL", DataTypes.BooleanType);
 
         for (ITransaction tran : transactions) {
             long frontendConnId = tran.getExecutionContext().getConnId();
@@ -71,13 +73,16 @@ public class FetchAllTransSyncAction implements ISyncAction {
             } else {
                 sqlSubString = null;
             }
+            ExecutionContext ec = tran.getExecutionContext();
+            final boolean isDdl = null != ec && null != ec.getDdlContext();
 
             tran.getConnectionHolder().handleConnIds((group, connId) -> {
                 if (fetchSql) {
                     result.addRow(new Object[] {
-                        tran.getId(), group, connId, frontendConnId, tran.getStartTimeInMs(), sqlSubString});
+                        tran.getId(), group, connId, frontendConnId, tran.getStartTimeInMs(), sqlSubString, isDdl});
                 } else {
-                    result.addRow(new Object[] {tran.getId(), group, connId, frontendConnId, tran.getStartTimeInMs()});
+                    result.addRow(
+                        new Object[] {tran.getId(), group, connId, frontendConnId, tran.getStartTimeInMs(), isDdl});
                 }
             });
         }

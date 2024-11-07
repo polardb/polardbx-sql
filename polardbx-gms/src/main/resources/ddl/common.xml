@@ -161,4 +161,17 @@
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ]]></Create>
     </SystemTable>
+    <SystemTable name="deadlocks">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `deadlocks` (
+                `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
+                `cn_address` VARCHAR(255),
+                `type` VARCHAR(16) NOT NULL DEFAULT '' COMMENT 'LOCAL/GLOBAL/MDL',
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `log` TEXT,
+                PRIMARY KEY (`id`),
+                KEY gmt_modified_idx (`gmt_created`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

@@ -27,6 +27,8 @@ import com.alibaba.polardbx.gms.module.LogPattern;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -255,8 +257,9 @@ public class PlanInfo {
         return plan != null;
     }
 
-    synchronized RelOptCost getCumulativeCost(RelOptCluster cluster, RelOptSchema relOptSchema, Parameters parameters) {
+    RelOptCost getCumulativeCost(RelOptCluster cluster, RelOptSchema relOptSchema, ExecutionContext ec) {
         RelNode plan = getPlan(cluster, relOptSchema);
+        Parameters parameters = ec.getParams();
         if (DynamicConfig.getInstance().isEnableMQCacheByThread()) {
             try {
                 RelMetadataQuery.THREAD_PARAMETERS.set(parameters);
@@ -265,14 +268,17 @@ public class PlanInfo {
                 ModuleLogInfo.getInstance()
                     .logRecord(Module.SPM, LogPattern.UNEXPECTED, new String[] {"spm get plan cost", t.getMessage()},
                         LogLevel.CRITICAL);
+                OptimizerAlertUtil.spmAlert(ec, t);
                 throw new TddlRuntimeException(ErrorCode.ERR_PLAN_COST, t.getMessage());
             } finally {
                 RelMetadataQuery.THREAD_PARAMETERS.remove();
                 cluster.getMetadataQuery().clearThreadCache();
             }
         } else {
-            PlannerContext.getPlannerContext(plan).setParams(parameters);
-            return cluster.getMetadataQuery().getCumulativeCost(plan);
+            synchronized (this) {
+                PlannerContext.getPlannerContext(plan).setParams(parameters);
+                return cluster.getMetadataQuery().getCumulativeCost(plan);
+            }
         }
     }
 

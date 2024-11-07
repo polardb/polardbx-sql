@@ -112,6 +112,21 @@ public class DirectEnumColumnReader extends DirectVarcharColumnReader {
         Slice data = sliceOutput.slice();
         block.setData(data.toStringUtf8().toCharArray());
 
+        // Replace the offset with string's.
+        int totalStringLength = 0;
+        int[] newOffsets = new int[positionCount];
+        for (int i = 0; i < positionCount; i++) {
+            if (!nulls[i]) {
+                int beginOffset = i > 0 ? offsets[i - 1] : 0;
+                int endOffset = offsets[i];
+                int lengthOfStr = data.slice(beginOffset, endOffset - beginOffset).toStringUtf8().length();
+                totalStringLength += lengthOfStr;
+                newOffsets[i] = totalStringLength;
+            }
+            newOffsets[i] = totalStringLength;
+        }
+        block.setOffsets(newOffsets);
+
         // metrics
         if (enableMetrics) {
             parseTimer.inc(System.nanoTime() - start);

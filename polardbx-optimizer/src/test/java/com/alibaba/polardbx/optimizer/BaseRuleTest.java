@@ -35,6 +35,13 @@ public class BaseRuleTest extends BasePlannerTest {
             + "  actionDate varchar(30)\n"
             + "  ) dbpartition by hash(userId) tbpartition by HASH(actionDate) tbpartitions 7;";
 
+    public static String stuDDL =
+        "CREATE TABLE stu(\n" + "  id int, \n"
+            + "  name varchar(30), \n"
+            + "  operation tinyint(1), \n"
+            + "  actionDate varchar(30),\n"
+            + "  primary(id)\n"
+            + "  ) dbpartition by hash(id) tbpartition by HASH(actionDate) tbpartitions 7;";
     protected RelOptCluster relOptCluster;
     protected RelOptSchema schema;
 
@@ -55,6 +62,7 @@ public class BaseRuleTest extends BasePlannerTest {
         }
         try {
             buildTable(SCHEMA_NAME, empDDL);
+            buildTable(SCHEMA_NAME, stuDDL);
         } catch (SQLSyntaxErrorException e) {
             e.printStackTrace();
         }

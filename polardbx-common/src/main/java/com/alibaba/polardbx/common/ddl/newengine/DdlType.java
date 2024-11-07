@@ -63,12 +63,12 @@ public enum DdlType {
     ALTER_TABLEGROUP_ADD_TABLE,
     ALTER_TABLE_RENAME_PARTITION,
 
-    ALTER_TABLE_ADD_COLUMN,
-    ALTER_TABLE_DROP_COLUMN,
-    ALTER_TABLE_MODIFY_COLUMN,
-    ALTER_TABLE_CHANGE_COLUMN,
+    MERGE_TABLEGROUP,
 
-    MERGE_TABLEGROUP;
+    /**
+     * 忽略的ddl类型，实际不是ddl
+     */
+    IGNORED;
 
     public enum AlterColumnSpecification {
         AlterColumnName,

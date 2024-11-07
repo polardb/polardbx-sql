@@ -373,7 +373,6 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
             boolean isRecycleBinTable = RecycleBin.isRecyclebinTable(tableName);
 
             boolean isTruncateTmpTable = TruncateUtil.isTruncateTmpPrimaryTable(tableName);
-
             boolean isTableWithoutPrivileges = !CanAccessTable.verifyPrivileges(
                 infoSchemaContext.getTargetSchema(),
                 tableName,
@@ -427,7 +426,12 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
             if (full) {
                 String type = tableTypes.get(table);
                 if (type == null) {
-                    type = InfoSchemaCommon.DEFAULT_TABLE_TYPE;
+                    //DBeaver use Table_type to distinguish VIEW and TABLE, therefore different label is needed
+                    if (infoSchemaContext.getOptimizerContext().getViewManager().select(table) != null) {
+                        type = InfoSchemaCommon.TABLE_TYPE_VIEW;
+                    } else {
+                        type = InfoSchemaCommon.DEFAULT_TABLE_TYPE;
+                    }
                 }
                 String autoPart = "NO";
                 if (tablesAutoPartInfo.get(table) != null) {

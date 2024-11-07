@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
+import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecordSimplified;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -32,8 +33,11 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -46,21 +50,19 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
     final private String logicalSchema;
     final private Long tableId;
 
-    /**
-     * In the range of [minTso, latestTso], all files multi-version info of the partition have been loaded.
-     */
     private final DynamicColumnarManager columnarManager;
-    private volatile long latestTso = Long.MIN_VALUE;
 
     /**
-     * part_name -> (file_name -> (commit_ts, remove_ts))
+     * In the range of [minTso, latestLoadedTso], all snapshots of these versions can be read.
      */
-    private final Map<String, Map<String, Pair<Long, Long>>> allPartsTsoInfo = new ConcurrentHashMap<>();
+    private volatile long latestLoadedTso = Long.MIN_VALUE;
+
+    private volatile long latestSchemaTso = Long.MIN_VALUE;
 
     /**
-     * part_name -> latest_tso
+     * part_name -> (file_name -> (commit_ts, remove_ts, schema_ts))
      */
-    private final Map<String, Long> latestTsoForEachPart = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, ColumnarTsoInfo>> allPartsTsoInfo = new ConcurrentHashMap<>();
 
     public MultiVersionColumnarSnapshot(DynamicColumnarManager columnarManager, String logicalSchema, Long tableId) {
         this.columnarManager = columnarManager;
@@ -85,6 +87,22 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
     }
 
     /**
+     * The tso info for a columnar file
+     */
+    @Data
+    public static class ColumnarTsoInfo {
+        private final Long commitTso;
+        private final Long removeTso;
+        private final Long schemaTso;
+
+        public ColumnarTsoInfo(Long commitTso, Long removeTso, Long schemaTso) {
+            this.commitTso = commitTso;
+            this.removeTso = removeTso;
+            this.schemaTso = schemaTso;
+        }
+    }
+
+    /**
      * Fetch delta files which satisfy:
      * lastTso < commitTso <= tso AND minTso < removeTso
      * OR
@@ -104,27 +122,26 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
      * In this case minTso = 9, lastTso = 7, tso = 11, we should fetch F1, F2, F4 and F5
      * After updating the tso info using these filesRecords, we can generate any snapshots in [minTso, tso]
      */
-    private void loadUntilTso(long tso, long minTso) {
-        List<FilesRecordSimplified> filesRecords = loadDeltaFilesInfoFromGms(latestTso, tso);
+    private synchronized void loadUntilTso(long tso, long minTso) {
+        long minCompactionTso = columnarManager.getMinCompactionTso(latestLoadedTso);
+
+        // 0 means there are no hanging compaction
+        // min compaction tso > checkpoint tso means tso would not go backward, so it can be omitted
+        long latestFullyLoadedTso =
+            minCompactionTso == 0 ? latestLoadedTso : Long.min(minCompactionTso - 1, latestLoadedTso);
+        List<FilesRecordSimplified> filesRecords = loadDeltaFilesInfoFromGms(latestFullyLoadedTso, tso);
 
         for (FilesRecordSimplified fileRecord : filesRecords) {
             String fileName = fileRecord.fileName;
             String partName = fileRecord.partitionName;
             Long commitTs = fileRecord.commitTs;
             Long removeTs = fileRecord.removeTs;
+            Long schemaTs = fileRecord.schemaTs;
 
-            Map<String, Pair<Long, Long>> tsoInfo =
+            Map<String, ColumnarTsoInfo> tsoInfo =
                 allPartsTsoInfo.computeIfAbsent(partName, s -> new ConcurrentHashMap<>());
 
-            long curLatestTso = removeTs != null ? removeTs : commitTs;
-
-            latestTsoForEachPart.compute(partName, (p, latestTsoForThisPart) -> {
-                if (latestTsoForThisPart == null) {
-                    return curLatestTso;
-                } else {
-                    return Math.max(latestTsoForThisPart, curLatestTso);
-                }
-            });
+            latestSchemaTso = Math.max(latestSchemaTso, schemaTs);
 
             if (tsoInfo.containsKey(fileName)) {
                 if (removeTs == null) {
@@ -135,15 +152,16 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
                     tsoInfo.remove(fileName);
                     columnarManager.putPurgedFile(fileName);
                 } else {
-                    tsoInfo.put(fileName, Pair.of(commitTs, removeTs));
+                    tsoInfo.put(fileName, new ColumnarTsoInfo(commitTs, removeTs, schemaTs));
                 }
             } else {
                 if (removeTs == null || removeTs > minTso) {
-                    tsoInfo.put(fileName, Pair.of(commitTs, removeTs));
+                    tsoInfo.put(fileName, new ColumnarTsoInfo(commitTs, removeTs, schemaTs));
                 }
             }
         }
-        latestTso = latestTsoForEachPart.values().stream().reduce(Long::min).orElse(Long.MIN_VALUE);
+
+        latestLoadedTso = tso;
     }
 
     private List<FilesRecordSimplified> loadDeltaFilesInfoFromGms(long lastTso, long tso) {
@@ -164,7 +182,7 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
         long ioCost = 0L;
         long totalCost = 0L;
         long startTime = System.nanoTime();
-        long latestTsoBackUp = latestTso;
+        long latestTsoBackUp = latestLoadedTso;
 
         long minTso = columnarManager.getMinTso();
         if (tso < minTso) {
@@ -172,12 +190,12 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
                 String.format("Snapshot of tso[%d] has been purged!", tso));
         }
 
-        if (latestTso < tso) {
+        if (latestLoadedTso < tso) {
             long startIOTime = System.nanoTime();
             synchronized (this) {
                 // In case the tso has not been loaded
                 // Assuming that the tso is reliable
-                if (latestTso < tso) {
+                if (latestLoadedTso < tso) {
                     loadUntilTso(tso, minTso);
                 }
             }
@@ -185,15 +203,14 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
         }
 
         ColumnarSnapshot snapshot = new ColumnarSnapshot();
-        Map<String, Pair<Long, Long>> tsoInfo =
+        Map<String, ColumnarTsoInfo> tsoInfo =
             allPartsTsoInfo.computeIfAbsent(partitionName, s -> new ConcurrentHashMap<>());
-        tsoInfo.forEach((fileName, commitAndRemoveTs) -> {
-            Long commitTs = commitAndRemoveTs.getKey();
-            Long removeTs = commitAndRemoveTs.getValue();
+        tsoInfo.forEach((fileName, fileTsoInfo) -> {
+            Long commitTs = fileTsoInfo.commitTso;
+            Long removeTs = fileTsoInfo.removeTso;
 
             if (commitTs <= tso && (removeTs == null || removeTs > tso)) {
-                String suffix = fileName.substring(fileName.lastIndexOf('.') + 1);
-                ColumnarFileType columnarFileType = ColumnarFileType.of(suffix);
+                ColumnarFileType columnarFileType = FileSystemUtils.getFileType(fileName);
 
                 switch (columnarFileType) {
                 case ORC:
@@ -226,10 +243,84 @@ public class MultiVersionColumnarSnapshot implements Purgeable {
         return snapshot;
     }
 
+    public Map<String, Pair<List<String>, List<String>>> generateSnapshot(
+        final SortedMap<Long, Set<String>> partitionResult, final long tso) {
+        long minTso = columnarManager.getMinTso();
+        if (tso < minTso) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT,
+                String.format("Snapshot of tso[%d] has been purged!", tso));
+        }
+
+        if (latestLoadedTso < tso) {
+            synchronized (this) {
+                // In case the tso has not been loaded
+                // Assuming that the tso is reliable
+                if (latestLoadedTso < tso) {
+                    loadUntilTso(tso, minTso);
+                }
+            }
+        }
+
+        Map<String, Pair<List<String>, List<String>>> result = new HashMap<>();
+
+        allPartsTsoInfo.forEach((partName, snapshot) -> {
+            snapshot.forEach((fileName, fileTsoInfo) -> {
+                Long commitTs = fileTsoInfo.commitTso;
+                Long removeTs = fileTsoInfo.removeTso;
+                if (commitTs <= tso && (removeTs == null || removeTs > tso)) {
+                    Long schemaTs = fileTsoInfo.schemaTso;
+                    SortedMap<Long, Set<String>> headMap = partitionResult.headMap(schemaTs + 1);
+                    if (!headMap.isEmpty()) {
+                        Set<String> partitionSet = headMap.get(headMap.lastKey());
+                        if (partitionSet != null && partitionSet.contains(partName)) {
+                            Pair<List<String>, List<String>> orcAndCsv = result.computeIfAbsent(partName,
+                                s -> Pair.of(new ArrayList<>(), new ArrayList<>()));
+                            ColumnarFileType columnarFileType = FileSystemUtils.getFileType(fileName);
+
+                            switch (columnarFileType) {
+                            case ORC:
+                                orcAndCsv.getKey().add(fileName);
+                                break;
+                            case CSV:
+                                orcAndCsv.getValue().add(fileName);
+                                break;
+                            default:
+                                // ignore.
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        return result;
+    }
+
+    public long getLatestSchemaTso(final long tso) {
+        if (latestLoadedTso < tso) {
+            synchronized (this) {
+                // In case the tso has not been loaded
+                // Assuming that the tso is reliable
+                if (latestLoadedTso < tso) {
+                    loadUntilTso(tso, columnarManager.getMinTso());
+                }
+            }
+        }
+        return latestSchemaTso;
+    }
+
     public synchronized void purge(long tso) {
+        if (latestLoadedTso < tso) {
+            synchronized (this) {
+                if (latestLoadedTso < tso) {
+                    loadUntilTso(tso, tso);
+                }
+            }
+        }
+
         allPartsTsoInfo.forEach((partName, snapshot) -> {
             snapshot.entrySet().removeIf(entry -> {
-                Long removeTs = entry.getValue().getValue();
+                Long removeTs = entry.getValue().removeTso;
                 if (removeTs != null && removeTs <= tso) {
                     columnarManager.putPurgedFile(entry.getKey());
                     return true;

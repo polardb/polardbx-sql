@@ -28,6 +28,8 @@ import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,10 +45,10 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
 
     private static final String INSERT_COLUMNAR_TABLE_EVOLUTION_RECORDS =
         "insert into " + COLUMNAR_TABLE_EVOLUTION_TABLE +
-            "(`version_id`, `table_id`, `table_schema`, `table_name`, `index_name`, `ddl_job_id`, `ddl_type`, `commit_ts`, `columns`, `options`) values (?, ?, ?, ?, ?, ?, ? ,? ,?, ?)";
+            "(`version_id`, `table_id`, `table_schema`, `table_name`, `index_name`, `ddl_job_id`, `ddl_type`, `commit_ts`, `columns`, `partitions`, `options`) values (?, ?, ?, ?, ?, ?, ?, ? ,? ,?, ?)";
 
     private static final String SELECT_ALL_COLUMNS =
-        "select `version_id`, `table_id`, `table_schema`, `table_name`, `index_name`, `ddl_job_id`, `ddl_type`, `commit_ts`, `columns`, `options`";
+        "select `version_id`, `table_id`, `table_schema`, `table_name`, `index_name`, `ddl_job_id`, `ddl_type`, `commit_ts`, `columns`, `partitions`, `options`";
 
     private static final String FROM_TABLE = " from " + COLUMNAR_TABLE_EVOLUTION_TABLE;
 
@@ -74,9 +76,14 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
 
     private static final String ORDER_BY_VERSION_ID_LATEST = " order by `version_id` desc limit 1";
 
+    private static final String ORDER_BY_VERSION_ID_FIRST = " order by `version_id` limit 1";
+
     private static final String WHERE_BY_VERSION_ID = " where `version_id` = ?";
 
     private static final String WHERE_BY_COMMIT_TS = " where `commit_ts` = ?";
+    private static final String WHERE_BY_OVER_COMMIT_TS = " where `commit_ts` > ?";
+
+    private static final String AND_TABLE_ID = " and `table_id` = ?";
 
     private static final String WHERE_BY_SCHEMA_TABLE_INDEX =
         " where `table_id` in (select `table_id` from " + COLUMNAR_TABLE_MAPPING_TABLE
@@ -98,10 +105,16 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
     private static final String UPDATE_DDL_TYPE_BY_VERSION_ID =
         "update " + COLUMNAR_TABLE_EVOLUTION_TABLE + " set ddl_type=? " + WHERE_BY_VERSION_ID;
 
+    private static final String UPDATE_PARTITIONS_BY_TABLE_ID =
+        "update " + COLUMNAR_TABLE_EVOLUTION_TABLE + " set partitions=? " + WHERE_BY_TABLE_ID;
+
     private static final String WITH_READ_LOCK = " LOCK IN SHARE MODE";
 
     private static final String SELECT_TABLE_ID =
         SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_TABLE_ID_ORDER_BY_COMMIT_TS;
+
+    private static final String SELECT_TABLE_ID_FIRST =
+        SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_TABLE_ID + ORDER_BY_VERSION_ID_FIRST;
 
     private static final String SELECT_TABLE_ID_AND_GT_COMMIT_TS =
         SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_TABLE_ID_AND_GT_COMMIT_TS_ORDER_BY_COMMIT_TS;
@@ -113,6 +126,8 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
         SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_TABLE_ID_VERSION_ID;
 
     private static final String SELECT_COMMIT_TS = SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_COMMIT_TS;
+    private static final String SELECT_COMMIT_TS_TABLE_ID =
+        SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_COMMIT_TS + AND_TABLE_ID;
 
     private static final String SELECT_TABLE_ID_LATEST = SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_TABLE_ID_LATEST;
     private static final String SELECT_SCHEMA_INDEX_LATEST =
@@ -123,7 +138,22 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
     private static final String SELECT_LATEST_BY_VERSION_ID =
         SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_VERSION_ID;
 
+    private static final String SELECT_ALL_BY_OVER_COMMIT_TS =
+        SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_BY_OVER_COMMIT_TS;
+
+    private static final String WHERE_PARTITION_IS_NULL = " where `partitions` is null";
+
+    private static final String GROUP_BY_TABLE_ID = " group by table_id";
+
+    private static final String SELECT_BY_PARTITION_NULL_GROUP_BY_CCI =
+        SELECT_ALL_COLUMNS + FROM_TABLE + WHERE_PARTITION_IS_NULL + GROUP_BY_TABLE_ID;
+
     private static final String DELETE_TABLE_ID = "delete " + FROM_TABLE + WHERE_BY_TABLE_ID;
+
+    private static final String HAVE_DONE_DDL = "SELECT COUNT(0) " + FROM_TABLE + WHERE_BY_TABLE_ID;
+
+    private static final String UPDATE_COMMIT_TS_BY_OVER_COMMIT_TS =
+        "update " + COLUMNAR_TABLE_EVOLUTION_TABLE + " set commit_ts=" + Long.MAX_VALUE + " " + WHERE_BY_OVER_COMMIT_TS;
 
     public int[] insert(List<ColumnarTableEvolutionRecord> records) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -143,6 +173,11 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
 
     public List<ColumnarTableEvolutionRecord> queryTableId(Long tableId) {
         return query(SELECT_TABLE_ID, COLUMNAR_TABLE_EVOLUTION_TABLE, ColumnarTableEvolutionRecord.class, tableId);
+    }
+
+    public List<ColumnarTableEvolutionRecord> queryTableIdFirst(Long tableId) {
+        return query(SELECT_TABLE_ID_FIRST, COLUMNAR_TABLE_EVOLUTION_TABLE, ColumnarTableEvolutionRecord.class,
+            tableId);
     }
 
     public List<ColumnarTableEvolutionRecord> queryTableIdAndGreaterThanTso(Long tableId, Long commitTs) {
@@ -188,6 +223,16 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
             commitTs);
     }
 
+    public List<ColumnarTableEvolutionRecord> queryByOverCommitTs(long commitTs) {
+        return query(SELECT_ALL_BY_OVER_COMMIT_TS, COLUMNAR_TABLE_EVOLUTION_TABLE, ColumnarTableEvolutionRecord.class,
+            commitTs);
+    }
+
+    public List<ColumnarTableEvolutionRecord> queryCommitTsAndTableId(long commitTs, long tableId) {
+        return query(SELECT_COMMIT_TS_TABLE_ID, COLUMNAR_TABLE_EVOLUTION_TABLE, ColumnarTableEvolutionRecord.class,
+            commitTs, tableId);
+    }
+
     public void deleteSchemaTableIndex(String schemaName, String tableName, String indexName) {
         Map<Integer, ParameterContext> params = new HashMap<>(3);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
@@ -201,6 +246,12 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, commitTs);
         MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, versionId);
         update(UPDATE_COMMIT_TS_VERSION_ID, COLUMNAR_TABLE_EVOLUTION_TABLE, params);
+    }
+
+    public int updateCommitTs(long commitTs) {
+        Map<Integer, ParameterContext> params = new HashMap<>(2);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, commitTs);
+        return update(UPDATE_COMMIT_TS_BY_OVER_COMMIT_TS, COLUMNAR_TABLE_EVOLUTION_TABLE, params);
     }
 
     public void updateDdlType(String ddlType, long ddlId) {
@@ -224,20 +275,48 @@ public class ColumnarTableEvolutionAccessor extends AbstractAccessor {
             ColumnarTableEvolutionRecord.class, versionId);
     }
 
-    public void deleteSchema(String schemaName) {
+    public List<ColumnarTableEvolutionRecord> queryPartitionEmptyRecords() {
+        return query(SELECT_BY_PARTITION_NULL_GROUP_BY_CCI, COLUMNAR_TABLE_EVOLUTION_TABLE,
+            ColumnarTableEvolutionRecord.class);
+    }
+
+    public void updatePartition(long tableId, List<Long> partitions) {
+        Map<Integer, ParameterContext> params = new HashMap<>(2);
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString,
+            ColumnarTableEvolutionRecord.serializeToJson(partitions));
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, tableId);
+        update(UPDATE_PARTITIONS_BY_TABLE_ID, COLUMNAR_TABLE_EVOLUTION_TABLE, params);
+    }
+
+    public int deleteSchema(String schemaName) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
         try {
             DdlMetaLogUtil.logSql(DELETE_SCHEMA, params);
-            MetaDbUtil.delete(DELETE_SCHEMA, params, connection);
+            return MetaDbUtil.delete(DELETE_SCHEMA, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
     }
 
-    public void deleteId(long tableId) {
+    public int deleteId(long tableId) {
         Map<Integer, ParameterContext> params = new HashMap<>(1);
         MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, tableId);
-        delete(DELETE_TABLE_ID, COLUMNAR_TABLE_EVOLUTION_TABLE, params);
+        return delete(DELETE_TABLE_ID, COLUMNAR_TABLE_EVOLUTION_TABLE, params);
+    }
+
+    public boolean haveDoneDdl(long tableId) {
+        try (PreparedStatement stmt = connection.prepareStatement(HAVE_DONE_DDL)) {
+            stmt.setLong(1, tableId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 1;
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, "not found result set");
+                }
+            }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 }

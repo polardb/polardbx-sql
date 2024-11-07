@@ -16,7 +16,7 @@ public class ImplicitTableGroupTest extends PartitionAutoLoadSqlTestBase {
 
     @Parameterized.Parameters(name = "{index}: SubTestCase {0}")
     public static List<AutoLoadSqlTestCaseParams> parameters() {
-        return getParameters(ImplicitTableGroupTest.class, 0, false);
+        return getParameters(ImplicitTableGroupTest.class, 0, true);
     }
 
 }

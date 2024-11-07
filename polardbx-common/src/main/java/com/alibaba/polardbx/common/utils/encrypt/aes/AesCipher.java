@@ -39,16 +39,19 @@ public class AesCipher {
 
     public static BlockCipher getCipher(BlockEncryptionMode encryptionMode) {
         switch (encryptionMode.mode) {
+        // Cipher Block Chaining
         case CBC:
-            return CBC_BLOCK_CIPHER;
+            return new CBCBlockCipher(AES_ENGINE);
+        // Cipher FeedBack
         case CFB1:
-            return CFB_1_CIPHER;
+            return new Cfb1BlockCipher(AES_ENGINE);
         case CFB8:
-            return CFB_8_CIPHER;
+            return new CFBBlockCipher(AES_ENGINE, 8);
         case CFB128:
-            return CFB_128_CIPHER;
+            return new CFBBlockCipher(AES_ENGINE, 128);
+        // Output FeedBack
         case OFB:
-            return OFB_CIPHER;
+            return new OFBBlockCipher(AES_ENGINE, 128);
         case ECB:
         default:
         }
@@ -57,6 +60,6 @@ public class AesCipher {
     }
 
     public static EcbBlockCipher getEcbCipher() {
-        return ECB_CIPHER;
+        return new EcbBlockCipher();
     }
 }

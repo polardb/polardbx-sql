@@ -305,7 +305,7 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
             createCciSuccess(sqlCreateTable1);
 
             // Drop cci
-            final String sqlDdl1 = String.format("drop index %s on %s", cciTestIndexName1, cciTestTableName1);
+            final String sqlDdl1 = String.format("drop index `%s` on `%s`", cciTestIndexName1, cciTestTableName1);
             executeDdlAndCheckCdcRecord(sqlDdl1, sqlDdl1, cciTestTableName1, true);
             checkLatestColumnarSchemaEvolutionRecordByDdlSql(sqlDdl1,
                 getDdlSchema(),
@@ -330,7 +330,8 @@ public class DropCciTest extends DDLBaseNewDBTestCase {
             // Alter table drop cci
             final String sqlDdl2 =
                 String.format("ALTER TABLE %s\n" + "\tDROP INDEX %s", cciTestTableName2, cciTestIndexName2);
-            final String expectedSqlDdl2 = String.format("drop index %s on %s", cciTestIndexName2, cciTestTableName2);
+            final String expectedSqlDdl2 =
+                String.format("drop index `%s` on `%s`", cciTestIndexName2, cciTestTableName2);
             executeDdlAndCheckCdcRecord(sqlDdl2, expectedSqlDdl2, cciTestTableName2, true);
             checkLatestColumnarSchemaEvolutionRecordByDdlSql(expectedSqlDdl2,
                 getDdlSchema(),

@@ -255,9 +255,6 @@ public class HintPlanner extends TddlSqlToRelConverter {
         catalog = RelUtils.buildCatalogReader(schemaName, ec);
 
         VolcanoPlanner planner = new VolcanoPlanner(DrdsRelOptCostImpl.FACTORY, Contexts.EMPTY_CONTEXT);
-        if (ec.isEnableRuleCounter()) {
-            planner.setRuleCounter();
-        }
         planner.clearRelTraitDefs();
         planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
         planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
@@ -405,6 +402,11 @@ public class HintPlanner extends TddlSqlToRelConverter {
     public ExecutionPlan direct(SqlNode ast, CmdBean cmdBean, HintCollection hintCollection,
                                 Map<Integer, ParameterContext> param, String schemaName, ExecutionContext ec) {
         // init group
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+
+        if (isNewPartDb) {
+            return directPartDb(ast, cmdBean, hintCollection, param, schemaName, ec);
+        }
         List<String> finalGroups;
         boolean hasDirectHint = false;
         if (cmdBean.jsonHint()) {
@@ -442,7 +444,6 @@ public class HintPlanner extends TddlSqlToRelConverter {
         boolean useGrpParallelism = ec.getGroupParallelism() > 1;
         boolean shouldUseGrpConnId = false;
         boolean usingAutoCommit = ec.isAutoCommit();
-        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         List<RelNode> results = new ArrayList<>();
         PhyQueryOperationBuilder phyQueryBuilder = new PhyQueryOperationBuilder();
         List<String> logTbls = new ArrayList<>();
@@ -622,6 +623,37 @@ public class HintPlanner extends TddlSqlToRelConverter {
                     }
                 }
             }
+
+            boolean copyModifyNode0ToSingle =
+                ec.getParamManager().getBoolean(ConnectionParams.COPY_MODIFY_NODE0_TO_SINGLE);
+
+            // Fix for early 1.0 user who is using node hint to modify broadcast table
+            if (visitor.allBroadcastTable()
+                && sqlKind != null && sqlKind.belongsTo(SqlKind.DML)
+                && copyModifyNode0ToSingle) {
+                final List<Group> groups = OptimizerContext.getContext(schemaName).getMatrix().getGroups();
+                final String zeroGroupName = groups.get(0).getName();
+                boolean withZeroGroup = false;
+                boolean withSingleGroup = false;
+                for (String group : finalGroups) {
+                    if (GroupInfoUtil.isSingleGroup(group)) {
+                        withSingleGroup = true;
+                    }
+
+                    if (TStringUtil.equalsIgnoreCase(group, zeroGroupName)) {
+                        withZeroGroup = true;
+                    }
+                }
+
+                if (withZeroGroup && !withSingleGroup) {
+                    for (Group group : groups) {
+                        if (GroupInfoUtil.isSingleGroup(group.getName())) {
+                            finalGroups.add(group.getName());
+                        }
+                    }
+                }
+            }
+
             for (String group : finalGroups) {
                 checkGroupPrivileges(group, ec);
                 PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
@@ -643,6 +675,244 @@ public class HintPlanner extends TddlSqlToRelConverter {
         }
         final BitSet planProperties = logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
         final ExecutionPlan result = new ExecutionPlan(ast, wrapWithViewUnion(results), null, planProperties);
+        result.setModifiedTables(tableModified);
+        // disable tp slow check in hint direct mode
+        result.disableCheckTpSlow();
+        return result;
+    }
+
+    /**
+     * partition db support partition hint or direct hint
+     * like set partition_hint=p1;
+     * or /*+TDDL({'type':'direct','dbid':'p1'})*\/
+     * or /*TDDL:NODE p1 *\/
+     */
+    private ExecutionPlan directPartDb(SqlNode originAst, CmdBean cmdBean, HintCollection hintCollection,
+                                       Map<Integer, ParameterContext> param, String schemaName, ExecutionContext ec) {
+        List<String> partNameList;
+        if (cmdBean.jsonHint()) {
+            // JSON HINT
+            RouteCondition rc =
+                SimpleHintParser.convertHint2RouteCondition(schemaName, SimpleHintParser.TDDL_HINT_PREFIX
+                        + cmdBean.getJson()
+                        + SimpleHintParser.TDDL_HINT_END,
+                    param);
+            cmdBean.getExtraCmd().putAll(rc.getExtraCmds());
+
+            if (rc instanceof DirectlyRouteCondition) {
+                hintCollection.routeCount++;
+                final DirectlyRouteCondition drc = (DirectlyRouteCondition) rc;
+                partNameList = HintUtil.splitAndTrim(drc.getDbId(), ",");
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "unsupport HINT type "
+                    + rc.getClass().getName()
+                    + " for direct plan!");
+            }
+        } else {
+            // NODE
+            partNameList = cmdBean.getGroups();
+        }
+
+        if (partNameList == null || partNameList.isEmpty()) {
+            partNameList = Lists.newArrayList(ec.getPartitionHint());
+        }
+
+        List<RelNode> results = new ArrayList<>();
+        List<TableProperties> tableModified = null;
+        BitSet planProperties = null;
+        final List<Integer> dynamicParamIndex = PlannerUtils.getDynamicParamIndex(originAst);
+
+        for (String partName : partNameList) {
+            List<String> finalGroups = Lists.newArrayList();
+            final SqlConverter converter = SqlConverter.getInstance(schemaName, ec);
+            final RelOptCluster cluster = converter.createRelOptCluster(null);
+
+            boolean useGrpParallelism = ec.getGroupParallelism() > 1;
+            boolean shouldUseGrpConnId = false;
+            boolean usingAutoCommit = ec.isAutoCommit();
+            PhyQueryOperationBuilder phyQueryBuilder = new PhyQueryOperationBuilder();
+            List<String> logTbls = new ArrayList<>();
+            List<List<String>> phyTbls = new ArrayList<>();
+
+            if (StringUtils.isNotEmpty(ec.getPartitionHint())) {
+                ec.setOriginSqlPushdownOrRoute(true);
+            }
+
+            boolean pushdownHintOnGsi = false;
+            if (cmdBean.getExtraCmd().containsKey(ConnectionProperties.PUSHDOWN_HINT_ON_GSI)) {
+                pushdownHintOnGsi =
+                    Boolean.valueOf(cmdBean.getExtraCmd().get(ConnectionProperties.PUSHDOWN_HINT_ON_GSI).toString());
+            }
+
+            boolean pushdownDmlOnBroadcast = false;
+            if (cmdBean.getExtraCmd().containsKey(ConnectionProperties.PUSHDOWN_HINT_ON_BROADCAST)) {
+                pushdownDmlOnBroadcast =
+                    Boolean.valueOf(
+                        cmdBean.getExtraCmd().get(ConnectionProperties.PUSHDOWN_HINT_ON_BROADCAST).toString());
+            }
+
+            boolean hasDirectHint = false;
+            if (!partName.toLowerCase().contains("group") &&
+                !MetaDbDataSource.DEFAULT_META_DB_GROUP_NAME.equalsIgnoreCase(partName)) {
+                ec.setPartitionHint(partName);
+            } else {
+                finalGroups.add(partName);
+                hasDirectHint = true;
+            }
+
+            // replace table name
+            ReplaceTblWithPhyTblVisitor visitor = new ReplaceTblWithPhyTblVisitor(schemaName, ec, hasDirectHint);
+            SqlNode ast = originAst.accept(visitor);
+            if (visitor.getUniqGroupName() != null) {
+                finalGroups.add(visitor.getUniqGroupName());
+            } else {
+                if (finalGroups.size() == 0) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for part table that has multi physical tables in one partition");
+                }
+            }
+
+            final ExecutionPlanPropertiesVisitor logicalPlanPropertiesVisitor = new ExecutionPlanPropertiesVisitor();
+            ast.accept(logicalPlanPropertiesVisitor);
+            if (planProperties == null) {
+                planProperties = logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
+            }
+
+            SqlSelect.LockMode lockMode = logicalPlanPropertiesVisitor.getLockMode();
+            List<String> allPhyTableNames = new ArrayList<>();
+            final List<String> modifiedPhyTableNames = logicalPlanPropertiesVisitor.getModifiedTableNames();
+            SqlKind sqlKind = logicalPlanPropertiesVisitor.getSqlKind();
+            if (sqlKind == null) {
+                sqlKind = ast.getKind();
+            }
+
+            /**
+             * <pre>
+             *     key: logTbName
+             *     val: map {
+             *          key: grp
+             *          val: list of phy
+             *     }
+             *
+             * </pre>
+             */
+            Map<String, Map<String, List<String>>> logTbPhyTbListMapping =
+                new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            if (sqlKind != null && sqlKind.belongsTo(SqlKind.DML)) {
+                // if request with partition hint and dml with one broadcast table, refuse to do direct plan
+                if (StringUtils.isNotEmpty(ec.getPartitionHint())) {
+                    for (String tb : visitor.getTableNames()) {
+                        if (ec.getSchemaManager(schemaName).getTddlRuleManager().isBroadCast(tb)) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED,
+                                String.format("Not allowed to modify broadcast table[%s] by partition hint", tb));
+                        }
+                        TableMeta tbMeta = ec.getSchemaManager(schemaName).getTable(String.valueOf(tb));
+                        if (tbMeta.isGsi() || tbMeta.withGsi()) {
+                            throw new TddlRuntimeException(
+                                ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY,
+                                tb);
+                        }
+                    }
+                }
+
+                if ((!pushdownHintOnGsi) || (!pushdownDmlOnBroadcast)) {
+                    tableModified =
+                        checkModifyGsiOrBroadcastDirectly(schemaName, modifiedPhyTableNames, ec, pushdownHintOnGsi,
+                            pushdownDmlOnBroadcast);
+                } else {
+                    tableModified = getModifiedTable(schemaName, modifiedPhyTableNames, ec);
+                }
+                allPhyTableNames = modifiedPhyTableNames;
+            } else if (sqlKind != null && sqlKind.belongsTo(SqlKind.QUERY)) {
+                Set<Pair<String, String>> tableSet = PlanManagerUtil.getTableSetFromAst(ast);
+                allPhyTableNames.addAll(tableSet.stream().map(dbTb -> dbTb.getValue()).collect(Collectors.toList()));
+            }
+
+            if (!usingAutoCommit && (
+                (lockMode != SqlSelect.LockMode.UNDEF && sqlKind.belongsTo(SqlKind.QUERY)) || sqlKind.belongsTo(
+                    SqlKind.DML))) {
+                buildLogTblPhyTblsMapping(schemaName, finalGroups, allPhyTableNames, ec, logTbPhyTbListMapping);
+                if (logTbPhyTbListMapping.size() > 1) {
+                    // Not allowed access multi logical table by direct hint
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for modifying physical tables[%s] which is belong to more than one logical table[%s]",
+                        String.join("", allPhyTableNames), String.join(",", logTbPhyTbListMapping.keySet()));
+                } else if (logTbPhyTbListMapping.isEmpty()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        "Unsupported to use direct HINT for accessing physical tables[%s] which is not belong to any logical tables",
+                        String.join("", allPhyTableNames));
+                }
+                String logTb = logTbPhyTbListMapping.keySet().iterator().next();
+                Map<String, List<String>> grpToPhyTbls = logTbPhyTbListMapping.get(logTb);
+                if (grpToPhyTbls.size() > 1 && useGrpParallelism) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        String.format(
+                            "Not allowed to use direct HINT to access more than one groups[%s] of db[%s] with auto mode in transaction, please use partition selection syntax instead.",
+                            String.join(",", grpToPhyTbls.keySet()), schemaName)
+                    );
+                }
+                String grpName = grpToPhyTbls.keySet().iterator().next();
+                List<String> phyTblsOfOneGrp = grpToPhyTbls.get(grpName);
+                if (phyTblsOfOneGrp.size() > 1 && useGrpParallelism) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                        String.format(
+                            "Not allowed to use direct HINT to access more than one physical tables[%s] of table[%s] of db[%s] with auto mode in transaction, please use partition selection syntax instead.",
+                            String.join(",", phyTblsOfOneGrp), logTb, schemaName)
+                    );
+                }
+                if (useGrpParallelism) {
+                    PhyTableOperationUtil.enableIntraGroupParallelism(schemaName, ec);
+                    shouldUseGrpConnId = true;
+                }
+            }
+
+            if (shouldUseGrpConnId) {
+                String logTb = logTbPhyTbListMapping.keySet().iterator().next();
+                Map<String, List<String>> grpToPhyTbls = logTbPhyTbListMapping.get(logTb);
+                String grpName = grpToPhyTbls.keySet().iterator().next();
+                List<String> phyTblsOfOneGrp = grpToPhyTbls.get(grpName);
+                logTbls.add(logTb);
+                phyTbls.add(phyTblsOfOneGrp);
+                for (String group : finalGroups) {
+                    checkGroupPrivileges(group, ec);
+                    PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
+                        cluster, RelTraitSet.createEmpty(),
+                        schemaName,
+                        logTbls,
+                        phyTbls,
+                        ast,
+                        ast.getKind(),
+                        lockMode,
+                        group,
+                        null,
+                        true,
+                        param,
+                        dynamicParamIndex,
+                        ec);
+                    results.add(phyQueryOperation);
+                } // end of for
+            } else {
+                for (String group : finalGroups) {
+                    checkGroupPrivileges(group, ec);
+                    PhyQueryOperation phyQueryOperation = phyQueryBuilder.buildPhyQueryOperation(
+                        cluster, RelTraitSet.createEmpty(),
+                        schemaName,
+                        logTbls,
+                        phyTbls,
+                        ast,
+                        ast.getKind(),
+                        lockMode,
+                        group,
+                        null,
+                        false,
+                        param,
+                        dynamicParamIndex,
+                        ec);
+                    results.add(phyQueryOperation);
+                } // end of for
+            }
+        }
+        final ExecutionPlan result = new ExecutionPlan(originAst, wrapWithViewUnion(results), null, planProperties);
         result.setModifiedTables(tableModified);
         // disable tp slow check in hint direct mode
         result.disableCheckTpSlow();

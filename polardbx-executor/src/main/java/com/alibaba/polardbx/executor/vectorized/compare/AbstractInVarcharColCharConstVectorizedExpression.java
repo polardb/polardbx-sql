@@ -38,10 +38,8 @@ import io.airlift.slice.Slice;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public abstract class AbstractInVarcharColCharConstVectorizedExpression extends AbstractVectorizedExpression {
@@ -49,6 +47,7 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
 
     protected final boolean[] operandIsNulls;
     protected final Slice[] operands;
+    protected boolean allOperandsNull = true;
     protected Comparable[] operandSortKeys;
 
     protected DictionaryMapping mapping;
@@ -72,6 +71,7 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
                 operandIsNulls[operandIndex - 1] = true;
                 operands[operandIndex - 1] = null;
             } else {
+                allOperandsNull = false;
                 operandIsNulls[operandIndex - 1] = false;
                 Slice operand = sliceType.convertFrom(operand1Value);
                 operands[operandIndex - 1] = operand;
@@ -93,17 +93,6 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
     }
 
     abstract int operandCount();
-
-    protected boolean anyOperandsNull() {
-        boolean res = false;
-        for (int operandIndex = 1; operandIndex <= operandCount(); operandIndex++) {
-            res |= operandIsNulls[operandIndex - 1];
-            if (res) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     protected long anyMatch(Comparable sortKey) {
         for (int operandIndex = 1; operandIndex <= operandCount(); operandIndex++) {
@@ -145,7 +134,7 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
 
         long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
-        if (anyOperandsNull()) {
+        if (allOperandsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
             outputVectorSlot.setHasNull(true);
             Arrays.fill(outputNulls, true);

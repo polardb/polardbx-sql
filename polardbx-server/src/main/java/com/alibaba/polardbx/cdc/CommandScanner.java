@@ -145,12 +145,17 @@ public class CommandScanner extends AbstractLifecycle {
         logger.warn("build cdc meta snapshot finished.");
     }
 
-    private void buildSnapshotAndSend(BinlogCommandRecord commandRecord, ICdcManager.InstructionType instructionType,
-                                      String instructionId) throws SQLException, InterruptedException {
+    boolean buildSnapshotAndSend(BinlogCommandRecord commandRecord, ICdcManager.InstructionType instructionType,
+                                 String instructionId) throws SQLException, InterruptedException {
 
         long sleepTime = 10 * 1000;
         long round = 0;
         while (true) {
+            if (!ExecUtils.hasLeadership(null)) {
+                logger.warn("this node is not leader, will exit loop.");
+                return false;
+            }
+
             round++;
 
             // 1. get pre ddl perform version
@@ -168,12 +173,6 @@ public class CommandScanner extends AbstractLifecycle {
             try (Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
                 // forbidden create/drop database ddl sql
                 metaDbLockConn.setAutoCommit(false);
-//                try {
-//                    LockUtil.acquireMetaDbLockByForUpdate(metaDbLockConn);
-//                } catch (Throwable ex) {
-//                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
-//                        "Get metaDb lock timeout during cdc init");
-//                }
                 LockUtil.waitToAcquireMetaDbLock(String.format("Get metaDb lock timeout during cdc init"),
                     metaDbLockConn);
 
@@ -198,7 +197,7 @@ public class CommandScanner extends AbstractLifecycle {
                 LockUtil.releaseMetaDbLockByCommit(metaDbLockConn);
 
                 if (success.get()) {
-                    break;
+                    return true;
                 } else {
                     if (timeout.get()) {
                         logger.warn("ddl version check time out, will retry.");

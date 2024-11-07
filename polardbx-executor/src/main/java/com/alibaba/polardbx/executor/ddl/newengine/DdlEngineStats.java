@@ -16,13 +16,19 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine;
 
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.executor.backfill.Throttle;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.scheduler.TtlScheduledJobStatManager;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import lombok.Data;
+import org.apache.commons.collections.map.HashedMap;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
@@ -36,6 +42,9 @@ public class DdlEngineStats {
 
     private final static Map<String, Metric> metrics = new HashMap<>();
 
+    public static Long speedStatCycle = 1500L;
+
+    public static Map<DdlTask, Long> taskBeginTime = new ConcurrentHashMap<>();
     public static Metric METRIC_DDL_JOBS_TOTAL = new Metric("DDL_JOBS_TOTAL");
     public static Metric METRIC_DDL_JOBS_FINISHED = new Metric("DDL_JOBS_FINISHED");
     public static Metric METRIC_DDL_EXECUTION_TIME_MILLIS = new Metric("DDL_EXECUTION_TIME_MILLIS");
@@ -56,6 +65,12 @@ public class DdlEngineStats {
     public static Metric METRIC_FASTCHECKER_THREAD_POOL_NUM = new Metric("FASTCHECKER_THREAD_POOL_NUM");
 
     public static Metric METRIC_BACKFILL_ROWS_FINISHED = new Metric("BACKFILL_ROWS_FINISHED");
+
+    public static Metric METRIC_BACKFILL_ROWS_FINISHED_LAST_CYCLE =
+        new Metric("BACKFILL_ROWS_FINISHED_LAST_CYCLE", false);
+
+    public static Metric METRIC_BACKFILL_ROWS_FINISHED_LAST_TIMESTAMP =
+        new Metric("BACKFILL_ROWS_FINISHED_LAST_TIMESTAMP", false);
     public static Metric METRIC_BACKFILL_ROWS_SPEED = new Metric("BACKFILL_ROWS_SPEED");
     public static Metric METRIC_BACKFILL_TIME_MILLIS = new Metric("BACKFILL_TIME_MILLIS");
 
@@ -73,6 +88,9 @@ public class DdlEngineStats {
         new Metric.DelegatorMetric("THROTTLE_RATE", (x) -> Throttle.getTotalThrottleRate());
 
     public static Map<String, Metric> getAllMetrics() {
+        Map<String, Metric> tmpMetrics = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        tmpMetrics.putAll(metrics);
+        tmpMetrics.putAll(TtlScheduledJobStatManager.buildGlobalTtlMetrics());
         return metrics;
     }
 
@@ -84,20 +102,61 @@ public class DdlEngineStats {
         return metrics.get(name).getValue().get();
     }
 
+    public static void updateBackfillRowsMetric(long delta) {
+        long currentTimeMillis = System.currentTimeMillis();
+        METRIC_BACKFILL_ROWS_FINISHED.update(delta);
+        long lastTimeStamp = METRIC_BACKFILL_ROWS_FINISHED_LAST_TIMESTAMP.getValue().get();
+        long lastCycle = currentTimeMillis - lastTimeStamp;
+        if (lastCycle > speedStatCycle) {
+            updateBackfillSpeedMetric(lastTimeStamp);
+        }
+    }
+
+    public static synchronized void updateBackfillSpeedMetric(long lastTimeStamp) {
+        long timeStamp = METRIC_BACKFILL_ROWS_FINISHED_LAST_TIMESTAMP.getValue().get();
+        long currentTimeStamp = System.currentTimeMillis();
+        if (timeStamp == lastTimeStamp) {
+            long backfillRowsFinishedLastCycle = METRIC_BACKFILL_ROWS_FINISHED_LAST_CYCLE.getValue().get();
+            long backfillRowsFinished = METRIC_BACKFILL_ROWS_FINISHED.getValue().get();
+            long speed =
+                (backfillRowsFinished - backfillRowsFinishedLastCycle) * 1000 / (currentTimeStamp - lastTimeStamp);
+            METRIC_BACKFILL_ROWS_FINISHED_LAST_CYCLE.set(backfillRowsFinished);
+            METRIC_BACKFILL_ROWS_FINISHED_LAST_TIMESTAMP.set(currentTimeStamp);
+            METRIC_BACKFILL_ROWS_SPEED.set(speed);
+        }
+    }
+
     @Data
     public static class Metric {
         String name;
         AtomicLong value;
+        Boolean show;
 
         public Metric(String name) {
             this.name = name;
+            this.value = new AtomicLong(0);
             this.value = new AtomicLong();
+            this.show = true;
+            metrics.put(name, this);
+        }
+
+        public Metric(String name, Boolean show) {
+            this.name = name;
+            this.value = new AtomicLong();
+            this.show = show;
             metrics.put(name, this);
         }
 
         public Metric(String name, long value) {
             this.name = name;
             this.value = new AtomicLong(value);
+            this.show = true;
+        }
+
+        public Metric(String name, long value, Boolean show) {
+            this.name = name;
+            this.value = new AtomicLong(value);
+            this.show = show;
         }
 
         public static Metric fromMap(Map<String, Object> map) {

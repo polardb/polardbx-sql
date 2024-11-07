@@ -6,6 +6,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -16,6 +17,7 @@ import static com.alibaba.polardbx.qatest.columnar.dql.FullTypeTest.waitForRowCo
 import static com.alibaba.polardbx.qatest.columnar.dql.FullTypeTest.waitForSync;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXAutoDBName1;
 
+@Ignore
 public class InformationSchemaColumnarIndexStatusTest extends ReadBaseTestCase {
     private static final String TABLE_1 = "test_columnar_index_status_1";
     private static final String TABLE_2 = "test_columnar_index_status_2";

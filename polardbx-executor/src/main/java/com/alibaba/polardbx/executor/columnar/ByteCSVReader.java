@@ -18,39 +18,41 @@
 
 package com.alibaba.polardbx.executor.columnar;
 
+import org.apache.hadoop.fs.FSDataInputStream;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
 public class ByteCSVReader {
     private final ByteBuffer lengthBuffer = ByteBuffer.allocate(Integer.BYTES);
-    private final InputStream inputStream;
+    private final FSDataInputStream inputStream;
 
     private final String csvFileName;
 
     private long currentPosition;
     private final long fileEndOffset;
 
-    public ByteCSVReader(String csvFileName, InputStream inputStream) throws IOException {
+    public ByteCSVReader(String csvFileName, FSDataInputStream inputStream, long length) throws IOException {
         this.csvFileName = csvFileName;
         this.inputStream = inputStream;
         this.currentPosition = 0;
-        this.fileEndOffset = inputStream.available();
+        this.fileEndOffset = length;
     }
 
-    public boolean isReadable() {
-        return currentPosition < fileEndOffset;
+    public boolean isReadable() throws IOException {
+        return currentPosition < fileEndOffset && inputStream.available() > 0;
     }
 
     public CSVRow nextRow() throws IOException {
         lengthBuffer.clear();
         canReadFileLength(Integer.BYTES);
-        inputStream.read(lengthBuffer.array(), 0, Integer.BYTES);
+        inputStream.readFully(lengthBuffer.array(), 0, Integer.BYTES);
 
         int length = lengthBuffer.getInt();
         byte[] data = new byte[length];
         canReadFileLength(length);
-        inputStream.read(data);
+        inputStream.readFully(data);
 
         currentPosition += (Integer.BYTES + length);
 
@@ -71,7 +73,7 @@ public class ByteCSVReader {
         }
     }
 
-    public long position() {
+    public long position() throws IOException {
         return currentPosition;
     }
 

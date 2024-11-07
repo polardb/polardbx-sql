@@ -29,7 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupI
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLogicalForeignKeyTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropIndexPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropLogicalForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
@@ -63,6 +63,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
 public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
 
@@ -149,13 +151,17 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         //2.1 insert meta to complex_task_outline
         taskList.add(addMetaTask);
         //2.2 create partitioned physical table
-        phyDdlTableOperations.forEach(o -> o.setPartitionInfo(newPartitionInfo));
-        if (!tableTopology.isEmpty()) {
-            PhysicalPlanData physicalPlanData =
-                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations, executionContext);
-            DdlTask phyDdlTask =
-                new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
-            taskList.add(phyDdlTask);
+        if (!preparedData.isColumnarIndex()) {
+            phyDdlTableOperations.forEach(o -> o.setPartitionInfo(newPartitionInfo));
+            if (!tableTopology.isEmpty()) {
+                PhysicalPlanData physicalPlanData =
+                    DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations,
+                        executionContext);
+                DdlTask phyDdlTask =
+                    new CreatePhyTableWithRollbackCheckTask(schemaName, physicalPlanData.getLogicalTableName(),
+                        physicalPlanData, sourceTableTopology);
+                taskList.add(phyDdlTask);
+            }
         }
 
         final String finalStatus =
@@ -175,18 +181,20 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
             StringUtils.equalsIgnoreCase(ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG.name(), finalStatus);
 
         DdlTask mayBeTailTask = taskList.get(taskList.size() - 1);
+        boolean skipBackFill = skipBackfill || tableTopology.isEmpty() || preparedData.isColumnarIndex();
         List<DdlTask> bringUpNewPartitions = ComplexTaskFactory
             .addPartitionTasks(schemaName, tableName, sourceTableTopology, targetTableTopology,
                 stayAtCreating, stayAtDeleteOnly, stayAtWriteOnly, stayAtWriteReOrg,
-                skipBackfill || tableTopology.isEmpty(), executionContext, isBroadcast(), taskType);
+                skipBackFill, executionContext, isBroadcast(), taskType);
         //3.2 status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> READY_TO_PUBLIC
         taskList.addAll(bringUpNewPartitions);
 
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
-        if (!tableTopology.isEmpty() && tableMeta.isGsi() && !tableMeta.isClustered()
+        if (!tableTopology.isEmpty() && tableMeta.isGsi() && !tableMeta.isClustered() && !tableMeta.isHasPrimaryKey()
             && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
 
-            String sql = "drop index " + TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME + " on " + tableName;
+            String sql =
+                "drop index " + TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME + " on " + surroundWithBacktick(tableName);
 
             DropPartLocalIndexBuilder builder =
                 DropPartLocalIndexBuilder.createBuilder(schemaName, tableName, TddlConstants.UGSI_PK_UNIQUE_INDEX_NAME,
@@ -212,7 +220,8 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         DdlTask cdcDdlMarkTask =
             new CdcTableGroupDdlMarkTask(tableGroupName, schemaName, tableName, sqlKind, newTopology,
                 dc.getDdlStmt(),
-                sqlKind == SqlKind.ALTER_TABLEGROUP ? CdcDdlMarkVisibility.Private : CdcDdlMarkVisibility.Protected);
+                sqlKind == SqlKind.ALTER_TABLEGROUP ? CdcDdlMarkVisibility.Private : CdcDdlMarkVisibility.Protected,
+                preparedData.isColumnarIndex());
         if (stayAtPublic) {
             cdcTableGroupDdlMarkTask = cdcDdlMarkTask;
         }
@@ -230,7 +239,7 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
 
     @Override
     protected void excludeResources(Set<String> resources) {
-        for (String phyTableName : preparedData.getNewPhyTables()) {
+        for (String phyTableName : GeneralUtil.emptyIfNull(preparedData.getNewPhyTables())) {
             resources.add(
                 concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableName()), phyTableName));
         }

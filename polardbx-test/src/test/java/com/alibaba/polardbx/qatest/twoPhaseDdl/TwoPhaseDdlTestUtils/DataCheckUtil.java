@@ -47,7 +47,7 @@ public class DataCheckUtil {
             JdbcUtil.getAllResult(JdbcUtil.executeQuery(calCheckSumSql2, tddlConnection)).get(0).stream()
                 .map(o -> Integer.valueOf(o.toString()))
                 .collect(Collectors.toList());
-        log.info("finsh check data");
+        log.info("finish check data");
         checkSum1.addAll(checkSum2);
         return checkSum1;
     }

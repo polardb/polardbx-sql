@@ -106,8 +106,70 @@ public class MySqlCreateIndexTest_13_polardbx extends MysqlTest {
 
         String output = SQLUtils.toMySqlString(stmt);
         assertEquals(
-            "CREATE CLUSTERED COLUMNAR INDEX `nation_col_index` ON nation (`n_nationkey`) PARTITION BY HASH (`n_nationkey`) PARTITIONS 1 ENGINE = 'COLUMNAR' USING BTREE "
-                + "DICTIONARY_COLUMNS = 'n_name,n_comment' KEY_BLOCK_SIZE = 20 COMMENT 'CREATE CCI TEST' ALGORITHM = DEFAULT LOCK = DEFAULT;",
+            "CREATE CLUSTERED COLUMNAR INDEX `nation_col_index` ON nation (`n_nationkey`) PARTITION BY HASH (`n_nationkey`) PARTITIONS 1 ENGINE = 'COLUMNAR' USING BTREE DICTIONARY_COLUMNS = 'n_name,n_comment' KEY_BLOCK_SIZE = 20 COMMENT 'CREATE CCI TEST' ALGORITHM = DEFAULT LOCK = DEFAULT  \n"
+                + "COLUMNAR_OPTIONS='{\n"
+                + "\t\"DICTIONARY_COLUMNS\":\"N_NAME,N_COMMENT\",\n"
+                + "}';",
+            output);
+    }
+
+    @Test
+    public void testSix() {
+        String sql =
+            "create clustered columnar index `nation_col_index` on nation(`n_nationkey`) "
+                + "partition by hash(`n_nationkey`) partitions 1 "
+                + "ENGINE='COLUMNAR' "
+                + "USING BTREE KEY_BLOCK_SIZE=20 COMMENT 'CREATE CCI TEST' ALGORITHM=DEFAULT LOCK=DEFAULT "
+                + "DICTIONARY_COLUMNS='n_name,n_comment' "
+                + "COLUMNAR_OPTIONS='{"
+                + " \"TYPE\":\"SNAPSHOT\","
+                + " \"SNAPSHOT_RETENTION_DAYS\":\"7\""
+                + "}';";
+
+        List<SQLStatement> stmtList = SQLUtils.toStatementList(sql, JdbcConstants.MYSQL);
+
+        SQLStatement stmt = stmtList.get(0);
+        MySqlSchemaStatVisitor visitor = new MySqlSchemaStatVisitor();
+        stmt.accept(visitor);
+
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals(
+            "CREATE CLUSTERED COLUMNAR INDEX `nation_col_index` ON nation (`n_nationkey`) PARTITION BY HASH (`n_nationkey`) PARTITIONS 1 ENGINE = 'COLUMNAR' USING BTREE DICTIONARY_COLUMNS = 'n_name,n_comment' KEY_BLOCK_SIZE = 20 COMMENT 'CREATE CCI TEST' ALGORITHM = DEFAULT LOCK = DEFAULT  \n"
+                + "COLUMNAR_OPTIONS='{\n"
+                + "\t\"DICTIONARY_COLUMNS\":\"N_NAME,N_COMMENT\",\n"
+                + "\t\"TYPE\":\"SNAPSHOT\",\n"
+                + "\t\"SNAPSHOT_RETENTION_DAYS\":\"7\",\n"
+                + "}';",
+            output);
+    }
+
+    @Test
+    public void testSeven() {
+        String sql =
+            "create clustered columnar index `nation_col_index` on nation(`n_nationkey`) "
+                + "partition by hash(`n_nationkey`) partitions 1 "
+                + "ENGINE='COLUMNAR' "
+                + "USING BTREE KEY_BLOCK_SIZE=20 COMMENT 'CREATE CCI TEST' ALGORITHM=DEFAULT LOCK=DEFAULT "
+                + "COLUMNAR_OPTIONS='{"
+                + " \"TYPE\":\"SNAPSHOT\","
+                + " \"DICTIONARY_COLUMNS\":\"N_NAME,N_COMMENT\",\n"
+                + " \"SNAPSHOT_RETENTION_DAYS\":\"7\""
+                + "}';";
+
+        List<SQLStatement> stmtList = SQLUtils.toStatementList(sql, JdbcConstants.MYSQL);
+
+        SQLStatement stmt = stmtList.get(0);
+        MySqlSchemaStatVisitor visitor = new MySqlSchemaStatVisitor();
+        stmt.accept(visitor);
+
+        String output = SQLUtils.toMySqlString(stmt);
+        assertEquals(
+            "CREATE CLUSTERED COLUMNAR INDEX `nation_col_index` ON nation (`n_nationkey`) PARTITION BY HASH (`n_nationkey`) PARTITIONS 1 ENGINE = 'COLUMNAR' USING BTREE KEY_BLOCK_SIZE = 20 COMMENT 'CREATE CCI TEST' ALGORITHM = DEFAULT LOCK = DEFAULT  \n"
+                + "COLUMNAR_OPTIONS='{\n"
+                + "\t\"DICTIONARY_COLUMNS\":\"N_NAME,N_COMMENT\",\n"
+                + "\t\"TYPE\":\"SNAPSHOT\",\n"
+                + "\t\"SNAPSHOT_RETENTION_DAYS\":\"7\",\n"
+                + "}';",
             output);
     }
 }

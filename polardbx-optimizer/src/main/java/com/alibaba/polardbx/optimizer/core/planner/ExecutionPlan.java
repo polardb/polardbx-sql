@@ -157,7 +157,7 @@ public class ExecutionPlan {
      */
     private HintConverter.HintCollection hintCollection = null;
 
-    private boolean useColumnar = false;
+    private boolean flashbackArea = false;
 
     /**
      * plan输出的列对应的的origin column name
@@ -259,10 +259,10 @@ public class ExecutionPlan {
         newExecutionPlan.canOptByForcePrimary = this.canOptByForcePrimary;
         newExecutionPlan.constantParams = this.constantParams;
         newExecutionPlan.hintCollection = this.hintCollection;
-        newExecutionPlan.useColumnar = this.useColumnar;
         newExecutionPlan.forbidXplan = this.forbidXplan;
         newExecutionPlan.originColumnNames = this.originColumnNames;
         newExecutionPlan.checkTpSlow = this.checkTpSlow;
+        newExecutionPlan.flashbackArea = this.flashbackArea;
         return newExecutionPlan;
     }
 
@@ -428,14 +428,6 @@ public class ExecutionPlan {
         return referencedGsiNames;
     }
 
-    public boolean isUseColumnar() {
-        return useColumnar;
-    }
-
-    public void setUseColumnar(boolean useColumnar) {
-        this.useColumnar = useColumnar;
-    }
-
     public Map<Integer, ParameterContext> getConstantParams() {
         return constantParams;
     }
@@ -462,6 +454,13 @@ public class ExecutionPlan {
         this.originColumnNames = originColumnNames;
     }
 
+    public boolean isFlashbackArea() {
+        return flashbackArea;
+    }
+
+    public void setFlashbackArea(boolean flashbackArea) {
+        this.flashbackArea = flashbackArea;
+    }
 }
 
 

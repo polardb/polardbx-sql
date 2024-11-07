@@ -56,8 +56,10 @@ public class GsiExtractor extends Extractor {
 
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
                                    long speedMin, long speedLimit, long parallelism, boolean useBinary,
-                                   List<String> modifyStringColumns, ExecutionContext ec) {
-        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true);
+                                   List<String> modifyStringColumns, boolean onlineModifyColumn,
+                                   ExecutionContext ec) {
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true, false,
+            onlineModifyColumn);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, modifyStringColumns, ec);
 
         return new GsiExtractor(schemaName,

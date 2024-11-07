@@ -5,8 +5,8 @@
     <#list cmpOperators.booleanTestOperators.types as type>
 
         <#assign className = "${operator.classHeader}${type.inputDataType}ColVectorizedExpression">
-        <@pp.changeOutputFile name="/com/alibaba/polardbx/executor/vectorized/comparison/${className}.java" />
-package com.alibaba.polardbx.executor.vectorized.comparison;
+        <@pp.changeOutputFile name="/com/alibaba/polardbx/executor/vectorized/compare/${className}.java" />
+package com.alibaba.polardbx.executor.vectorized.compare;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropPartitionTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
@@ -23,10 +24,12 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropPartitionGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar.DropColumnarIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropPartitionTableWithGsiValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -35,10 +38,13 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionTable;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropTableWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
@@ -46,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * @author guxu
@@ -117,12 +124,14 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
         ValidateTableVersionTask validateTableVersionTask =
             new ValidateTableVersionTask(preparedData.getPrimaryTablePreparedData().getSchemaName(), tableVersions);
 
+        boolean foundColumnarIndex = false;
         Map<String, DropGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
         for (Map.Entry<String, DropGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
             final DropGlobalIndexPreparedData gsiPreparedData = entry.getValue();
             final String indexTableName = gsiPreparedData.getIndexTableName();
 
             if (entry.getValue().isColumnar()) {
+                foundColumnarIndex = true;
                 // columnar index will be destroyed automatically
                 ExecutableDdlJob4DropColumnarIndex dropCciJob = (ExecutableDdlJob4DropColumnarIndex)
                     DropColumnarIndexJobFactory.create(gsiPreparedData, executionContext, true, false);
@@ -190,6 +199,26 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
 
         result.addTask(tableGroupValidateTask);
         result.addTaskRelationship(tableGroupValidateTask, validateTableVersionTask);
+
+        boolean dropTtlTblWithArcCci =
+            TtlUtil.checkIfDropTtlTableWithCciArcTblView(this.schemaName, this.primaryTableName, this.executionContext);
+        if (dropTtlTblWithArcCci) {
+            TableMeta ttlTblMeta = executionContext.getSchemaManager(this.schemaName).getTable(this.primaryTableName);
+            TtlDefinitionInfo ttlInfo = ttlTblMeta.getTtlDefinitionInfo();
+            if (ttlInfo != null && ttlInfo.needPerformExpiredDataArchivingByCci()) {
+                String arcTblSchema = ttlInfo.getArchiveTableSchema();
+                String arcTblName = ttlInfo.getArchiveTableName();
+                String dropViewSqlForArcTbl =
+                    TtlTaskSqlBuilder.buildDropViewSqlFroArcTbl(arcTblSchema, arcTblName, ttlInfo);
+                SubJobTask dropViewSubJobTask = new SubJobTask(arcTblSchema, dropViewSqlForArcTbl, "");
+                dropViewSubJobTask.setParentAcquireResource(true);
+                Set<String> viewNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+                viewNames.add(arcTblName);
+                result.addExcludeResources(viewNames);
+                result.addTask(dropViewSubJobTask);
+
+            }
+        }
 
 //        result.setMaxParallelism(gsiPreparedDataMap.size() + 1);
 

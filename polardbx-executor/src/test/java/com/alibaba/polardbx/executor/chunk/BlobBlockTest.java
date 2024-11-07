@@ -19,13 +19,10 @@ package com.alibaba.polardbx.executor.chunk;
 import com.alibaba.druid.mock.MockBlob;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.SliceOutput;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.sql.Blob;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 public class BlobBlockTest extends BaseBlockTest {
 
@@ -73,8 +70,47 @@ public class BlobBlockTest extends BaseBlockTest {
         Block blobBlockShuffled = encoding.readBlock(output.slice().getInput());
 
         // check
-        for (int i = 0; i != blobBlock.getPositionCount(); i++) {
-            assertTrue(blobBlock.equals(i, blobBlockShuffled, i));
+        for (int i = 0; i < blobBlock.getPositionCount(); i++) {
+            Assert.assertTrue(blobBlock.equals(i, blobBlockShuffled, i));
+        }
+    }
+
+    @Test
+    public void testCopy() {
+        final Blob[] blobs = new Blob[] {
+            new com.alibaba.polardbx.optimizer.core.datatype.Blob(new byte[] {0x7E, 0x7F}),
+            new com.alibaba.polardbx.optimizer.core.datatype.Blob(new byte[] {0x1, 0x2, 0x3}),
+            new com.alibaba.polardbx.optimizer.core.datatype.Blob(new byte[] {0x4, 0x5, 0x6, 0x7}),
+            new com.alibaba.polardbx.optimizer.core.datatype.Blob(new byte[] {0x8, 0x9, 0xA, 0xB, 0xC})
+        };
+
+        BlobBlockBuilder blobBlockBuilder = new BlobBlockBuilder(1);
+        for (Blob blob : blobs) {
+            blobBlockBuilder.appendNull();
+            blobBlockBuilder.writeBlob(blob);
+        }
+        BlobBlock blobBlock = (BlobBlock) blobBlockBuilder.build();
+        BlobBlock newBlock = BlobBlock.from(blobBlock, blobBlock.getPositionCount(), null);
+        for (int i = 0; i < blobBlock.getPositionCount(); i++) {
+            if (blobBlock.isNull(i)) {
+                Assert.assertTrue(newBlock.isNull(i));
+                continue;
+            }
+            Assert.assertEquals(blobBlock.getBlob(i), newBlock.getBlob(i));
+            Assert.assertEquals(blobBlock.hashCode(i), newBlock.hashCode(i));
+            Assert.assertEquals(blobBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
+            Assert.assertEquals(blobBlock.checksum(i), newBlock.checksum(i));
+        }
+
+        int[] sel = new int[] {0, 1, 2, 3, 6, 7};
+        BlobBlock newBlock2 = BlobBlock.from(blobBlock, sel.length, sel);
+        for (int i = 0; i < sel.length; i++) {
+            int j = sel[i];
+            if (blobBlock.isNull(j)) {
+                Assert.assertTrue(newBlock2.isNull(i));
+                continue;
+            }
+            Assert.assertEquals(blobBlock.getBlob(j), newBlock2.getBlob(i));
         }
     }
 }

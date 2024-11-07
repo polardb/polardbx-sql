@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.common;
 
+import com.alibaba.polardbx.common.MergedStorageInfo;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.google.common.base.Preconditions;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
@@ -63,27 +65,9 @@ public class StorageInfoManager extends AbstractLifecycle {
 
     private final Map<String, StorageInfo> storageInfos;
     private final TopologyHandler topologyHandler;
-    private volatile boolean supportXA;
-    private volatile boolean supportTso;
-    private volatile boolean supportTsoHeartbeat;
-    private volatile boolean supportPurgeTso;
-    private volatile boolean supportCtsTransaction;
-    private volatile boolean supportAsyncCommit;
-    private volatile boolean supportLizard1PCTransaction;
-    private volatile boolean supportDeadlockDetection;
-    private volatile boolean supportMdlDeadlockDetection;
-    private volatile boolean supportsBloomFilter;
-    private volatile boolean supportOpenSSL;
-    private volatile boolean supportSharedReadView;
-    private volatile boolean supportsReturning;
-    private volatile boolean supportsBackfillReturning;
-    private volatile boolean supportsAlterType;
-    private boolean readOnly;
-    private boolean lowerCaseTableNames;
-    private volatile boolean supportHyperLogLog;
-    private volatile boolean lessMy56Version;
-    private boolean supportXxHash;
-    private volatile boolean isMysql80;
+
+    @Getter
+    private volatile MergedStorageInfo mergedStorageInfo;
 
     /**
      * FastChecker: generate checksum on xdb node
@@ -101,31 +85,8 @@ public class StorageInfoManager extends AbstractLifecycle {
         deadlockLogMap.put(MDL_DEADLOCK, NO_DEADLOCKS_DETECTED);
     }
 
-    /**
-     * FastChecker: generate checksum on xdb node
-     * Since: 5.4.13 fix
-     * Requirement: XDB supports HASHCHECK function
-     */
-    private volatile boolean supportFastChecker = false;
-
-    private volatile boolean supportChangeSet = false;
-
-    private volatile boolean supportXOptForAutoSp = false;
-
-    private volatile boolean supportXRpc = false;
-
-    private volatile boolean supportMarkDistributed = false;
-
-    private volatile boolean supportXOptForPhysicalBackfill = false;
-
-    private volatile boolean support2pcOpt = false;
-
     public StorageInfoManager(TopologyHandler topologyHandler) {
         storageInfos = new ConcurrentHashMap<>();
-        supportXA = false;
-        supportsBloomFilter = false;
-        supportsReturning = false;
-        supportsBackfillReturning = false;
 
         Preconditions.checkNotNull(topologyHandler);
         this.topologyHandler = topologyHandler;
@@ -497,15 +458,25 @@ public class StorageInfoManager extends AbstractLifecycle {
         }
     }
 
-    private static boolean checkSupport2pcOpt(IDataSource dataSource) {
+    protected static boolean checkSupportSyncPoint(IDataSource dataSource) {
         try (Connection conn = dataSource.getConnection();
             Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("call dbms_xa.find_by_xid('1', '', 1)")) {
-            return true;
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'enable_polarx_sync_point'")) {
+            return rs.next();
         } catch (SQLException ex) {
-            logger.warn("Get support 2pc opt failed.", ex);
-            // Not support.
-            return false;
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
+                "Failed to check sync point support: " + ex.getMessage());
+        }
+    }
+
+    protected static boolean checkSupportFlashbackArea(IDataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'opt_flashback_area'")) {
+            return rs.next();
+        } catch (SQLException ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
+                "Failed to check flashback area support: " + ex.getMessage());
         }
     }
 
@@ -563,7 +534,8 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean tmpSupportMarkDistributed = true;
 
         boolean storageInfoEmpty = true;
-        boolean tmpSupport2pcOpt = true;
+        boolean tmpSupportSyncPoint = true;
+        boolean tmpSupportFlashbackArea = true;
         for (Group group : topologyHandler.getMatrix().getGroups()) {
             if (group.getType() != GroupType.MYSQL_JDBC || !DbGroupInfoManager.isNormalGroup(group)) {
                 continue;
@@ -600,43 +572,75 @@ public class StorageInfoManager extends AbstractLifecycle {
                 tmpSupportXRpc &= storageInfo.supportXRpc;
                 tmpSupportXOptForPhysicalBackfill &= storageInfo.supportXOptForPhysicalBackfill;
                 tmpSupportMarkDistributed &= storageInfo.supportMarkDistributed;
-                tmpSupport2pcOpt &= storageInfo.support2pcOpt;
             }
         }
 
-        this.readOnly = !ConfigDataMode.needInitMasterModeResource() && !ConfigDataMode.isFastMock();
+        boolean readOnly = !ConfigDataMode.needInitMasterModeResource() && !ConfigDataMode.isFastMock();
 
         // Do not enable XA transaction in read-only instance
-        this.supportXA = tmpSupportXA && !readOnly;
-        this.supportsBloomFilter = tmpSupportsBloomFilter;
-        this.supportsReturning = tmpSupportsReturning;
-        this.supportsBackfillReturning = tmpSupportsBackfillReturning;
-        this.supportsAlterType = tmpSupportsAlterType;
-        this.supportTso = tmpSupportTso && (metaDbUsesXProtocol() || tmpRDS80);
-        this.supportTsoHeartbeat = tmpSupportTsoHeartbeat && metaDbUsesXProtocol();
-        this.supportPurgeTso = tmpSupportPurgeTso && metaDbUsesXProtocol();
-        this.supportCtsTransaction = tmpSupportCtsTransaction;
-        this.supportAsyncCommit = tmpSupportAsyncCommit;
-        this.supportLizard1PCTransaction = tmpSupportLizard1PCTransaction;
-        this.supportSharedReadView = tmpSupportSharedReadView;
-        this.supportDeadlockDetection = tmpSupportDeadlockDetection;
-        this.supportMdlDeadlockDetection = tmpSupportMdlDeadlockDetection;
-        this.supportOpenSSL = tmpSupportOpenSSL;
-        this.lowerCaseTableNames = tmpLowerCaseTableNames;
-        this.supportHyperLogLog = tmpSupportHyperLogLog;
-        this.lessMy56Version = lessMysql56;
-        this.supportFastChecker = tmpSupportFastChecker;
-        this.supportXxHash = tmpSupportXxHash;
-        this.isMysql80 = tmpRDS80;
-        this.supportChangeSet = tmpSupportChangeSet;
-        this.supportXOptForAutoSp = tmpSupportXOptForAutoSp && tmpSupportXRpc;
-        this.supportXRpc = tmpSupportXRpc;
-        this.supportXOptForPhysicalBackfill = tmpSupportXOptForPhysicalBackfill && tmpSupportXRpc;
-        this.supportMarkDistributed = tmpSupportMarkDistributed;
-        this.support2pcOpt = tmpSupport2pcOpt;
+        boolean supportXA = tmpSupportXA && !readOnly;
+        boolean supportsBloomFilter = tmpSupportsBloomFilter;
+        boolean supportsReturning = tmpSupportsReturning;
+        boolean supportsBackfillReturning = tmpSupportsBackfillReturning;
+        boolean supportsAlterType = tmpSupportsAlterType;
+        boolean supportTso = tmpSupportTso && (metaDbUsesXProtocol() || tmpRDS80);
+        boolean supportPurgeTso = tmpSupportPurgeTso && metaDbUsesXProtocol();
+        boolean supportTsoHeartbeat = tmpSupportTsoHeartbeat && metaDbUsesXProtocol();
+        boolean supportCtsTransaction = tmpSupportCtsTransaction;
+        boolean supportAsyncCommit = tmpSupportAsyncCommit;
+        boolean supportLizard1PCTransaction = tmpSupportLizard1PCTransaction;
+        boolean supportSharedReadView = tmpSupportSharedReadView;
+        boolean supportDeadlockDetection = tmpSupportDeadlockDetection;
+        boolean supportMdlDeadlockDetection = tmpSupportMdlDeadlockDetection;
+        boolean supportOpenSSL = tmpSupportOpenSSL;
+        boolean lowerCaseTableNames = tmpLowerCaseTableNames;
+        boolean supportHyperLogLog = tmpSupportHyperLogLog;
+        boolean lessMy56Version = lessMysql56;
+        boolean supportFastChecker = tmpSupportFastChecker;
+        boolean supportXxHash = tmpSupportXxHash;
+        boolean isMysql80 = tmpRDS80;
+        boolean supportChangeSet = tmpSupportChangeSet;
+        boolean supportXOptForAutoSp = tmpSupportXOptForAutoSp && tmpSupportXRpc;
+        boolean supportXRpc = tmpSupportXRpc;
+        boolean supportXOptForPhysicalBackfill = tmpSupportXOptForPhysicalBackfill && tmpSupportXRpc;
+        boolean supportMarkDistributed = tmpSupportMarkDistributed;
+        boolean supportSyncPoint = tmpSupportSyncPoint;
+        boolean supportFlashbackArea = tmpSupportFlashbackArea;
+
+        this.mergedStorageInfo = new MergedStorageInfo(
+            supportXA,
+            supportTso,
+            supportPurgeTso,
+            supportTsoHeartbeat,
+            supportCtsTransaction,
+            supportAsyncCommit,
+            supportLizard1PCTransaction,
+            supportDeadlockDetection,
+            supportMdlDeadlockDetection,
+            supportsBloomFilter,
+            supportOpenSSL,
+            supportSharedReadView,
+            supportsReturning,
+            supportsBackfillReturning,
+            supportsAlterType,
+            readOnly,
+            lowerCaseTableNames,
+            supportHyperLogLog,
+            lessMy56Version,
+            supportXxHash,
+            isMysql80,
+            supportFastChecker,
+            supportChangeSet,
+            supportXOptForAutoSp,
+            supportXRpc,
+            supportMarkDistributed,
+            supportXOptForPhysicalBackfill,
+            supportSyncPoint,
+            supportFlashbackArea
+        );
 
         if (!storageInfoEmpty) {
-            InstanceVersion.setMYSQL80(this.isMysql80);
+            InstanceVersion.setMYSQL80(isMysql80);
         }
     }
 
@@ -681,10 +685,6 @@ public class StorageInfoManager extends AbstractLifecycle {
     @Override
     protected void doDestroy() {
         storageInfos.clear();
-        supportXA = false;
-        supportsBloomFilter = false;
-        supportsReturning = false;
-        supportsBackfillReturning = false;
     }
 
     private StorageInfo initStorageInfo(Group group, IDataSource dataSource) {
@@ -707,7 +707,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportXA;
+        return this.mergedStorageInfo.isSupportXA();
     }
 
     public boolean supportTso() {
@@ -715,7 +715,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportTso;
+        return this.mergedStorageInfo.isSupportTso();
     }
 
     public boolean supportPurgeTso() {
@@ -723,7 +723,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportPurgeTso;
+        return this.mergedStorageInfo.isSupportPurgeTso();
     }
 
     public boolean isLessMy56Version() {
@@ -731,7 +731,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return lessMy56Version;
+        return this.mergedStorageInfo.isLessMy56Version();
     }
 
     public boolean isMysql80() {
@@ -739,7 +739,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return isMysql80;
+        return this.mergedStorageInfo.isMysql80();
     }
 
     public String getDnVersion() {
@@ -760,7 +760,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportTsoHeartbeat;
+        return this.mergedStorageInfo.isSupportTsoHeartbeat();
     }
 
     public boolean supportCtsTransaction() {
@@ -768,7 +768,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportCtsTransaction;
+        return this.mergedStorageInfo.isSupportCtsTransaction();
     }
 
     public boolean supportAsyncCommit() {
@@ -776,7 +776,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportAsyncCommit;
+        return this.mergedStorageInfo.isSupportAsyncCommit();
     }
 
     public boolean supportLizard1PCTransaction() {
@@ -784,7 +784,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportLizard1PCTransaction;
+        return this.mergedStorageInfo.isSupportLizard1PCTransaction();
     }
 
     public boolean supportDeadlockDetection() {
@@ -792,14 +792,14 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportDeadlockDetection;
+        return this.mergedStorageInfo.isSupportDeadlockDetection();
     }
 
     public boolean supportMdlDeadlockDetection() {
         if (!isInited()) {
             init();
         }
-        return supportMdlDeadlockDetection;
+        return this.mergedStorageInfo.isSupportMdlDeadlockDetection();
     }
 
     public boolean supportsBloomFilter() {
@@ -807,7 +807,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportsBloomFilter;
+        return this.mergedStorageInfo.isSupportsBloomFilter();
     }
 
     public boolean supportSharedReadView() {
@@ -815,7 +815,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportSharedReadView;
+        return this.mergedStorageInfo.isSupportSharedReadView();
     }
 
     public boolean supportOpenSSL() {
@@ -823,7 +823,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportOpenSSL;
+        return this.mergedStorageInfo.isSupportOpenSSL();
     }
 
     public boolean supportsHyperLogLog() {
@@ -831,7 +831,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportHyperLogLog;
+        return this.mergedStorageInfo.isSupportHyperLogLog();
     }
 
     public boolean supportsXxHash() {
@@ -839,7 +839,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportXxHash;
+        return this.mergedStorageInfo.isSupportXxHash();
     }
 
     public boolean supportsReturning() {
@@ -847,7 +847,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportsReturning;
+        return this.mergedStorageInfo.isSupportsReturning();
     }
 
     public boolean supportsBackfillReturning() {
@@ -855,7 +855,7 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportsBackfillReturning;
+        return this.mergedStorageInfo.isSupportsBackfillReturning();
     }
 
     public boolean supportsAlterType() {
@@ -863,65 +863,73 @@ public class StorageInfoManager extends AbstractLifecycle {
             init();
         }
 
-        return supportsAlterType;
+        return this.mergedStorageInfo.isSupportsAlterType();
     }
 
     public boolean isReadOnly() {
-        return readOnly;
+        return this.mergedStorageInfo.isReadOnly();
     }
 
     public boolean isLowerCaseTableNames() {
-        return lowerCaseTableNames;
+        return this.mergedStorageInfo.isLowerCaseTableNames();
     }
 
     public boolean supportFastChecker() {
         if (!isInited()) {
             init();
         }
-        return supportFastChecker;
+        return this.mergedStorageInfo.isSupportFastChecker();
     }
 
     public boolean supportChangeSet() {
         if (!isInited()) {
             init();
         }
-        return supportChangeSet;
+        return this.mergedStorageInfo.isSupportChangeSet();
     }
 
     public boolean supportXOptForAutoSp() {
         if (!isInited()) {
             init();
         }
-        return supportXOptForAutoSp;
+        return this.mergedStorageInfo.isSupportXOptForAutoSp();
     }
 
     public boolean supportXRpc() {
         if (!isInited()) {
             init();
         }
-        return supportXRpc;
+        return this.mergedStorageInfo.isSupportXRpc();
     }
 
     public boolean isSupportMarkDistributed() {
         if (!isInited()) {
             init();
         }
-        return supportMarkDistributed;
+        return this.mergedStorageInfo.isSupportMarkDistributed();
     }
 
     public boolean supportXOptForPhysicalBackfill() {
         if (!isInited()) {
             init();
         }
-        return supportXOptForPhysicalBackfill;
+        return this.mergedStorageInfo.isSupportXOptForPhysicalBackfill();
     }
 
-    public boolean support2pcOpt() {
+    public boolean isSupportSyncPoint() {
         if (!isInited()) {
             init();
         }
-        return support2pcOpt;
+        return this.mergedStorageInfo.isSupportSyncPoint();
     }
+
+    public boolean isSupportFlashbackArea() {
+        if (!isInited()) {
+            init();
+        }
+        return this.mergedStorageInfo.isSupportFlashbackArea();
+    }
+
 
     public static class StorageInfo {
 
@@ -931,6 +939,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         public final boolean supportPurgeTso;
         public final boolean supportCtsTransaction;
         public final boolean supportAsyncCommit;
+        public final boolean supportSyncpoint;
         public final boolean supportLizard1PCTransaction;
         public final boolean supportsBloomFilter;
         public final boolean supportsReturning;
@@ -951,7 +960,7 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean supportXRpc;
         boolean supportXOptForPhysicalBackfill;
         boolean supportMarkDistributed;
-        boolean support2pcOpt;
+        boolean supportFlashbackArea;
 
         public StorageInfo(
             String version,
@@ -980,7 +989,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportXRpc,
             boolean supportXOptForPhysicalBackfill,
             boolean supportMarkDistributed,
-            boolean support2pcOpt
+            boolean supportSyncPoint,
+            boolean supportFlashbackArea
         ) {
             this.version = version;
             this.supportTso = supportTso;
@@ -1008,7 +1018,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             this.supportXRpc = supportXRpc;
             this.supportXOptForPhysicalBackfill = supportXOptForPhysicalBackfill && supportXRpc;
             this.supportMarkDistributed = supportMarkDistributed;
-            this.support2pcOpt = support2pcOpt;
+            this.supportSyncpoint = supportSyncPoint;
+            this.supportFlashbackArea = supportFlashbackArea;
         }
 
         public static StorageInfo create(IDataSource dataSource) {
@@ -1027,6 +1038,7 @@ public class StorageInfoManager extends AbstractLifecycle {
                     false,
                     false,
                     1,
+                    false,
                     false,
                     false,
                     false,
@@ -1074,7 +1086,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportXRpc = checkSupportXRpc(dataSource);
             boolean supportXoptForPhysicalBackfill = checkSupportXOptForPhysicalBackfill(dataSource);
             boolean supportMarkDistributed = checkSupportMarkDistributed(dataSource);
-            boolean support2pcOpt = checkSupport2pcOpt(dataSource);
+            boolean supportSyncPoint = checkSupportSyncPoint(dataSource);
+            boolean supportFlashbackArea = checkSupportFlashbackArea(dataSource);
 
             return new StorageInfo(
                 version,
@@ -1103,7 +1116,8 @@ public class StorageInfoManager extends AbstractLifecycle {
                 supportXRpc,
                 supportXoptForPhysicalBackfill,
                 supportMarkDistributed,
-                support2pcOpt);
+                supportSyncPoint,
+                supportFlashbackArea);
         }
     }
 

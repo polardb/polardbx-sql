@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalRenameTables;
@@ -33,7 +34,9 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlRenameTables;
 import org.apache.calcite.util.Pair;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -60,9 +63,13 @@ public class LogicalRenameTablesHandler extends LogicalCommonDdlHandler {
         ValidateTableVersionTask validateTableVersionTask =
             new ValidateTableVersionTask(logicalDdlPlan.getSchemaName(), tableVersions);
 
+        List<Long> versionIds = new ArrayList<>();
+        for (int i = 0; i < renameTablesPreparedData.getFromTableNames().size(); i++) {
+            versionIds.add(DdlUtils.generateVersionId(executionContext));
+        }
         ExecutableDdlJob result =
             new RenameTablesJobFactory(logicalDdlPlan.getSchemaName(), renameTablesPreparedData,
-                executionContext).create();
+                executionContext, versionIds).create();
         result.addTask(validateTableVersionTask);
         result.addTaskRelationship(validateTableVersionTask, result.getHead());
         return result;

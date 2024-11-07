@@ -79,6 +79,10 @@ public enum VirtualViewType {
 
     PARTITIONS_META,
 
+    TTL_INFO,
+
+    TTL_SCHEDULE,
+
     LOCAL_PARTITIONS,
 
     LOCAL_PARTITIONS_SCHEDULE,
@@ -224,6 +228,7 @@ public enum VirtualViewType {
     STATISTICS,
     STATISTICS_DATA,
     COLUMN_STATISTICS,
+    METRIC,
 
     /**
      * module view
@@ -281,6 +286,8 @@ public enum VirtualViewType {
 
     POLARDBX_TRX,
 
+    DEADLOCKS,
+
     OPTIMIZER_ALERT,
 
     STORAGE_PROPERTIES,
@@ -291,6 +298,11 @@ public enum VirtualViewType {
 
     REBALANCE_PROGRESS,
 
-    SHOW_HELP
+    SHOW_HELP,
 
+    RPL_SYNC_POINT,
+
+    DDL_SCHEDULER,
+
+    DDL_ENGINE_RESOURCE
 }

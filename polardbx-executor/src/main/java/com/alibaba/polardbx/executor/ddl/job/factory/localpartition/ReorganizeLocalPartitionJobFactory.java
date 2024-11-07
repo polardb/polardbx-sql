@@ -28,6 +28,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAllocateLocalPartitionMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
@@ -154,6 +155,9 @@ public class ReorganizeLocalPartitionJobFactory extends DdlJobFactory {
                 taskList.add(genPhyDdlTask(schemaName, gsiName, phySql));
             });
         }
+        CdcAllocateLocalPartitionMarkTask cdcAllocateLocalPartitionMarkTask =
+            new CdcAllocateLocalPartitionMarkTask(schemaName, primaryTableName);
+        taskList.add(cdcAllocateLocalPartitionMarkTask);
         executableDdlJob.addSequentialTasks(taskList);
         return executableDdlJob;
     }

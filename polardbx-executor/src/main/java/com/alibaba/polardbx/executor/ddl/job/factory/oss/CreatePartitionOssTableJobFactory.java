@@ -51,6 +51,7 @@ import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.gms.util.LockUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
@@ -103,21 +104,31 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
                 String ttlTableName = preparedData.getLoadTableName();
                 TableInfoManager tableInfoManager = executionContext.getTableInfoManager();
                 tableInfoManager.setConnection(conn);
-                TableLocalPartitionRecord record =
+                TableLocalPartitionRecord localPartRecord =
                     tableInfoManager.getLocalPartitionRecord(ttlTableSchema, ttlTableName);
+                TtlInfoRecord ttlInfoRecord = tableInfoManager.getTtlInfoRecord(ttlTableSchema, ttlTableName);
 
-                // not a local partition table
-                if (record == null) {
-                    throw new TddlRuntimeException(
-                        ErrorCode.ERR_INVALID_DDL_PARAMS,
-                        MessageFormat.format("{0}.{1} is not a local partition table.",
-                            ttlTableSchema, ttlTableName));
+                String oldArchiveTableSchema = null;
+                String oldArchiveTableName = null;
+                if (ttlInfoRecord == null) {
+                    // not a local partition table
+                    if (localPartRecord == null) {
+                        throw GeneralUtil.nestedException(
+                            MessageFormat.format("{0}.{1} is not a local partition table.",
+                                ttlTableSchema, ttlTableName));
+                    }
+                    oldArchiveTableSchema = localPartRecord.getArchiveTableSchema();
+                    oldArchiveTableName = localPartRecord.getArchiveTableName();
+                } else {
+                    /**
+                     * To validate
+                     */
+                    oldArchiveTableSchema = ttlInfoRecord.getArcTblSchema();
+                    oldArchiveTableName = ttlInfoRecord.getArcTblName();
                 }
 
-                String oldArchiveTableSchema = record.getArchiveTableSchema();
-                String oldArchiveTableName = record.getArchiveTableName();
+                // already has archive table but don't allow replace it.
 
-                // already has archive table but don't allow to replace it.
                 if (oldArchiveTableSchema != null || oldArchiveTableName != null) {
                     boolean allowReplace =
                         executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_REPLACE_ARCHIVE_TABLE);
@@ -130,6 +141,7 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
                                 ttlTableSchema, ttlTableName, oldArchiveTableSchema, oldArchiveTableName));
                     }
                 }
+
             } catch (Throwable t) {
                 throw new TddlNestableRuntimeException(t);
             }
@@ -193,7 +205,8 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
         // table partition info
         CreateTableAddTablesPartitionInfoMetaTask addPartitionInfoTask =
             new CreateTableAddTablesPartitionInfoMetaTask(schemaName, logicalTableName, physicalPlanData.isTemporary(),
-                physicalPlanData.getTableGroupConfig(), null, null, null, null, true, false, autoCreateTg);
+                physicalPlanData.getTableGroupConfig(), null, null,
+                null, false, true, null, null, false, autoCreateTg);
         taskList.add(addPartitionInfoTask);
 
         // mysql physical ddl task
@@ -264,9 +277,13 @@ public class CreatePartitionOssTableJobFactory extends CreateTableJobFactory {
             && preparedData.getLoadTableSchema() != null
             && preparedData.getLoadTableName() != null) {
             BindingArchiveTableMetaTask bindingArchiveTableMetaTask = new BindingArchiveTableMetaTask(
-                schemaName, logicalTableName,
-                preparedData.getLoadTableSchema(), preparedData.getLoadTableName(), // load table as source table
-                schemaName, logicalTableName, // target table as archive table
+                schemaName,
+                logicalTableName,
+                preparedData.getLoadTableSchema(),
+                preparedData.getLoadTableName(), // load table as source table
+                schemaName,
+                logicalTableName,// target table as archive table
+                tableEngine.name(),
                 archiveMode
             );
             taskList.add(bindingArchiveTableMetaTask);

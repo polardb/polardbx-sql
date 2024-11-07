@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.statis.ColumnarPruneRecord;
+import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.Collection;
@@ -37,6 +38,7 @@ public class LogicalShowPruneTraceHandler extends HandlerCommon {
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         ArrayResultCursor result = new ArrayResultCursor("TRACE");
+        result.addColumn("INSTANCE_ID", DataTypes.StringType);
         result.addColumn("TABLE_NAME", DataTypes.StringType);
         result.addColumn("FILTER", DataTypes.StringType);
         result.addColumn("INIT_TIME(NS)", DataTypes.StringType);
@@ -52,10 +54,12 @@ public class LogicalShowPruneTraceHandler extends HandlerCommon {
         result.initMeta();
 
         Collection<ColumnarPruneRecord> ops = null;
-        if (executionContext.getColumnarTracer() != null) {
-            ops = executionContext.getColumnarTracer().pruneRecords();
+        ColumnarTracer columnarTracer = executionContext.getColumnarTracer();
+        if (columnarTracer != null) {
+            ops = columnarTracer.pruneRecords();
             for (ColumnarPruneRecord op : ops) {
                 result.addRow(new Object[] {
+                    columnarTracer.getInstanceId(),
                     op.getTableName(),
                     op.getFilter(),
                     op.initIndexTime,

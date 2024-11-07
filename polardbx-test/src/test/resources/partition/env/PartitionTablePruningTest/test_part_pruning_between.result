@@ -15,7 +15,8 @@ FROM tbl_bt
 WHERE b BETWEEN 2000 AND 3000
 	AND a = 100;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_bt[p2]", sql="SELECT `tbl_bt`.`a` AS `a` FROM ? AS `tbl_bt` WHERE ((`tbl_bt`.`b` BETWEEN ? AND ?) AND (`tbl_bt`.`a` = ?))", params="3000,2000,100")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_bt[p2]", sql="SELECT `a` FROM `tbl_bt` AS `tbl_bt` WHERE ((`b` BETWEEN ? AND ?) AND (`a` = ?))")
 EXPLAIN SELECT a
 FROM tbl_bt
 WHERE a BETWEEN 200 AND 300

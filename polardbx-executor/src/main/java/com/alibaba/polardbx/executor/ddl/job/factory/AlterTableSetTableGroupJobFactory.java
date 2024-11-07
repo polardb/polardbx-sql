@@ -24,7 +24,7 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
@@ -190,7 +190,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
                 boolean isGsi = isGsi(schemaName, preparedData.getPrimaryTableName(), preparedData.getTableName());
                 CdcAlterTableSetTableGroupMarkTask cdcAlterTableSetTableGroupMarkTask =
                     new CdcAlterTableSetTableGroupMarkTask(schemaName, preparedData.getPrimaryTableName(),
-                        preparedData.getTableName(), isGsi);
+                        preparedData.getTableName(), isGsi, true);
                 executableDdlJob.addSequentialTasks(Lists.newArrayList(
                     validateTask,
                     tableSetTableGroupChangeMetaOnlyTask,
@@ -250,7 +250,8 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
         }
         List<DdlTask> bringUpAlterTableGroupTasks =
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, targetTableGroupName, tableName,
-                ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP, executionContext);
+                ComplexTaskMetaManager.ComplexTaskType.SET_TABLEGROUP, preparedData.getDdlVersionId(),
+                executionContext);
 
         executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
 
@@ -286,7 +287,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
 
             CdcAlterTableSetTableGroupMarkTask cdcAlterTableSetTableGroupMarkTask =
                 new CdcAlterTableSetTableGroupMarkTask(schemaName, preparedData.getPrimaryTableName(),
-                    preparedData.getTableName(), isGsi);
+                    preparedData.getTableName(), isGsi, false);
             executableDdlJob.appendTask(cdcAlterTableSetTableGroupMarkTask);
         }
 
@@ -347,7 +348,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
 
             CdcAlterTableSetTableGroupMarkTask cdcAlterTableSetTableGroupMarkTask =
                 new CdcAlterTableSetTableGroupMarkTask(schemaName, preparedData.getPrimaryTableName(),
-                    preparedData.getTableName(), isGsi);
+                    preparedData.getTableName(), isGsi, false);
             executableDdlJob.appendTask(cdcAlterTableSetTableGroupMarkTask);
         }
 
@@ -403,7 +404,8 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
         taskList.add(addMetaTask);
         //2.2 create partitioned physical table
         DdlTask phyDdlTask =
-            new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
+            new CreatePhyTableWithRollbackCheckTask(schemaName, physicalPlanData.getLogicalTableName(),
+                physicalPlanData, sourceTableTopology);
         taskList.add(phyDdlTask);
 
         final String finalStatus =
@@ -447,7 +449,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
                 CdcDdlMarkVisibility.Protected;
         CdcTableGroupDdlMarkTask cdcTableGroupDdlMarkTask =
             new CdcTableGroupDdlMarkTask(preparedData.getTableGroupName(), schemaName, tableName, sqlKind, newTopology,
-                dc.getDdlStmt(), cdcDdlMarkVisibility);
+                dc.getDdlStmt(), cdcDdlMarkVisibility, false);
 
         executableDdlJob.addTask(cdcTableGroupDdlMarkTask);
         executableDdlJob.addTaskRelationship(taskList.get(taskList.size() - 1), cdcTableGroupDdlMarkTask);
@@ -455,6 +457,7 @@ public class AlterTableSetTableGroupJobFactory extends DdlJobFactory {
 
         DdlTask dropUselessTableTask =
             ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, tableName, sourceTableTopology,
+                targetTableTopology,
                 executionContext);
         executableDdlJob.addTask(dropUselessTableTask);
         executableDdlJob.addTaskRelationship(bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1),

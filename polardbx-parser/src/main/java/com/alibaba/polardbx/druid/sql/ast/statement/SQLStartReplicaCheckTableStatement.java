@@ -30,6 +30,7 @@ public class SQLStartReplicaCheckTableStatement extends SQLStatementImpl {
     private SQLName channel;
     private SQLName dbName;
     private SQLName tableName;
+    private SQLName mode;
 
     @Override
     protected void accept0(SQLASTVisitor v) {
@@ -59,6 +60,14 @@ public class SQLStartReplicaCheckTableStatement extends SQLStatementImpl {
 
     public void setTableName(SQLName tableName) {
         this.tableName = tableName;
+    }
+
+    public SQLName getMode() {
+        return mode;
+    }
+
+    public void setMode(SQLName mode) {
+        this.mode = mode;
     }
 
     @Override

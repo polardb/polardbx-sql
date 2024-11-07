@@ -45,6 +45,9 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveDefinitionExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveJobExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCheck;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
@@ -229,6 +232,12 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                                 this.exprParser.parseIndex(idx.getIndexDefinition());
                                 idx.setIndexType("FULLTEXT");
                                 idx.setParent(stmt);
+                                if (lexer.token() == Token.HINT) {
+                                    String execComment = lexer.stringVal();
+                                    idx.getIndexDefinition().getOptions().setExecComment(execComment);
+                                    lexer.nextToken();
+                                }
+
                                 stmt.getTableElementList().add(idx);
 
                                 if (lexer.token() == Token.RPAREN) {
@@ -245,6 +254,12 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                                 this.exprParser.parseIndex(idx.getIndexDefinition());
                                 idx.setIndexType("FULLTEXT");
                                 idx.setParent(stmt);
+                                if (lexer.token() == Token.HINT) {
+                                    String execComment = lexer.stringVal();
+                                    idx.getIndexDefinition().getOptions().setExecComment(execComment);
+                                    lexer.nextToken();
+                                }
+
                                 stmt.getTableElementList().add(idx);
 
                                 if (lexer.token() == Token.RPAREN) {
@@ -288,11 +303,13 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                             this.exprParser.parseIndex(fulltextKey.getIndexDefinition());
                             fulltextKey.setIndexType("FULLTEXT");
                             fulltextKey.setParent(stmt);
-                            stmt.getTableElementList().add(fulltextKey);
 
-                            while (lexer.token() == Token.HINT) {
+                            if (lexer.token() == Token.HINT) {
+                                String execComment = lexer.stringVal();
+                                fulltextKey.getIndexDefinition().getOptions().setExecComment(execComment);
                                 lexer.nextToken();
                             }
+                            stmt.getTableElementList().add(fulltextKey);
 
                             if (lexer.token() == Token.RPAREN) {
                                 break;
@@ -305,6 +322,12 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                             this.exprParser.parseIndex(idx.getIndexDefinition());
                             idx.setIndexType("FULLTEXT");
                             idx.setParent(stmt);
+
+                            if (lexer.token() == Token.HINT) {
+                                String execComment = lexer.stringVal();
+                                idx.getIndexDefinition().getOptions().setExecComment(execComment);
+                                lexer.nextToken();
+                            }
                             stmt.getTableElementList().add(idx);
 
                             if (lexer.token() == Token.RPAREN) {
@@ -1012,6 +1035,34 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                     break;
                 }
                 accept(Token.RPAREN);
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL)) {
+                lexer.nextToken();
+                accept(Token.EQ);
+                stmt.addOption("TTL", parseTimeToLiveDefinitionExpr(exprParser, lexer));
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_ENABLE)) {
+                lexer.nextToken();
+                accept(Token.EQ);
+                stmt.addOption("TTL_ENABLE", exprParser.charExpr());
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_EXPR)) {
+                lexer.nextToken();
+                accept(Token.EQ);
+                stmt.addOption("TTL_EXPR", parseTimeToLiveExpr(this.exprParser, this.lexer));
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_JOB)) {
+                lexer.nextToken();
+                accept(Token.EQ);
+                stmt.addOption("TTL_JOB", parseTimeToLiveJobExpr(this.exprParser, this.lexer));
                 continue;
             }
 
@@ -2169,5 +2220,183 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
         }
 
         return true;
+    }
+
+    public static SQLExpr parseTimeToLiveDefinitionExpr(SQLExprParser exprParser, Lexer lexer) {
+
+        if (lexer.identifierEquals(FnvHash.Constants.TTL_DEFINITION)) {
+            lexer.nextToken();
+        }
+        SQLTimeToLiveDefinitionExpr sqlTimeToLiveDefinitionExpr = new SQLTimeToLiveDefinitionExpr();
+        boolean findOptions = false;
+        for (; ; ) {
+
+            findOptions = false;
+
+            if (lexer.token() == Token.EOF) {
+                break;
+            }
+
+            if (lexer.token() == Token.SEMI) {
+                break;
+            }
+
+            if (lexer.token() == Token.LPAREN) {
+                lexer.nextToken();
+                continue;
+            }
+
+            if (lexer.token() == Token.COMMA) {
+                lexer.nextToken();
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_ENABLE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlEnableExpr = exprParser.charExpr();
+                sqlTimeToLiveDefinitionExpr.setTtlEnableExpr(ttlEnableExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_EXPR)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlExpr = parseTimeToLiveExpr(exprParser, lexer);
+                sqlTimeToLiveDefinitionExpr.setTtlExpr(ttlExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_JOB)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlJobExpr = parseTimeToLiveJobExpr(exprParser, lexer);
+                sqlTimeToLiveDefinitionExpr.setTtlJobExpr(ttlJobExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.TTL_FILTER)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr ttlFilterExpr = exprParser.charExpr();
+                sqlTimeToLiveDefinitionExpr.setTtlFilterExpr(ttlFilterExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TYPE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr archiveTypeExpr = exprParser.charExpr();
+                sqlTimeToLiveDefinitionExpr.setArchiveTypeExpr(archiveTypeExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_SCHEMA)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr archiveTableSchemaExpr = exprParser.charExpr();
+                sqlTimeToLiveDefinitionExpr.setArchiveTableSchemaExpr(archiveTableSchemaExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_NAME)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr archiveTableNameExpr = exprParser.charExpr();
+                sqlTimeToLiveDefinitionExpr.setArchiveTableNameExpr(archiveTableNameExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_PRE_ALLOCATE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr arcPreAllocateExpr = exprParser.integerExpr();
+                sqlTimeToLiveDefinitionExpr.setArchiveTablePreAllocateExpr(arcPreAllocateExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.identifierEquals(FnvHash.Constants.ARCHIVE_TABLE_POST_ALLOCATE)) {
+                lexer.nextToken();
+                exprParser.accept(Token.EQ);
+                SQLExpr arcPostAllocateExpr = exprParser.integerExpr();
+                sqlTimeToLiveDefinitionExpr.setArchiveTablePostAllocateExpr(arcPostAllocateExpr);
+                findOptions = true;
+                continue;
+            }
+
+            if (lexer.token() == Token.RPAREN) {
+                lexer.nextToken();
+                break;
+            }
+
+            if (!findOptions) {
+                throw new ParserException("syntax error " + lexer.info());
+            }
+        }
+        return sqlTimeToLiveDefinitionExpr;
+    }
+
+    public static SQLTimeToLiveJobExpr parseTimeToLiveJobExpr(SQLExprParser exprParser, Lexer lexer) {
+
+        SQLExpr cron = null;
+        SQLExpr timezone = null;
+        if (lexer.identifierEquals("CRON")) {
+            lexer.nextToken();
+            cron = exprParser.expr();
+        } else {
+            throw new ParserException("syntax error, 'CRON' must be after the second 'TTL_JOB' ");
+        }
+
+        if (lexer.identifierEquals("TIMEZONE")) {
+            lexer.nextToken();
+            timezone = exprParser.expr();
+        } else {
+            throw new ParserException("syntax error, 'TIMEZONE' must be after the second 'CRON' ");
+        }
+
+        SQLTimeToLiveJobExpr timeToLiveJobExpr = new SQLTimeToLiveJobExpr();
+        timeToLiveJobExpr.setCron(cron);
+        timeToLiveJobExpr.setTimezone(timezone);
+        return timeToLiveJobExpr;
+    }
+
+    public static SQLTimeToLiveExpr parseTimeToLiveExpr(SQLExprParser exprParser, Lexer lexer) {
+        SQLExpr ttlColumn = exprParser.expr();
+        if (lexer.identifierEquals("EXPIRE")) {
+            lexer.nextToken();
+        } else {
+            exprParser.setErrorEndPos(lexer.pos());
+            throw new ParserException("syntax error, 'expire' must be after the column identifier");
+        }
+        if (lexer.identifierEquals("AFTER")) {
+            lexer.nextToken();
+        } else {
+            exprParser.setErrorEndPos(lexer.pos());
+            throw new ParserException("syntax error, 'after' must be after 'expire' ");
+        }
+        SQLExpr expireInterval = exprParser.expr();
+        SQLExpr expireIntervalUnit = exprParser.expr();
+        SQLExpr ttlTimezone = null;
+        if (lexer.identifierEquals("TIMEZONE")) {
+            lexer.nextToken();
+            ttlTimezone = exprParser.expr();
+        } else {
+            throw new ParserException("syntax error, 'timezone' must be after the unit identifier");
+        }
+
+        SQLTimeToLiveExpr timeToLiveExpr = new SQLTimeToLiveExpr();
+        timeToLiveExpr.setColumn(ttlColumn);
+        timeToLiveExpr.setExpireAfter(expireInterval);
+        timeToLiveExpr.setUnit(expireIntervalUnit);
+        timeToLiveExpr.setTimezone(ttlTimezone);
+        return timeToLiveExpr;
     }
 }

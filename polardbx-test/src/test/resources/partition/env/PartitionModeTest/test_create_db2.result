@@ -1,5 +1,6 @@
 ## DISABLE_FAST_SQL_PARSER
-## test show createdb without extras of default_single
-show create database drds_polarx2_part_qatest_app;
-Database,Create Database
-drds_polarx2_part_qatest_app,CREATE DATABASE `drds_polarx2_part_qatest_app` CHARSET = `utf8mb4` MODE = 'auto'
+create database mynew_db1 mode='auto'
+use mynew_db1
+create table mynew_t1(a int ,b int) partition by key(a) partitions 16
+use polardbx
+drop database mynew_db1;

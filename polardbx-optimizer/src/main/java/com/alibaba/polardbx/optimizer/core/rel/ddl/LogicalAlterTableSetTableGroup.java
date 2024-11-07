@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
@@ -43,6 +44,28 @@ public class LogicalAlterTableSetTableGroup extends BaseDdlOperation {
 
     public LogicalAlterTableSetTableGroup(DDL ddl) {
         super(ddl, ((AlterTableSetTableGroup) ddl).getObjectNames());
+    }
+
+    @Override
+    public boolean isSupportedByCci(ExecutionContext ec) {
+        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        if (!isNewPart) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                "not support tablegroup in non-partitioning database");
+        }
+        // not allow change columnar tablegroup to others
+        AlterTableSetTableGroup alterTableSetTableGroup = (AlterTableSetTableGroup) relDdl;
+        String tableGroupName = alterTableSetTableGroup.getTableGroupName();
+        if (StringUtils.isEmpty(tableGroupName)) {
+            return true;
+        }
+
+        if (!TableGroupNameUtil.isColumnarTg(tableGroupName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                "DDL of " + schemaName + "." + tableName + " involves file storage.");
+        }
+
+        return true;
     }
 
     @Override

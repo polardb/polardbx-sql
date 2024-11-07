@@ -1,4 +1,58 @@
 - sql: |
+    delete from test_force_gsi force index(g_idx_name.auto_shard_key_name) where name = "xxx";
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.test_force_gsi", optimizebyreturning=true)
+      indexscan(tables="optest_0000.g_idx_name_0", sql="select `id`, `name` from `g_idx_name` as `g_idx_name` force index(auto_shard_key_name) where (`name` = ?) for update")
+
+- sql: |
+    delete from test_force_gsi force index(g_idx_name) where name = "xxx";
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.test_force_gsi", optimizebyreturning=true)
+      indexscan(tables="optest_0000.g_idx_name_0", sql="select `id`, `name` from `g_idx_name` as `g_idx_name` force index(`auto_shard_key_name`) where (`name` = ?) for update")
+
+- sql: |
+    delete from test_force_gsi force index(primary) where name = "xxx";
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.test_force_gsi", optimizebyreturning=true)
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_force_gsi_0", shardcount=4, sql="select `id`, `name` from `test_force_gsi` as `test_force_gsi` force index(primary) where (`name` = ?) for update")
+
+- sql: |
+    delete from test_force_gsi force index(g_idx_name.xxx) where name = "xxx";
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.test_force_gsi", optimizebyreturning=true)
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_force_gsi_0", shardcount=4, sql="select `id`, `name` from `test_force_gsi` as `test_force_gsi` where (`name` = ?) for update")
+
+- sql: |
+    delete from test_hash_tb force index(xxx) where id = 1;
+
+  plan: |
+    logicalmodifyview(tables="optest_0001.test_hash_tb", sql="delete from `test_hash_tb` where (`id` = ?)")
+
+- sql: |
+    delete from test_hash_tb force index(xxx) where name = "xxx";
+
+  plan: |
+    logicalmodifyview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="delete from `test_hash_tb` where (`name` = ?)")
+
+- sql: |
+    delete from test_hash_tb force index(primary) where id = 1;
+
+  plan: |
+    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="DELETE `test_hash_tb` FROM `test_hash_tb` as `test_hash_tb` force index(primary) WHERE (`id` = ?)")
+
+- sql: |
+    delete from test_single force index(primary) where id = 1;
+
+  plan: |
+    logicalview(tables="optest_0000.test_single", sql="delete `test_single` from `test_single` as `test_single` force index(primary) where (`id` = ?)", params="1")
+
+- sql: |
     delete from test_hash_tb where id = 1;
 
   plan: |
@@ -53,11 +107,9 @@
     delete from test_hash_tb order by id limit 10;
 
   plan: |
-
-    LogicalModify(TYPE="DELETE", TABLES="optest.test_hash_tb")
-      MergeSort(sort="id ASC", fetch=?0)
-        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id` LIMIT ? FOR UPDATE")
-
+    logicalmodify(type="delete", tables="optest.test_hash_tb")
+      mergesort(sort="id asc", fetch=?0)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id` limit ? for update")
 - sql: |
     delete from test_hash_tb where id = 1 limit 10;
 

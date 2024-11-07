@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import io.airlift.slice.Slice;
@@ -43,7 +44,7 @@ public class DecimalBlockTest extends BaseBlockTest {
     @Test
     public void testSizeInBytes() {
         DecimalBlock block = new DecimalBlock(new DecimalType(), 1024);
-        Assert.assertEquals("delay memory allocation should be 0", 0, block.getElementUsedBytes());
+        Assert.assertEquals("delay memory allocation should contains the nulls array", 1024, block.getElementUsedBytes());
 
         block.setElementAt(0, Decimal.fromString("3.14"));
         Assert.assertEquals("should allocate memory after setting an element", 41984, block.getElementUsedBytes());
@@ -589,6 +590,111 @@ public class DecimalBlockTest extends BaseBlockTest {
         }
     }
 
+    @Test
+    public void testDecimalEquals() {
+        final int count = 2000;
+        final int scale1 = 2;
+        final int scale2 = 4;
+        DecimalType decimal64Type1 = new DecimalType(16, scale1);
+        DecimalType decimal64Type2 = new DecimalType(17, scale2);
+        DecimalType decimal128Type1 = new DecimalType(30, scale1);
+        DecimalType decimal128Type2 = new DecimalType(30, scale2);
+        final int scaleDiff = scale2 - scale1;
+        final long power = DecimalTypeBase.POW_10_LONG[scaleDiff];
+
+        DecimalBlockBuilder decimal64Builder1 = new DecimalBlockBuilder(count, decimal64Type1);
+        DecimalBlockBuilder decimal64Builder2 = new DecimalBlockBuilder(count, decimal64Type2);
+        DecimalBlockBuilder decimal128Builder1 = new DecimalBlockBuilder(count, decimal128Type1);
+        DecimalBlockBuilder decimal128Builder2 = new DecimalBlockBuilder(count, decimal128Type2);
+
+        DecimalBlockBuilder normalBuilder1 = new DecimalBlockBuilder(count);
+        DecimalBlockBuilder normalBuilder2 = new DecimalBlockBuilder(count);
+
+        long[] decimal64Values = new long[count];
+        for (int i = 0; i < count; i++) {
+            int val = random.nextInt();
+            val = (val == 0) ? Integer.MAX_VALUE : val;
+            decimal64Values[i] = val;
+        }
+        decimal64Values[0] = 0;
+
+        for (int i = 0; i < count; i++) {
+            long high = decimal64Values[i] >= 0 ? 0 : -1;
+            if (i % 4 == 0) {
+                // write equals
+                decimal64Builder1.writeLong(decimal64Values[i]);
+                decimal64Builder2.writeLong(decimal64Values[i] * power);
+                decimal128Builder1.writeDecimal128(decimal64Values[i], high);
+                decimal128Builder2.writeDecimal128(decimal64Values[i] * power, high);
+                normalBuilder1.writeDecimal(new Decimal(decimal64Values[i], decimal64Type1.getScale()));
+                normalBuilder2.writeDecimal(new Decimal(decimal64Values[i], decimal64Type1.getScale()));
+            } else if (i % 4 == 1) {
+                // write diff sign
+                decimal64Builder1.writeLong(decimal64Values[i]);
+                decimal64Builder2.writeLong(decimal64Values[i] * -1);
+                decimal128Builder1.writeDecimal128(decimal64Values[i] * -1, -1);
+                decimal128Builder2.writeDecimal128(decimal64Values[i] * -1, -1);
+                normalBuilder1.writeDecimal(new Decimal(decimal64Values[i], decimal64Type1.getScale()));
+                normalBuilder2.writeDecimal(new Decimal(-decimal64Values[i], decimal64Type1.getScale()));
+            } else if (i % 4 == 2) {
+                // write smaller value
+                decimal64Builder1.writeLong(decimal64Values[i]);
+                decimal64Builder2.writeLong(decimal64Values[i] * power - 1);
+                decimal128Builder1.writeDecimal128(decimal64Values[i] * power - 2, high);
+                decimal128Builder2.writeDecimal128(decimal64Values[i] * power - 3, high);
+                normalBuilder1.writeDecimal(new Decimal(decimal64Values[i], decimal64Type1.getScale()));
+                normalBuilder2.writeDecimal(new Decimal(-decimal64Values[i], decimal64Type1.getScale()));
+            } else {
+                // write larger value
+                decimal64Builder1.writeLong(decimal64Values[i]);
+                decimal64Builder2.writeLong(decimal64Values[i] * power + 1);
+                decimal128Builder1.writeDecimal128(decimal64Values[i] * power + 2, high);
+                decimal128Builder2.writeDecimal128(decimal64Values[i] * power + 3, high);
+                normalBuilder1.writeDecimal(new Decimal(decimal64Values[i], decimal64Type1.getScale()));
+                normalBuilder2.writeDecimal(new Decimal(-decimal64Values[i], decimal64Type1.getScale()));
+            }
+        }
+        DecimalBlock decimal64Block1 = (DecimalBlock) decimal64Builder1.build();
+        DecimalBlock decimal64Block2 = (DecimalBlock) decimal64Builder2.build();
+        DecimalBlock decimal128Block1 = (DecimalBlock) decimal128Builder1.build();
+        DecimalBlock decimal128Block2 = (DecimalBlock) decimal128Builder2.build();
+        DecimalBlock normalBlock1 = (DecimalBlock) normalBuilder1.build();
+        DecimalBlock normalBlock2 = (DecimalBlock) normalBuilder2.build();
+
+        Assert.assertTrue(decimal64Block1.isDecimal64());
+        Assert.assertTrue(decimal64Block2.isDecimal64());
+        Assert.assertTrue(decimal128Block1.isDecimal128());
+        Assert.assertTrue(decimal128Block2.isDecimal128());
+        Assert.assertTrue(normalBlock1.getState().isNormal());
+        Assert.assertTrue(normalBlock2.getState().isNormal());
+
+        for (int i = 0; i < count; i++) {
+            if (i % 4 == 0) {
+                Assert.assertTrue("Failed at : " + i, decimal64Block1.equals(i, decimal64Block2, i));
+                Assert.assertTrue("Failed at : " + i, decimal64Block2.equals(i, decimal64Block1, i));
+                Assert.assertTrue("Failed at : " + i, decimal64Block1.equals(i, decimal128Block1, i));
+                Assert.assertTrue("Failed at : " + i, decimal128Block1.equals(i, decimal128Block2, i));
+                Assert.assertTrue("Failed at : " + i, decimal128Block1.equals(i, decimal64Block1, i));
+                Assert.assertTrue("Failed at : " + i, decimal128Block2.equals(i, decimal128Block1, i));
+                Assert.assertTrue("Failed at : " + i, decimal64Block1.equals(i, normalBlock1, i));
+                Assert.assertTrue("Failed at : " + i, decimal128Block1.equals(i, normalBlock1, i));
+                Assert.assertTrue("Failed at : " + i, normalBlock1.equals(i, decimal64Block1, i));
+                Assert.assertTrue("Failed at : " + i, normalBlock1.equals(i, normalBlock2, i));
+            } else {
+                Assert.assertFalse("Failed at : " + i, decimal64Block1.equals(i, decimal64Block2, i));
+                Assert.assertFalse("Failed at : " + i, decimal64Block2.equals(i, decimal64Block1, i));
+                Assert.assertFalse("Failed at : " + i, decimal64Block1.equals(i, decimal128Block1, i));
+                Assert.assertFalse("Failed at : " + i, decimal128Block1.equals(i, decimal128Block2, i));
+                Assert.assertFalse("Failed at : " + i, decimal128Block1.equals(i, decimal64Block1, i));
+                Assert.assertFalse("Failed at : " + i, decimal128Block2.equals(i, decimal128Block1, i));
+                Assert.assertFalse("Failed at : " + i, decimal64Block1.equals(i, normalBlock2, i));
+                Assert.assertFalse("Failed at : " + i, decimal128Block1.equals(i, normalBlock1, i));
+                Assert.assertFalse("Failed at : " + i, normalBlock2.equals(i, decimal64Block1, i));
+                Assert.assertFalse("Failed at : " + i, normalBlock1.equals(i, decimal128Block1, i));
+            }
+        }
+    }
+
     /**
      * generate random unsigned decimal128 String
      */
@@ -668,6 +774,13 @@ public class DecimalBlockTest extends BaseBlockTest {
         testCopySelected(decimal64Block, normalOutput, selCount);
         Assert.assertTrue("Actual state: " + normalOutput.getState(),
             normalOutput.getState().isNormal());
+        try {
+            normalOutput.allocateDecimal64();
+            Assert.fail("Should fail since it is in normal state");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage(), e.getMessage().contains("Should not allocate decimal64"));
+        }
+
         // test with selection
         normalOutput = new DecimalBlock(decimalType, count);
         testCopySelected(decimal64Block, normalOutput, sel, selCount);
@@ -729,6 +842,13 @@ public class DecimalBlockTest extends BaseBlockTest {
         testCopySelected(decimal128Block, normalOutput, selCount);
         Assert.assertTrue("Actual state: " + normalOutput.getState(),
             normalOutput.getState().isNormal());
+        try {
+            normalOutput.allocateDecimal128();
+            Assert.fail("Should fail since it is in normal state");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("Should not allocate decimal128"));
+        }
+
         // test with selection
         normalOutput = new DecimalBlock(decimalType, count);
         testCopySelected(decimal128Block, normalOutput, sel, selCount);

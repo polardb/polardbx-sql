@@ -72,4 +72,27 @@ public class MySql_Create_Function_1 extends MysqlTest {
 
 //        Assert.assertTrue(visitor.getColumns().contains(new Column("t2", "id")));
     }
+
+    public void test_1() throws Exception {
+        String[] input = {
+            "CREATE USER 'test_free'@'127.0.0.1' IDENTIFIED BY '123456';",
+            "CREATE USER 'test_free'@`127.0.0.1` IDENTIFIED BY '123456';",
+            "CREATE USER `test_free`@`127.0.0.1` IDENTIFIED BY '123456';",
+            "CREATE USER `test_free`@`127.0.0.1` IDENTIFIED BY '123456';",
+        };
+        String output = "CREATE USER 'test_free'@'127.0.0.1' IDENTIFIED BY '123456';";
+        for (String sql : input) {
+            List<SQLStatement> statementList = SQLUtils.parseStatements(sql, JdbcConstants.MYSQL);
+            SQLStatement stmt = statementList.get(0);
+
+            assertEquals(1, statementList.size());
+
+            SchemaStatVisitor visitor = SQLUtils.createSchemaStatVisitor(JdbcConstants.MYSQL);
+            stmt.accept(visitor);
+
+            assertEquals(output,
+                SQLUtils.toMySqlString(stmt));
+        }
+    }
+
 }

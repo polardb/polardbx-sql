@@ -769,7 +769,11 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                 try {
                                     JdbcUtil.executeUpdateSuccess(connection, sql);
                                 } catch (AssertionError e) {
-                                    if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
+                                    if (isRDS80 && e.getMessage().contains(
+                                        "The definition of the table required by the flashback query has changed ")) {
+                                        // ignore
+                                        totalCount.getAndDecrement();
+                                    } else if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
                                         .contains("Deadlock found")) {
                                         // ignore
                                         totalCount.getAndDecrement();

@@ -461,7 +461,7 @@ public class DirectVarcharColumnReader extends AbstractColumnReader {
             }
             len -= bytesRead;
         }
-        Slice data = sliceOutput.slice();
+        Slice data = ((DynamicSliceOutput) sliceOutput).copySlice();
         block.setData(data);
 
         // metrics

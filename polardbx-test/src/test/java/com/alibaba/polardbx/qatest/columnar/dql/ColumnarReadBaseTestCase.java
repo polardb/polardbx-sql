@@ -22,7 +22,7 @@ public class ColumnarReadBaseTestCase extends AutoReadBaseTestCase {
     }
 
     @Before
-    public void before() {
+    final public void before() {
         JdbcUtil.useDb(tddlConnection, DB_NAME);
     }
 

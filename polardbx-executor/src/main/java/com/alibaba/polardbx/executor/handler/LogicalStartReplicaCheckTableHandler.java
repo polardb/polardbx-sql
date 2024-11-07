@@ -1,19 +1,3 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.fastjson.JSON;
@@ -54,21 +38,7 @@ public class LogicalStartReplicaCheckTableHandler extends HandlerCommon {
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         SqlStartReplicaCheck sqlStartReplicaCheck =
             (SqlStartReplicaCheck) ((LogicalDal) logicalPlan).getNativeSqlNode();
-
-        String dbName = sqlStartReplicaCheck.getDbName().toString();
-        Map<String, String> params = new HashMap<>();
-        params.put(RplConstants.RPL_FULL_VALID_DB, dbName);
-        if (sqlStartReplicaCheck.getTableName() != null) {
-            String tbName = sqlStartReplicaCheck.getTableName().toString();
-            params.put(RplConstants.RPL_FULL_VALID_TB, tbName);
-        }
-        if (sqlStartReplicaCheck.getChannel() != null) {
-            String channel = sqlStartReplicaCheck.getChannel().toString();
-            params.put(RplConstants.CHANNEL, channel);
-        } else {
-            params.put(RplConstants.CHANNEL, "");
-        }
-
+        Map<String, String> params = buildParams(sqlStartReplicaCheck);
         String daemonEndpoint = CdcTargetUtil.getDaemonMasterTarget();
         String url = String.format(API_PATTERN, daemonEndpoint);
         String res;
@@ -83,5 +53,36 @@ public class LogicalStartReplicaCheckTableHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, httpResult.getMsg());
         }
         return new AffectRowCursor(0);
+    }
+
+    private Map<String, String> buildParams(SqlStartReplicaCheck sqlStartReplicaCheck) {
+        Map<String, String> params = new HashMap<>();
+
+        String dbName = sqlStartReplicaCheck.getDbName().toString();
+        params.put(RplConstants.RPL_FULL_VALID_DB, dbName);
+        if (sqlStartReplicaCheck.getTableName() != null) {
+            String tbName = sqlStartReplicaCheck.getTableName().toString();
+            params.put(RplConstants.RPL_FULL_VALID_TB, tbName);
+        }
+
+        if (sqlStartReplicaCheck.getChannel() != null) {
+            String channel = sqlStartReplicaCheck.getChannel().toString();
+            params.put(RplConstants.CHANNEL, channel);
+        } else {
+            params.put(RplConstants.CHANNEL, "");
+        }
+
+        if (sqlStartReplicaCheck.getMode() != null) {
+            String mode = sqlStartReplicaCheck.getMode().toString();
+            // 如果mode不是direct或者snapshot,则抛出相关异常
+            if (!StringUtils.equalsIgnoreCase(mode, "direct") && !StringUtils.equalsIgnoreCase(mode, "snapshot")) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CDC_INVALID_PARAMS, "mode must be direct or snapshot");
+            }
+            params.put(RplConstants.RPL_FULL_VALID_MODE, mode);
+        } else {
+            params.put(RplConstants.RPL_FULL_VALID_MODE, "snapshot");
+        }
+
+        return params;
     }
 }

@@ -1,0 +1,69 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+set time_zone='+08:00';
+
+create table my_ttl_tb_day(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+
+create table my_ttl_tb_month(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+
+create table my_ttl_tb_year(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+
+alter table my_ttl_tb_day modify ttl set ttl_expr = `b` expire after 7 day timezone '+08:00' archive_table_pre_allocate = 1 archive_table_post_allocate = 1;
+create table my_arc_tb_day like my_ttl_tb_day engine='columnar' archive_mode='ttl';
+show create table my_ttl_tb_day;
+alter table my_ttl_tb_day modify ttl set archive_table_pre_allocate = 2;
+alter table my_ttl_tb_day cleanup expired data;
+show create table my_ttl_tb_day;
+alter table my_ttl_tb_day modify ttl set archive_table_pre_allocate = 3;
+alter table my_ttl_tb_day cleanup expired data;
+show create table my_ttl_tb_day;
+
+alter table my_ttl_tb_month modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00' archive_table_pre_allocate = 1 archive_table_post_allocate = 1;
+create table my_arc_tb_month like my_ttl_tb_month engine='columnar' archive_mode='ttl';
+show create table my_ttl_tb_month;
+alter table my_ttl_tb_month modify ttl set archive_table_pre_allocate = 2;
+alter table my_ttl_tb_month cleanup expired data;
+show create table my_ttl_tb_month;
+alter table my_ttl_tb_month modify ttl set archive_table_pre_allocate = 3;
+alter table my_ttl_tb_month cleanup expired data;
+show create table my_ttl_tb_month;
+
+alter table my_ttl_tb_year modify ttl set ttl_expr = `b` expire after 2 year timezone '+08:00' archive_table_pre_allocate = 1 archive_table_post_allocate = 1;
+create table my_arc_tb_year like my_ttl_tb_year engine='columnar' archive_mode='ttl';
+show create table my_ttl_tb_year;
+alter table my_ttl_tb_year modify ttl set archive_table_pre_allocate = 2;
+alter table my_ttl_tb_year cleanup expired data;
+show create table my_ttl_tb_year;
+alter table my_ttl_tb_year modify ttl set archive_table_pre_allocate = 3;
+alter table my_ttl_tb_year cleanup expired data;
+show create table my_ttl_tb_year;
+
+drop table my_ttl_tb_day;
+drop table my_ttl_tb_month;
+drop table my_ttl_tb_year;
+
+
+
+
+
+

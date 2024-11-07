@@ -1,0 +1,32 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `my_bro_t1` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+
+CREATE TABLE `my_hash_t1` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 8;
+
+CREATE TABLE `my_hash_t2` (
+`a` bigint(20) UNSIGNED NOT NULL PRIMARY KEY,
+`b` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 8;
+
+explain insert into my_hash_t2 select t1.a, t1.b from my_hash_t1 t1 join my_bro_t1 t2 on t1.b=t2.b;
+explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b;
+explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
+
+set autocommit=false;
+select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
+explain select * from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b for update;
+explain insert into my_hash_t2 select t1.a, t1.b from my_bro_t1 t1 join my_hash_t1 t2 on t1.b=t2.b;
+rollback;
+

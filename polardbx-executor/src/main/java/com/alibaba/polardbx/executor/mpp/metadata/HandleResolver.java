@@ -33,6 +33,7 @@ import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.executor.mpp.split.RemoteSplit;
+import com.alibaba.polardbx.executor.mpp.split.SpecifiedOssSplit;
 
 import javax.inject.Inject;
 import java.util.Map.Entry;
@@ -51,6 +52,7 @@ public class HandleResolver {
         handleResolvers.put("$scan", new MaterializedHandleResolver(JdbcSplit.class));
         handleResolvers.put("$remote", new MaterializedHandleResolver(RemoteSplit.class));
         handleResolvers.put("$ossScan", new MaterializedHandleResolver(OssSplit.class));
+        handleResolvers.put("$specifiedOssScan", new MaterializedHandleResolver(SpecifiedOssSplit.class));
     }
 
     public String getId(ConnectorSplit split) {

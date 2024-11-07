@@ -69,6 +69,7 @@ public class SqlFunction extends SqlOperator {
         NON_PUSHDOWN_FUNCTION.add(NEXTVAL_FUNC_NAME);
         NON_PUSHDOWN_FUNCTION.add(CURRVAL_FUNC_NAME);
         NON_PUSHDOWN_FUNCTION.add("PART_ROUTE");
+        NON_PUSHDOWN_FUNCTION.add("TIME_TO_TSO");
 
         // Information Functions
         NON_PUSHDOWN_FUNCTION.add("CONNECTION_ID");
@@ -136,6 +137,11 @@ public class SqlFunction extends SqlOperator {
         DYNAMIC_FUNCTION.add("USER");
         DYNAMIC_FUNCTION.add("VERSION");
 
+        DYNAMIC_FUNCTION.add("GET_LOCK");
+        DYNAMIC_FUNCTION.add("IS_FREE_LOCK");
+        DYNAMIC_FUNCTION.add("IS_USED_LOCK");
+        DYNAMIC_FUNCTION.add("RELEASE_ALL_LOCKS");
+        DYNAMIC_FUNCTION.add("RELEASE_LOCK");
     }
 
     public static boolean isDynamic(SqlFunction func) {

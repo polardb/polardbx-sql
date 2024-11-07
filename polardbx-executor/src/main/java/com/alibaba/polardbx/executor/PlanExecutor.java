@@ -27,7 +27,6 @@ import com.alibaba.polardbx.executor.cursor.impl.OutFileStatisticsCursor;
 import com.alibaba.polardbx.executor.mpp.client.MppResultCursor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.ExplainExecutorUtil;
-import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -51,7 +50,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
 public class PlanExecutor extends AbstractLifecycle {
@@ -104,14 +102,14 @@ public class PlanExecutor extends AbstractLifecycle {
 
     private static void resetParams(ExecutionPlan plan, ExecutionContext context) {
         // enable columnar schedule
-        if (plan.isUseColumnar()) {
+        if (context.isUseColumnar()) {
             context.putIntoHintCmds(ConnectionProperties.ENABLE_COLUMNAR_SCHEDULE, true);
         }
 
         // reset connection parameters by plan mode
         boolean automaticColumnarParams =
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_AUTOMATIC_COLUMNAR_PARAMS);
-        if (plan.isUseColumnar() && automaticColumnarParams) {
+        if (context.isUseColumnar() && automaticColumnarParams) {
             Map<String, Object> columnarParams = getColumnarParams(context);
             context.putAllHintCmds(columnarParams);
         }
@@ -172,6 +170,14 @@ public class PlanExecutor extends AbstractLifecycle {
             columnarParams.put(ConnectionProperties.ENABLE_NEW_RF, true);
         }
 
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_HTAP)) {
+            columnarParams.put(ConnectionProperties.ENABLE_HTAP, true);
+        }
+
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_MASTER_MPP)) {
+            columnarParams.put(ConnectionProperties.ENABLE_MASTER_MPP, true);
+        }
+
         return columnarParams;
     }
 
@@ -221,7 +227,8 @@ public class PlanExecutor extends AbstractLifecycle {
                     .addAll(cacheRelNodes.stream().map(t -> t.getRelatedId()).collect(Collectors.toSet()));
             }
             Cursor sc = ExecutorHelper.execute(relNode, ec, true, false);
-            if (sc instanceof MppResultCursor && executionPlan.isExplain()) {
+            //explain and show prune trace need the latest TaskInfo
+            if (sc instanceof MppResultCursor && (executionPlan.isExplain() || ec.isEnableTrace())) {
                 ((MppResultCursor) sc).waitQueryInfo(true);
             }
             return wrapResultCursor(sc, executionPlan.getCursorMeta());

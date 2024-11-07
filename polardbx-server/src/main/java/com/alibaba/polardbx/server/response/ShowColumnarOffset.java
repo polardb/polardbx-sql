@@ -24,6 +24,8 @@ import com.alibaba.polardbx.executor.gms.DynamicColumnarManager;
 import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarPurgeHistoryAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarPurgeHistoryRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -130,6 +132,7 @@ public class ShowColumnarOffset {
         //先拿columnar位点，防止columnar位点 > polardbx
         List<ColumnarCheckpointsRecord> checkpointsList = new ArrayList<>();
         List<String> typeList = new ArrayList<>();
+        Long columnarPurgeTso = null;
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
 
             ColumnarCheckpointsAccessor checkpointsAccessor = new ColumnarCheckpointsAccessor();
@@ -143,6 +146,14 @@ public class ShowColumnarOffset {
                 checkpointsList.add(columnarCheckpointsRecords.get(0));
                 typeList.add("COLUMNAR_LATENCY");
             }
+            ColumnarPurgeHistoryAccessor columnarPurgeHistoryAccessor = new ColumnarPurgeHistoryAccessor();
+            columnarPurgeHistoryAccessor.setConnection(metaDbConn);
+
+            List<ColumnarPurgeHistoryRecord> records = columnarPurgeHistoryAccessor.queryLastPurgeTso();
+            if (!records.isEmpty()) {
+                columnarPurgeTso = records.get(0).tso;
+            }
+
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                 "fail to fetch columnar checkpoint.", e);
@@ -248,6 +259,24 @@ public class ShowColumnarOffset {
                 throw new RuntimeException("Parse json failed: " + checkpointsRecord.getOffset(), t);
             }
 
+        }
+
+        if (columnarPurgeTso != null) {
+            long columnarPurgeMs = columnarPurgeTso >>> 22;
+            long latency = cdcMs - columnarPurgeMs;
+
+            Date cDate = new Date(columnarPurgeMs);
+            SimpleDateFormat cSdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+            String cTime = cSdf.format(cDate);
+            byte[][] columnarResults = new byte[FIELD_COUNT][];
+            int cPos = 0;
+            columnarResults[cPos++] = String.valueOf("COLUMNAR_PURGE").getBytes();
+            columnarResults[cPos++] = String.valueOf("").getBytes();
+            columnarResults[cPos++] = String.valueOf("").getBytes();
+            columnarResults[cPos++] = String.valueOf(columnarPurgeTso).getBytes();
+            columnarResults[cPos++] = String.valueOf(cTime).getBytes();
+            columnarResults[cPos++] = String.valueOf(latency).getBytes();
+            resultsList.add(columnarResults);
         }
 
         Channel channel = cdcServiceBlockingStub.getChannel();

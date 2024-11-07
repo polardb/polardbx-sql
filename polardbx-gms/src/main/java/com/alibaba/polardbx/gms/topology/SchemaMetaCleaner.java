@@ -22,5 +22,5 @@ import java.sql.Connection;
  * @author chenghui.lch
  */
 public interface SchemaMetaCleaner {
-    void clearSchemaMeta(String schemaName, Connection metaDbConn);
+    void clearSchemaMeta(String schemaName, Connection metaDbConn, long versionId);
 }

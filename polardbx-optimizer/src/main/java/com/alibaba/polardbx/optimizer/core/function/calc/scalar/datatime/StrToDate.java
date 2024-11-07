@@ -39,6 +39,10 @@ public class StrToDate extends AbstractScalarFunction {
         super(operandTypes, resultType);
     }
 
+    public StrToDate() {
+        super(null, null);
+    }
+
     private final static long dayMs = 1000 * 60 * 60 * 24;
 
     private int cachedFlags = 0;

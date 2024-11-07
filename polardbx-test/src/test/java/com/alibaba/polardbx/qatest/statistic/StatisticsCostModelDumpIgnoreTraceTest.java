@@ -36,20 +36,24 @@ public class StatisticsCostModelDumpIgnoreTraceTest extends StatisticCostModelTe
     }
 
     @Test
-    public void testCostModel() throws SQLException, IOException {
+    public void testCostModel() throws SQLException, IOException, InterruptedException {
         Collection<CheckStruct> testStructs = buildCheckStructFromFile(filePath);
 
         for (CheckStruct testStruct : testStructs) {
             checkStruct = testStruct;
 
-            testInside();
-            try (Connection c = getPolardbxConnection()) {
-                for (String schema : checkStruct.getSchemaList()) {
-                    JdbcUtil.executeSuccess(c, "drop database if exists " + schema);
-                }
+            try {
+                testInside();
             } finally {
-                log.info("env file test result sum:" + trs);
+                try (Connection c = getPolardbxConnection()) {
+                    for (String schema : checkStruct.getSchemaList()) {
+                        JdbcUtil.executeSuccess(c, "drop database if exists " + schema);
+                    }
+                } finally {
+                    log.info("env file test result sum:" + trs);
+                }
             }
+
         }
     }
 

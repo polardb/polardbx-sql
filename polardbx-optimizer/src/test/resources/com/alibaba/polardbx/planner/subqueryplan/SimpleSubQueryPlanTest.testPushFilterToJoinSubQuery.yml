@@ -17,8 +17,8 @@
 
 
   plan: |
-    phytableoperation(tables="optest_0001.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb`) as `a` inner join (select `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` from ? as `test_hash_tb2`) as `b` on ((`b`.`id` = `a`.`id`) and (`a`.`id` = 1))")
-
+    gather(concurrent=true)
+      logicalview(tables="optest_0001.test_hash_tb,test_hash_tb2", sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb2` as `test_hash_tb2` on ((`test_hash_tb2`.`id` = 1) and (`test_hash_tb`.`id` = 1) and (`test_hash_tb`.`id` = `test_hash_tb2`.`id`))")
 - sql: |
     select
     	a.id,
@@ -51,8 +51,8 @@
 
 
   plan: |
-    phytableoperation(tables="optest_0002.[test_hash_tb, test_hash_tb2]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb` where (`test_hash_tb`.`int_col3` = 5)) as `a` inner join (select `test_hash_tb2`.`id`, `test_hash_tb2`.`name`, `test_hash_tb2`.`create_time`, `test_hash_tb2`.`int_col1`, `test_hash_tb2`.`int_col2`, `test_hash_tb2`.`int_col3`, `test_hash_tb2`.`int_col4`, `test_hash_tb2`.`int_col5`, `test_hash_tb2`.`int_col6` from ? as `test_hash_tb2` where (`test_hash_tb2`.`id` = 2)) as `b` on (`b`.`id` = `a`.`id`)")
-
+    gather(concurrent=true)
+      logicalview(tables="optest_0002.test_hash_tb2,test_hash_tb", sql="select `test_hash_tb`.`id`, `test_hash_tb`.`name` from `test_hash_tb2` as `test_hash_tb2` inner join `test_hash_tb` as `test_hash_tb` on (`test_hash_tb2`.`id` = `test_hash_tb`.`id`) where ((`test_hash_tb2`.`id` = 2) and (`test_hash_tb`.`int_col3` = 5))")
 - sql: |
     select 
       a.id, 

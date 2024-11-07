@@ -54,7 +54,7 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
 
     //two_phase_ddl_test1.modify_column_pause, 16 * 50W
     @Test
-    public void testAlterTableModifyDdlPauseBeforePrepare() throws SQLException, InterruptedException {
+    public void testAlterTableModifyDdlPauseBeforePrepare() throws Exception {
         String schemaName = "two_phase_ddl_test1";
         String mytable = schemaPrefix + "modify_column_pause";
         // prepare data
@@ -63,10 +63,10 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16);", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = DdlStateCheckUtil.getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);
@@ -111,7 +111,7 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
     //two_phase_ddl_test1.modify_column_pause, 16 * 50W
     @Test
     public void testAlterTableModifyDdlPauseThenRandomKillBeforePrepareToRollback()
-        throws SQLException, InterruptedException {
+        throws Exception {
         String schemaName = "two_phase_ddl_test1";
         String mytable = schemaPrefix + "modify_column_pause";
         // prepare data
@@ -120,10 +120,10 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = DdlStateCheckUtil.getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);
@@ -176,7 +176,7 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
 
     //two_phase_ddl_test1.modify_column_pause, 16 * 50W
     @Test
-    public void testAlterTableModifyDdlPauseThenRollbackBeforePrepare() throws SQLException, InterruptedException {
+    public void testAlterTableModifyDdlPauseThenRollbackBeforePrepare() throws Exception {
         String schemaName = "two_phase_ddl_test1";
         String mytable = schemaPrefix + "modify_column_pause";
         // prepare data
@@ -185,10 +185,10 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = DdlStateCheckUtil.getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);
@@ -239,7 +239,7 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
     //two_phase_ddl_test1.modify_column_pause, 16 * 50W
     @Test
     public void testAlterTableModifyDdlPauseThenRandomKillBeforeCommitToContinueAndCompensation()
-        throws SQLException, InterruptedException {
+        throws Exception {
         String schemaName = "two_phase_ddl_test1";
         String mytable = schemaPrefix + "modify_column_pause";
         // prepare data
@@ -249,10 +249,10 @@ public class TwoPhaseDdlPauseModifyColumnTest extends DDLBaseNewDBTestCase {
             String.format(
                 "/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true,MULTI_PHASE_COMMIT_DELAY=20)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        DdlStateCheckUtil.alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        DdlStateCheckUtil.alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = DdlStateCheckUtil.getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);

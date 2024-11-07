@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -42,12 +43,19 @@ public class RebuildTablePrepareData {
     /**
      * for checker
      */
-    Map<String, String> virtualColumnMap = new HashMap<>();
+    Map<String, String> srcVirtualColumnMap = new HashMap<>();
 
     /**
      * for checker
      */
-    Map<String, String> columnNewDef = new HashMap<>();
+    Map<String, SQLColumnDefinition> srcColumnNewDef = new HashMap<>();
+
+    Map<String, SQLColumnDefinition> dstColumnNewDef = new HashMap<>();
+
+    /**
+     * for checker
+     */
+    Map<String, String> dstVirtualColumnMap = new HashMap<>();
 
     /**
      * for backfill when change column name
@@ -73,4 +81,9 @@ public class RebuildTablePrepareData {
      * for alter table drop column
      */
     List<String> dropColumns = new ArrayList<>();
+
+    /**
+     * for cci
+     */
+    long versionId;
 }

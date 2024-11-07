@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.util.StringUtils;
@@ -36,15 +37,19 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.field.FieldCheckLevel;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
+import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfo;
+import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfoOneTable;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.Monotonicity;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.exception.InvalidTypeConversionException;
@@ -65,6 +70,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * @author chenghui.lch
@@ -214,6 +221,237 @@ public class PartitionPrunerUtils {
             phyGrpInfoMap.put(grpKey, phyInfosOfOneGrp);
         }
         return phyGrpInfoMap;
+    }
+
+    /**
+     * Convert the list of PartPrunedResult to TargetDB
+     */
+    public static TargetTableInfo buildTargetTableInfoByPartPrunedResults(List<PartPrunedResult> results) {
+
+        TargetTableInfo targetTableInfo = new TargetTableInfo();
+
+        /**
+         * key: grpKey
+         * val:
+         *      List of phyTblList to be join that has different partition idx
+         *          List of phyTbl of the same partition idx of each logTbl
+         */
+        Map<String, List<List<String>>> phyGrpInfoMap = new HashMap<>();
+        List<TargetTableInfoOneTable> targetTableInfoOneTableList = new ArrayList<>();
+        targetTableInfo.setTargetTables(phyGrpInfoMap);
+        targetTableInfo.setTargetTableInfoList(targetTableInfoOneTableList);
+
+        /**
+         * key: grpKey
+         * val:
+         *     partIdxPhyTbListMap:
+         *          key: partIdx
+         *          val: phyTbList that has same phy idx
+         */
+        Map<String, Map<Integer, List<String>>> allPhyInfos = new HashMap<>();
+
+        List<Map<String, Set<String>>> broadcastTopologyList = new ArrayList<>();
+
+        /**
+         * key: partName
+         * Val: List of subPartNames
+         */
+        Map<String, List<String>> part2SubPartListMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+
+        for (int i = 0; i < results.size(); i++) {
+            PartPrunedResult result = results.get(i);
+            PartitionInfo partInfo = result.getPartInfo();
+            if (result.getPrunedParttions().isEmpty()) {
+                TargetTableInfoOneTable targetTableInfoOneTable = new TargetTableInfoOneTable();
+                targetTableInfoOneTable.setPartInfo(partInfo);
+                targetTableInfoOneTableList.add(targetTableInfoOneTable);
+                targetTableInfoOneTable.setUseSubPart(partInfo.getPartitionBy().getSubPartitionBy() != null);
+                targetTableInfoOneTable.setAllPartSorted(false);
+                targetTableInfoOneTable.setAllSubPartSorted(false);
+                targetTableInfoOneTable.setAllPrunedPartContainOnlyOneSubPart(false);
+                return targetTableInfo;
+            }
+        }
+
+        for (int i = 0; i < results.size(); i++) {
+            PartPrunedResult result = results.get(i);
+            PartitionInfo partInfo = result.getPartInfo();
+
+            Set<String> parentPartNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            TargetTableInfoOneTable targetTableInfoOneTable = new TargetTableInfoOneTable();
+            targetTableInfoOneTable.setPartInfo(partInfo);
+            targetTableInfoOneTableList.add(targetTableInfoOneTable);
+
+            if (partInfo.isBroadcastTable()) {
+                broadcastTopologyList.add(result.getPartInfo().getTopology());
+                continue;
+            }
+            List<PhysicalPartitionInfo> prunedParts = result.getPrunedParttions();
+            PartKeyLevel phyPartLevel = null;
+            for (int j = 0; j < prunedParts.size(); j++) {
+                PhysicalPartitionInfo prunedPart = prunedParts.get(j);
+                String partName = prunedPart.getPartName();
+                if (phyPartLevel == null) {
+                    phyPartLevel = prunedPart.getPartLevel();
+                }
+
+                String grpKey = prunedPart.getGroupKey();
+                String phyTb = prunedPart.getPhyTable();
+                int partBitSetIdx = prunedPart.getPartBitSetIdx();
+
+                String parentPartName = prunedPart.getParentPartName();
+                if (!StringUtils.isEmpty(parentPartName)) {
+                    /**
+                     * When parentPartName is NOT empty, the prunedPart must be a subpart
+                     */
+                    if (!parentPartNameSet.contains(parentPartName)) {
+                        parentPartNameSet.add(parentPartName);
+                    }
+
+                    List<String> subPartNames = part2SubPartListMapping.get(parentPartName);
+                    if (subPartNames == null) {
+                        subPartNames = new ArrayList<>();
+                        part2SubPartListMapping.put(parentPartName, subPartNames);
+                    }
+                    subPartNames.add(partName);
+                }
+
+                // Get phyInfos of one Group
+                Map<Integer, List<String>> phyInfosOfOneGrp = allPhyInfos.get(grpKey);
+                if (phyInfosOfOneGrp == null) {
+                    phyInfosOfOneGrp = new HashMap<>();
+                    allPhyInfos.put(grpKey, phyInfosOfOneGrp);
+                }
+
+                // Get phyInfos that is the same partIdx
+                List<String> phyTbListHasSameIdx = phyInfosOfOneGrp.get(partBitSetIdx);
+                if (phyTbListHasSameIdx == null) {
+                    phyTbListHasSameIdx = new ArrayList<>();
+                    phyInfosOfOneGrp.put(partBitSetIdx, phyTbListHasSameIdx);
+                }
+                for (int k = 0; k < broadcastTopologyList.size(); k++) {
+                    String phyTable = broadcastTopologyList.get(k).get(grpKey).iterator().next();
+                    phyTbListHasSameIdx.add(phyTable);
+                }
+                phyTbListHasSameIdx.add(phyTb);
+            }
+            broadcastTopologyList = new ArrayList<>();
+
+            targetTableInfoOneTable.setPrunedFirstLevelPartCount(parentPartNameSet.size());
+            if (phyPartLevel == PartKeyLevel.SUBPARTITION_KEY) {
+                targetTableInfoOneTable.setUseSubPart(true);
+                if (targetTableInfoOneTable.getPrunedFirstLevelPartCount() == 1) {
+                    if (checkPartitionsSortedByPartitionColumns(partInfo, PartKeyLevel.SUBPARTITION_KEY, null)) {
+                        targetTableInfoOneTable.setAllPartSorted(false);
+                        targetTableInfoOneTable.setPartColList(new ArrayList<>());
+                        targetTableInfoOneTable.setAllSubPartSorted(true);
+                        targetTableInfoOneTable.setSubpartColList(
+                            partInfo.getPartitionBy().getSubPartitionBy().getPartitionColumnNameList());
+                    }
+                } else if (targetTableInfoOneTable.getPrunedFirstLevelPartCount() > 1) {
+                    if (checkPartitionsSortedByPartitionColumns(partInfo, PartKeyLevel.PARTITION_KEY, null)) {
+                        targetTableInfoOneTable.setAllPartSorted(true);
+                        targetTableInfoOneTable.setPartColList(partInfo.getPartitionBy().getPartitionColumnNameList());
+                        targetTableInfoOneTable.setAllSubPartSorted(false);
+                        targetTableInfoOneTable.setSubpartColList(new ArrayList<>());
+
+                        if (partInfo.getPartitionBy().getSubPartitionBy() != null) {
+                            // use subpart
+                            boolean allPartContainOnlyOneSubPart = true;
+                            for (Map.Entry<String, List<String>> part2SubPartListItem : part2SubPartListMapping.entrySet()) {
+                                List<String> subPartNames = part2SubPartListItem.getValue();
+                                if (subPartNames != null && subPartNames.size() > 1) {
+                                    allPartContainOnlyOneSubPart = false;
+                                    break;
+                                }
+                            }
+                            targetTableInfoOneTable.setAllPrunedPartContainOnlyOneSubPart(allPartContainOnlyOneSubPart);
+                        } else {
+                            // no use subpart
+                            targetTableInfoOneTable.setAllPrunedPartContainOnlyOneSubPart(false);
+                        }
+                    }
+                }
+            } else if (phyPartLevel == PartKeyLevel.PARTITION_KEY) {
+                if (checkPartitionsSortedByPartitionColumns(partInfo, PartKeyLevel.PARTITION_KEY, null)) {
+                    targetTableInfoOneTable.setAllPartSorted(true);
+                    targetTableInfoOneTable.setPartColList(partInfo.getPartitionBy().getPartitionColumnNameList());
+                }
+                targetTableInfoOneTable.setAllSubPartSorted(false);
+                targetTableInfoOneTable.setSubpartColList(new ArrayList<>());
+            }
+        }
+
+        if (!broadcastTopologyList.isEmpty()) {
+            if (allPhyInfos.isEmpty()) {
+                // only broadcast
+                List<String> phyInfosOfSameIdx = new ArrayList<>();
+                List<List<String>> phyInfosOfOneGrp = new ArrayList<>();
+                phyInfosOfOneGrp.add(phyInfosOfSameIdx);
+                // TODO: broadcast table random access each group
+                String groupKey = broadcastTopologyList.get(0).keySet().stream().findFirst().get();
+                for (int i = 0; i < broadcastTopologyList.size(); i++) {
+                    String phyTable = broadcastTopologyList.get(i).get(groupKey).iterator().next();
+                    phyInfosOfSameIdx.add(phyTable);
+                }
+                phyGrpInfoMap.put(groupKey, phyInfosOfOneGrp);
+                return targetTableInfo;
+            }
+        }
+        // not only broadcast
+        for (Map.Entry<String, Map<Integer, List<String>>> phyInfosOfOneGrpItem : allPhyInfos.entrySet()) {
+            String grpKey = phyInfosOfOneGrpItem.getKey();
+            Map<Integer, List<String>> phyInfosOfOneGrpMap = phyInfosOfOneGrpItem.getValue();
+            List<List<String>> phyInfosOfOneGrp = new ArrayList<>();
+            for (Map.Entry<Integer, List<String>> phyInfosOfSameIdxItem : phyInfosOfOneGrpMap.entrySet()) {
+                List<String> phyInfosOfSameIdx = phyInfosOfSameIdxItem.getValue();
+                for (int i = 0; i < broadcastTopologyList.size(); i++) {
+                    String phyTable = broadcastTopologyList.get(i).get(grpKey).iterator().next();
+                    phyInfosOfSameIdx.add(phyTable);
+                }
+                phyInfosOfOneGrp.add(phyInfosOfSameIdx);
+            }
+            phyGrpInfoMap.put(grpKey, phyInfosOfOneGrp);
+        }
+
+        return targetTableInfo;
+    }
+
+    /**
+     * Check if a partitions of partLevel are sorted on partCols
+     * Notice:
+     * if partKeyLevel == PartKeyLevel.SUBPARTITION_KEY,
+     * return true means the subpartitions are sorted within only one partition
+     */
+    public static boolean checkPartitionsSortedByPartitionColumns(PartitionInfo partInfo,
+                                                                  PartKeyLevel partKeyLevel,
+                                                                  List<String> partColsOutput) {
+        PartitionByDefinition partBy = partInfo.getPartitionBy();
+        if (partKeyLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            if (partBy.getSubPartitionBy() == null) {
+                return false;
+            }
+            partBy = partInfo.getPartitionBy().getSubPartitionBy();
+        }
+        PartitionStrategy strategy = partBy.getStrategy();
+        if (!strategy.isStrategyWithOrder()) {
+            return false;
+        }
+
+        if (strategy == PartitionStrategy.RANGE) {
+            PartitionIntFunction partFn = partBy.getPartIntFunc();
+            if (partFn != null) {
+                DataType partColDataType = partBy.getPartitionColumnTypeList().get(0);
+                if (partFn.getMonotonicity(partColDataType) == Monotonicity.NON_MONOTONIC) {
+                    return false;
+                }
+            }
+        }
+        if (partColsOutput != null) {
+            partColsOutput.addAll(partBy.getPartitionColumnNameList());
+        }
+        return true;
+
     }
 
 //    /*======= Methods for get PartitionIntFunction ========*/

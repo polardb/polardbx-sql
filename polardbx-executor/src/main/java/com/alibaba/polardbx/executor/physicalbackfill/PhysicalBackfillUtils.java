@@ -757,8 +757,25 @@ public class PhysicalBackfillUtils {
         String msg = "begin to get the source table[" + phyDbName + "." + physicalTableName + ":]'s innodb data file";
         SQLRecorderLogger.ddlLogger.info(msg);
 
-        PolarxPhysicalBackfill.GetFileInfoOperator getFileInfoOperator = null;
+        PolarxPhysicalBackfill.GetFileInfoOperator getFileInfoOperator =
+            checkFileExistence(userInfo, phyDbName, physicalTableName, phyPartNames, hasNoPhyPart, sourceIpAndPort);
         Map<String, Pair<String, String>> srcFileAndDirs = new HashMap<>();
+        for (PolarxPhysicalBackfill.FileInfo fileInfo : getFileInfoOperator.getTableInfo().getFileInfoList()) {
+            Pair<String, String> srcFileAndDir = Pair.of(fileInfo.getFileName(), fileInfo.getDirectory());
+            srcFileAndDirs.put(fileInfo.getPartitionName(), srcFileAndDir);
+        }
+        msg = "already get the source table[" + phyDbName + "." + physicalTableName + ":]'s innodb data file";
+        SQLRecorderLogger.ddlLogger.info(msg);
+        return srcFileAndDirs;
+    }
+
+    public static PolarxPhysicalBackfill.GetFileInfoOperator checkFileExistence(Pair<String, String> userInfo,
+                                                                                String phyDbName,
+                                                                                String physicalTableName,
+                                                                                List<String> phyPartNames,
+                                                                                boolean hasNoPhyPart,
+                                                                                Pair<String, Integer> sourceIpAndPort) {
+        PolarxPhysicalBackfill.GetFileInfoOperator getFileInfoOperator = null;
         boolean success = false;
         int tryTime = 1;
         boolean isPartitioned = !hasNoPhyPart;
@@ -779,10 +796,6 @@ public class PhysicalBackfillUtils {
                 }
                 builder.setTableInfo(tableInfoBuilder.build());
                 getFileInfoOperator = conn.execCheckFileExistence(builder);
-                for (PolarxPhysicalBackfill.FileInfo fileInfo : getFileInfoOperator.getTableInfo().getFileInfoList()) {
-                    Pair<String, String> srcFileAndDir = Pair.of(fileInfo.getFileName(), fileInfo.getDirectory());
-                    srcFileAndDirs.put(fileInfo.getPartitionName(), srcFileAndDir);
-                }
 
                 success = true;
             } catch (SQLException ex) {
@@ -792,9 +805,7 @@ public class PhysicalBackfillUtils {
                 tryTime++;
             }
         } while (!success);
-        msg = "already get the source table[" + phyDbName + "." + physicalTableName + ":]'s innodb data file";
-        SQLRecorderLogger.ddlLogger.info(msg);
-        return srcFileAndDirs;
+        return getFileInfoOperator;
     }
 
     public static Pair<String, String> getTempIbdFileInfo(Pair<String, String> userInfo,

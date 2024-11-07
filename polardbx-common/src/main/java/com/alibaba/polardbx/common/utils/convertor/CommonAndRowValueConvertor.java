@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.common.utils.convertor;
 
 import com.alibaba.polardbx.common.datatype.RowValue;
-import org.apache.curator.shaded.com.google.common.collect.Lists;
+import com.google.common.collect.Lists;
 
 public class CommonAndRowValueConvertor {
 

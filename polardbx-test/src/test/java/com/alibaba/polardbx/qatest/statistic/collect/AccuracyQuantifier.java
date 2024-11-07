@@ -149,9 +149,12 @@ public class AccuracyQuantifier {
                     error.append(qt.name() + " error:" + eMsg);
                 }
                 AccuracyReport ar = qt.accuracyReportMap.get(upLimitName);
+                if (ar == null) {
+                    continue;
+                }
                 sb.append(qt.name()).append(":").append(ar.report()).append("\n");
             }
-            // basline skip error report
+            // baseline skip error report
             if (!AccuracyQuantifier.baselineMode && error.length() > 0) {
                 sb.append(error);
                 Assert.fail(sb.toString());

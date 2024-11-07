@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
@@ -77,9 +78,15 @@ public class BetweenLongColLongConstLongConstVectorizedExpression extends Abstra
 
         if (operand1IsNull || operand2IsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
-            outputVectorSlot.setHasNull(true);
-            for (int i = 0; i < batchSize; i++) {
-                outputNulls[i] = true;
+            if (isSelectionInUse) {
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    outputNulls[j] = true;
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    outputNulls[i] = true;
+                }
             }
             return;
         }
@@ -104,6 +111,6 @@ public class BetweenLongColLongConstLongConstVectorizedExpression extends Abstra
                 output[i] = b1 && b2 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
             }
         }
-
+        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
     }
 }

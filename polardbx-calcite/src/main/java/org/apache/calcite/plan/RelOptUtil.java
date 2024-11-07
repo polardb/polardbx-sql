@@ -35,6 +35,7 @@ import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.rel.RelShuttle;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.RelWriter;
+import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.Calc;
 import org.apache.calcite.rel.core.Correlate;
@@ -2819,6 +2820,64 @@ public abstract class RelOptUtil {
         multiJoin.getPostJoinFilter());
   }
 
+
+  /**
+   * Checks whether the given {@link RelNode} tree contains any aggregate operations.
+   *
+   * @param node The relational expression node to inspect
+   * @return True if an aggregate operation is found in the node or its subtree; False otherwise
+   */
+  public static boolean containsAgg(RelNode node) {
+    // If the node is a HepRelVertex, replace it with its current rel
+    if (isHepRelVertex(node)) {
+      node = ((HepRelVertex) node).getCurrentRel();
+    }
+
+    try {
+      RelVisitor visitor = createAggregateFinder();
+      // Traverse the node and its children
+      visitor.go(node);
+      // If no aggregate is found, return false
+      return false;
+    } catch (Util.FoundOne e) {
+      // If an aggregate is found, return true
+      return true;
+    }
+  }
+
+  /**
+   * Helper method to check if the provided node is an instance of {@link HepRelVertex}.
+   *
+   * @param node The relational expression node to examine
+   * @return True if the node is a HepRelVertex; False otherwise
+   */
+  private static boolean isHepRelVertex(RelNode node) {
+    return node instanceof HepRelVertex;
+  }
+  /**
+   * Constructs a {@link RelVisitor} that finds instances of aggregate operations ({@link Aggregate}).
+   *
+   * @return A visitor instance to search for aggregates
+   */
+  private static RelVisitor createAggregateFinder() {
+    return new RelVisitor() {
+      @Override
+      public void visit(RelNode node, int ordinal, RelNode parent) {
+        // If the node is a HepRelVertex, replace it with its current rel
+        if (isHepRelVertex(node)) {
+          node = ((HepRelVertex) node).getCurrentRel();
+        }
+        // Check if the node is an aggregate operation
+        if (node instanceof Aggregate) {
+          // Throw a marker exception to signal that an aggregate was found
+          throw Util.FoundOne.NULL;
+        }
+        // Continue visiting child nodes
+        super.visit(node, ordinal, parent);
+      }
+    };
+  }
+
   public static <T extends RelNode> T addTrait(
       T rel, RelTrait trait) {
     //noinspection unchecked
@@ -3301,7 +3360,7 @@ public abstract class RelOptUtil {
    * @param project the project to be tested
    * @return true if the project has no subquery
    */
-  static boolean notSubquery(LogicalProject project) {
+  public static boolean notSubquery(LogicalProject project) {
     for (RexNode r : project.getProjects()) {
       if (RexUtil.containsCorrelation(r)) { return false; }
       if (RexUtil.hasSubQuery(r)) { return false;}

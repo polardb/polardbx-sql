@@ -1,4 +1,17 @@
 - sql: |
+    select * from (select count(c) as t from test_tc) where t > 0;
+  plan: |
+    filter(condition="t > 0")
+      logicalagg(t="sum(t)")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select count(`c`) as `t` from `test_tc` as `test_tc`")
+- sql: |
+    select * from (select 1 as id , max(c) as t from test_tc) where id = 0;
+  plan: |
+    project(id="1", t="t")
+      filter(condition="1 = 0")
+        logicalagg(t="max(t)")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select max(`c`) as `t` from `test_tc` as `test_tc`")
+- sql: |
     select c from test_tc group by b
   plan: |
     project(c="c")
@@ -122,22 +135,6 @@
         LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, SUM(`userId`) AS `$f2`, COUNT(`userId`) AS `$f3` FROM `user_log` AS `user_log` GROUP BY `name`, `actionDate`")
 
 - sql: |
-    select avg(userid) from user_log group by name, actionDate
-
-  plan: |
-    Project(avg(userid)="$f2 / $f3")
-      LogicalAgg(group="name,actionDate", $f2="SUM($f2)", $f3="SUM($f3)")
-        LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, SUM(`userId`) AS `$f2`, COUNT(`userId`) AS `$f3` FROM `user_log` AS `user_log` GROUP BY `name`, `actionDate`")
-
-- sql: |
-    select max(userid) from user_log group by name, actionDate
-
-  plan: |
-    Project(max(userid)="max(userid)")
-      LogicalAgg(group="name,actionDate", max(userid)="MAX(max(userid))")
-        LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, MAX(`userId`) AS `max(userid)` FROM `user_log` AS `user_log` GROUP BY `name`, `actionDate`")
-
-- sql: |
     select max(userid) from user_log group by name, actionDate
 
   plan: |
@@ -152,22 +149,6 @@
     Project(min(userid)="min(userid)")
       LogicalAgg(group="name,actionDate", min(userid)="MIN(min(userid))")
         LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, MIN(`userId`) AS `min(userid)` FROM `user_log` AS `user_log` GROUP BY `name`, `actionDate`")
-
-- sql: |
-    select min(userid) from user_log group by name, actionDate
-
-  plan: |
-    Project(min(userid)="min(userid)")
-      LogicalAgg(group="name,actionDate", min(userid)="MIN(min(userid))")
-        LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, MIN(`userId`) AS `min(userid)` FROM `user_log` AS `user_log` GROUP BY `name`, `actionDate`")
-
-- sql: |
-    select sum(userid) from user_log group by name, actionDate
-
-  plan: |
-    Project(sum(userid)="sum(userid)")
-      LogicalAgg(group="name,actionDate", sum(userid)="SUM(sum(userid))")
-        LogicalView(tables="[0000-0003].user_log_[0-6]", shardCount=28, sql="SELECT `name`, `actionDate`, SUM(`userId`) AS `sum(userid)` FROM `user_log` AS `user_log` GROUP BY `name`, `actionDate`")
 
 - sql: |
     select sum(userid) from user_log group by name, actionDate

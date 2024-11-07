@@ -70,7 +70,7 @@ public class HintArgKey {
     public static final List<HintArgKey> QUERY_BLOCK_NAME_HINT = ImmutableList.of(HintArgKey.of("name", 0));
     public static final List<HintArgKey> MERGE_UNION_SIZE_HINT = ImmutableList.of(HintArgKey.of("merge_union_size", 0));
     public static final List<HintArgKey> INDEX_HINT = ImmutableList.of(HintArgKey.of("table", 0),
-        HintArgKey.of("index", 1));
+        HintArgKey.of("index", 1), HintArgKey.of("local_index", 2));
     public static final List<HintArgKey> INVENTORY_HINT = ImmutableList.of(HintArgKey.of("commit_on_success", 0),
         HintArgKey.of("rollback_on_fail", 1), HintArgKey.of("target_affect_row", 2), HintArgKey.of("row number", 3));
 

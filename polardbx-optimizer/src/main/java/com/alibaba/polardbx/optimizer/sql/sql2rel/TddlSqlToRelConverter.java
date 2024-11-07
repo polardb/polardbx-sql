@@ -77,6 +77,7 @@ import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableModify.TableInfo;
+import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
@@ -88,6 +89,7 @@ import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexPermuteInputsShuttle;
+import org.apache.calcite.runtime.CalciteContextException;
 import org.apache.calcite.sql.SqlAddForeignKey;
 import org.apache.calcite.sql.SqlAddFullTextIndex;
 import org.apache.calcite.sql.SqlAddIndex;
@@ -994,6 +996,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         }
 
         @Override
+        public RelNode visit(LogicalAggregate aggregate) {
+            //agg无需替换default值，agg.getChildExps返回的列不一定对齐列表达式
+            return aggregate;
+        }
+
+        @Override
         public RelNode visit(LogicalProject project) {
             LogicalProject visited;
 
@@ -1261,13 +1269,15 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         existsNames.add(preferName);
         // Assign new name with suffix.
         final Random random = new Random();
-        final Formatter formatter = new Formatter();
         String fullName;
+        SchemaManager schemaManager =
+            plannerContext.getExecutionContext().getSchemaManager(plannerContext.getSchemaName());
         do {
+            Formatter formatter = new Formatter();
             final String suffix = "_$" + formatter.format("%04x", random.nextInt(0x10000));
             fullName = preferName + suffix;
-        } while (!plannerContext.getExecutionContext().getSchemaManager(plannerContext.getSchemaName())
-            .getGsi(fullName, IndexStatus.ALL).isEmpty());
+        } while (!schemaManager.getGsi(fullName, IndexStatus.ALL).isEmpty() ||
+            schemaManager.cciExists(fullName, isColumnar));
         return fullName;
     }
 
@@ -1945,7 +1955,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 }
 
                 if (query.getAlters().size() != 1) {
-                    throw new NotSupportException("Multi alter specifications when create GSI");
+                    if (query.createCci()) {
+                        throw new NotSupportException("Multi alter specifications when create CCI");
+                    } else {
+                        throw new NotSupportException("Multi alter specifications when create GSI");
+                    }
                 }
 
                 if (query.getAlters().size() > 0 && query.getTableOptions() != null) {
@@ -1966,7 +1980,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     if (wrapped != null) {
                         // Drop GSI.
                         if (query.getAlters().size() != 1) {
-                            throw new NotSupportException("Multi alter specifications when drop GSI");
+                            if (tableMeta.hasCci(indexName)) {
+                                throw new NotSupportException("Multi alter specifications when drop CCI");
+                            } else {
+                                throw new NotSupportException("Multi alter specifications when drop GSI");
+                            }
                         }
                         check = true;
                     }
@@ -1983,7 +2001,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     final String wrapped = getWrappedIndexName(tableMeta, indexName);
                     if (wrapped != null) {
                         if (query.getAlters().size() != 1) {
-                            throw new NotSupportException("Multi alter specifications when rename GSI");
+                            if (tableMeta.hasCci(indexName)) {
+                                throw new NotSupportException("Multi alter specifications when rename CCI");
+                            } else {
+                                throw new NotSupportException("Multi alter specifications when rename GSI");
+                            }
                         }
                         check = true;
                     }
@@ -2396,14 +2418,12 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final boolean modifyPartitionKey =
             CheckModifyLimitation.checkModifyShardingColumnWithGsi(targetTables, targetColumns,
                 this.plannerContext.getExecutionContext());
-        final boolean modifyColumn = CheckModifyLimitation.checkOnlineModifyColumnDdl(targetTables,
-            this.plannerContext.getExecutionContext());
         final boolean hasGeneratedColumn =
             CheckModifyLimitation.checkHasLogicalGeneratedColumns(targetTables,
                 this.plannerContext.getExecutionContext());
 
         final ExecutionStrategy hintEx = getExecutionStrategy();
-        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning && !modifyColumn
+        if (!modifyPartitionKey && !modifyBroadcast && !modifyGsi && !scaleOutIsRunning
             && hintEx != ExecutionStrategy.LOGICAL && !hasGeneratedColumn) {
             outTargetColumns.addAll(targetColumns);
             outTargetTables.addAll(targetTableIndexes);
@@ -2735,6 +2755,25 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                         new MySqlExprParser(com.alibaba.polardbx.druid.sql.parser.ByteString.from(expr)).expr();
                     if (!SQLExprUtils.isLiteralExpr(sqlExpr)) {
                         defaultExpr.add(columnMeta.getName());
+                    }
+                }
+            }
+        }
+    }
+
+    protected void checkSubqueryInSetClause(SqlUpdate call) {
+        final ExecutionContext ec = plannerContext.getExecutionContext();
+
+        final boolean forbidModifyWithSubqueryInSet =
+            ec.getParamManager().getBoolean(ConnectionParams.DML_FORBID_UPDATE_WITH_SUBQUERY_IN_SET);
+
+        if (call.getSourceExpressionList() != null) {
+            for (SqlNode node : call.getSourceExpressionList()) {
+                if (node instanceof SqlSelect) { // Don't allow sub-query in update set clause.
+                    if (forbidModifyWithSubqueryInSet) {
+                        final CalciteContextException ex =
+                            validator.newValidationError(node, RESOURCE.updateNotSupport(node.toString()));
+                        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, ex, ex.getMessage());
                     }
                 }
             }

@@ -65,4 +65,16 @@ public class GsiManager extends AbstractLifecycle {
         DataSource gsiMgrDs = MetaDbDataSource.getInstance().getDataSource();
         return new GsiMetaManager(gsiMgrDs, topologyHandler.getSchemaName());
     }
+
+    /**
+     * Get meta of gsi with specified status from system table
+     *
+     * @param tableName primary table name
+     * @param indexName index table name
+     * @return gsi meta
+     */
+    public GsiMetaManager.GsiIndexMetaBean getGsiIndexMeta(String schema, String tableName, String indexName,
+                                                           EnumSet<IndexStatus> statusSet) {
+        return getGsiMetaManager().getIndexMeta(schema, tableName, indexName, statusSet);
+    }
 }

@@ -61,6 +61,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.HashMap;
@@ -283,7 +284,7 @@ public class ImplicitTableGroupUtil {
             }
         }
 
-        if (alterTableStatement.getPartition() != null) {
+        if (alterTableStatement.getPartition() != null || alterTableStatement.isRemovePatiting()) {
             changed |= process4Repartition(schemaName, tableName, alterTableStatement, forCheck, tgGroups);
         }
 
@@ -299,6 +300,7 @@ public class ImplicitTableGroupUtil {
     private static boolean process4Repartition(String schemaName, String tableName,
                                                SQLAlterTableStatement alterTableStatement, boolean forCheck,
                                                Set<String> tgGroups) {
+        boolean changed = false;
         TableGroupConfig tableGroupConfig =
             tableGroupConfigProvider.getTableGroupConfig(schemaName, buildQueryTableName(tableName), true);
         if (forCheck || tableGroupConfig == null) {
@@ -316,10 +318,42 @@ public class ImplicitTableGroupUtil {
                 tryCheckTgName(alterTableStatement.getTargetImplicitTableGroup(), tableGroupConfig);
                 alterTableStatement.setTargetImplicitTableGroup(
                     new SQLIdentifierExpr(tableGroupConfig.getTableGroupRecord().getTg_name()));
-                return true;
+                changed = true;
             }
         }
-        return false;
+
+        if (alterTableStatement.isRemovePatiting()) {
+            PartitionColumnInfo partitionColumnInfo =
+                tableGroupConfigProvider.getPartitionColumnInfo(schemaName, tableName);
+            for (Map.Entry<String, Set<String>> i : partitionColumnInfo.gsiPartitionColumns.entrySet()) {
+                TableGroupConfig config = tableGroupConfigProvider.getTableGroupConfig(
+                    schemaName, tableName, buildQueryGsiName(i.getKey()), false);
+                if (config != null && !config.isManuallyCreated()) {
+                    if (forCheck) {
+                        Pair<SQLName, SQLName> pair = alterTableStatement.getIndexTableGroupPair().stream()
+                            .filter(p -> StringUtils.equalsIgnoreCase(SQLUtils.normalize(p.getKey().getSimpleName()),
+                                i.getKey()))
+                            .findFirst().orElse(null);
+                        Assert.assertNotNull(pair);
+                        forceCheckTgName(pair.getValue().getSimpleName(),
+                            config.getTableGroupRecord().getTg_name());
+                        tgGroups.add(pair.getValue().getSimpleName());
+                    } else {
+                        if (alterTableStatement.getIndexTableGroupPair().stream()
+                            .noneMatch(p -> StringUtils.equalsIgnoreCase(SQLUtils.normalize(p.getKey().getSimpleName()),
+                                i.getKey()))) {
+                            alterTableStatement.addIndexTableGroupPair(
+                                new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(i.getKey())),
+                                new SQLIdentifierExpr(config.getTableGroupRecord().tg_name));
+                        }
+                        changed = true;
+                    }
+                }
+
+            }
+        }
+
+        return changed;
     }
 
     private static boolean process4CreateIndex(String schemaName, String tableName,
@@ -492,15 +526,18 @@ public class ImplicitTableGroupUtil {
                 if (config != null && !config.isManuallyCreated()) {
                     if (forCheck) {
                         Pair<SQLName, SQLName> pair = alterTableStatement.getIndexTableGroupPair().stream()
-                            .filter(p -> StringUtils.equalsIgnoreCase(p.getKey().getSimpleName(), i.getKey()))
+                            .filter(p -> StringUtils.equalsIgnoreCase(SQLUtils.normalize(p.getKey().getSimpleName()),
+                                i.getKey()))
                             .findFirst().orElse(null);
                         Assert.assertNotNull(pair);
                         forceCheckTgName(pair.getValue().getSimpleName(), config.getTableGroupRecord().getTg_name());
                         tgGroups.add(pair.getValue().getSimpleName());
                     } else {
                         if (alterTableStatement.getIndexTableGroupPair().stream()
-                            .noneMatch(p -> StringUtils.equalsIgnoreCase(p.getKey().getSimpleName(), i.getKey()))) {
-                            alterTableStatement.addIndexTableGroupPair(new SQLIdentifierExpr(i.getKey()),
+                            .noneMatch(p -> StringUtils.equalsIgnoreCase(SQLUtils.normalize(p.getKey().getSimpleName()),
+                                i.getKey()))) {
+                            alterTableStatement.addIndexTableGroupPair(
+                                new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(i.getKey())),
                                 new SQLIdentifierExpr(config.getTableGroupRecord().tg_name));
                         }
                         changed = true;

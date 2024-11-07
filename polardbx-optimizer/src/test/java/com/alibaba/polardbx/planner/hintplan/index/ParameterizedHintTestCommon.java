@@ -80,6 +80,7 @@ public abstract class ParameterizedHintTestCommon extends PlanTestCommon {
         ec.getExtraCmds().put(ConnectionProperties.PARALLELISM, enableParallelQuery ? -1 : 0);
         ec.getExtraCmds().put(ConnectionProperties.ENABLE_JOIN_CLUSTERING, enableJoinClustering);
         ec.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, enableMpp);
+        ec.getExtraCmds().put(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, false);
         if (forceWorkloadTypeAP) {
             ec.getExtraCmds().put(ConnectionProperties.WORKLOAD_TYPE, "AP");
         }

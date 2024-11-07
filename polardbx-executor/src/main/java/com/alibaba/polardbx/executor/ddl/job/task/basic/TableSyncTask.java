@@ -82,7 +82,7 @@ public class TableSyncTask extends BaseSyncTask {
                     throwExceptions);
             } else {
                 SyncManagerHelper.sync(
-                    new TableMetaChangePreemptiveSyncAction(schemaName, tableName, initWait, interval, timeUnit),
+                    new TableMetaChangePreemptiveSyncAction(schemaName, tableName, initWait, interval, timeUnit, false),
                     SyncScope.ALL,
                     throwExceptions);
             }

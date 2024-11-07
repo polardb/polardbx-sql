@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.model.Matrix;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -66,6 +67,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ToDrdsRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
@@ -87,6 +89,7 @@ import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelOptRuleOperand;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.hep.HepRelVertex;
@@ -136,6 +139,7 @@ import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexSubQuery;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCharStringLiteral;
@@ -180,6 +184,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -826,6 +831,74 @@ public class RelUtils {
         }
     }
 
+    /**
+     * Check plan matches specified structure and return binding operands
+     *
+     * @param plan plan to be tested
+     * @param operand plan structure
+     * @param bindings for return binding operands
+     * @param checker more check after plan structure matched
+     */
+    public static boolean matchPlan(RelNode plan,
+                                    RelOptRuleOperand operand,
+                                    List<RelNode> bindings,
+                                    Predicate<RelNode> checker) {
+        boolean planStructureMatched = matchOperands(plan, operand, bindings);
+        return planStructureMatched && (null == checker || checker.test(plan));
+    }
+
+    /**
+     * Match plan structure
+     *
+     * @param rel plan to be tested
+     * @param operand plan structure
+     * @param bindings for return binding operands
+     */
+    private static boolean matchOperands(RelNode rel, RelOptRuleOperand operand, List<RelNode> bindings) {
+        if (!operand.matches(rel)) {
+            return false;
+        }
+        bindings.add(rel);
+
+        final List<RelNode> childRels = rel.getInputs();
+
+        switch (operand.childPolicy) {
+        case ANY:
+            return true;
+        case UNORDERED:
+            // For each operand, at least one child must match. If
+            // matchAnyChildren, usually there's just one operand.
+            for (RelOptRuleOperand childOperand : operand.getChildOperands()) {
+                boolean match = false;
+                for (RelNode childRel : childRels) {
+                    match =
+                        matchOperands(childRel, childOperand, bindings);
+                    if (match) {
+                        break;
+                    }
+                }
+                if (!match) {
+                    return false;
+                }
+            }
+            return true;
+        default:
+            int n = operand.getChildOperands().size();
+            if (childRels.size() < n) {
+                return false;
+            }
+            for (Pair<RelNode, RelOptRuleOperand> pair
+                : Pair.zip(childRels, operand.getChildOperands())) {
+                boolean match =
+                    matchOperands(pair.left, pair.right, bindings);
+                if (!match) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     static class CacheFinder extends RelVisitor {
 
         List<RelNode> cacheNodes = Lists.newArrayList();
@@ -876,6 +949,48 @@ public class RelUtils {
 
     public static List<RelNode> findCacheNodes(RelNode node) {
         return new CacheFinder().findCacheNodes(node);
+    }
+
+    public static boolean findCorrelate(RelNode node) {
+        if (PlannerContext.getPlannerContext(node).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_COLUMNAR_CORRELATE)) {
+            return false;
+        }
+        try {
+            new RelVisitor() {
+                public void visit(RelNode node, int ordinal, RelNode parent) {
+                    if (node instanceof Correlate) {
+                        throw Util.FoundOne.NULL;
+                    }
+                    if (node instanceof LogicalView) {
+                        if (!((LogicalView) node).getScalarList().isEmpty()) {
+                            throw Util.FoundOne.NULL;
+                        }
+                        visit(((LogicalView) node).getPushedRelNode(), 0, node);
+                        return;
+                    }
+
+                    if (node instanceof Join) {
+                        if (RexUtil.hasSubQuery(((Join) node).getCondition())) {
+                            throw Util.FoundOne.NULL;
+                        }
+                    } else if (node instanceof LogicalProject) {
+                        if (!RelOptUtil.notSubquery(((LogicalProject) node))) {
+                            throw Util.FoundOne.NULL;
+                        }
+                    } else if (node instanceof LogicalFilter) {
+                        if (RexUtil.hasSubQuery(((LogicalFilter) node).getCondition())) {
+                            throw Util.FoundOne.NULL;
+                        }
+                    }
+                    super.visit(node, ordinal, parent);
+
+                }
+            }.go(node);
+            return false;
+        } catch (Util.FoundOne e) {
+            return true;
+        }
     }
 
     /**
@@ -1360,7 +1475,7 @@ public class RelUtils {
             if (!needCheckGsi) {
                 return false;
             } else {
-                return GlobalIndexMeta.hasIndex(tableName, schemaName, ec);
+                return GlobalIndexMeta.hasGsi(tableName, schemaName, ec);
             }
 
         }
@@ -1690,20 +1805,59 @@ public class RelUtils {
         return (plan instanceof MergeSort && ((MergeSort) plan).getInput() instanceof LogicalView);
     }
 
-    public static boolean existUnPushableLastInsertId(RelNode node) {
+    // select 中 last_insert_id 不可下推
+    // 不可下推的 DML 中，last_insert_id 不可下推 (带有GSI，Scale-out，拆分键变更（DDL），修改分区键，广播表)
+    public static boolean existUnPushableLastInsertId(ExecutionPlan plan) {
+        final boolean isModifyShardingColumn =
+            plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
+        final boolean modifyGsiTable = plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_GSI_TABLE);
+        final boolean modifyScaleOutTable =
+            plan.getPlanProperties().get(ExecutionPlanProperties.SCALE_OUT_WRITABLE_TABLE);
+        final boolean modifyOnlineColumnTable =
+            plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_ONLINE_COLUMN_TABLE);
+        final boolean modifyBroadcastTable =
+            plan.getPlanProperties().get(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
+
+        return existUnPushableLastInsertId(plan.getPlan(), isModifyShardingColumn, modifyGsiTable, modifyScaleOutTable,
+            modifyOnlineColumnTable, modifyBroadcastTable);
+
+    }
+
+    public static boolean existUnPushableLastInsertId(RelNode relNode, ToDrdsRelVisitor visitor) {
+        return existUnPushableLastInsertId(relNode, visitor.isModifyShardingColumn(),
+            visitor.isModifyShardingColumn(),
+            visitor.isContainScaleOutWritableTable(),
+            visitor.isContainOnlineModifyColumnTable(), visitor.isModifyBroadcastTable());
+    }
+
+    public static boolean existUnPushableLastInsertId(RelNode relNode,
+                                                      boolean isModifyShardingColumn,
+                                                      boolean modifyGsiTable,
+                                                      boolean modifyScaleOutTable,
+                                                      boolean modifyOnlineColumnTable,
+                                                      boolean modifyBroadcastTable) {
+        PlannerContext context = PlannerContext.getPlannerContext(relNode);
+        /**
+         * Non push down dml rule by
+         * {@link PushModifyRule#matches}.
+         */
+        return existLastInsertId(relNode) &&
+            (isModifyShardingColumn ||
+                modifyGsiTable ||
+                modifyScaleOutTable ||
+                modifyBroadcastTable ||
+                (context.getSqlKind() == SqlKind.UPDATE && modifyOnlineColumnTable) ||
+                context.getSqlKind() == SqlKind.SELECT
+            );
+    }
+
+    public static boolean existLastInsertId(RelNode node) {
         class CheckUnPushableRelVisitor extends RelVisitor {
             private boolean exists = false;
-            private final PlannerContext context = PlannerContext.getPlannerContext(node);
 
             @Override
             public void visit(RelNode relNode, int ordinal, RelNode parent) {
-
-                if (relNode instanceof Project) {
-                    exists = isNotPushLastInsertId(context, (Project) relNode) || exists;
-                } else if (relNode instanceof Filter) {
-                    exists = isNotPushLastInsertId(context, (Filter) relNode) || exists;
-                }
-
+                exists = isLastInsertId(relNode) || exists;
                 super.visit(relNode, ordinal, parent);
             }
 
@@ -1717,22 +1871,15 @@ public class RelUtils {
         return checkUnPushableRelVisitor.exists();
     }
 
-    // select 中 last_insert_id 不可下推
-    // 不可下推的 DML 中，last_insert_id 不可下推 (带有GSI，Scale-out，拆分键变更（DDL），修改分区键，广播表)
-    public static boolean isNotPushLastInsertId(PlannerContext context, Project project) {
-        return isNotPushLastInertIdExps(context, project.getChildExps());
-    }
-
-    public static boolean isNotPushLastInsertId(PlannerContext context, Filter filter) {
-        return isNotPushLastInertIdExps(context, filter.getChildExps());
-    }
-
-    private static boolean isNotPushLastInertIdExps(PlannerContext context, List<RexNode> childExps) {
-        final boolean isModifyShardingColumn = context.getExecutionContext().isModifyShardingColumn();
-        final boolean modifyGsiTable = context.getExecutionContext().isModifyGsiTable();
-        final boolean modifyScaleoutTable = context.getExecutionContext().isScaleoutWritableTable();
-        final boolean modifyOnlineColumnTable = context.getExecutionContext().isModifyOnlineColumnTable();
-        final boolean modifyBroadcastTable = context.getExecutionContext().isModifyBroadcastTable();
+    private static boolean isLastInsertId(RelNode relNode) {
+        List<RexNode> childExps;
+        if (relNode instanceof Project) {
+            childExps = ((Project) relNode).getChildExps();
+        } else if (relNode instanceof Filter) {
+            childExps = ((Filter) relNode).getChildExps();
+        } else {
+            return false;
+        }
 
         boolean operands = false;
         boolean isLastInsertId = false;
@@ -1742,19 +1889,8 @@ public class RelUtils {
                 isLastInsertId |= node.toString().contains("LAST_INSERT_ID");
             }
         }
-        /**
-         * Non push down dml rule by
-         * {@link PushModifyRule#matches}.
-         */
-        final boolean notPushLastInsertId = operands && isLastInsertId &&
-            (isModifyShardingColumn ||
-                modifyGsiTable ||
-                modifyScaleoutTable ||
-                modifyBroadcastTable ||
-                (context.getSqlKind() == SqlKind.UPDATE && modifyOnlineColumnTable) ||
-                context.getSqlKind() == SqlKind.SELECT
-            );
-        return notPushLastInsertId;
+
+        return operands && isLastInsertId;
     }
 
     public static boolean verifyOperands(final RexCall call) {
@@ -2022,5 +2158,40 @@ public class RelUtils {
 
         // Add force index if this column is not the first column of any index.
         return !firstColumnOfIndex;
+    }
+
+    public interface LogicalModifyViewBuilder {
+        List<RelNode> bindPlan(LogicalModify modify);
+
+        LogicalModifyView buildForPrimary(List<RelNode> bindings);
+    }
+
+    public static class FlashbackVisitor extends RelShuttleImpl {
+        private boolean containFlashback = false;
+
+        @Override
+        public RelNode visit(TableScan scan) {
+            if (containFlashback) {
+                return scan;
+            }
+            if (scan.getFlashback() != null) {
+                containFlashback = true;
+                return scan;
+            }
+            return super.visit(scan);
+        }
+
+        public boolean isContainFlashback() {
+            return containFlashback;
+        }
+    }
+
+    /**
+     * 查询是否包含flashback
+     */
+    public static boolean containFlashback(RelNode relNode) {
+        FlashbackVisitor visitor = new FlashbackVisitor();
+        relNode.accept(visitor);
+        return visitor.isContainFlashback();
     }
 }

@@ -20,11 +20,14 @@ import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.transaction.TransactionManager;
 
 import java.util.Collection;
+
+import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.DDL_STATEMENT;
 
 /**
  * @author zhuangtianyi
@@ -51,6 +54,7 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
         result.addColumn("FRONTEND_CONN_ID", DataTypes.LongType);
         result.addColumn("START_TIME", DataTypes.LongType);
         result.addColumn("SQL", DataTypes.StringType);
+        result.addColumn("DDL", DataTypes.BooleanType);
 
         final long beforeTimeMillis = System.currentTimeMillis() - 1000L;
         final long beforeTxid = IdGenerator.assembleId(beforeTimeMillis, 0, 0);
@@ -66,6 +70,9 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
             long frontendConnId = tran.getExecutionContext().getConnId();
             final String sql = tran.getExecutionContext().getOriginSql();
             final String truncatedSql = (sql == null) ? "" : sql.substring(0, Math.min(sql.length(), 4096));
+            ExecutionContext ec = tran.getExecutionContext();
+            final boolean isDdl;
+            isDdl = null != ec && null != ec.getFinalPlan() && ec.getFinalPlan().is(DDL_STATEMENT);
 
             tran.getConnectionHolder().handleConnIds((group, connId) -> {
                 result.addRow(new Object[] {
@@ -74,7 +81,8 @@ public class FetchTransForDeadlockDetectionSyncAction implements ISyncAction {
                     connId,
                     frontendConnId,
                     tran.getStartTimeInMs(),
-                    truncatedSql});
+                    truncatedSql,
+                    isDdl});
             });
         }
 

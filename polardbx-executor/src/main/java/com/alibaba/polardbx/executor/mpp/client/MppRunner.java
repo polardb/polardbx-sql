@@ -44,6 +44,10 @@ public class MppRunner {
         this.executionContext = executionContext;
     }
 
+    public static MppRunner create(RelNode relNode, ExecutionContext executionContext) {
+        return new MppRunner(relNode, executionContext);
+    }
+
     public Cursor execute() {
 
         if (!ServiceProvider.getInstance().clusterMode()) {

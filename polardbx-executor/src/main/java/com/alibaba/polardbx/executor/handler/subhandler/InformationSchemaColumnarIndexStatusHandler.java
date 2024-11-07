@@ -35,7 +35,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Like;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaColumnarIndexStatus;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
-import io.airlift.slice.DataSize;
 import org.apache.commons.lang.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -44,7 +43,6 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -194,6 +192,7 @@ public class InformationSchemaColumnarIndexStatusHandler extends BaseVirtualView
 
             sql = String.format(QUERY_CSV_DEL_FILES_SQL_FORMAT, StringUtils.join(indexInfoMap.keySet(), ","));
 
+            // query csv and del status, this may cost a lot
             try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
                     Long tableId = Long.valueOf(rs.getString("table_id"));
@@ -218,9 +217,13 @@ public class InformationSchemaColumnarIndexStatusHandler extends BaseVirtualView
                 }
             }
 
-            // query csv and del status, this may cost a lot
         } catch (Throwable t) {
             throw GeneralUtil.nestedException(t);
+        }
+
+        // fill zero status if there are no files
+        for (Long tableId : indexInfoMap.keySet()) {
+            indexStatusMap.putIfAbsent(tableId, new ColumnarIndexStatus());
         }
         return indexStatusMap;
     }

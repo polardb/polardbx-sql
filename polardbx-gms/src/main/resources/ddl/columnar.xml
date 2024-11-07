@@ -7,17 +7,38 @@
             `logical_schema` varchar(64) not null,
             `logical_table` varchar(64) default null,
             `partition_name` varchar(64) default null,
-            `checkpoint_tso` bigint not null,
+            `checkpoint_tso` bigint not null COMMENT 'columnar tso version',
             `offset` json not null,
+            `binlog_tso` bigint default null COMMENT 'binlog tso',
             `checkpoint_type` varchar(255) not null,
+            `min_compaction_tso` bigint default null,
+            `info` longtext default null,
             `extra` longtext default null,
             `create_time` datetime default current_timestamp,
             `update_time` datetime default current_timestamp on update current_timestamp,
             unique key `checkpoint_tso_index` (`checkpoint_tso`, `checkpoint_type`, `logical_schema`, `logical_table`, `partition_name`),
             KEY `checkpoint_tso_table_index` (`checkpoint_tso`, `logical_schema`, `logical_table`),
+            KEY `binlog_tso_type` (`binlog_tso`, `checkpoint_tso` desc, `checkpoint_type`),
+            KEY `type_tso_index` (`checkpoint_type`, `logical_schema`, `logical_table`, `partition_name`, `checkpoint_tso`),
+            KEY `schema_table_binlog_tso` (`logical_schema`, `logical_table`, `binlog_tso`),
             primary key (`id`)
          ) charset=utf8
         ]]></Create>
+        <Change><![CDATA[
+            alter table `columnar_checkpoints` add column `binlog_tso` bigint default null COMMENT 'binlog tso'
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_checkpoints` add column `min_compaction_tso` bigint default null
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_checkpoints` add column `info` longtext default null
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_checkpoints` add key `type_tso_index` (`checkpoint_type`, `logical_schema`, `logical_table`, `partition_name`, `checkpoint_tso`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_checkpoints` add key `schema_table_binlog_tso` (`logical_schema`, `logical_table`, `binlog_tso`)
+        ]]></Change>
     </SystemTable>
 
     <SystemTable name="columnar_appended_files">
@@ -39,12 +60,12 @@
             `total_rows` bigint unsigned default null,
             `create_time` datetime default current_timestamp,
             `update_time` datetime default current_timestamp on update current_timestamp,
-            KEY `checkpoint_tso_index` (`checkpoint_tso`, `logical_schema`),
             KEY `logical_schema_type_engine_index` (`logical_schema`, `logical_table`, `part_name`, `file_type`, `engine`),
-            KEY `physical_schema_index` (`physical_schema`, `physical_table`),
             KEY `file_name_index` (`file_name`),
             KEY `file_name_tso_index` (`file_name`, `checkpoint_tso`),
             KEY `type_engine_index` (`file_type`, `engine`),
+            KEY `schema_table_part_type_tso` (`logical_schema`,`logical_table`,`part_name`,`file_type`,`checkpoint_tso`),
+            KEY `schema_table_file_name` (`logical_schema`,`logical_table`,`file_name`),
             primary key (`id`)
          ) charset=utf8
         ]]></Create>
@@ -56,6 +77,12 @@
         ]]></Change>
         <Change><![CDATA[
             alter table `columnar_appended_files` add key `type_engine_index` (`file_type`, `engine`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_appended_files` add key `schema_table_part_type_tso`(`logical_schema`,`logical_table`,`part_name`,`file_type`,`checkpoint_tso`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_appended_files` add key `schema_table_file_name`(`logical_schema`,`logical_table`,`file_name`)
         ]]></Change>
     </SystemTable>
 
@@ -141,10 +168,15 @@
                 `extra` longtext default null,
                 `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `type` varchar(64) DEFAULT NULL COMMENT 'CCI type, e.g. SNAPSHOT/ARCHIVE, null means normal CCI',
                 PRIMARY KEY (`table_id`),
-              	UNIQUE KEY (`table_schema`, `table_name`, `index_name`)
+              	UNIQUE KEY (`table_schema`, `table_name`, `index_name`),
+              	KEY idx_type(`type`)
             ) DEFAULT CHARSET = utf8mb4
         ]]></Create>
+        <Change><![CDATA[
+            alter table `columnar_table_mapping` add column `type` varchar(64) DEFAULT NULL COMMENT 'CCI type, e.g. SNAPSHOT/ARCHIVE, null means normal CCI', add index idx_type(`type`)
+        ]]></Change>
     </SystemTable>
 
     <!--
@@ -176,6 +208,7 @@
                 `ddl_type` varchar(64) NOT NULL,
                 `commit_ts` bigint unsigned NOT NULL COMMENT 'TSO of ddl event in binary log, generated by cdc',
                 `columns` json DEFAULT NULL,
+                `partitions` json DEFAULT NULL,
                 `options` json DEFAULT NULL COMMENT 'table options in key-value format',
                 `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -189,6 +222,12 @@
         ]]></Change>
         <Change><![CDATA[
             alter table `columnar_table_evolution` add column `options` json DEFAULT NULL COMMENT 'table options in key-value format' after `columns`
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_table_evolution` drop primary key, add primary key(`version_id`,`table_id`, `table_name`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_table_evolution` add column `partitions` json DEFAULT NULL after `columns`
         ]]></Change>
     </SystemTable>
 
@@ -231,6 +270,32 @@
         <Change><![CDATA[
             alter table `columnar_column_evolution` add column `column_name` varchar(64) NOT NULL
         ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_column_evolution` modify column `column_name` varchar(64) NOT NULL after `table_id`
+        ]]></Change>
+    </SystemTable>
+
+    <SystemTable name="columnar_partition_evolution">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_partition_evolution` (
+                `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+                `partition_id` bigint unsigned NOT NULL COMMENT 'id of partition, immutable',
+                `table_id` bigint unsigned NOT NULL,
+                `partition_name` varchar(64) NOT NULL,
+                `status` tinyint(1) NOT NULL,
+                `version_id` bigint unsigned NOT NULL COMMENT 'metadata version id',
+                `ddl_job_id` bigint unsigned NOT NULL COMMENT 'id of ddl job that generated this metadata version',
+                `partition_record` json DEFAULT NULL,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_field_id` (`partition_id`),
+                KEY `idx_table_id` (`table_id`),
+                KEY `idx_version_id` (`version_id`),
+                KEY `idx_ddl_job_id` (`ddl_job_id`),
+                KEY `idx_status` (`status`)
+            ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
     </SystemTable>
 
     <SystemTable name="columnar_config">
@@ -268,5 +333,47 @@
         <Change><![CDATA[
             alter table `columnar_lease` add unique key (`owner`)
         ]]></Change>
+    </SystemTable>
+
+    <SystemTable name="columnar_duplicates">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_duplicates` (
+            `id` bigint(20) NOT NULL AUTO_INCREMENT,
+            `engine` varchar(50) not null,
+            `logical_schema` varchar(64) not null,
+            `logical_table` varchar(64) not null,
+            `partition_name` varchar(64) default null,
+            `long_pk` bigint(20) DEFAULT NULL,
+            `bytes_pk` blob DEFAULT NULL,
+            `type` enum('double_delete', 'double_insert') not null,
+            `before_file_id` bigint DEFAULT NULL,
+            `before_pos` bigint DEFAULT NULL,
+            `after_file_id` bigint DEFAULT NULL,
+            `after_pos` bigint DEFAULT NULL,
+            `extra` longtext DEFAULT NULL,
+            `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `table_pk_idx`(`logical_table`, `long_pk`, `bytes_pk`(64)),
+            KEY `before_idx`(`before_file_id`, `before_pos`),
+            KEY `after_idx`(`after_file_id`, `after_pos`)
+        ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="columnar_purge_history">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_purge_history` (
+            `id` bigint(20) NOT NULL AUTO_INCREMENT,
+            `tso` bigint not null,
+            `status` varchar(255) not null DEFAULT 'NONE',
+            `info` longtext DEFAULT NULL,
+            `extra` longtext DEFAULT NULL,
+            `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `tso_idx`(`tso`)
+        ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
     </SystemTable>
 </SystemTables>

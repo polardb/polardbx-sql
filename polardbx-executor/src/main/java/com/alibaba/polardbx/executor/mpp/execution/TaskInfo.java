@@ -29,14 +29,15 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.BufferState;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferInfo;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.operator.TaskStats;
+import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableSet;
 import org.joda.time.DateTime;
 
 import javax.annotation.concurrent.Immutable;
@@ -54,6 +55,7 @@ public class TaskInfo {
         DateTime.now(),
         new OutputBufferInfo(BufferState.OPEN, 0),
         ImmutableSet.of(),
+        null,
         null,
         true,
         false,
@@ -77,7 +79,7 @@ public class TaskInfo {
     private final OutputBufferInfo outputBuffers;
     private final Set<Integer> noMoreSplits;
     private final TaskStats taskStats;
-
+    private final ColumnarTracer columnarTracer;
     private final boolean needsPlan;
     private final boolean complete;
 
@@ -98,6 +100,7 @@ public class TaskInfo {
                     @JsonProperty("outputBuffers") OutputBufferInfo outputBuffers,
                     @JsonProperty("noMoreSplits") Set<Integer> noMoreSplits,
                     @JsonProperty("taskStats") TaskStats taskStats,
+                    @JsonProperty("columnarTracer") ColumnarTracer columnarTracer,
                     @JsonProperty("needsPlan") boolean needsPlan,
                     @JsonProperty("complete") boolean complete,
                     @JsonProperty("completedPipelineExecs") int completedPipelineExecs,
@@ -109,12 +112,14 @@ public class TaskInfo {
                     @JsonProperty("processTimeMillis") long processTimeMillis,
                     @JsonProperty("processWall") long processWall,
                     @JsonProperty("pullDataTimeMillis") long pullDataTimeMillis,
-                    @JsonProperty("deliveryTimeMillis") long deliveryTimeMillis) {
+                    @JsonProperty("deliveryTimeMillis") long deliveryTimeMillis
+    ) {
         this.taskStatus = requireNonNull(taskStatus, "taskStatus is null");
         this.lastHeartbeat = requireNonNull(lastHeartbeat, "lastHeartbeat is null");
         this.outputBuffers = requireNonNull(outputBuffers, "outputBuffers is null");
         this.noMoreSplits = requireNonNull(noMoreSplits, "noMoreSplits is null");
         this.taskStats = taskStats;
+        this.columnarTracer = columnarTracer;
 
         this.needsPlan = needsPlan;
         this.complete = complete;
@@ -157,6 +162,11 @@ public class TaskInfo {
     @JsonProperty
     public TaskStats getTaskStats() {
         return taskStats;
+    }
+
+    @JsonProperty
+    public ColumnarTracer getColumnarTracer() {
+        return columnarTracer;
     }
 
     @JsonProperty
@@ -235,6 +245,7 @@ public class TaskInfo {
             new OutputBufferInfo(BufferState.OPEN, 0),
             ImmutableSet.of(),
             null,
+            null,
             true,
             false,
             taskStats.getCompletedPipelineExecs(),
@@ -256,6 +267,7 @@ public class TaskInfo {
             outputBuffers,
             noMoreSplits,
             taskStats,
+            columnarTracer,
             needsPlan,
             complete, completedPipelineExecs, totalPipelineExecs,
             cumulativeMemory,

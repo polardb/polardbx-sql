@@ -126,7 +126,7 @@ import static com.alibaba.polardbx.common.model.Group.GroupType.MYSQL_JDBC;
 
 public class DdlHelper {
 
-    public static final Long COMPRESS_THRESHOLD_SIZE = 1024 * 1024L;
+    public static final Long COMPRESS_THRESHOLD_SIZE = 128 * 1024L;
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 
     private static final Set<String> SYSTEM_SCHEMATA = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -742,6 +742,8 @@ public class DdlHelper {
             return defaultVal;
         }
     }
+
+    // How to view the compressed content in linux command line: cat 1.txt | base64 --decode | gzip -d | jq .
 
     public static String compress(String data) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();

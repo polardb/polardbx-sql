@@ -91,7 +91,8 @@ public class LogicalShowConvertTableHandler extends HandlerCommon {
         String dstSchemaName = sqlCreateDatabase.getDbName().getSimple();
 
         Set<String> allTablesInReferenceDb = new TreeSet<>(String::compareToIgnoreCase);
-        allTablesInReferenceDb.addAll(getAllTablesFromDatabase(sourceSchemaName, executionContext));
+        allTablesInReferenceDb.addAll(
+            DrdsToAutoTableCreationSqlUtil.getTableNamesFromDatabase(sourceSchemaName, executionContext));
         Set<String> allNeedConvertTables = getAllNeedConvertTables(sqlCreateDatabase, allTablesInReferenceDb);
 
         Map<String, String> tableCreationSql = new TreeMap<String, String>(String::compareToIgnoreCase);
@@ -187,7 +188,8 @@ public class LogicalShowConvertTableHandler extends HandlerCommon {
         }
 
         Set<String> allTablesInReferenceDb = new TreeSet<>(String::compareToIgnoreCase);
-        allTablesInReferenceDb.addAll(getAllTablesFromDatabase(sourceSchemaName, executionContext));
+        allTablesInReferenceDb.addAll(
+            DrdsToAutoTableCreationSqlUtil.getTableNamesFromDatabase(sourceSchemaName, executionContext));
         if (!sqlCreateDatabase.getIncludeTables().isEmpty()) {
             for (SqlIdentifier sqlIdentifier : sqlCreateDatabase.getIncludeTables()) {
                 String includeTableName = SQLUtils.normalize(sqlIdentifier.getLastName());
@@ -224,7 +226,8 @@ public class LogicalShowConvertTableHandler extends HandlerCommon {
             }
 
             Set<String> allTableInNewDatabase = new TreeSet<>(String::compareToIgnoreCase);
-            allTableInNewDatabase.addAll(getAllTablesFromDatabase(newDatabaseName, executionContext));
+            allTableInNewDatabase.addAll(
+                DrdsToAutoTableCreationSqlUtil.getTableNamesFromDatabase(newDatabaseName, executionContext));
             allNeedConvertTable.forEach(
                 needConvertTb -> {
                     if (!allTableInNewDatabase.contains(needConvertTb)) {
@@ -265,38 +268,6 @@ public class LogicalShowConvertTableHandler extends HandlerCommon {
                 "not allowed to define charset/collate when use create database like/as"
             );
         }
-    }
-
-    protected List<String> getAllTablesFromDatabase(String schemaName, ExecutionContext executionContext) {
-        SqlShowTables sqlShowTables =
-            SqlShowTables.create(SqlParserPos.ZERO, false, null, schemaName, null, null, null, null);
-        ExecutionContext copiedContext = executionContext.copy();
-        copiedContext.setSchemaName(schemaName);
-        PlannerContext plannerContext = PlannerContext.fromExecutionContext(copiedContext);
-        ExecutionPlan showTablesPlan = Planner.getInstance().getPlan(sqlShowTables, plannerContext);
-        LogicalShow logicalShowTables = (LogicalShow) showTablesPlan.getPlan();
-
-        IRepository sourceRepo = ExecutorContext
-            .getContext(schemaName)
-            .getTopologyHandler()
-            .getRepositoryHolder()
-            .get(Group.GroupType.MYSQL_JDBC.toString());
-        LogicalShowTablesMyHandler logicalShowTablesMyHandler = new LogicalShowTablesMyHandler(sourceRepo);
-
-        Cursor showTablesCursor =
-            logicalShowTablesMyHandler.handle(logicalShowTables, copiedContext);
-
-        List<String> tables = new ArrayList<>();
-        Row showTablesResult = null;
-        while ((showTablesResult = showTablesCursor.next()) != null) {
-            if (showTablesResult.getColNum() >= 1 && showTablesResult.getString(0) != null) {
-                tables.add(showTablesResult.getString(0));
-            } else {
-                new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-                    "get tables name failed.");
-            }
-        }
-        return tables;
     }
 
     protected String getCreateTableSql(String schemaName, String tableName, ExecutionContext executionContext) {

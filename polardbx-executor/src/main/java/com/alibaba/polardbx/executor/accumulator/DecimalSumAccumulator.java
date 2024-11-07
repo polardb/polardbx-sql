@@ -42,19 +42,23 @@ public class DecimalSumAccumulator extends AbstractAccumulator {
 
     private final DataType[] inputTypes;
     private final DecimalBoxGroupState state;
-    private Decimal cache;
     private int scale;
 
     /**
      * low bits, high bits, error code
      */
     private final long[] results = new long[3];
+    private final boolean useFastDecimal;
 
     public DecimalSumAccumulator(int capacity, DataType inputType) {
-        this.cache = new Decimal();
+        this(capacity, inputType, true);
+    }
+
+    public DecimalSumAccumulator(int capacity, DataType inputType, boolean useFastDecimal) {
         this.inputTypes = new DataType[1];
         this.inputTypes[0] = inputType;
         this.scale = inputType.getScale();
+        this.useFastDecimal = useFastDecimal;
 
         this.state = new DecimalBoxGroupState(capacity, scale);
     }
@@ -378,18 +382,16 @@ public class DecimalSumAccumulator extends AbstractAccumulator {
             throw new IllegalStateException("Expected Decimal64 state");
         }
 
+        Decimal to = new Decimal();
+
         // avoid reset memory to 0
         FastDecimalUtils.add(
             beforeValue.getDecimalStructure(),
             value.getDecimalStructure(),
-            cache.getDecimalStructure(),
+            to.getDecimalStructure(),
             false);
 
-        // swap variants to avoid allocating memory
-        Decimal afterValue = cache;
-        cache = beforeValue;
-
-        state.set(groupId, afterValue);
+        state.set(groupId, to);
     }
 
     private void normalAddDecimal128(int groupId, long decimal128Low, long decimal128High) {
@@ -418,22 +420,20 @@ public class DecimalSumAccumulator extends AbstractAccumulator {
             throw new IllegalStateException("Expected Decimal state: " + state.getFlag(groupId));
         }
 
+        Decimal to = new Decimal();
+
         // avoid reset memory to 0
         FastDecimalUtils.add(
             beforeValue.getDecimalStructure(),
             value.getDecimalStructure(),
-            cache.getDecimalStructure(),
+            to.getDecimalStructure(),
             false);
 
-        // swap variants to avoid allocating memory
-        Decimal afterValue = cache;
-        cache = beforeValue;
-
-        state.set(groupId, afterValue);
+        state.set(groupId, to);
     }
 
     private void accumulateDecimal(int groupId, DecimalBlock decimalBlock, int position) {
-        boolean isSimple = decimalBlock.isSimple();
+        boolean isSimple = decimalBlock.isSimple() && useFastDecimal;
         if (state.isNormalDecimal(groupId)) {
             // normalDecimal + ANY -> normalDecimal
             normalAddDecimal(groupId, decimalBlock, position);
@@ -492,18 +492,16 @@ public class DecimalSumAccumulator extends AbstractAccumulator {
         } else {
             Decimal beforeValue = state.getDecimal(groupId);
 
+            Decimal to = new Decimal();
+
             // avoid reset memory to 0
             FastDecimalUtils.add(
                 beforeValue.getDecimalStructure(),
                 decimalStructure,
-                cache.getDecimalStructure(),
+                to.getDecimalStructure(),
                 false);
 
-            // swap variants to avoid allocating memory
-            Decimal afterValue = cache;
-            cache = beforeValue;
-
-            state.set(groupId, afterValue);
+            state.set(groupId, to);
         }
     }
 

@@ -126,7 +126,7 @@ public class ShowProcesslistSyncAction implements ISyncAction {
         }
 
         for (Map.Entry<Long, InnerConnection> conn : InnerConnectionManager.getActiveConnections().entrySet()) {
-
+            addRowByInnerConnection(result, conn.getValue());
         }
 
         return result;
@@ -279,6 +279,7 @@ public class ShowProcesslistSyncAction implements ISyncAction {
         String sqlType = null;
         boolean isStmtExecuting = innerConnection.isStatementExecuting();
         if (isStmtExecuting) {
+            command = "Query";
             if (this.isFull()) {
                 info = innerConnection.getSqlSample();
 
@@ -292,8 +293,6 @@ public class ShowProcesslistSyncAction implements ISyncAction {
                         }
                         ExecutionPlan plan = executionContext.getFinalPlan();
                         if (plan != null) {
-                            //use the first plan. consider their ther PlanWithContext is similar when InsertSplitter is applied.
-
                             PlanCache.CacheKey cacheKey = plan.getCacheKey();
                             if (cacheKey != null) {
                                 sqlTid = cacheKey.getTemplateId();

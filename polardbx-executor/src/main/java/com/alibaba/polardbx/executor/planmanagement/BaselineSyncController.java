@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.planmanagement;
 
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
+import com.alibaba.polardbx.executor.sync.BaselineDeleteSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselineUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.DeleteBaselineSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -45,21 +46,21 @@ public class BaselineSyncController implements IBaselineSyncController {
 
     @Override
     public void deleteBaseline(String schemaName, BaselineInfo baselineInfo) {
-        SyncManagerHelper.sync(
-            new DeleteBaselineSyncAction(
+        SyncManagerHelper.syncWithDefaultDB(
+            new BaselineDeleteSyncAction(
                 schemaName,
-                baselineInfo.getParameterSql()),
-            schemaName, SyncScope.CURRENT_ONLY);
+                baselineInfo.getId()),
+            SyncScope.CURRENT_ONLY);
     }
 
     @Override
     public void deletePlan(String schemaName, BaselineInfo baselineInfo, PlanInfo planInfo) {
-        SyncManagerHelper.sync(
-            new DeleteBaselineSyncAction(
+        SyncManagerHelper.syncWithDefaultDB(
+            new BaselineDeleteSyncAction(
                 schemaName,
-                baselineInfo.getParameterSql(),
+                baselineInfo.getId(),
                 planInfo.getId()),
-            schemaName, SyncScope.CURRENT_ONLY);
+            SyncScope.CURRENT_ONLY);
     }
 
     @Override

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
@@ -30,26 +31,41 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
+import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalSort;
+import org.apache.calcite.rex.RexDynamicParam;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlUpdate;
+import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+import static com.alibaba.polardbx.common.properties.ConnectionParams.DML_FORBID_PUSH_DOWN_UPDATE_WITH_SUBQUERY_IN_SET;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.DML_PUSH_MODIFY_WITH_SUBQUERY_CONDITION_OF_TARGET;
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyBroadcast;
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyFkReferenced;
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyFkReferencing;
 import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkModifyGsi;
-import static com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation.checkOnlineModifyColumnDdl;
 
 /**
  * @author lingce.ldm 2018-01-30 19:36
@@ -65,6 +81,7 @@ public abstract class PushModifyRule extends RelOptRule {
     public static final PushModifyRule VIEW = new PushModifyViewRule();
     public static final PushModifyRule MERGESORT = new PushModifyMergeSortRule();
     public static final PushModifyRule SORT_VIEW = new PushModifySortRule();
+    public static final PushModifyRule OPTIMIZE_MODIFY_TOP_N_RULE = new OptimizeModifyTopNRule();
 
     @Override
     public boolean matches(RelOptRuleCall call) {
@@ -89,7 +106,6 @@ public abstract class PushModifyRule extends RelOptRule {
                 || checkModifyFkReferencing(modify, context.getExecutionContext()));
 
         if (modifyBroadcastTable || checkModifyGsi(modify, context.getExecutionContext()) || modifyScaleoutTable ||
-            (modify.isUpdate() && checkOnlineModifyColumnDdl(modify, context.getExecutionContext())) ||
             CheckModifyLimitation.checkHasLogicalGeneratedColumns(modify, context.getExecutionContext()) ||
             (ec.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK) && modify.isUpdate()) ||
             (ec.foreignKeyChecks() && (containsUpdateFks || containsDeleteFks))
@@ -124,7 +140,10 @@ public abstract class PushModifyRule extends RelOptRule {
             TableModify modify = (TableModify) call.rels[0];
             LogicalView lv = (LogicalView) call.rels[1];
 
-            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify)) {
+            final PlannerContext context = PlannerContext.getPlannerContext(call);
+            final ExecutionContext ec = context.getExecutionContext();
+
+            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify, lv, ec)) {
                 return;
             }
 
@@ -139,18 +158,19 @@ public abstract class PushModifyRule extends RelOptRule {
     private static class PushModifyMergeSortRule extends PushModifyRule {
 
         public PushModifyMergeSortRule() {
-            super(operand(TableModify.class, operand(MergeSort.class, operand(LogicalView.class, none()))),
-                "TableModify_MergeSort_LogicalView");
+            super(operand(LogicalModify.class, operand(MergeSort.class, operand(LogicalView.class, none()))),
+                "LogicalModify_MergeSort_LogicalView");
         }
 
         @Override
         public void onMatch(RelOptRuleCall call) {
-            TableModify modify = (TableModify) call.rels[0];
+            LogicalModify modify = (LogicalModify) call.rels[0];
             MergeSort sort = (MergeSort) call.rels[1];
             final LogicalView lv = (LogicalView) call.rels[2];
             final PlannerContext context = PlannerContext.getPlannerContext(call);
+            final ExecutionContext ec = context.getExecutionContext();
 
-            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify)) {
+            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify, lv, ec)) {
                 return;
             }
 
@@ -190,8 +210,9 @@ public abstract class PushModifyRule extends RelOptRule {
             LogicalSort sort = (LogicalSort) call.rels[1];
             final LogicalView lv = (LogicalView) call.rels[2];
             final PlannerContext context = PlannerContext.getPlannerContext(call);
+            final ExecutionContext ec = context.getExecutionContext();
 
-            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify)) {
+            if (forbidPushdownForDelete(modify, lv) || forbidPushDownForDeleteOrUpdate(modify, lv, ec)) {
                 return;
             }
 
@@ -215,6 +236,91 @@ public abstract class PushModifyRule extends RelOptRule {
             lmv.push(modify);
             RelUtils.changeRowType(lmv, modify.getRowType());
             call.transformTo(lmv);
+        }
+    }
+
+    private static class OptimizeModifyTopNRule extends PushModifyRule {
+
+        public OptimizeModifyTopNRule() {
+            super(operand(LogicalModify.class, operand(Sort.class, operand(LogicalView.class, none()))),
+                "OptimizeModifyTopNRule");
+        }
+
+        @Override
+        public boolean matches(RelOptRuleCall call) {
+            final LogicalModify modify = call.rel(0);
+            if (modify.isModifyTopN()) {
+                return false;
+            }
+            return super.matches(call);
+        }
+
+        @Override
+        public void onMatch(RelOptRuleCall call) {
+            final LogicalModify modify = (LogicalModify) call.rels[0];
+            final Sort sort = (Sort) call.rels[1];
+            final LogicalView lv = (LogicalView) call.rels[2];
+            final PlannerContext context = PlannerContext.getPlannerContext(call);
+
+            // check whether modify top n can be optimized by returning
+            if (sort.offset == null && sort.fetch != null) {
+                // MySQL only support specify literal value for fetch clause.
+                // We replace fetch clause with RexDynamicParam in DrdsParameterizeSqlVisitor.
+                // So that sort.fetch must be a RexDynamicParam, just double check for sure
+                final boolean parameterizedFetch = sort.fetch instanceof RexDynamicParam;
+                final boolean multiTableModify = lv.getTableNames().size() > 1;
+                final boolean singleGroup = lv.isSingleGroup(true);
+                final boolean notNewPartitionTable = !PartitionUtils.isNewPartShardTable(lv);
+
+                // 1. MySQL does not support multi table update/delete with limit
+                // 2. No optimization needed for single group update/delete
+                // 3. Only support new partition table
+                boolean isModifyTopN =
+                    !(multiTableModify || singleGroup || notNewPartitionTable) && parameterizedFetch;
+
+                final Pair<String, String> qn = RelUtils.getQualifiedTableName(modify.getTargetTables().get(0));
+
+                // 4. At least one partition level is partition by and sorted by order by columns in LogicalView
+                if (isModifyTopN) {
+                    final PartitionInfo partitionInfo = context
+                        .getExecutionContext()
+                        .getSchemaManager(qn.left)
+                        .getTable(qn.right)
+                        .getPartitionInfo();
+
+                    boolean partitionsSortedBySortKeyInLv = false;
+                    final List<String> partColumnNames = new ArrayList<>();
+                    if (PartitionPrunerUtils.checkPartitionsSortedByPartitionColumns(partitionInfo,
+                        // check first level partition
+                        PartKeyLevel.PARTITION_KEY,
+                        partColumnNames)) {
+                        partitionsSortedBySortKeyInLv |= PartitionUtils.isOrderKeyMatched(lv, partColumnNames);
+                    }
+                    partColumnNames.clear();
+                    if (PartitionPrunerUtils.checkPartitionsSortedByPartitionColumns(partitionInfo,
+                        // check second level partition
+                        PartKeyLevel.SUBPARTITION_KEY,
+                        partColumnNames)) {
+                        partitionsSortedBySortKeyInLv |= PartitionUtils.isOrderKeyMatched(lv, partColumnNames);
+                    }
+
+                    isModifyTopN &= partitionsSortedBySortKeyInLv;
+                }
+
+                // mark plan can be pushdown and optimized as modify on top n
+                if (isModifyTopN) {
+                    final List<String> pkColumnNames =
+                        GlobalIndexMeta.getPrimaryKeys(qn.right, qn.left, context.getExecutionContext());
+
+                    modify.setModifyTopNInfo(
+                        LogicalModify.ModifyTopNInfo.create(pkColumnNames,
+                            sort.getChildExps(),
+                            sort.collation,
+                            (RexDynamicParam) sort.fetch));
+
+                    call.transformTo(modify);
+                }
+            }
         }
     }
 
@@ -255,8 +361,11 @@ public abstract class PushModifyRule extends RelOptRule {
 
     /**
      * Update / Delete limit m,n 时，由于mysql 不支持 limit m,n; 所以禁止下推
+     * Update / Delete WHERE 中包含目标表的子查询 时，由于 mysql 不支持, 禁止下推
      */
-    private static boolean forbidPushDownForDeleteOrUpdate(final TableModify modify) {
+    private static boolean forbidPushDownForDeleteOrUpdate(final TableModify modify,
+                                                           final LogicalView lv,
+                                                           final ExecutionContext ec) {
         if (modify instanceof LogicalModify && ((LogicalModify) modify).getOriginalSqlNode() != null) {
             SqlNode originalNode = ((LogicalModify) modify).getOriginalSqlNode();
             if (originalNode instanceof SqlDelete && ((SqlDelete) originalNode).getOffset() != null) {
@@ -266,6 +375,25 @@ public abstract class PushModifyRule extends RelOptRule {
                 return true;
             }
         }
+
+        if (!ec.getParamManager().getBoolean(DML_PUSH_MODIFY_WITH_SUBQUERY_CONDITION_OF_TARGET)) {
+            final List<String> pushdownTableNames = lv.getTableNames();
+            final Map<String, Integer> tableCountMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            for (String tn : pushdownTableNames) {
+                tableCountMap.compute(tn, (k, v) -> v == null ? 1 : v + 1);
+            }
+            for (RelOptTable t : modify.getTargetTables()) {
+                if (tableCountMap.get(RelUtils.getQualifiedTableName(t).right) > 1) {
+                    return true;
+                }
+            }
+        }
+
+        if (ec.getParamManager().getBoolean(DML_FORBID_PUSH_DOWN_UPDATE_WITH_SUBQUERY_IN_SET)) {
+            return modify.getSourceExpressionList() != null && modify.getSourceExpressionList().stream()
+                .anyMatch(RexUtil::hasSubQuery);
+        }
+
         return false;
     }
 

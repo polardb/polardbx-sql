@@ -20,6 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -42,7 +43,7 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 @TaskName(name = "CdcAlterTableColumnDdlMarkTask")
 @Getter
 @Setter
-public class CdcAlterTableColumnDdlMarkTask extends BaseDdlTask {
+public class CdcAlterTableColumnDdlMarkTask extends BaseCdcTask {
     private final PhysicalPlanData physicalPlanData;
     private final boolean useOMC;
     private final Long versionId;

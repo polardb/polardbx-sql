@@ -1,0 +1,41 @@
+drop table if exists `t``1`;
+
+CREATE TABLE `t``1` (
+`a``a` int(11) NOT NULL,
+`b``b` int(11) DEFAULT NULL,
+PRIMARY KEY (`a``a`)
+);
+
+alter table `t``1` add clustered index cgsi(`a``a`);
+
+show create table `t``1`;
+
+show full create table `t``1`;
+
+alter table `t``1` rename index cgsi to `c``gsi`;
+
+show create table `t``1`;
+
+show full create table `t``1`;
+
+alter table `t``1` add index idxa(`a``a`);
+
+alter table `t``1` add column `c``c` int;
+
+insert into `t``1` values(1,2,3),(4,5,6),(7,8,9);
+
+alter table `t``1` partition by key(`c``c`);
+
+show create table `t``1`;
+
+show full create table `t``1`;
+
+select * from `t``1` order by `a``a`;
+
+alter table `t``1` remove partitioning;
+
+show create table `t``1`;
+
+show full create table `t``1`;
+
+select * from `t``1` order by `a``a`;

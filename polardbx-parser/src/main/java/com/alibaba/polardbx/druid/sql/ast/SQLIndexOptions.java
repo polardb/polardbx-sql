@@ -35,6 +35,7 @@ public class SQLIndexOptions extends SQLObjectImpl {
     private String algorithm;
     private String lock;
     private String dictionaryColumns;
+    private String execComment;
     private List<SQLAssignItem> otherOptions = new ArrayList<SQLAssignItem>();
 
     public String getIndexType() {
@@ -148,6 +149,14 @@ public class SQLIndexOptions extends SQLObjectImpl {
         return otherOptions;
     }
 
+    public String getExecComment() {
+        return execComment;
+    }
+
+    public void setExecComment(String execComment) {
+        this.execComment = execComment;
+    }
+
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         visitor.visit(this);
@@ -179,5 +188,6 @@ public class SQLIndexOptions extends SQLObjectImpl {
             item1.setParent(parent);
             options.otherOptions.add(item1);
         }
+        options.execComment = execComment;
     }
 }

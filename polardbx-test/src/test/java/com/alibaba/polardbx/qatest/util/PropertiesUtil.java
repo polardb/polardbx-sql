@@ -201,4 +201,12 @@ public class PropertiesUtil {
     public static final Integer dnCount = Integer.valueOf(configProp.getProperty("dnCount", "1"));
 
     public static final Integer shardDbCountEachDn = Integer.valueOf(configProp.getProperty("shardDbCountEachDn", "4"));
+
+    public static final Long transferTestTime = Long.valueOf(configProp.getProperty("transferTestTime", "1"));
+    public static final Long allTypesTestPrepareThreads =
+        Long.valueOf(configProp.getProperty("allTypesTestPrepareThreads", "16"));
+    public static final Boolean allTypesTestBigColumn =
+        Boolean.valueOf(configProp.getProperty("allTypesTestBigColumn", "false"));
+    public static final Long transferRowCount =
+        Long.valueOf(configProp.getProperty("transferRowCount", "100"));
 }

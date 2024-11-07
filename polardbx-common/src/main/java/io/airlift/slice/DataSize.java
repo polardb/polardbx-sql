@@ -149,6 +149,10 @@ public class DataSize
         throw new IllegalArgumentException("Unknown unit: " + unitString);
     }
 
+    public static long convertToByte(String size){
+        return DataSize.valueOf(size).toBytes();
+    }
+
     @Override
     public int compareTo(DataSize o)
     {

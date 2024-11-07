@@ -28,7 +28,6 @@ public class AlterTableGroupWithForeignKeyTest extends MoveDatabaseBaseTest {
     static private final String dataBaseName = "TableGroupMovePartitionFkTest";
     private String targetDnInstId = "";
 
-    //delete hint SHARE_STORAGE_MODE=true,SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true because there are always 2 dn in k8s
     public String scaleOutHint =
         "";
 

@@ -20,7 +20,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
-import com.alibaba.polardbx.optimizer.core.planner.rule.CBOPushAggRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.TwoPhaseAggUtil;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
@@ -128,7 +128,7 @@ public class MppHashAggConvertRule extends RelOptRule {
         if (!enablePartialAgg) {
             return null;
         }
-        if (!noDistinct(hashAgg)) {
+        if (!noDistinctOrFilter(hashAgg)) {
             return null;
         }
 
@@ -146,7 +146,7 @@ public class MppHashAggConvertRule extends RelOptRule {
             return null;
         }
 
-        CBOPushAggRule.TwoPhaseAggComponent twoPhaseAggComponent = CBOPushAggRule.splitAgg(hashAgg);
+        TwoPhaseAggUtil.TwoPhaseAggComponent twoPhaseAggComponent = TwoPhaseAggUtil.splitAgg(hashAgg);
         if (twoPhaseAggComponent == null) {
             return null;
         }
@@ -197,10 +197,12 @@ public class MppHashAggConvertRule extends RelOptRule {
         }
     }
 
-    private boolean noDistinct(Aggregate hashAgg) {
-        List<AggregateCall> aggregateCalls = hashAgg.getAggCallList();
-        for (AggregateCall aggregateCall : aggregateCalls) {
+    private boolean noDistinctOrFilter(Aggregate hashAgg) {
+        for (AggregateCall aggregateCall : hashAgg.getAggCallList()) {
             if (aggregateCall.isDistinct() || aggregateCall.filterArg > -1) {
+                return false;
+            }
+            if (aggregateCall.hasFilter()) {
                 return false;
             }
         }

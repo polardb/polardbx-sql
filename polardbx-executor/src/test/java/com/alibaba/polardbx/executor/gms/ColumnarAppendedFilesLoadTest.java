@@ -6,6 +6,7 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
+import java.util.Iterator;
 import java.util.List;
 
 import static com.alibaba.polardbx.executor.gms.FileVersionStorage.CSV_CHUNK_LIMIT;
@@ -74,9 +75,48 @@ public class ColumnarAppendedFilesLoadTest extends FileVersionStorageTestBase {
     public void testCsvDataWithoutCache() {
         for (MockAppendedFilesStatus status : CSV_STATUSES) {
             // Check for csv read bypass for columnar checksum
-            List<Chunk> chunkList =
-                fileVersionStorage.csvRawOrcTypeData(status.checkpointTso, CSV_FILE_NAME, new ExecutionContext());
-            Assert.assertEquals(status.totalRows, chunkList.stream().mapToLong(Chunk::getPositionCount).sum());
+            Iterator<Chunk> iterator =
+                MultiVersionCsvData.loadRawOrcTypeUntilTso(CSV_FILE_NAME, new ExecutionContext(),
+                    0, (int) (status.appendOffset + status.appendLength));
+            long rowCount = 0;
+            while (iterator.hasNext()) {
+                Chunk chunk = iterator.next();
+                rowCount += chunk.getPositionCount();
+            }
+            Assert.assertEquals(status.totalRows, rowCount);
+        }
+    }
+
+    @Test
+    public void testCsvDataWithoutCache2() {
+        for (MockAppendedFilesStatus status : CSV_STATUSES) {
+            // Check for csv read bypass for columnar checksum
+            Iterator<Chunk> iterator =
+                MultiVersionCsvData.loadSpecifiedCsvFile(CSV_FILE_NAME, new ExecutionContext(),
+                    0, (int) (status.appendOffset + status.appendLength));
+            long rowCount = 0;
+            while (iterator.hasNext()) {
+                Chunk chunk = iterator.next();
+                rowCount += chunk.getPositionCount();
+            }
+            Assert.assertEquals(status.totalRows, rowCount);
+        }
+
+        // For incremental check.
+        for (int i = 0; i < CSV_STATUSES.length - 1; i++) {
+            // Check for csv read bypass for columnar checksum
+            MockAppendedFilesStatus status0 = CSV_STATUSES[i];
+            MockAppendedFilesStatus status1 = CSV_STATUSES[i + 1];
+            Iterator<Chunk> iterator =
+                MultiVersionCsvData.loadSpecifiedCsvFile(CSV_FILE_NAME, new ExecutionContext(),
+                    (int) status1.appendOffset, (int) (status1.appendOffset + status1.appendLength));
+
+            long rowCount = 0;
+            while (iterator.hasNext()) {
+                Chunk chunk = iterator.next();
+                rowCount += chunk.getPositionCount();
+            }
+            Assert.assertEquals(status1.totalRows - status0.totalRows, rowCount);
         }
     }
 

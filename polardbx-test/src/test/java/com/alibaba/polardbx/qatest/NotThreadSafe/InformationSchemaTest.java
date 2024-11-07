@@ -16,20 +16,22 @@
 
 package com.alibaba.polardbx.qatest.NotThreadSafe;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.commons.lang.StringUtils;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -73,6 +75,9 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         + "\tUNIQUE KEY (`char_test`, `integer_test`)\n"
         + ")";
 
+    private static final String CREATE_VIEW_FORMAT =
+        "CREATE VIEW `%s` AS SELECT (`pk`) FROM `%s`";
+
     private static final String CREATE_TABLE_FORMAT_MIX_CASE = "CREATE TABLE `%s` (\n"
         + "\t`pk` bigint(11) NOT NULL,\n"
         + "\t`INTEGER_teST` int(11) DEFAULT NULL,\n"
@@ -82,6 +87,11 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
     private static final String[] mustContainTables = {
         "select_base_one_multi_db_multi_tb",
         "select_base_two_multi_db_multi_tb"};
+
+    private static final String[] mustContainViews = {
+        "select_base_one_multi_db_multi_tb_view",
+        "select_base_two_multi_db_multi_tb_view"
+    };
 
     private static final String[] mustContainTableColumns = {
         // select_base_two_multi_db_multi_tb
@@ -142,6 +152,8 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         }
     }
 
+    private String[] unsupportedYet = {"GLOBAL_STATUS", "GLOBAL_VARIABLES", "SESSION_STATUS", "SESSION_VARIABLES"};
+
     @Before
     public void prepareDb() {
         JdbcUtil.dropDatabase(tddlConnection, INFORMATION_TEST_DB);
@@ -151,6 +163,10 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         JdbcUtil.useDb(tddlConnection, INFORMATION_TEST_DB);
         for (String table : mustContainTables) {
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_FORMAT, table));
+        }
+        for (int i = 0; i < mustContainViews.length; i++) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format(CREATE_VIEW_FORMAT, mustContainViews[i], mustContainTables[i]));
         }
         //加入其它table
         JdbcUtil.executeUpdateSuccess(tddlConnection,
@@ -170,7 +186,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
     }
 
     @Test
-    public void testTables() {
+    public void testTables() throws SQLException {
         String sql =
             String.format("select * from information_schema.tables where table_schema = '%s'", INFORMATION_TEST_DB);
         int size = assertContainsAllNames(sql, 1, 2, mustContainTablesSet);
@@ -228,10 +244,37 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             INFORMATION_TEST_DB,
             "select_base_one_multi_db_multi_tb");
         assertSizeEquals(sql, 1);
+
+        sql = String.format(
+            "select table_schema,table_name,table_type from information_schema.tables where table_schema = '%s' and table_name='%s'",
+            INFORMATION_TEST_DB,
+            "select_base_one_multi_db_multi_tb_view"
+        );
+        assertSizeEquals(sql, 1);
+        sql = String.format(
+            "select table_schema,table_name,table_type from information_schema.tables where table_schema = '%s' and table_name='%s'",
+            INFORMATION_TEST_DB,
+            "select_base_two_multi_db_multi_tb_view"
+        );
+        assertSizeEquals(sql, 1);
+
+        final String table = mustContainTables[0];
+        sql = "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_name = ?";
+        PreparedStatement pstmt =
+            JdbcUtil.preparedStatementSet(sql, Lists.newArrayList(INFORMATION_TEST_DB, table), tddlConnection);
+        ResultSet resultSet = JdbcUtil.executeQuery(sql, pstmt);
+        Assert.assertTrue(resultSet.next());
+        Assert.assertEquals(table, resultSet.getString(1));
+        JdbcUtil.close(resultSet);
     }
 
     @Test
-    public void testColumns() {
+    public void TestTablesView() throws SQLException {
+
+    }
+
+    @Test
+    public void testColumns() throws SQLException {
         String sql =
             String.format("select * from information_schema.columns where table_schema = '%s'", INFORMATION_TEST_DB);
         int size = assertContainsAllTablesAndColumns(sql, 1, 2, 3, mustContainTableColumnsSet);
@@ -286,10 +329,19 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             INFORMATION_TEST_DB,
             "select_base_one_multi_db_multi_tb");
         assertSizeEquals(sql, 20);
+
+        final String table = mustContainTables[0];
+        sql = "SELECT table_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ?";
+        PreparedStatement pstmt =
+            JdbcUtil.preparedStatementSet(sql, Lists.newArrayList(INFORMATION_TEST_DB, table), tddlConnection);
+        ResultSet resultSet = JdbcUtil.executeQuery(sql, pstmt);
+        Assert.assertTrue(resultSet.next());
+        Assert.assertEquals(table, resultSet.getString(1));
+        JdbcUtil.close(resultSet);
     }
 
     @Test
-    public void testStatistics() {
+    public void testStatistics() throws SQLException {
         String sql =
             String.format("select * from information_schema.statistics where table_schema = '%s'",
                 INFORMATION_TEST_DB);
@@ -340,6 +392,15 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             "select table_schema,table_name,index_name,column_name from information_schema.statistics where table_schema in ('%s') order by table_name,column_name limit 1,2",
             INFORMATION_TEST_DB);
         assertSizeEquals(sql, 2);
+
+        final String table = mustContainTables[0];
+        sql = "SELECT table_name FROM information_schema.statistics WHERE table_schema = ? AND table_name = ?";
+        PreparedStatement pstmt =
+            JdbcUtil.preparedStatementSet(sql, Lists.newArrayList(INFORMATION_TEST_DB, table), tddlConnection);
+        ResultSet resultSet = JdbcUtil.executeQuery(sql, pstmt);
+        Assert.assertTrue(resultSet.next());
+        Assert.assertEquals(table, resultSet.getString(1));
+        JdbcUtil.close(resultSet);
     }
 
     @Test
@@ -417,8 +478,6 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         sql = "select count(*) from information_schema.schemata";
         assertCountResult(sql, size);
     }
-
-    private String[] unsupportedYet = {"GLOBAL_STATUS", "GLOBAL_VARIABLES", "SESSION_STATUS", "SESSION_VARIABLES"};
 
     @Test
     public void testPartitions() {
@@ -624,7 +683,8 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
     }
 
     @Test
-    @CdcIgnore(ignoreReason = "暂时未查到原因，可能是并行跑各种实验室导致。本地和实验室单独跑都无法复现，且对replica实验室无影响")
+    @CdcIgnore(
+        ignoreReason = "暂时未查到原因，可能是并行跑各种实验室导致。本地和实验室单独跑都无法复现，且对replica实验室无影响")
     public void testInformationPartitions() throws SQLException {
         try (Connection conn = getPolardbxConnection()) {
             // test INFORMATION_SCHEMA.PARTITIONS

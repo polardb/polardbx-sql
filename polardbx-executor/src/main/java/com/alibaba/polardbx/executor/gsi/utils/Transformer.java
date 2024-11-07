@@ -20,11 +20,15 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.google.common.base.Preconditions;
+import com.google.common.io.BaseEncoding;
+import com.mysql.jdbc.StringUtils;
+import com.mysql.jdbc.ZeroDate;
+import com.mysql.jdbc.ZeroTime;
+import com.mysql.jdbc.ZeroTimestamp;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
-import com.alibaba.polardbx.common.jdbc.ZeroDate;
-import com.alibaba.polardbx.common.jdbc.ZeroTime;
-import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
 import com.alibaba.polardbx.common.properties.PropUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -37,15 +41,17 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Preconditions;
 import com.google.common.io.BaseEncoding;
 import io.airlift.slice.Slice;
-import org.apache.commons.lang.StringUtils;
 
 import java.math.BigInteger;
 import java.nio.charset.Charset;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.BiFunction;
 
 /**
@@ -179,8 +185,102 @@ public class Transformer {
         return batchParams;
     }
 
+    public static List<Map<Integer, ParameterContext>> buildBatchParam(List<ColumnMeta> columnMetas,
+                                                                       ResultSet resultSet, boolean useBinary,
+                                                                       Set<String> notConvertColumns)
+        throws SQLException {
+        final List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>();
+
+        int columnSize = columnMetas.size();
+        while (resultSet.next()) {
+            final TreeMap<Integer, ParameterContext> params = new TreeMap<>();
+            for (int i = 0; i < columnSize; i++) {
+                String colName = columnMetas.get(i).getName();
+                DataType dataType = columnMetas.get(i).getDataType();
+                boolean canConvert = useBinary && (notConvertColumns == null || !notConvertColumns.contains(colName));
+
+                final ParameterContext parameterContext =
+                    buildColumnParam(resultSet, i + 1, dataType, canConvert);
+
+                params.put(i + 1, parameterContext);
+            }
+            batchParams.add(params);
+        }
+        return batchParams;
+    }
+
+    public static ParameterContext buildColumnParam(ResultSet resultSet, int i, DataType columnType,
+                                                    boolean strToBinary) throws SQLException {
+        ParameterMethod method = ParameterMethod.setObject1;
+        Object value = resultSet.getObject(i);
+        try {
+            if (value instanceof ZeroDate || value instanceof ZeroTimestamp || value instanceof ZeroTime
+                || value instanceof Decimal) {
+                // 针对 0000-00-00 的时间类型 setObject 会失败，setString 没问题
+                value = value.toString();
+                method = ParameterMethod.setString;
+            } else if (value instanceof Slice) {
+                value = ((Slice) value).toStringUtf8();
+                method = ParameterMethod.setString;
+            } else if (value instanceof EnumValue) {
+                value = ((EnumValue) value).value;
+                method = ParameterMethod.setString;
+            } else if (value != null) {
+                if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.DateType, DataTypes.TimestampType,
+                    DataTypes.DatetimeType, DataTypes.TimeType, DataTypes.YearType)) {
+                    // 针对 0000-00-00 01:01:01.12 的时间类型或 0000 的year 类型，
+                    // getObject 返回的结果错误，getBytes 后转为 String 没问题
+                    value = new String(resultSet.getBytes(i));
+                    method = ParameterMethod.setString;
+                } else if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.BitType, DataTypes.BigBitType)) {
+                    // 使用表示范围更大的类型，规避序列化/反序列化上下界时丢失数据
+                    value = new BigInteger(resultSet.getString(i));
+                    method = ParameterMethod.setBit;
+                } else if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.FloatType, DataTypes.DoubleType)) {
+                    // 使用表示范围更大的类型，规避序列化/反序列化上下界时丢失数据
+                    value = resultSet.getDouble(i);
+                    method = ParameterMethod.setDouble;
+                } else if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.ULongType)) {
+                    // BIGINT(64) UNSIGNED
+                    value = resultSet.getString(i);
+                    method = ParameterMethod.setString;
+                } else if (DataTypeUtil
+                    .anyMatchSemantically(columnType, DataTypes.BinaryType, DataTypes.BlobType,
+                        DataTypes.BinaryStringType)) {
+                    // 使用 setBytes 标记，序列化时使用16进制字符串
+                    value = resultSet.getBytes(i);
+                    method = ParameterMethod.setBytes;
+                } else if (strToBinary && DataTypeUtil.isStringType(columnType)) {
+                    // 字符串类型，直接select binary得到二进制数，直接setBytes，避免字符集转换带来的损失
+                    value = resultSet.getBytes(i);
+                    method = ParameterMethod.setBytes;
+                }
+            }
+        } catch (TddlNestableRuntimeException e) {
+            SQLRecorderLogger.ddlLogger.warn("Convert data type failed, use getBytes. message: " + e.getMessage());
+
+            // 类似 -01:01:01 的时间类型 getObject 会抛异常，getBytes 没问题
+            // Ignore exception, use getBytes instead
+            value = resultSet.getBytes(i);
+            method = ParameterMethod.setBytes;
+        }
+        return new ParameterContext(method, new Object[] {i + 1, value, columnType});
+    }
+
     public static ParameterContext buildColumnParam(Row row, int i) {
         return buildColumnParam(row, i, false);
+    }
+
+    public static Map<Integer, ParameterContext> buildColumnsParam(Row row) {
+        Map<Integer, ParameterContext> params = new TreeMap<>();
+        if (row == null || row.getValues().isEmpty()) {
+            return params;
+        }
+        int columnSize = row.getColNum();
+        for (int i = 0; i < columnSize; i++) {
+            params.put(i, buildColumnParam(row, i));
+        }
+        return params;
     }
 
     /**
@@ -268,7 +368,7 @@ public class Transformer {
         for (int i = 0; i < columnMetaList.size(); i++) {
             String stringVal = null;
             ColumnMeta meta = columnMetaList.get(i);
-            if (StringUtils.isEmpty(values.get(i)) &&
+            if (StringUtils.isNullOrEmpty(values.get(i)) &&
                 (defaultMode == PropUtil.LOAD_NULL_MODE.DEFAULT_VALUE_MODE ||
                     defaultMode == PropUtil.LOAD_NULL_MODE.DEFAULT_VALUE_AND_N_MODE)) {
                 if (meta.getField().getDefault() != null) {
@@ -352,6 +452,9 @@ public class Transformer {
     }
 
     public static String serializeParam(ParameterContext pc) {
+        if (pc == null) {
+            return null;
+        }
         final ParameterMethod method = pc.getParameterMethod();
         switch (method) {
         case setBytes:

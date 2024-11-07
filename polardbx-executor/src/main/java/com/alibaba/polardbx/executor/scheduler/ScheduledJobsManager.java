@@ -149,6 +149,8 @@ public final class ScheduledJobsManager implements ModuleInfo {
     private static final Map<Long, Long> executingMap = new ConcurrentHashMap<>();
 
     private ScheduledJobsManager() {
+
+        // ScheduledJobsCleaner: clean
         scannerThread.scheduleWithFixedDelay(
             AsyncTask.build(
                 () -> {
@@ -161,6 +163,10 @@ public final class ScheduledJobsManager implements ModuleInfo {
             TimeUnit.SECONDS
         );
 
+        /**
+         * ScheduledJobsCleaner:
+         *  use to actively clear succ/failed/skiped jobs from fired_scheduled_jobs table of metadb
+         */
         cleanerThread.scheduleWithFixedDelay(
             AsyncTask.build(new ScheduledJobsCleaner()),
             0L,
@@ -168,6 +174,11 @@ public final class ScheduledJobsManager implements ModuleInfo {
             TimeUnit.HOURS
         );
 
+        /**
+         * ScheduledJobsSafeExitChecker:
+         *  use to actively clear the running-state jobs from fired_scheduled_jobs table of metadb,
+         *  but is not running because of restarting cn
+         */
         safeExitThread.scheduleWithFixedDelay(
             AsyncTask.build(new ScheduledJobsSafeExitChecker()),
             0L,
@@ -175,6 +186,10 @@ public final class ScheduledJobsManager implements ModuleInfo {
             TimeUnit.SECONDS
         );
 
+        /**
+         * ScheduledJobsAutoInterruptChecker:
+         *  use to actively soft interrupt running jobs if curr time is out of maintain-time window
+         */
         autoInterruptThread.scheduleWithFixedDelay(
             AsyncTask.build(new ScheduledJobsAutoInterruptChecker()),
             0L,
@@ -378,6 +393,13 @@ public final class ScheduledJobsManager implements ModuleInfo {
                             if (esj == null) {
                                 continue;
                             }
+
+                            /**
+                             * if a running-state job is not in the map of executingJobs,
+                             * that mean the running-job maybe kill by leader-cn restarting,
+                             * so here need call the esj.safeExit() to notify the running-state
+                             * job to auto exit safely( such as send "pause ddl xxx").
+                             */
                             if (esj.needInterrupted().getKey() && esj.safeExit()) {
                                 //mark as fail
                                 ScheduledJobsManager.updateState(scheduleId, fireTime, INTERRUPTED,
@@ -879,6 +901,27 @@ public final class ScheduledJobsManager implements ModuleInfo {
             @Override
             protected List<ScheduledJobsRecord> invoke() {
                 return scheduledJobsAccessor.queryByExecutorType(executorType);
+            }
+        }.execute();
+    }
+
+    public static List<ScheduledJobsRecord> getScheduledJobByTableNameAndExecutorType(
+        String tableSchema,
+        String tableName,
+        String executorType) {
+        return new ScheduledJobsAccessorDelegate<List<ScheduledJobsRecord>>() {
+            @Override
+            protected List<ScheduledJobsRecord> invoke() {
+                return scheduledJobsAccessor.query(tableSchema, tableName, executorType);
+            }
+        }.execute();
+    }
+
+    public static String queryLatestRemark(long schedulerId) {
+        return new ScheduledJobsAccessorDelegate<String>() {
+            @Override
+            protected String invoke() {
+                return firedScheduledJobsAccessor.queryLatestRemarkById(schedulerId);
             }
         }.execute();
     }

@@ -24,7 +24,9 @@ import com.alibaba.polardbx.druid.sql.parser.Lexer;
 import com.alibaba.polardbx.druid.sql.parser.Token;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
 import com.alibaba.polardbx.qatest.entity.ColumnEntity;
+import com.alibaba.polardbx.qatest.util.ColumnarIndexNotInitedException;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
+import com.alibaba.polardbx.qatest.util.FailFastTestWatcher;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.cache.Cache;
@@ -37,6 +39,7 @@ import org.apache.commons.logging.LogFactory;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.runner.RunWith;
 
 import javax.net.ssl.SSLException;
@@ -51,15 +54,20 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
+import static com.google.common.truth.Truth.assertWithMessage;
 
 @RunWith(CommonCaseRunner.class)
 public class BaseTestCase implements BaseTestMode {
@@ -81,8 +89,11 @@ public class BaseTestCase implements BaseTestMode {
     private List<ConnectionWrap> metaDBConnections = new ArrayList<>();
     protected String hint;
 
+    @Rule
+    public FailFastTestWatcher failFastTestWatcher = new FailFastTestWatcher(ColumnarIndexNotInitedException.class);
+
     @Before
-    public void initializeFileStorage() {
+    public void initializeFileStorage() throws ColumnarIndexNotInitedException {
         boolean useFileStorageMode = PropertiesUtil.useFileStorage()
             && usingNewPartDb()
             && ClassHelper.getFileStorageTestCases().contains(getClass());
@@ -99,8 +110,12 @@ public class BaseTestCase implements BaseTestMode {
         boolean skipColumnarIndex = PropertiesUtil.skipCreateColumnarIndex();
 
         if (!skipColumnarIndex && columnarMode && !initedColumnar()) {
-            createColumnarIndex();
-            prepareColumnarVars();
+            try {
+                createColumnarIndex();
+                prepareColumnarVars();
+            } catch (Throwable t) {
+                throw new ColumnarIndexNotInitedException(t);
+            }
         }
     }
 
@@ -138,6 +153,9 @@ public class BaseTestCase implements BaseTestMode {
     private boolean initedColumnar() {
         String sourceDB1 = PropertiesUtil.polardbXAutoDBName1Innodb();
         List<String> tableNames = collectTableNames(sourceDB1);
+        if (tableNames.isEmpty()) {
+            return true;
+        }
         try (Connection conn = getPolardbxConnection(sourceDB1)) {
             Statement statement = conn.createStatement();
             ResultSet rs = statement.executeQuery(
@@ -249,8 +267,8 @@ public class BaseTestCase implements BaseTestMode {
     private void createColumnarIndex() {
         String sourceDB1 = PropertiesUtil.polardbXAutoDBName1Innodb();
         String sourceDB2 = PropertiesUtil.polardbXAutoDBName2Innodb();
-        createColumnarIndex(sourceDB1);
-        createColumnarIndex(sourceDB2);
+        createColumnarIndex(sourceDB1, 4);
+        createColumnarIndex(sourceDB2, 4);
     }
 
     private boolean hasPrimaryKey(String dbName, String tableName) {
@@ -269,26 +287,55 @@ public class BaseTestCase implements BaseTestMode {
         return false;
     }
 
-    private void createColumnarIndex(String dbName) {
+    private void createColumnarIndex(String dbName, int parallelism) {
         List<String> allTables = collectTableNames(dbName);
         List<String> tableNames = allTables.stream().filter(t -> hasPrimaryKey(dbName, t)).collect(Collectors.toList());
         List<String> difference = new ArrayList<>(allTables);
         difference.removeAll(tableNames);
         log.error("no primary key table list: " + difference.stream().collect(Collectors.joining(",")));
-        List<String> columnarCols = new ArrayList<>(tableNames.size());
-        for (String tableName : tableNames) {
-            columnarCols.add(getColumnForColumnar(dbName, tableName));
-        }
+
+        // set logical ddl parallelism
         try (Connection conn = getPolardbxConnection(dbName)) {
-            for (int i = 0; i < tableNames.size(); ++i) {
-                String colName = columnarCols.get(i);
-                String sql =
-                    String.format(CREATE_COLUMNAR_INDEX, "col_idx_" + colName, tableNames.get(i), colName, colName,
-                        RandomUtils.nextInt(9) + 1);
-                JdbcUtil.executeSuccess(conn, sql);
-            }
+            JdbcUtil.executeSuccess(conn, "set global logical_ddl_parallelism = " + parallelism);
         } catch (Throwable t) {
-            throw new RuntimeException(t);
+            throw new RuntimeException("Set logical ddl parallelism failed.", t);
+        }
+
+        ExecutorService executorService = Executors.newFixedThreadPool(parallelism);
+        // List to hold runnable tasks
+        List<Callable<Void>> tasks = new ArrayList<>();
+
+        // Prepare the tasks
+        for (String tableName : tableNames) {
+            String colName = getColumnForColumnar(dbName, tableName);
+            String sql =
+                String.format(CREATE_COLUMNAR_INDEX, "col_idx_" + colName, tableName, colName, colName,
+                    RandomUtils.nextInt(9) + 1);
+            tasks.add(() -> {
+                try (Connection conn = getPolardbxConnection(dbName)) {
+                    log.info(sql);
+                    JdbcUtil.executeSuccess(conn, sql);
+                } catch (Throwable t) {
+                    throw new RuntimeException("Create CCI failed.", t);
+                }
+                return null;
+            });
+        }
+
+        try {
+            List<Future<Void>> futures = executorService.invokeAll(tasks);
+            for (Future<Void> future : futures) {
+                try {
+                    future.get();
+                } catch (Throwable t) {
+                    throw new RuntimeException(t);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } finally {
+            executorService.shutdownNow();
         }
     }
 
@@ -682,9 +729,19 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
-    public List<List<String>> getTrace(Connection tddlConnection) {
+    public static List<List<String>> getTrace(Connection tddlConnection) {
         final ResultSet rs = JdbcUtil.executeQuery("show trace", tddlConnection);
         return JdbcUtil.getStringResult(rs, false);
+    }
+
+    public static void checkTraceRowCount(int rowCount, Connection conn) {
+        final List<List<String>> traceUpdate = getTrace(conn);
+        assertWithMessage(Optional
+            .ofNullable(traceUpdate)
+            .map(tu -> tu.stream().map(r -> String.join(", ", r)).collect(Collectors.joining("\n")))
+            .orElse("show trace result is null"))
+            .that(traceUpdate)
+            .hasSize(rowCount);
     }
 
     public void setSqlMode(String mode, Connection conn) {
@@ -842,6 +899,24 @@ public class BaseTestCase implements BaseTestMode {
             com.alibaba.polardbx.common.utils.Assert.fail();
         }
         return count;
+    }
+
+    public List<String> showTopology(Connection conn, String tbName) {
+        List<String> phyTables = new ArrayList<>();
+        String sql = "show topology " + tbName;
+
+        ResultSet rs = JdbcUtil.executeQuerySuccess(conn, sql);
+        try {
+            while (rs.next()) {
+                String table = rs.getString("TABLE_NAME");
+                phyTables.add(table);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+        return phyTables;
     }
 
     public static void assertBroadcastTableSame(String tableName, Connection tddlConnection,

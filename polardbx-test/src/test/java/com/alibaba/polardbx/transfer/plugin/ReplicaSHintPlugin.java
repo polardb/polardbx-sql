@@ -45,13 +45,15 @@ public class ReplicaSHintPlugin extends BasePlugin {
         replicaDsn = config.getString("replica_dsn", dsn);
         sessionVar = config.getString("session_var", null);
         strongConsistency = config.getBoolean("replica_strong_consistency", false);
-        // init session hint
-        try (MyConnection conn = getConnection(dsn);
-            Statement stmt = conn.createStatement()) {
-            Utils.initSessionHint(stmt, sessionHint);
-            logger.info("All partitions: " + String.join(",", sessionHint));
-        } catch (Throwable t) {
-            logger.error("Init session hint failed.", t);
+        if (enabled) {
+            // init session hint
+            try (MyConnection conn = getConnection(dsn);
+                Statement stmt = conn.createStatement()) {
+                Utils.initSessionHint(stmt, sessionHint);
+                logger.info("All partitions: " + String.join(",", sessionHint));
+            } catch (Throwable t) {
+                logger.error("Init session hint failed.", t);
+            }
         }
     }
 
@@ -74,6 +76,7 @@ public class ReplicaSHintPlugin extends BasePlugin {
                         masterAccounts.set(Utils.getAccountsWithSessionHint(hint, stmt, sessionHint));
                     } finally {
                         conn.rollback();
+                        conn.setAutoCommit(true);
                     }
                 } catch (SQLException e) {
                     error.set(e);
@@ -93,6 +96,7 @@ public class ReplicaSHintPlugin extends BasePlugin {
                     slaveAccounts.set(Utils.getAccountsWithSessionHint(slaveHint, stmt, sessionHint));
                 } finally {
                     conn.rollback();
+                    conn.setAutoCommit(true);
                 }
             } catch (SQLException e) {
                 error.set(e);

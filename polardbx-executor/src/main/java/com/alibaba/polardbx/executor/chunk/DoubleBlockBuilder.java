@@ -16,16 +16,25 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 
 public class DoubleBlockBuilder extends AbstractBlockBuilder {
 
     private final DoubleArrayList values;
+    private final int scale;
 
     public DoubleBlockBuilder(int capacity) {
         super(capacity);
         this.values = new DoubleArrayList(capacity);
+        this.scale = XResultUtil.DECIMAL_NOT_SPECIFIED;
+    }
+
+    public DoubleBlockBuilder(int capacity, int scale) {
+        super(capacity);
+        this.values = new DoubleArrayList(capacity);
+        this.scale = scale;
     }
 
     @Override
@@ -63,7 +72,8 @@ public class DoubleBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public Block build() {
-        return new DoubleBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, values.elements());
+        return new DoubleBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null,
+            values.elements(), scale);
     }
 
     @Override
@@ -74,7 +84,7 @@ public class DoubleBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public BlockBuilder newBlockBuilder() {
-        return new DoubleBlockBuilder(getCapacity());
+        return new DoubleBlockBuilder(getCapacity(), scale);
     }
 
     @Override

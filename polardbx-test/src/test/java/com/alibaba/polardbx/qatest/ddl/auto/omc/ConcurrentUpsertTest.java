@@ -1,11 +1,11 @@
 package com.alibaba.polardbx.qatest.ddl.auto.omc;
 
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public class ConcurrentUpsertTest extends ConcurrentDMLBaseTest {
@@ -68,7 +68,8 @@ public class ConcurrentUpsertTest extends ConcurrentDMLBaseTest {
             + " alter table %s modify column b bigint";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator =
-            (count) -> String.format("insert into %%s values(%d + %d, %d,null,null) on duplicate key update a=a+%d",
+            (count) -> String.format(buildCmdExtra(ENABLE_LOCAL_UK_FULL_TABLE_SCAN)
+                    + "insert into %%s values(%d + %d, %d,null,null) on duplicate key update a=a+%d",
                 count, FILL_COUNT, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> colA - FILL_COUNT == colB;
@@ -224,7 +225,8 @@ public class ConcurrentUpsertTest extends ConcurrentDMLBaseTest {
             + " alter table %s change column b e bigint";
         String selectSql = "select * from %s order by a desc";
         Function<Integer, String> generator1 =
-            (count) -> String.format("insert into %%s values(%d + %d, %d,null,null) on duplicate key update a=a+%d",
+            (count) -> String.format(buildCmdExtra(ENABLE_LOCAL_UK_FULL_TABLE_SCAN)
+                    + "insert into %%s values(%d + %d, %d,null,null) on duplicate key update a=a+%d",
                 count, FILL_COUNT, count, FILL_COUNT);
         Function<Integer, String> generator2 =
             (count) -> String.format("insert into %%s values(%d + %d, %d,null,null) on duplicate key update a=a+%d",
@@ -319,7 +321,7 @@ public class ConcurrentUpsertTest extends ConcurrentDMLBaseTest {
                 count, count, FILL_COUNT);
         Function<Integer, String> generator2 =
             (count) -> String.format(
-                "insert into %%s values(%d, %d + %d,null,null) on duplicate key update e=default(e),f=default(g)",
+                "insert into %%s values(%d, %d + %d,null,default) on duplicate key update e=default(e),f=default(g)",
                 count, count, FILL_COUNT);
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
@@ -328,5 +330,87 @@ public class ConcurrentUpsertTest extends ConcurrentDMLBaseTest {
             1);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
             1);
+    }
+
+    @Test
+    public void singleChangeWithUpsert() throws Exception {
+        String tableName = "omc_single_with_upsert";
+        String colDef = "int default 3";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint default 4, change column c f varchar(7) default 'aaa', drop column d, add column g char(10) not null default 'xyz'";
+        String selectSql = "select * from %s order by a";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") single",
+            colDef);
+        Function<Integer, String> generator1 =
+            (count) -> String.format(
+                "insert into %%s values(%d, %d + %d,null,null) on duplicate key update b=default(b),c=default(d)",
+                count, count, FILL_COUNT);
+        Function<Integer, String> generator2 =
+            (count) -> String.format(
+                "insert into %%s values(%d, %d + %d,null,default) on duplicate key update e=default(e),f=default(g)",
+                count, count, FILL_COUNT);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
+                && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("xyz"));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            true, false, 1, createSql);
+    }
+
+    @Test
+    public void broadcastChangeWithUpsert() throws Exception {
+        String tableName = "omc_broadcast_with_upsert";
+        String colDef = "int default 3";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint default 4, change column c f varchar(7) default 'aaa', drop column d, add column g char(10) not null default 'xyz'";
+        String selectSql = "select * from %s order by a";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int primary key, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") single",
+            colDef);
+        Function<Integer, String> generator1 =
+            (count) -> String.format(
+                "insert into %%s values(%d, %d + %d,null,null) on duplicate key update b=default(b),c=default(d)",
+                count, count, FILL_COUNT);
+        Function<Integer, String> generator2 =
+            (count) -> String.format(
+                "insert into %%s values(%d, %d + %d,null,default) on duplicate key update e=default(e),f=default(g)",
+                count, count, FILL_COUNT);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colB == 3 || colB == 4)
+                && (colC.equalsIgnoreCase("abc") || colC.equalsIgnoreCase("xyz"));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            true, false, 1, createSql);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "omc 精度变更导致cdc数据校验无法通过")
+    public void changeWithUpsert8() throws Exception {
+        String tableName = "omc_with_update_8";
+        String colDef = "float(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e decimal(9,3)";
+        String selectSql = "select * from %s order by a";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s values(%d, %f,null,null) on duplicate key update a=a+%d", count,
+                count / 7.0, FILL_COUNT);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("insert into %%s values(%d, %f,null,null) on duplicate key update a=a+%d", count,
+                count / 7.0, FILL_COUNT);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
+            1, false, false, null);
     }
 }

@@ -362,20 +362,24 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
         });
     }
 
-    private void commitOneBranch(TransactionConnectionHolder.HeldConnection heldConn) {
+    /**
+     * Before sending commit_seq and xa commit, do something in this connection.
+     * Useful for some trx with TSO features.
+     */
+    protected void beforeCommitOneBranchHook(TransactionConnectionHolder.HeldConnection heldConn) {
+    }
+
+    /**
+     * Commit a single trx branch in a connection.
+     */
+    protected void commitOneBranch(TransactionConnectionHolder.HeldConnection heldConn) {
+        beforeCommitOneBranchHook(heldConn);
         IConnection conn = heldConn.getRawConnection();
         // XA transaction must be 'PREPARED' state here.
         String xid = getXid(heldConn.getGroup(), conn);
         try (Statement stmt = conn.createStatement()) {
             try {
-                final XConnection xConnection;
-                if (conn.isWrapperFor(XConnection.class) &&
-                    (xConnection = conn.unwrap(XConnection.class)).supportMessageTimestamp()) {
-                    conn.flushUnsent();
-                    xaCommitXConn(xConnection, xid);
-                } else {
-                    stmt.execute(getXACommitWithTsoSql(xid));
-                }
+                executeXaCommit(conn, xid, stmt);
                 heldConn.setCommitted(true);
             } catch (SQLException ex) {
                 if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {
@@ -387,14 +391,26 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
         } catch (Throwable e) {
             // discard connection if something failed.
             conn.discard(e);
+            throw new TddlRuntimeException(ERR_TRANS_COMMIT, e,
+                "XA COMMIT failed: " + getXid(heldConn.getGroup(), conn));
         }
     }
 
-    protected void xaCommitXConn(XConnection xConnection, String xid) throws SQLException {
-        xConnection.setLazyCommitSeq(commitTimestamp);
-        xConnection.execUpdate("XA COMMIT " + xid);
-        if (shareReadView) {
-            xConnection.execUpdate(TURN_OFF_TXN_GROUP_SQL, null, true);
+    /**
+     * Send innodb_commit_seq and execute XA COMMIT [xid].
+     */
+    protected void executeXaCommit(IConnection conn, String xid, Statement stmt) throws SQLException {
+        final XConnection xConnection;
+        if (conn.isWrapperFor(XConnection.class) &&
+            (xConnection = conn.unwrap(XConnection.class)).supportMessageTimestamp()) {
+            conn.flushUnsent();
+            xConnection.setLazyCommitSeq(commitTimestamp);
+            xConnection.execUpdate("XA COMMIT " + xid);
+            if (shareReadView) {
+                xConnection.execUpdate(TURN_OFF_TXN_GROUP_SQL, null, true);
+            }
+        } else {
+            stmt.execute(getXACommitWithTsoSql(xid));
         }
     }
 
@@ -417,6 +433,10 @@ public class TsoTransaction extends ShareReadViewTransaction implements ITsoTran
     @Override
     public ITransactionPolicy.TransactionClass getTransactionClass() {
         return ITransactionPolicy.TransactionClass.TSO;
+    }
+
+    public long getCommitTso() {
+        return commitTimestamp;
     }
 
 }

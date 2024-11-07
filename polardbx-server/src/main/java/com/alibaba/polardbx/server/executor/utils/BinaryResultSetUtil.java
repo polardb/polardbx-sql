@@ -36,7 +36,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.conn.ResultSetCachedObj;
-import com.alibaba.polardbx.server.encdb.EncdbResultSet;
 import com.alibaba.polardbx.server.util.StringUtil;
 import com.mysql.jdbc.Field;
 
@@ -61,9 +60,7 @@ public class BinaryResultSetUtil {
                                                        AtomicLong affectRow, PreparedStmtCache preparedStmtCache,
                                                        long sqlSelectLimit)
         throws SQLException, IllegalAccessException {
-        if (rs instanceof EncdbResultSet) {
-            throw new EncdbException("Encdb only support text protocol");
-        }
+
 
         // 先执行一次next，因为存在lazy-init处理，可能写了packet head包出去，但实际获取数据时出错导致客户端出现lost
         // connection，没有任何其他异常

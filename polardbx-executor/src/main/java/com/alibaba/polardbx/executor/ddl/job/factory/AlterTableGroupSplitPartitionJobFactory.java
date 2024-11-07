@@ -45,12 +45,10 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.stream.Collectors;
 
 /**
  * @author luoyanxin
@@ -141,7 +139,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
         ));
         List<DdlTask> bringUpAlterTableGroupTasks =
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
-                taskType, executionContext);
+                taskType, preparedData.getDdlVersionId(), executionContext);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);

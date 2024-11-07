@@ -22,13 +22,13 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.metadb.table.BaselineInfoRecord;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.JsonBuilder;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -46,7 +46,6 @@ import java.util.stream.Stream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_OLD_PLAN_CHOOSE_COUNT_LEVEL;
-import static com.alibaba.polardbx.common.utils.GeneralUtil.printlnToStringBuilder;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanInfo.INVAILD_HASH_CODE;
 
@@ -55,6 +54,7 @@ public class BaselineInfo {
     public static final String EXTEND_HINT = "HINT";
     public static final String EXTEND_USE_POST_PLANNER = "USE_POST_PLANNER";
     public static final String EXTEND_REBUILD_AT_LOAD = "REBUILD_AT_LOAD";
+    public static final String EXTEND_HOT_EVOLVED = "HOT_EVOLVED";
     private int id;
 
     private String parameterSql; // unique key
@@ -74,6 +74,9 @@ public class BaselineInfo {
     private Set<Integer> evolutionFailPlanHashSet = ConcurrentHashMap.newKeySet();
 
     private boolean dirty = false;
+
+    // whether the baseline used to evolve hot gsi
+    private volatile boolean hotEvolution = false;
 
     private String extend;
 
@@ -108,9 +111,9 @@ public class BaselineInfo {
         return tableSet;
     }
 
-    public void addAcceptedPlan(PlanInfo planInfo) {
+    public PlanInfo addAcceptedPlan(PlanInfo planInfo) {
         planInfo.setAccepted(true);
-        acceptedPlans.put(planInfo.getId(), planInfo);
+        return acceptedPlans.put(planInfo.getId(), planInfo);
     }
 
     public void addUnacceptedPlan(PlanInfo planInfo) {
@@ -144,6 +147,21 @@ public class BaselineInfo {
 
     public void setDirty(boolean dirty) {
         this.dirty = dirty;
+    }
+
+    public boolean isHotEvolution() {
+        return hotEvolution;
+    }
+
+    public void setHotEvolution(boolean hotEvolution) {
+        this.hotEvolution = hotEvolution;
+    }
+
+    public boolean canHotEvolution() {
+        return (!hotEvolution)
+            && (!rebuildAtLoad)
+            && (!dirty)
+            && (getFixPlans().isEmpty());
     }
 
     public void addEvolutionFailPlan(int planInfoId) {
@@ -205,19 +223,6 @@ public class BaselineInfo {
         return baselineInfoJson.toJSONString();
     }
 
-    /**
-     * base info , just for log
-     */
-    public static String serializeBaseInfoToJson(BaselineInfo baselineInfo) {
-        JSONObject baselineInfoJson = new JSONObject();
-        baselineInfoJson.put("id", baselineInfo.getId());
-        baselineInfoJson.put("parameterSql", baselineInfo.getParameterSql());
-        baselineInfoJson.put("tableSet", serializeTableSet(baselineInfo.getTableSet()));
-        baselineInfoJson.put("extend", baselineInfo.encodeExtend());
-
-        return baselineInfoJson.toJSONString();
-    }
-
     public static BaselineInfo deserializeFromJson(String json) {
         JSONObject baselineInfoJson = JSON.parseObject(json);
         BaselineInfo baselineInfo = new BaselineInfo();
@@ -242,7 +247,6 @@ public class BaselineInfo {
         baselineInfo.unacceptedPlans = unacceptedPlans;
         baselineInfo.extend = baselineInfoJson.getString("extend");
         baselineInfo.decodeExtend();
-
         return baselineInfo;
     }
 
@@ -346,6 +350,9 @@ public class BaselineInfo {
     public void merge(String schema, BaselineInfo t) {
         if (!parameterSql.equals(t.parameterSql)) {
             return;
+        }
+        if (t.isHotEvolution()) {
+            this.hotEvolution = true;
         }
 
         // only merge acceptedPlans
@@ -472,19 +479,27 @@ public class BaselineInfo {
             extendMap
                 .getOrDefault(EXTEND_REBUILD_AT_LOAD, false)
                 .toString());
+        hotEvolution = Boolean.parseBoolean(
+            extendMap
+                .getOrDefault(EXTEND_HOT_EVOLVED, false)
+                .toString());
     }
 
     public String encodeExtend() {
-        if (hint == null || "".equals(hint)) {
+        Map<String, Object> extendMap = Maps.newHashMap();
+        if (!StringUtils.isEmpty(hint)) {
+            extendMap.put(EXTEND_POINT_SET, PlanManagerUtil.pointsTolist(pointSet));
+            extendMap.put(EXTEND_HINT, hint);
+            extendMap.put(EXTEND_USE_POST_PLANNER, usePostPlanner);
+            extendMap.put(EXTEND_REBUILD_AT_LOAD, rebuildAtLoad);
+        }
+        if (hotEvolution) {
+            extendMap.put(EXTEND_HOT_EVOLVED, hotEvolution);
+        }
+        if (extendMap.isEmpty()) {
             return "";
         }
         final JsonBuilder jsonBuilder = new JsonBuilder();
-
-        Map<String, Object> extendMap = Maps.newHashMap();
-        extendMap.put(EXTEND_POINT_SET, PlanManagerUtil.pointsTolist(pointSet));
-        extendMap.put(EXTEND_HINT, hint);
-        extendMap.put(EXTEND_USE_POST_PLANNER, usePostPlanner);
-        extendMap.put(EXTEND_REBUILD_AT_LOAD, rebuildAtLoad);
         return jsonBuilder.toJsonString(extendMap);
     }
 

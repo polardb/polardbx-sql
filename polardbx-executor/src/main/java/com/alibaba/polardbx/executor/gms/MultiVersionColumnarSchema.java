@@ -29,6 +29,7 @@ import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -38,6 +39,7 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.SortedMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.locks.Lock;
 import java.util.stream.Collectors;
@@ -242,6 +244,25 @@ public class MultiVersionColumnarSchema implements Purgeable {
         try {
             columnarTableMeta.loadUntilTso(Long.MAX_VALUE);
             return Objects.requireNonNull(columnarTableMeta.getPrimaryKeyColumns(schemaTso));
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    @NotNull
+    public SortedMap<Long, PartitionInfo> getPartitionInfos(long schemaTso, long tableId) {
+        MultiVersionColumnarTableMeta columnarTableMeta = getColumnarTableMeta(tableId);
+
+        SortedMap<Long, PartitionInfo> partitionInfos = columnarTableMeta.getPartitionInfos(schemaTso);
+        if (partitionInfos != null) {
+            return partitionInfos;
+        }
+
+        Lock writeLock = columnarTableMeta.getLock();
+        writeLock.lock();
+        try {
+            columnarTableMeta.loadUntilTso(schemaTso);
+            return Objects.requireNonNull(columnarTableMeta.getPartitionInfos(schemaTso));
         } finally {
             writeLock.unlock();
         }

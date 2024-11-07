@@ -64,6 +64,7 @@ public class CdcCreateViewMarkTask extends BaseDdlTask {
         DdlContext ddlContext = executionContext.getDdlContext();
         Map<String, Object> param = buildExtendParameter(executionContext);
         param.put(ICdcManager.CDC_DDL_SCOPE, DdlScope.Schema);
+        param.put(ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE, false);// view should not refresh create phy sql
 
         if (isAlter) {
             CdcManagerHelper.getInstance()

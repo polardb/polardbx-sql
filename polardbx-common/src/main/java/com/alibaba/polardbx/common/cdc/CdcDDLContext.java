@@ -65,5 +65,12 @@ public class CdcDDLContext {
     private final Map<String, Set<String>> newTableTopology;
 
     private final Pair<String, TablesExtInfo> tablesExtInfoPair;
-    private Long versionId;
+    private final Long versionId;
+    /**
+     * 提交的tso结果，加了CDC_MARK_RECORD_COMMIT_TSO标记并成功执行才会存储
+     */
+
+    private Long commitTso;
+
+    private boolean sequenceDdl;
 }

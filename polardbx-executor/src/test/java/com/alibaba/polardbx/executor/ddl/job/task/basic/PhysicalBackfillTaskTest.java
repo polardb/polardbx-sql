@@ -132,7 +132,7 @@ public class PhysicalBackfillTaskTest {
             PhysicalBackfillTask task = new PhysicalBackfillTask("schema", 123L, "logicalTable", "physicalTable",
                 ImmutableList.of("partition1"), Pair.of("srcGroup", "srcDn"), Pair.of("srcGroup", "tarGroup"),
                 ImmutableMap.of("srcGroup", Pair.of("username", "password"), "tarGroup",
-                    Pair.of("username", "password")), 1000L, 0L, 500L, false, encrypted);
+                    Pair.of("username", "password")), 1000L, 0L, 0L, 500L, false, encrypted);
 
             XConnection conn = mock(XConnection.class);
             mockedPhysicalBackfillUtils.when(

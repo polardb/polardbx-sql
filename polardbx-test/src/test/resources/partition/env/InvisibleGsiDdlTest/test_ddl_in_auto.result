@@ -51,8 +51,8 @@ Table,Create Table
 g2_$,CREATE TABLE `g2_$` (
 	`id` int(11) NOT NULL,
 	`name` varchar(20) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`name`)
 PARTITIONS 3
@@ -306,8 +306,8 @@ Table,Create Table
 g2_$,CREATE TABLE `g2_$` (
 	`id` int(11) NOT NULL,
 	`name` varchar(20) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`name`)
 PARTITIONS 3
@@ -579,8 +579,8 @@ g2_$,CREATE TABLE `g2_$` (
 	`id` int(11) NOT NULL,
 	`name` varchar(20) DEFAULT NULL,
 	`addr3` varchar(10) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_name` USING BTREE (`name`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`name`)
 PARTITIONS 3

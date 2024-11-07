@@ -65,6 +65,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.regex.Pattern;
@@ -628,6 +629,10 @@ public abstract class AbstractTransaction extends BaseTransaction implements IDi
     protected final Collection<Pair<StampedLock, Long>> acquireSharedLock() {
         // Acquire lock of primary schema.
         List<Pair<StampedLock, Long>> locks = new ArrayList<>(otherSchemas.size() + 1);
+        if (null == primarySchema) {
+            // This transaction has no write connection, so no need to acquire distributed lock.
+            return locks;
+        }
         acquireSchemaLock(locks, primarySchema);
         // Acquire locks of other schemas.
         for (String schema : otherSchemas) {
@@ -663,6 +668,35 @@ public abstract class AbstractTransaction extends BaseTransaction implements IDi
     @Override
     public boolean isDistributed() {
         return true;
+    }
+
+    @Override
+    public void clearFlashbackArea() {
+        try {
+            AtomicReference<Throwable> error = new AtomicReference<>(null);
+            forEachHeldConnection(new TransactionConnectionHolder.Action() {
+                @Override
+                public boolean condition(TransactionConnectionHolder.HeldConnection heldConn) {
+                    // For all connections.
+                    return true;
+                }
+
+                @Override
+                public void execute(TransactionConnectionHolder.HeldConnection heldConn) {
+                    try {
+                        heldConn.getRawConnection().disableFlashbackArea();
+                    } catch (Throwable t) {
+                        error.set(t);
+                    }
+                }
+            });
+            if (null != error.get()) {
+                throw error.get();
+            }
+        } catch (Throwable t) {
+            // For safety, prevent trx from continuing.
+            setCrucialError(ErrorCode.ERR_FLASHBACK_AREA, t.getMessage());
+        }
     }
 
     @Override

@@ -17,15 +17,20 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import lombok.Getter;
@@ -45,6 +50,16 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
     private List<String> tables;
     private Map<String, String> tableArchive;
 
+    /**
+     * <pre>
+     *     key : tblName
+     *     val :
+     * </pre>
+     */
+    private Map<String, Integer> tableTtlTypeFlags = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+    protected final static int TTL_TYPE_FLAG_LOCAL_PARTITION = 0;
+    protected final static int TTL_TYPE_FLAG_ROW_LEVEL_TTL = 1;
+
     @JSONCreator
     public UnBindingArchiveTableMetaTask(String schemaName, List<String> tables) {
         super(schemaName, null);
@@ -60,10 +75,24 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
         for (String table : tables) {
+
+            TtlInfoRecord ttlInfoRecord = tableInfoManager.getTtlInfoRecord(getSchemaName(), table);
+            if (ttlInfoRecord != null) {
+                if (!StringUtils.isEmpty(ttlInfoRecord.getArcTblName())) {
+                    tableArchive.put(table, ttlInfoRecord.getArcTblSchema() + "." + ttlInfoRecord.getArcTblName());
+                    tableTtlTypeFlags.put(table, UnBindingArchiveTableMetaTask.TTL_TYPE_FLAG_ROW_LEVEL_TTL);
+                    String ttlTblSchema = getSchemaName();
+                    String ttlTblName = table;
+                    tableInfoManager
+                        .updateArchiveTableForTtlInfo(null, null, null, null, ttlTblSchema, ttlTblName);
+                }
+            }
+
             TableLocalPartitionRecord record =
                 tableInfoManager.getLocalPartitionRecord(getSchemaName(), table);
             if (record.getArchiveTableName() != null) {
                 tableArchive.put(table, record.getArchiveTableSchema() + "." + record.getArchiveTableName());
+                tableTtlTypeFlags.put(table, UnBindingArchiveTableMetaTask.TTL_TYPE_FLAG_LOCAL_PARTITION);
                 tableInfoManager
                     .updateArchiveTable(getSchemaName(), table, null, null);
             }
@@ -76,10 +105,27 @@ public class UnBindingArchiveTableMetaTask extends BaseGmsTask {
             TableInfoManager tableInfoManager = new TableInfoManager();
             tableInfoManager.setConnection(metaDbConnection);
             for (Map.Entry<String, String> entry : tableArchive.entrySet()) {
+                String tblName = entry.getKey();
                 String[] tableFull = entry.getValue().split(".");
                 Preconditions.checkArgument(tableFull.length == 2);
-                tableInfoManager
-                    .updateArchiveTable(getSchemaName(), entry.getKey(), tableFull[0], tableFull[1]);
+
+                Integer flags = tableTtlTypeFlags.get(tblName);
+                if (flags != null) {
+                    if (flags == UnBindingArchiveTableMetaTask.TTL_TYPE_FLAG_LOCAL_PARTITION) {
+                        tableInfoManager
+                            .updateArchiveTable(getSchemaName(), entry.getKey(), tableFull[0], tableFull[1]);
+                    } else {
+                        String ttlTblSchema = getSchemaName();
+                        String ttlTblName = entry.getKey();
+                        String arcTblSchema = tableFull[0];
+                        String arcTblName = tableFull[1];
+                        String arcTmpTblName = TtlUtil.buildArcTmpNameByArcTblName(arcTblName);
+                        String arcTmpTblSchema = arcTblSchema;
+                        tableInfoManager
+                            .updateArchiveTableForTtlInfo(arcTblSchema, arcTblName, arcTmpTblSchema, arcTmpTblName,
+                                ttlTblSchema, ttlTblName);
+                    }
+                }
             }
         }
     }

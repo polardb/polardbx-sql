@@ -1,0 +1,63 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set sql_mode='';
+set TTL_ADD_MAXVAL_PART_ON_CCI_CREATING=true;
+set FORBID_DDL_WITH_CCI=false;
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI=false;
+CREATE TABLE `coupon` (
+`Id` varchar(32) NOT NULL COMMENT '主键',
+`UserId` varchar(32) NOT NULL COMMENT '用户ID',
+`CouponCode` varchar(32) NOT NULL COMMENT '优惠卷编号',
+`BeginValidityPeriod` datetime NOT NULL COMMENT '有效期始',
+`EndValidityPeriod` datetime NOT NULL COMMENT '有效期止',
+`RuleType` tinyint(4) NOT NULL COMMENT '1定额  2折扣  3时长  4免费停车  5定额停车  6免单停车券  7商户免单券',
+`FaceAmount` decimal(18, 2) NOT NULL COMMENT '面额',
+`RestrictAmount` decimal(18, 2) NOT NULL COMMENT '使用限额',
+`RegionId` varchar(32) NOT NULL COMMENT '地区Id',
+`ScopeType` tinyint(4) NOT NULL COMMENT '限制类型0 无限制 1地区 2 停车场',
+`CouponStatus` tinyint(4) NOT NULL COMMENT '状态 1正常 、未使用 2 已使用 3已过期',
+`CouponPublishRuleId` varchar(32) NOT NULL COMMENT '发行规则表Id',
+`CouponPublishRuleDetailId` varchar(32) NOT NULL COMMENT '规则明细表Id',
+`CouponEventId` varchar(32) NOT NULL COMMENT '事件表Id',
+`PaySettleAccountId` varchar(32) NOT NULL COMMENT '发行结算方Id',
+`CouponType` tinyint(4) NOT NULL COMMENT '优惠券类型 0通用 1停车券 2洗车券',
+`CreateTime` datetime NOT NULL COMMENT '创建时间',
+`UpdateTime` datetime NOT NULL COMMENT '修改时间',
+`ExtendInfo` varchar(4000) NOT NULL COMMENT '扩展信息',
+`IsDelete` tinyint(4) NOT NULL COMMENT '是否删除（0否，1是）',
+`Status` tinyint(4) NOT NULL COMMENT '状态（0正常）',
+`IsNeedSettle` tinyint(4) NOT NULL,
+`ComeFrom` tinyint(4) DEFAULT NULL COMMENT '优惠券来源  0  客服送券，1  发行规则  2  直接插入表的接口3来自无效订单回滚4.商户赠送  5.结算方送商户，商户送用户6.商户赠送（通联）7.团队发券 8.商户赠送(银联) 9.松立山东',
+`DirectKey` varchar(32) DEFAULT NULL COMMENT '车辆ID',
+`ObjectId` varchar(32) DEFAULT NULL,
+`MerchantId` varchar(32) DEFAULT NULL COMMENT '商户id（comefrom为4,5,6时，此字段有值）',
+`CreateBy` varchar(32) DEFAULT '' COMMENT '操作人',
+`Remarks` varchar(512) DEFAULT '' COMMENT '备注',
+`ProjectId` int(4) DEFAULT '0' COMMENT '项目ID',
+`PromoterId` varchar(32) DEFAULT NULL COMMENT '推广人Id',
+`CouponFlag` tinyint(2) NOT NULL DEFAULT '0' COMMENT '叠加券标识 0：普通券 1”叠加券',
+PRIMARY KEY (`Id`, `EndValidityPeriod`),
+GLOBAL INDEX `g_i_directkey` (`directkey`)
+PARTITION BY KEY(`DirectKey`)
+PARTITIONS 8,
+KEY `IDX_code` USING BTREE (`CouponCode`),
+KEY `IDX_CISB` (`CouponStatus`, `IsDelete`, `Status`, `BeginValidityPeriod`),
+KEY `IDX_RU` (`CouponPublishRuleId`),
+KEY `idx_dciseb` (`DirectKey`, `CouponStatus`, `IsDelete`, `Status`, `EndValidityPeriod`, `BeginValidityPeriod`),
+KEY `idx_uciseb` (`UserId`, `CouponStatus`, `IsDelete`, `Status`, `EndValidityPeriod`, `BeginValidityPeriod`),
+KEY `idx_CouponPublishRuleDetailId` (`CouponPublishRuleDetailId`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 COMMENT '优惠劵'
+PARTITION BY KEY(`Id`)
+PARTITIONS 8;
+alter table coupon modify ttl set ttl_expr = `EndValidityPeriod` expire after 2 month timezone '+08:00';
+create table coupon_bak like coupon engine='columnar' archive_mode='ttl';
+ALTER TABLE `coupon` ADD COLUMN `update_by` varchar(32) NULL DEFAULT '' COMMENT '更新人' AFTER `CouponFlag`;
+show create table coupon_bak;
+drop table coupon_bak;
+drop table coupon;
+
+

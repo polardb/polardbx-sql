@@ -21,11 +21,12 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Group.GroupType;
-import com.alibaba.polardbx.common.properties.BooleanConfigParam;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -426,6 +427,10 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 CheckTableUtil.getTableIndexColumns(schemaName, groupName, phyTableLists, indexName,
                     phyDbName);
             for (String phyTable : phyTableLists) {
+                if (InstanceVersion.isMYSQL80() && columns.isEmpty() && !phyColumnsMap.containsKey(phyTable)) {
+                    //mysql 80 函数索引没有列名
+                    continue;
+                }
                 if (!phyColumnsMap.containsKey(phyTable) || phyColumnsMap.get(phyTable).isEmpty()) {
                     flag = false;
                     msgText = String.format(
@@ -1105,8 +1110,14 @@ public class LogicalCheckTableHandler extends HandlerCommon {
                 CheckTableUtil.getTableForeignKeyColumns(schemaName, groupName, phyTableLists, data.constraint,
                     phyDbName, phyRefTable);
 
+            if (phyRefTable.isEmpty()) {
+                msgText = String.format(
+                    "foreign key '%s' doesn't match any referencing physical table on group '%s'",
+                    data.constraint, groupName);
+                result.addRow(new Object[] {tableText, opText, MsgType.error.name(), msgText});
+            }
             boolean allEqual = phyRefTable.stream().distinct().limit(2).count() <= 1;
-            if (!allEqual || !phyRefTable.get(0).startsWith(data.refTableName)) {
+            if (!allEqual || !phyRefTable.isEmpty() && !phyRefTable.get(0).startsWith(data.refTableName)) {
                 msgText = String.format(
                     "foreign key '%s' doesn't match on group '%s' referencing physical table '%s'",
                     data.constraint, groupName, phyRefTable.get(0));

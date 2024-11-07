@@ -76,11 +76,9 @@ public class DeadlockParser {
      * Otherwise, return the deadlock log by parsing the status information.
      *
      * @param status the status information get by "show engine innodb status"
-     * @param executionContext used for privilege check
      * @return the deadlock log.
      */
-    public static String parseLocalDeadlock(String status,
-                                            ExecutionContext executionContext) {
+    public static String parseLocalDeadlock(String status) {
         /*
         1. Use the following pattern to parse the {status} and get the deadlock log only:
 
@@ -258,7 +256,7 @@ public class DeadlockParser {
 
             // Print simple deadlock log
             final String originalSql =
-                trx.isDdl() ? trx.getLocalTransaction(FAKE_GROUP_FOR_DDL).getPhysicalSql() : trx.getSql();
+                trx.isDdl() ? (String)trx.getLocalTransaction(FAKE_GROUP_FOR_DDL).getPhysicalSql() : trx.getSql();
             // Simple log will be flushed to disk, so we make it small
             final String simpleSql =
                 (originalSql == null) ? "" : originalSql.substring(0, min(128, originalSql.length()));
@@ -317,7 +315,7 @@ public class DeadlockParser {
                     localTransaction.getRowLocks()));
             }
             // Remove the connection string of DN in the physical SQL
-            final String physicalSql = removeConnectionString(localTransaction.getPhysicalSql());
+            final String physicalSql = removeConnectionString((String)localTransaction.getPhysicalSql());
             sb.append(String.format("executing SQL:\n%s\n", physicalSql));
             sb.append("\n");
 
@@ -361,7 +359,7 @@ public class DeadlockParser {
         final LocalTransaction ddlTrx = ddl.getLocalTransaction(FAKE_GROUP_FOR_DDL);
         sb.append(String.format("*** (%s.%s) PHYSICAL DDL:\n", i + 1, 1));
         // Remove the connection string of DN in the physical SQL
-        final String physicalSql = removeConnectionString(ddlTrx.getPhysicalSql());
+        final String physicalSql = removeConnectionString((String)ddlTrx.getPhysicalSql());
         sb.append(String.format("executing SQL:\n%s\n", physicalSql));
         sb.append("\n");
 

@@ -9,7 +9,7 @@ PARTITION BY LIST (a) (
 SHOW CREATE TABLE tbl;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
-	`a` int(11) NOT NULL,
+	`a` int NOT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
@@ -37,7 +37,8 @@ EXPLAIN SELECT *
 FROM tbl
 WHERE a < 5;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` < ?)", params="5")
+Gather(concurrent=true)
+  LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` < ?)")
 DROP TABLE IF EXISTS tbl;
 CREATE TABLE IF NOT EXISTS tbl (
 	a datetime NOT NULL

@@ -73,10 +73,13 @@ public class GmsSystemTables {
     public static final String COLUMNAR_TABLE_MAPPING = "columnar_table_mapping";
     public static final String COLUMNAR_TABLE_EVOLUTION = "columnar_table_evolution";
     public static final String COLUMNAR_COLUMN_EVOLUTION = "columnar_column_evolution";
+    public static final String COLUMNAR_PARTITION_EVOLUTION = "columnar_partition_evolution";
     public static final String COLUMNAR_CONFIG = "columnar_config";
     public static final String COLUMNAR_LEASE = "columnar_lease";
+    public static final String COLUMNAR_DUPLICATES = "columnar_duplicates";
     public static final String COLUMNAR_TASK = "columnar_task";
     public static final String COLUMNAR_TASK_CONFIG = "columnar_task_config";
+    public static final String COLUMNAR_PURGE_HISTORY = "columnar_purge_history";
     public static final String FILE_STORAGE_INFO = "file_storage_info";
 
     public static final String STORAGE_POOL_INFO = "storage_pool_info";
@@ -94,6 +97,11 @@ public class GmsSystemTables {
     public static final String JOIN_GROUP_TABLE_DETAIL = "join_group_table_detail";
 
     /**
+     * ttl20
+     */
+    public static final String TTL_INFO = "ttl_info";
+
+    /**
      * MPP Node Info
      */
     public static final String NODE_INFO = "node_info";
@@ -107,7 +115,11 @@ public class GmsSystemTables {
      * Global Secondary Index
      */
     public static final String BACKFILL_OBJECTS = "backfill_objects";
+    public static final String BACKFILL_SAMPLE_ROWS = "backfill_sample_rows";
+    public static final String BACKFILL_SAMPLE_ROWS_ARCHIVE = "backfill_sample_rows_archive";
     public static final String PHYSICAL_BACKFILL_OBJECTS = "physical_backfill_objects";
+
+    public static final String IMPORT_TABLESPACE_INFO_STAT = "import_tablespace_info_stat";
     public static final String FILE_STORAGE_BACKFILL_OBJECTS = "file_storage_backfill_objects";
     public static final String CHECKER_REPORTS = "checker_reports";
 
@@ -236,6 +248,8 @@ public class GmsSystemTables {
 
     public final static String RPL_FULL_VALID_DIFF_TABLE = "rpl_full_valid_diff";
 
+    public final static String RPL_SYNC_POINT_TABLE = "rpl_sync_point";
+
     public final static String DDL_PLAN = "ddl_plan";
     public final static String LEASE = "lease";
 
@@ -248,9 +262,15 @@ public class GmsSystemTables {
 
     public final static String TRX_LOG_STATUS = "trx_log_status";
 
+    public final static String CHECK_CCI_STATUS = "check_cci_status";
+
+    public final static String DEADLOCKS = "deadlocks";
+
     public final static String ENCDB_RULE = "encdb_rule";
 
     public final static String ENCDB_KEY = "encdb_key";
+
+    public final static String CDC_SYNC_POINT_META = "cdc_sync_point_meta";
 
     static {
         register(DUAL);
@@ -276,8 +296,11 @@ public class GmsSystemTables {
         register(COLUMNAR_TABLE_MAPPING);
         register(COLUMNAR_TABLE_EVOLUTION);
         register(COLUMNAR_COLUMN_EVOLUTION);
+        register(COLUMNAR_PARTITION_EVOLUTION);
         register(COLUMNAR_CONFIG);
         register(COLUMNAR_LEASE);
+        register(COLUMNAR_DUPLICATES);
+        register(COLUMNAR_PURGE_HISTORY);
         register(FILE_STORAGE_INFO);
         register(STORAGE_POOL_INFO);
         register(COLUMNS);
@@ -293,6 +316,8 @@ public class GmsSystemTables {
         register(NODE_INFO);
         register(JAVA_FUNCTIONS);
         register(BACKFILL_OBJECTS);
+        register(BACKFILL_SAMPLE_ROWS);
+        register(BACKFILL_SAMPLE_ROWS_ARCHIVE);
         register(FILE_STORAGE_BACKFILL_OBJECTS);
         register(CHANGESET_OBJECT);
         register(BASELINE_INFO);
@@ -365,10 +390,14 @@ public class GmsSystemTables {
         register(FOREIGN_KEY);
         register(FOREIGN_KEY_COLS);
         register(PHYSICAL_BACKFILL_OBJECTS);
+        register(IMPORT_TABLESPACE_INFO_STAT);
         register(TRX_LOG_STATUS);
+        register(DEADLOCKS);
         register(LOCKING_FUNCTIONS);
         register(ENCDB_RULE);
         register(ENCDB_KEY);
+        register(CDC_SYNC_POINT_META);
+        register(TTL_INFO);
     }
 
     private static void register(String systemTableName) {

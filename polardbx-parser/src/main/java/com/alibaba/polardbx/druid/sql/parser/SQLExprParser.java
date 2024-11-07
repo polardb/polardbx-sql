@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.druid.sql.parser;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.AutoIncrementType;
@@ -29,7 +30,6 @@ import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLExprImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
-import com.alibaba.polardbx.druid.sql.ast.SQLIndexOptions;
 import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
 import com.alibaba.polardbx.druid.sql.ast.SQLMapDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
@@ -137,6 +137,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public class SQLExprParser extends SQLParser {
 
@@ -943,6 +944,10 @@ public class SQLExprParser extends SQLParser {
                     expr());
                 accept(Token.AS);
                 cast.setDataType(parseDataType(false));
+                if (lexer.identifierEquals(FnvHash.Constants.ARRAY)) {
+                    lexer.nextToken();
+                    cast.setHasArray(true);
+                }
                 accept(Token.RPAREN);
 
                 sqlExpr = cast;
@@ -2521,6 +2526,10 @@ public class SQLExprParser extends SQLParser {
         setAllowIdentifierMethod(false);
 
         try {
+            if (lexer.token == Token.LPAREN) {
+                //判断是否有括号包裹
+                item.setHasParen(true);
+            }
             SQLExpr expr = expr();
             if (isEnabled(SQLParserFeature.IgnoreNameQuotes)) {
                 if (expr instanceof SQLPropertyExpr) {
@@ -4797,6 +4806,23 @@ public class SQLExprParser extends SQLParser {
                         lexer.nextToken();
                         accept(Token.EQ);
                         indexDefinition.getOptions().setDictionaryColumns(lexer.stringVal);
+                        indexDefinition.addColumnarOption("DICTIONARY_COLUMNS", lexer.stringVal);
+                        lexer.nextToken();
+                    } else if (lexer.identifierEquals(FnvHash.Constants.COLUMNAR_OPTION)
+                        || lexer.identifierEquals(FnvHash.Constants.COLUMNAR_OPTIONS)) {
+                        lexer.nextToken();
+                        if (lexer.token() == Token.EQ) {
+                            lexer.nextToken();
+                        }
+                        if (lexer.token() != Token.LITERAL_CHARS) {
+                            throw new ParserException(
+                                "Columnar options should be a JSON string enclosed in single quotes, "
+                                    + "e.g. columnar_options='{\"a\":\"b\", \"c\":\"d\"}'");
+                        }
+                        Map<String, Object> map = JSON.parseObject(lexer.stringVal, Map.class);
+                        for (Map.Entry<String, Object> entry : map.entrySet()) {
+                            indexDefinition.addColumnarOption(entry.getKey(), (String) entry.getValue());
+                        }
                         lexer.nextToken();
                     } else {
                         break _opts;

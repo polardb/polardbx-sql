@@ -16,6 +16,11 @@
 
 package com.alibaba.polardbx.common;
 
+/**
+ * The key differentiator between variables in the {@TddlConstants} class
+ * and those in the {@ConnectionProperties} class is that the former are not
+ * eligible for configuration through set instructions.
+ */
 public class TddlConstants {
 
     public static final long DEFAULT_TABLE_META_EXPIRE_TIME = 300 * 1000;
@@ -88,4 +93,10 @@ public class TddlConstants {
     public static final String BLACK_LIST_CONF = "BLACK_LIST_CONF";
 
     public static final String ENABLE_JAVA_UDF = "ENABLE_JAVA_UDF";
+
+    public static final String ENABLE_SELECT_INTO_OUTFILE = "ENABLE_SELECT_INTO_OUTFILE";
+
+    public static final String ENABLE_LOAD_DATA_FILE = "ENABLE_LOAD_DATA_FILE";
+
+    public static final String ENABLE_STRICT_SET_GLOBAL = "ENABLE_STRICT_SET_GLOBAL";
 }

@@ -81,13 +81,13 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
             startYear,
             StringUtils.leftPad(String.valueOf(Calendar.getInstance().get(Calendar.MONTH) + 1), 2, "0"));
         stmt.execute(sql);
-        Assert.assertEquals(0, getDdlRecordInfoListByToken(tokenHints).size());
+        Assert.assertEquals(1, getDdlRecordInfoListByToken(tokenHints).size());
 
         // Test Step
         tokenHints = buildTokenHints();
         sql = tokenHints + "ALTER TABLE t_order EXPIRE LOCAL PARTITION";
         stmt.execute(sql);
-        Assert.assertEquals(0, getDdlRecordInfoListByToken(tokenHints).size());
+        Assert.assertEquals(1, getDdlRecordInfoListByToken(tokenHints).size());
 
         // Test Step
         tokenHints = buildTokenHints();
@@ -110,7 +110,7 @@ public class CdcLocalPartitionTableDdlRecordTest extends CdcBaseTest {
             + "PRE ALLOCATE 6\n"
             + "PIVOTDATE NOW()";
         stmt.execute(sql);
-        Assert.assertEquals(0, getDdlRecordInfoListByToken(tokenHints).size());
+        Assert.assertEquals(1, getDdlRecordInfoListByToken(tokenHints).size());
 
         // Test Step
         tokenHints = buildTokenHints();

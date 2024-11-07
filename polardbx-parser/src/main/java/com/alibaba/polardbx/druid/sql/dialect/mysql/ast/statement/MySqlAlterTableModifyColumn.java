@@ -30,6 +30,9 @@ public class MySqlAlterTableModifyColumn extends MySqlObjectImpl implements SQLA
     private SQLName firstColumn;
     private SQLName afterColumn;
 
+    public MySqlAlterTableModifyColumn() {
+    }
+
     @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {

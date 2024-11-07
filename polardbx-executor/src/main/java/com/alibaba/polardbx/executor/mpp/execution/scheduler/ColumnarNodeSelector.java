@@ -28,6 +28,7 @@ import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.google.common.collect.Multimap;
 import io.airlift.slice.XxHash64;
 
@@ -187,7 +188,7 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
             OssSplit ossSplit = (OssSplit) (split.getConnectorSplit());
             int partNum = ossSplit.getPartIndex();
             if (partNum < 0 && forceGenPart) {
-                partNum = OssSplit.calcPartition(ossSplit.getLogicalSchema(), ossSplit.getLogicalTableName(),
+                partNum = PartitionUtils.calcPartition(ossSplit.getLogicalSchema(), ossSplit.getLogicalTableName(),
                     ossSplit.getPhysicalSchema(), ossSplit.getPhyTableNameList().get(0));
             }
             int nodeId = partNum % candidateNodes.size();

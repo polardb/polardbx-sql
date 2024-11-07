@@ -18,6 +18,7 @@ package com.alibaba.polardbx.transaction.async;
 
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -28,7 +29,6 @@ import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionState;
-import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.transaction.log.ConnectionContext;
 import com.alibaba.polardbx.transaction.log.GlobalTxLog;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
@@ -147,7 +147,7 @@ public class ScanBestEffortPreparedTask implements Runnable {
         final String primaryGroup = schemaAndGroup.getValue();
 
         GlobalTxLogManager txLog = TransactionManager.getInstance(schema).getGlobalTxLogManager();
-        GlobalTxLog tx = txLog.get(primaryGroup, trans.transId);
+        GlobalTxLog tx = txLog.getWithTimeout(primaryGroup, trans.transId);
         if (tx != null) {
             if (tx.getState() == TransactionState.ABORTED) {
                 TransactionLogger.warn(tx.getTxid(), "Roll back best-effort transaction");
@@ -176,8 +176,8 @@ public class ScanBestEffortPreparedTask implements Runnable {
             // Write transaction log to the primary group of this transaction
             IDataSource dataSource = txLog.getTransactionExecutor().getGroupExecutor(primaryGroup).getDataSource();
             try (IConnection conn2 = dataSource.getConnection()) {
-                txLog.append(trans.transId, TransactionType.BED, TransactionState.ABORTED, new ConnectionContext(),
-                    conn2);
+                GlobalTxLogManager.appendWithSocketTimeout(trans.transId, TransactionType.BED, TransactionState.ABORTED,
+                    new ConnectionContext(), conn2);
                 // Successfully set the transaction to ABORT state, so roll it back
                 TransactionLogger.warn(trans.transId, "Abort best-effort transaction and roll back");
                 return tryRollback(trans.transId, conn);

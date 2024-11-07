@@ -16,25 +16,39 @@
  */
 package org.apache.calcite.rex;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.util.StringUtils;
+import com.alibaba.polardbx.util.RexMemoryLimitHelper;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
-import com.google.common.collect.*;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.util.RexMemoryLimitHelper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.calcite.linq4j.function.Predicate1;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptUtil;
-import org.apache.calcite.rel.*;
-import org.apache.calcite.rel.core.*;
+import org.apache.calcite.rel.RelCollation;
+import org.apache.calcite.rel.RelCollations;
+import org.apache.calcite.rel.RelFieldCollation;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelVisitor;
+import org.apache.calcite.rel.core.AggregateCall;
+import org.apache.calcite.rel.core.CorrelationId;
+import org.apache.calcite.rel.core.Filter;
+import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFamily;
@@ -42,7 +56,17 @@ import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexTableInputRef.RelTableRef;
 import org.apache.calcite.runtime.PredicateImpl;
 import org.apache.calcite.schema.Schemas;
-import org.apache.calcite.sql.*;
+import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlBinaryOperator;
+import org.apache.calcite.sql.SqlFunction;
+import org.apache.calcite.sql.SqlIndexHint;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.SqlPostfixOperator;
+import org.apache.calcite.sql.SqlPrefixOperator;
 import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.fun.SqlCaseOperator;
 import org.apache.calcite.sql.fun.SqlCastFunction;
@@ -52,7 +76,6 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFamily;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
-import org.apache.calcite.sql.util.SqlString;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.sql2rel.CorrelationReferenceFinder;
 import org.apache.calcite.util.ControlFlowException;
@@ -61,11 +84,25 @@ import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mappings;
-import org.apache.http.protocol.ExecutionContext;
 
 import javax.annotation.Nonnull;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import static org.apache.calcite.sql.type.SqlTypeName.CHAR_TYPES;
+import static org.apache.calcite.sql.type.SqlTypeName.INT_TYPES;
 
 /**
  * Utility methods concerning row-expressions.
@@ -596,8 +633,14 @@ public class RexUtil {
               (RexCorrelVariable) fieldAccess.getReferenceExpr();
       if (v.getId().equals(id)) {
         RexCorrelVariable newRexCor = new RexCorrelVariable(v.getId(), type);
-        int newIndex = shiftIndex.get(fieldAccess.getField().getIndex());
-        RexFieldAccess newRexField = new RexFieldAccess(newRexCor, type.getFieldList().get(newIndex));
+        RexFieldAccess newRexField;
+        if(shiftIndex.containsKey(fieldAccess.getField().getIndex())){
+          int newIndex = shiftIndex.get(fieldAccess.getField().getIndex());
+          newRexField = new RexFieldAccess(newRexCor, type.getFieldList().get(newIndex));
+        }else{
+          newRexField = new RexFieldAccess(newRexCor, type.getFieldList().get(fieldAccess.getField().getIndex()));
+        }
+
         return newRexField;
       }
       return fieldAccess;
@@ -2936,6 +2979,85 @@ public class RexUtil {
     }
   }
 
+    public static class EqualAndInExprFinder extends RexVisitorImpl<Void> {
+        private Map<String, Set<Integer>> map = Maps.newHashMap();
+        private List<RelDataTypeField> fields;
+
+        public EqualAndInExprFinder(LogicalTableScan scan) {
+            super(true);
+            fields = scan.getRowType().getFieldList();
+        }
+
+        public Void visitCall(RexCall call) {
+            if (call.getKind() == SqlKind.EQUALS) {
+                if (call.getOperands().get(0) instanceof RexInputRef &&
+                    call.getOperands().get(1) instanceof RexDynamicParam) {
+                    RexInputRef ref = (RexInputRef) call.getOperands().get(0);
+                    RexDynamicParam param = (RexDynamicParam) call.getOperands().get(1);
+                    RelDataType type = fields.get(ref.getIndex()).getType();
+                    if (CHAR_TYPES.contains(type.getSqlTypeName()) &&
+                        INT_TYPES.contains(param.getType().getSqlTypeName())) {
+                        if (map.get("int2char") == null) {
+                            map.put("int2char", Sets.newHashSet());
+                        }
+                        map.get("int2char").add(param.getIndex());
+                    } else if (INT_TYPES.contains(type.getSqlTypeName())
+                        && CHAR_TYPES.contains(param.getType().getSqlTypeName())) {
+                        if (map.get("char2int") == null) {
+                            map.put("char2int", Sets.newHashSet());
+                        }
+                        map.get("char2int").add(param.getIndex());
+                    }
+                } else if (call.getOperands().get(1) instanceof RexInputRef &&
+                    call.getOperands().get(0) instanceof RexDynamicParam) {
+                    RexInputRef ref = (RexInputRef) call.getOperands().get(1);
+                    RexDynamicParam param = (RexDynamicParam) call.getOperands().get(0);
+                    RelDataType type = fields.get(ref.getIndex()).getType();
+                    if (CHAR_TYPES.contains(type.getSqlTypeName())
+                        && INT_TYPES.contains(param.getType().getSqlTypeName())) {
+                        if (map.get("int2char") == null) {
+                            map.put("int2char", Sets.newHashSet());
+                        }
+                        map.get("int2char").add(param.getIndex());
+                    } else if (INT_TYPES.contains(type.getSqlTypeName())
+                        && CHAR_TYPES.contains(param.getType().getSqlTypeName())) {
+                        if (map.get("char2int") == null) {
+                            map.put("char2int", Sets.newHashSet());
+                        }
+                        map.get("char2int").add(param.getIndex());
+                    }
+                }
+            } else if (call.getKind() == SqlKind.IN) {
+                if (call.getOperands().get(0) instanceof RexInputRef &&
+                    call.getOperands().get(1).getKind() == SqlKind.ROW &&
+                    ((RexCall) call.getOperands().get(1)).getOperands().get(0) instanceof RexDynamicParam) {
+                    RexInputRef ref = (RexInputRef) call.getOperands().get(0);
+                    RexDynamicParam param =
+                        (RexDynamicParam) ((RexCall) call.getOperands().get(1)).getOperands().get(0);
+                    RelDataType type = fields.get(ref.getIndex()).getType();
+                    if (CHAR_TYPES.contains(type.getSqlTypeName())) {
+                        if (map.get("int2char") == null) {
+                            map.put("int2char", Sets.newHashSet());
+                        }
+                        map.get("int2char").add(param.getIndex());
+                    } else if (INT_TYPES.contains(type.getSqlTypeName())) {
+                        if (map.get("char2int") == null) {
+                            map.put("char2int", Sets.newHashSet());
+                        }
+                        map.get("char2int").add(param.getIndex());
+                    }
+                }
+            } else {
+                return super.visitCall(call);
+            }
+            return null;
+        }
+
+        public Map<String, Set<Integer>> getMap() {
+            return map;
+        }
+    }
+
   public static class SubQueryCounter extends RexVisitorImpl<Void> {
 
     private int     subqueryCount       = 0;
@@ -3189,6 +3311,30 @@ public class RexUtil {
 
     public List<RexSubQuery> getSubQueries() {
       return subQueries;
+    }
+  }
+
+  static public class LocalRefFinder extends RexVisitorImpl<Void> {
+    private Set<Integer> rexLocalRefs = Sets.newHashSet();
+
+    protected LocalRefFinder() {
+      super(true);
+    }
+
+    @Override
+    public Void visitLocalRef(RexLocalRef localRef) {
+      rexLocalRefs.add(localRef.getIndex());
+      return null;
+    }
+
+    public Set<Integer> getRexLocalRefs() {
+      return rexLocalRefs;
+    }
+
+    public static Set<Integer> findAllLocalRefs(RexNode rexNode) {
+      LocalRefFinder localRefFinder = new LocalRefFinder();
+      rexNode.accept(localRefFinder);
+      return localRefFinder.getRexLocalRefs();
     }
   }
 

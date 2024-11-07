@@ -4,9 +4,9 @@
 
   plan: |
 
-    HashAgg(count(*)="SUM(count(*))")
-      Gather(concurrent=true)
-        LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON ((`test_hash_tb`.`name` = 'xx') AND (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
+    hashagg(count(*)="sum(count(*))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on ((`test_hash_tb`.`name` = 'xx') and (`test_hash_tb`.`id` = `test_hash_tb0`.`id`))")
 
 -
   sql: |
@@ -14,10 +14,10 @@
 
   plan: |
 
-    Project(count(*)="count(*)")
-      HashAgg(group="name", count(*)="SUM(count(*))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`name`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) GROUP BY `test_hash_tb`.`name`")
+    project(count(*)="count(*)")
+      hashagg(group="name", count(*)="sum(count(*))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`name`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb`.`name`")
 
 -
   sql: |
@@ -25,11 +25,11 @@
 
   plan: |
 
-    MemSort(sort="count(*) ASC")
-      Project(count(*)="count(*)")
-        HashAgg(group="name", count(*)="SUM(count(*))")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`name`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) GROUP BY `test_hash_tb`.`name`")
+    memsort(sort="count(*) asc")
+      project(count(*)="count(*)")
+        hashagg(group="name", count(*)="sum(count(*))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`name`, count(*) as `count(*)` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb`.`name`")
 
 -
   sql: |

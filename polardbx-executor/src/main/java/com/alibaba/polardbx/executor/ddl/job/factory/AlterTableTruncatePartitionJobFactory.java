@@ -26,8 +26,9 @@ public class AlterTableTruncatePartitionJobFactory extends AlterTableGroupTrunca
 
     public AlterTableTruncatePartitionJobFactory(DDL ddl,
                                                  AlterTableGroupTruncatePartitionPreparedData preparedData,
-                                                 ExecutionContext executionContext) {
-        super(ddl, preparedData, executionContext);
+                                                 ExecutionContext executionContext,
+                                                 Long versionId) {
+        super(ddl, preparedData, executionContext, versionId);
     }
 
     @Override

@@ -45,6 +45,7 @@ public class ColumnarTableEvolutionRecord implements SystemTableRecord {
     public String ddlType;
     public long commitTs;
     public List<Long> columns;
+    public List<Long> partitions;
     public Map<String, String> options;
 
     public ColumnarTableEvolutionRecord() {
@@ -54,7 +55,8 @@ public class ColumnarTableEvolutionRecord implements SystemTableRecord {
                                         String indexName,
                                         Map<String, String> options,
                                         long ddlJobId,
-                                        String ddlType, long commitTs, List<Long> columns) {
+                                        String ddlType, long commitTs,
+                                        List<Long> columns, List<Long> partitions) {
         this.versionId = versionId;
         this.tableId = tableId;
         this.tableSchema = tableSchema;
@@ -65,11 +67,12 @@ public class ColumnarTableEvolutionRecord implements SystemTableRecord {
         this.ddlType = ddlType;
         this.commitTs = commitTs;
         this.columns = columns;
+        this.partitions = partitions;
     }
 
-    public static String serializeToJson(List<Long> columns) {
+    public static String serializeToJson(List<Long> ids) {
         JSONArray jsonArray = new JSONArray();
-        jsonArray.addAll(columns);
+        jsonArray.addAll(ids);
         return jsonArray.toJSONString();
     }
 
@@ -83,6 +86,9 @@ public class ColumnarTableEvolutionRecord implements SystemTableRecord {
     }
 
     public static List<Long> deserializeListFromJson(String json) {
+        if (json == null) {
+            return new ArrayList<>();
+        }
         List<Long> results = new ArrayList<>();
         JSONArray jsonArray = JSON.parseArray(json);
         for (int i = 0; i < jsonArray.size(); i++) {
@@ -122,8 +128,11 @@ public class ColumnarTableEvolutionRecord implements SystemTableRecord {
         this.ddlType = rs.getString("ddl_type");
         this.commitTs = rs.getLong("commit_ts");
 
-        String json = rs.getString("columns");
-        this.columns = deserializeListFromJson(json);
+        String columns = rs.getString("columns");
+        this.columns = deserializeListFromJson(columns);
+
+        String partitions = rs.getString("partitions");
+        this.partitions = deserializeListFromJson(partitions);
 
         String options = rs.getString("options");
         this.options = deserializeMapFromJson(options);
@@ -143,6 +152,7 @@ public class ColumnarTableEvolutionRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.ddlType);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.commitTs);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, serializeToJson(this.columns));
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, serializeToJson(this.partitions));
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, serializeToJson(this.options));
         return params;
     }

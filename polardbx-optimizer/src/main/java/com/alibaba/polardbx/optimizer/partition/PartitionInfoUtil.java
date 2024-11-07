@@ -27,6 +27,8 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
@@ -48,6 +50,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.ttl.TtlPartArcState;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -95,7 +98,6 @@ import org.apache.calcite.sql.SqlAlterTableDropPartition;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCreateTable;
-import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
@@ -106,19 +108,18 @@ import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
 import org.apache.calcite.sql.SqlSubPartition;
 import org.apache.calcite.sql.SqlUnresolvedFunction;
-import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.fun.SqlSubstringFunction;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlShuttle;
-import org.apache.calcite.sql.util.SqlString;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.Types;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -155,6 +156,7 @@ public class PartitionInfoUtil {
     public static final int IGNORE_PARTNAME_LOCALITY = 1;
     public static final int COMPARE_NEW_PART_LOCATION = 2;
     public static final int COMPARE_EXISTS_PART_LOCATION = 4;
+    public final static Logger DDL_LOGGER = LoggerFactory.getLogger("ddl");
 
     protected static class PartitionColumnFinder extends SqlShuttle {
 
@@ -341,6 +343,7 @@ public class PartitionInfoUtil {
 
         ExtraFieldJSON partExtras = new ExtraFieldJSON();
         partExtras.setLocality(partitionSpec.getLocality() == null ? "" : partitionSpec.getLocality());
+        partExtras.setArcState(partitionSpec.getArcState());
         record.partExtras = partExtras;
 
         record.partFlags = 0L;
@@ -2185,6 +2188,10 @@ public class PartitionInfoUtil {
                     if ((flag & IGNORE_PARTNAME_LOCALITY) == IGNORE_PARTNAME_LOCALITY && withImplicitTableGroup) {
                         partitionInfo.setPartitionBy(originalPartitionBy.copy());
                     }
+                    DDL_LOGGER.error(MessageFormat.format("partitionInfo[{0}]:{1}",
+                        partitionInfo.getTableName(), partitionInfo.getDigest(0L)));
+                    DDL_LOGGER.error(MessageFormat.format("partitionInfo[{0}]:{1}",
+                        comparePartitionInfo.getTableName(), comparePartitionInfo.getDigest(0L)));
                     throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS, String.format(
                         "Failed to create partition table because the partition definition of the table mismatch the table group[%s]",
                         tableGroupName));
@@ -2554,7 +2561,7 @@ public class PartitionInfoUtil {
                                                                              TableInfoManager tableInfoManager) {
         List<PartitionGroupRecord> outdatedPartitionRecords =
             TableGroupUtils.getOutDatePartitionGroupsByTgId(conn, tgIdInMetadb);
-        partitionInfo = partitionInfo.copy();
+        //partitionInfo = partitionInfo.copy();
         for (PartitionGroupRecord partitionGroupRecord : outdatedPartitionRecords) {
             if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
                 boolean found = false;
@@ -2834,7 +2841,7 @@ public class PartitionInfoUtil {
     public static List<Integer> fetchAllLevelMaxActualPartColsFromPartInfos(PartitionInfo partInfo1,
                                                                             PartitionInfo partInfo2) {
         List<Integer> allLevelMaxActualPartCols = new ArrayList<>();
-        if (!(partInfo1.isPartitionedTableOrGsiTable() && partInfo2.isPartitionedTableOrGsiTable())) {
+        if (!(partInfo1.isPartitionedTableOrGsiCciTable() && partInfo2.isPartitionedTableOrGsiCciTable())) {
             return allLevelMaxActualPartCols;
         }
         List<Integer> actualPartColInfoOfPartInfo1 = partInfo1.getAllLevelActualPartColCounts();

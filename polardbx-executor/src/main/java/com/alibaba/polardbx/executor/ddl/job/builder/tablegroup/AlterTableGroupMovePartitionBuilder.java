@@ -80,17 +80,16 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
 
                     assert srcGroupKey != null;
 
-                    String tarGroupKey = null;
                     for (String phyTbName : srcPhyTbInfo.getValue()) {
-                        if (tarGroupKey == null) {
-                            for (Map.Entry<String, Set<String>> tarPhyTbInfo : itemBuilder.getTargetPhyTables()
-                                .entrySet()) {
-                                if (tarPhyTbInfo.getValue().contains(phyTbName)) {
-                                    tarGroupKey = tarPhyTbInfo.getKey();
-                                    break;
-                                }
+                        String tarGroupKey = null;
+                        for (Map.Entry<String, Set<String>> tarPhyTbInfo : itemBuilder.getTargetPhyTables()
+                            .entrySet()) {
+                            if (tarPhyTbInfo.getValue().contains(phyTbName)) {
+                                tarGroupKey = tarPhyTbInfo.getKey();
+                                break;
                             }
                         }
+
                         tbPtbGroupMap.get(tableName).put(phyTbName, Pair.of(srcGroupKey, tarGroupKey));
                     }
                 }

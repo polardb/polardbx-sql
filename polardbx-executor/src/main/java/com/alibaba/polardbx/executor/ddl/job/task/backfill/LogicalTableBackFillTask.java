@@ -35,8 +35,8 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
 
     public String sourceTableName;
     public String targetTableName;
-    public Map<String, String> virtualColumns;
-    public Map<String, String> backfillColumnMap;
+    public Map<String, String> srcCheckColumnMap;
+    public Map<String, String> dstCheckColumnMap;
     public List<String> modifyStringColumns;
     public boolean useChangeSet;
     public boolean modifyColumn;
@@ -46,8 +46,8 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
     public LogicalTableBackFillTask(String schemaName,
                                     String sourceTableName,
                                     String targetTableName,
-                                    Map<String, String> virtualColumns,
-                                    Map<String, String> backfillColumnMap,
+                                    Map<String, String> srcCheckColumnMap,
+                                    Map<String, String> dstCheckColumnMap,
                                     List<String> modifyStringColumns,
                                     boolean useChangeSet,
                                     boolean mirrorCopy,
@@ -55,8 +55,8 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
         super(schemaName);
         this.sourceTableName = sourceTableName;
         this.targetTableName = targetTableName;
-        this.virtualColumns = virtualColumns;
-        this.backfillColumnMap = backfillColumnMap;
+        this.srcCheckColumnMap = srcCheckColumnMap;
+        this.dstCheckColumnMap = dstCheckColumnMap;
         this.modifyStringColumns = modifyStringColumns;
         this.useChangeSet = useChangeSet;
         this.modifyColumn = modifyColumn;
@@ -68,14 +68,15 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
     protected void executeImpl(ExecutionContext executionContext) {
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         GsiBackfill backFillPlan =
             GsiBackfill.createGsiBackfill(schemaName, sourceTableName, targetTableName, executionContext);
         backFillPlan.setUseChangeSet(useChangeSet);
-        backFillPlan.setModifyColumn(modifyColumn);
+        backFillPlan.setOnlineModifyColumn(modifyColumn);
         backFillPlan.setMirrorCopy(mirrorCopy);
         backFillPlan.setModifyStringColumns(modifyStringColumns);
-        backFillPlan.setBackfillColumnMap(backfillColumnMap);
-        backFillPlan.setVirtualColumnMap(virtualColumns);
+        backFillPlan.setSrcCheckColumnMap(srcCheckColumnMap);
+        backFillPlan.setDstCheckColumnMap(dstCheckColumnMap);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         ExecutorHelper.execute(backFillPlan, executionContext);

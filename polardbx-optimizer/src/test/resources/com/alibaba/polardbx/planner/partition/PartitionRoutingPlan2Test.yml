@@ -1,0 +1,12 @@
+
+- sql: |
+    select `snap_time` from `sp_k_r_month` t where t.snap_time >= '2024-05-21 17:30:27' and t.snap_time <= '2024-05-21 17:30:40' limit 10;
+  plan: |
+    mergesort(sort="", offset=0, fetch=10)
+      logicalview(tables="sp_k_r_month[p1sp6,p2sp6,p3sp6,...p64sp6]", shardcount=64, sql="select `snap_time` from `sp_k_r_month` as `sp_k_r_month` where ((`snap_time` >= '2024-05-21 17:30:27') and (`snap_time` <= '2024-05-21 17:30:40')) limit 10")
+
+- sql: |
+    select `snap_time` from `sp_k_r_month` t where t.snap_time >= '2024-05-21 17:30:27' and t.snap_time <= '2024-06-21 17:30:40' limit 10;
+  plan: |
+    mergesort(sort="", offset=0, fetch=10)
+      logicalview(tables="sp_k_r_month[p1sp6,p1sp7,p2sp6,...p64sp7]", shardcount=128, sql="select `snap_time` from `sp_k_r_month` as `sp_k_r_month` where ((`snap_time` >= '2024-05-21 17:30:27') and (`snap_time` <= '2024-06-21 17:30:40')) limit 10")

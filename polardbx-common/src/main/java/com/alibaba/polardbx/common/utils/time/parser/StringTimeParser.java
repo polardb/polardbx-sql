@@ -624,6 +624,7 @@ public class StringTimeParser extends MySQLTimeParserBase {
                 }
                 sliceOutput.appendByte(formatAsBytes[i]);
             }
+            formatAsBytes = sliceOutput.slice().getBytes();
         }
 
         MysqlDateTime t = new MysqlDateTime();

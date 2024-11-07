@@ -251,7 +251,9 @@ public abstract class BaseTransaction implements ITransaction {
     @Override
     public void setInventoryMode(InventoryMode inventoryMode) {
         if (inventoryMode != null && !getTransactionClass().isA(SUPPORT_INVENTORY_TRANSACTION)) {
-            throw new UnsupportedOperationException("Don't support the Inventory Hint on current Transaction Policy!");
+            throw new UnsupportedOperationException(
+                "Don't support the Inventory Hint on current Transaction Policy, current transaction type is "
+                    + getTransactionClass());
         } else {
             this.inventoryMode = inventoryMode;
         }
@@ -315,11 +317,16 @@ public abstract class BaseTransaction implements ITransaction {
             return;
         }
 
+        if (stat.startTime <= 0) {
+            return;
+        }
+
         stat.durationTime = System.nanoTime() - stat.startTime;
         final long durationTimeInMs = stat.durationTime / 1000000;
 
         if (DynamicConfig.getInstance().isEnableTransactionStatistics()
-            && DynamicConfig.getInstance().getSlowTransThreshold() < durationTimeInMs) {
+            && DynamicConfig.getInstance().getSlowTransThreshold() < durationTimeInMs
+            && executionContext.isUserSql()) {
             stat.finishTimeInMs = stat.startTimeInMs + durationTimeInMs;
             stat.readOnly = !isRwTransaction();
             stat.transactionType = getType();

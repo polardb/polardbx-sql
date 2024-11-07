@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRuleCall;
+import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelNode;
@@ -70,7 +71,8 @@ public class COLLogicalWindowToHashWindowRule extends LogicalWindowToHashWindowR
         }
         for (Pair<RelDistribution, RelDistribution> implementation : implementationList) {
             HashWindow newWindow = HashWindow.create(
-                window.getTraitSet().replace(outConvention).replace(implementation.getKey()),
+                window.getTraitSet().replace(outConvention).replace(implementation.getKey())
+                    .replace(RelCollations.EMPTY),
                 convert(newInput, newInput.getTraitSet().replace(implementation.getValue())),
                 window.getConstants(),
                 window.groups,

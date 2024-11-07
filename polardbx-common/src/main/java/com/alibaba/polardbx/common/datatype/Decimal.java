@@ -157,7 +157,7 @@ public class Decimal extends Number implements Comparable<Decimal> {
     public Decimal divide(Decimal d) {
         DecimalStructure to = new DecimalStructure();
         FastDecimalUtils
-            .div(this.decimalStructure, d.decimalStructure, to, DecimalStructure.DIV_PRECISION_INCREMENT_DEFAULT, true);
+            .div(this.decimalStructure, d.decimalStructure, to, DecimalStructure.getDefaultDivPrecisionIncrement(), true);
         return new Decimal(to);
     }
 

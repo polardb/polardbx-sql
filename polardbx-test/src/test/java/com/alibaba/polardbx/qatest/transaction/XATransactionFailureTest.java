@@ -65,7 +65,7 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
             supportShareReadView = JdbcUtil.supportShareReadView(connection);
         }
         List<Object[]> ret = new ArrayList<>();
-        String[] trxPolicy = {"XA", "TSO"};
+        String[] trxPolicy = {"XA", "TSO", "ARCHIVE"};
         String[] asyncCommit = {/*"TRUE",*/ "FALSE"};
         for (String policy : trxPolicy) {
             for (String ac : asyncCommit) {
@@ -140,11 +140,14 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
                 } catch (Exception e) {
                     Assert.fail(e.getMessage());
                 }
+                boolean exception = false;
                 try {
                     tddlConnection.commit();
                 } catch (Exception ex) {
                     // ignore
+                    exception = true;
                 }
+                Assert.assertTrue(exception);
                 mysqlConnection.commit();
                 tddlConnection.setAutoCommit(true);
                 mysqlConnection.setAutoCommit(true);
@@ -208,11 +211,14 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
                 } catch (Exception e) {
                     Assert.fail(e.getMessage());
                 }
+                boolean exception = false;
                 try {
                     tddlConnection.commit();
                 } catch (Exception ex) {
                     // ignore
+                    exception = true;
                 }
+                Assert.assertTrue(exception);
                 mysqlConnection.rollback(); // expect data to be rollbacked
                 tddlConnection.setAutoCommit(true);
                 mysqlConnection.setAutoCommit(true);
@@ -271,11 +277,14 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
                 } catch (Exception e) {
                     Assert.fail(e.getMessage());
                 }
+                boolean exception = false;
                 try {
                     tddlConnection.commit();
                 } catch (Exception ex) {
                     // ignore
+                    exception = true;
                 }
+                Assert.assertTrue(exception);
                 mysqlConnection.rollback(); // expect data to be rollbacked
                 tddlConnection.setAutoCommit(true);
                 mysqlConnection.setAutoCommit(true);
@@ -318,11 +327,15 @@ public class XATransactionFailureTest extends CrudBasedLockTestCase {
         } catch (Exception e) {
             Assert.fail(e.getMessage());
         }
+        boolean exception = false;
         try {
             tddlConnection.commit();
         } catch (Exception ex) {
             // ignore
+            exception = true;
         }
+        // Should not cause commit fail in this case!
+        Assert.assertFalse(exception);
         mysqlConnection.commit(); // expect data to be committed
         tddlConnection.setAutoCommit(true);
         mysqlConnection.setAutoCommit(true);

@@ -53,7 +53,7 @@ public class CacheLineTest {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
         StatisticManager.CacheLine c =
             new StatisticManager.CacheLine(1, unixTimeStamp(), unixTimeStamp());
-        assert c.getHistogramMap() == null;
+        assert c.getHistogramMap().isEmpty();
         assert c.getTopNColumns().size() == 0;
         Assert.assertTrue(c.hasExpire());
     }
@@ -70,7 +70,7 @@ public class CacheLineTest {
         topN.buildDefault(3, 1);
         c.setTopN("test_col", topN);
         c.setLastModifyTime(System.currentTimeMillis() / 1000);
-        assert c.getHistogramMap() == null;
+        assert c.getHistogramMap().isEmpty();
         assert c.getTopNColumns().size() > 0;
         Assert.assertTrue(!c.hasExpire());
     }
@@ -104,7 +104,7 @@ public class CacheLineTest {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
         StatisticManager.CacheLine c = new StatisticManager.CacheLine(1, unixTimeStamp(), unixTimeStamp());
         c.setLastModifyTime(System.currentTimeMillis());
-        assert c.getHistogramMap() == null;
+        assert c.getHistogramMap().isEmpty();
         assert c.getTopNColumns().size() == 0;
         Assert.assertTrue(c.hasExpire());
     }

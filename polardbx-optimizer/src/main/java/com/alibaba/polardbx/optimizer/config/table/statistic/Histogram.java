@@ -19,9 +19,11 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 
@@ -403,8 +405,10 @@ public class Histogram {
                 bucketJson.put("upper", bucket.upper.toString());
                 bucketJson.put("lower", bucket.lower.toString());
             } else {
-                bucketJson.put("upper", bucket.upper);
-                bucketJson.put("lower", bucket.lower);
+                bucketJson.put("upper",
+                    JSON.toJSONString(bucket.upper, SerializerFeature.DisableCircularReferenceDetect));
+                bucketJson.put("lower",
+                    JSON.toJSONString(bucket.lower, SerializerFeature.DisableCircularReferenceDetect));
             }
             bucketsJsonArray.add(bucketJson);
         }
@@ -412,6 +416,9 @@ public class Histogram {
     }
 
     public static Histogram deserializeFromJson(String json) {
+        if (StringUtils.isEmpty(json)) {
+            return null;
+        }
         try {
             JSONObject histogramJson = JSON.parseObject(json);
             String type = histogramJson.getString("type");
@@ -431,6 +438,12 @@ public class Histogram {
                 } else {
                     bucket.lower = bucketJson.get("lower");
                     bucket.upper = bucketJson.get("upper");
+                    try {
+                        validateBucketBounds(bucket);
+                    } catch (IllegalArgumentException e) {
+                        logger.error("validateBucketBounds error ", e);
+                        return null;
+                    }
                 }
                 bucket.count = bucketJson.getIntValue("count");
                 bucket.preSum = bucketJson.getIntValue("preSum");
@@ -441,6 +454,24 @@ public class Histogram {
         } catch (Throwable e) {
             logger.error("deserializeFromJson error ", e);
             return null;
+        }
+    }
+
+    /**
+     * Validates histogram bucket boundaries to ensure they are not empty or instances of JSONObject.
+     * Throws an IllegalArgumentException if either lower or upper bounds are invalid.
+     *
+     * @param bucket The Histogram Bucket object whose boundaries need to be validated.
+     */
+    protected static void validateBucketBounds(Bucket bucket) {
+        // Check if the lower bound is null or an instance of JSONObject
+        if (bucket.getLower() == null || bucket.getLower() instanceof JSONObject) {
+            throw new IllegalArgumentException("Invalid lower bound in histogram bucket: " + bucket.getLower());
+        }
+
+        // Check if the upper bound is null or an instance of JSONObject
+        if (bucket.getUpper() == null || bucket.getUpper() instanceof JSONObject) {
+            throw new IllegalArgumentException("Invalid upper bound in histogram bucket: " + bucket.getUpper());
         }
     }
 
@@ -493,6 +524,10 @@ public class Histogram {
         }
     }
 
+    public float getSampleRate() {
+        return sampleRate;
+    }
+
     public static class Bucket {
         private Object lower;
         private Object upper;
@@ -518,6 +553,26 @@ public class Histogram {
 
         public int getNdv() {
             return ndv;
+        }
+
+        public void setLower(Object lower) {
+            this.lower = lower;
+        }
+
+        public void setUpper(Object upper) {
+            this.upper = upper;
+        }
+
+        public void setCount(int count) {
+            this.count = count;
+        }
+
+        public void setPreSum(int preSum) {
+            this.preSum = preSum;
+        }
+
+        public void setNdv(int ndv) {
+            this.ndv = ndv;
         }
     }
 

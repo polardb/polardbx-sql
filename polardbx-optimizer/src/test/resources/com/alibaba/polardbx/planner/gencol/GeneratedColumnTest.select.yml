@@ -235,9 +235,8 @@
     /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select * from gc_test_tbl_3 where a+1=10 and c+1=10 and a+1+1=10
 
   plan: |
-    phytableoperation(tables="optest_0002.[gc_test_tbl_3]", sql="select `gc_test_tbl_3`.`a`, `gc_test_tbl_3`.`b`, `gc_test_tbl_3`.`c` from ? as `gc_test_tbl_3` where ((`gc_test_tbl_3`.`c` = ?) and (`gc_test_tbl_3`.`b` = ?) and (`gc_test_tbl_3`.`b` = ?))", params="10,1,10,1,1,10,1")
-
-
+    gather(concurrent=true)
+      logicalview(tables="optest_0002.gc_test_tbl_3", sql="select `a`, `b`, `c` from `gc_test_tbl_3` as `gc_test_tbl_3` where ((`c` = ?) and (`b` = ?) and (`b` = ?))")
 - sql: |
     /*TDDL:GEN_COL_SUBSTITUTION=TRUE*/ select a+1+1 from gc_test_tbl_3
 

@@ -7,10 +7,11 @@ import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 
 public class AfterTests extends BaseTestCase {
     @Test
-    public void check() {
+    public void check() throws SQLException {
         try (Connection polarxConn = getPolardbxDirectConnection()) {
             // 检查复制中断
             String sql = "show storage";
@@ -40,6 +41,7 @@ public class AfterTests extends BaseTestCase {
             Assert.assertTrue(cnt == 1, "more than 1 trx found");
         } catch (Throwable t) {
             t.printStackTrace();
+            throw t;
         }
     }
 }

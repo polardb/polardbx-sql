@@ -58,7 +58,7 @@ public class Rex2ArgumentInfo extends RexVisitorImpl<ArgumentInfo> {
             .map(t -> (DataType<?>) t)
             .collect(Collectors.toSet());
 
-        if (dataTypes.size() > 1) {
+        if (dataTypes.size() != 1) {
             // struct type
             return null;
         }

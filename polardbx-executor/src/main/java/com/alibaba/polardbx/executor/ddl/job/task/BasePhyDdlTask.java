@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
-import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
@@ -31,7 +30,6 @@ import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -152,13 +150,24 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
 
-        executeConcurrently(inputs, inputCursors, exceptions, executionContext);
+        try {
+            executeConcurrently(inputs, inputCursors, exceptions, executionContext);
+        } catch (Throwable e) {
+            exceptions.add(e);
+        }
 
         for (Cursor affectRowCursor : inputCursors) {
             Row row;
-            while ((row = affectRowCursor.next()) != null) {
-                row.getInteger(0);
+            try {
+                // 对于 group concurrent 来说，next 中才会调用 init 去真正执行物理 ddl，所以这里也需要异常处理
+                // concurrent、sequential、instance concurrent 此处无需异常处理
+                while ((row = affectRowCursor.next()) != null) {
+                    row.getInteger(0);
+                }
+            } catch (Throwable e) {
+                exceptions.add(e);
             }
+
             closeExceptions = affectRowCursor.close(exceptions);
         }
 
@@ -312,7 +321,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         }
     }
 
-    private QueryConcurrencyPolicy getConcurrencyPolicy(ExecutionContext executionContext) {
+    protected QueryConcurrencyPolicy getConcurrencyPolicy(ExecutionContext executionContext) {
         boolean mergeConcurrent = executionContext.getParamManager().getBoolean(ConnectionParams.MERGE_CONCURRENT);
 
         boolean mergeDdlConcurrent =
@@ -321,8 +330,10 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         boolean sequential =
             executionContext.getParamManager().getBoolean(ConnectionParams.SEQUENTIAL_CONCURRENT_POLICY);
 
-        if (mergeConcurrent && mergeDdlConcurrent) {
-            return QueryConcurrencyPolicy.CONCURRENT;
+        boolean overrideDefaultParams = executionContext.isOverrideDdlParams();
+
+        if ((mergeConcurrent && mergeDdlConcurrent) || overrideDefaultParams) {
+            return QueryConcurrencyPolicy.DDL_CONCURRENT;
         } else if (mergeConcurrent) {
             return QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
         } else if (sequential) {

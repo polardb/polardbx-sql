@@ -19,6 +19,9 @@ package com.alibaba.polardbx.common.cdc.entity;
 import com.alibaba.polardbx.common.cdc.DdlScope;
 import lombok.Getter;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Created by ziyang.lb
  **/
@@ -52,6 +55,7 @@ public class DDLExtInfo {
     private String sqlMode = null;
     private String originalDdl = null;
     private Boolean isGsi = false;
+    private Boolean isCci = false;
     private String groupName = null;
     @Getter
     private Boolean foreignKeysDdl = false;
@@ -63,6 +67,8 @@ public class DDLExtInfo {
 
     @Getter
     private Long ddlId;
+
+    private Map<String, Object> polarxVariables = new HashMap<>();
 
     public Long getTaskId() {
         return taskId;
@@ -128,6 +134,14 @@ public class DDLExtInfo {
         isGsi = gsi;
     }
 
+    public Boolean getCci() {
+        return isCci;
+    }
+
+    public void setCci(Boolean cci) {
+        isCci = cci;
+    }
+
     public String getGroupName() {
         return groupName;
     }
@@ -170,5 +184,13 @@ public class DDLExtInfo {
 
     public void setDdlId(Long ddlId) {
         this.ddlId = ddlId;
+    }
+
+    public Map<String, Object> getPolarxVariables() {
+        return polarxVariables;
+    }
+
+    public void addPolarxVariable(String key, Object value) {
+        this.polarxVariables.put(key, value);
     }
 }

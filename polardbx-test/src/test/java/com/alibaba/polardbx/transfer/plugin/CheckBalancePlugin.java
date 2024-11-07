@@ -71,6 +71,7 @@ public class CheckBalancePlugin extends BasePlugin {
                 // rollback if necessary
                 if (choice < 0.66) {
                     conn.rollback();
+                    conn.setAutoCommit(true);
                 }
             }
             return accounts;

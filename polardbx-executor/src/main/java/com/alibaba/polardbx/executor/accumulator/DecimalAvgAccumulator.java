@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.accumulator;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.DecimalRoundMod;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.executor.accumulator.state.NullableDecimalLongGroupState;
 import com.alibaba.polardbx.executor.chunk.Block;
@@ -29,7 +30,6 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import java.util.Optional;
 
-import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DEFAULT_DIV_PRECISION_INCREMENT;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIV_PRECISION_INCREMENT;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_DIV_ZERO;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.MAX_DECIMAL_SCALE;
@@ -54,7 +54,7 @@ public class DecimalAvgAccumulator extends AbstractAccumulator {
             .map(m -> m.get(DIV_PRECISION_INCREMENT))
             .map(n -> ((Number) n).intValue())
             .map(i -> Math.min(i, MAX_DECIMAL_SCALE))
-            .orElse(DEFAULT_DIV_PRECISION_INCREMENT);
+            .orElse(DecimalTypeBase.getDefaultDivPrecisionIncrement());
         this.cache = new Decimal();
     }
 

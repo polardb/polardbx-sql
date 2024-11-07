@@ -24,27 +24,25 @@ import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InValuesVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
+import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.base.Preconditions;
-
-import java.util.Set;
 
 public class FastInVectorizedExpression extends AbstractVectorizedExpression {
 
     private final InValuesVectorizedExpression.InValueSet inValuesSet;
-    private final boolean operandsHaveNull;
+    private final boolean operandsAllNull;
 
     public FastInVectorizedExpression(DataType dataType,
                                       int outputIndex,
                                       VectorizedExpression[] children) {
         super(dataType, outputIndex, children);
         Preconditions.checkArgument(children.length == 2,
-            "Unexpected in vec expression children length: " + children.length);
+            "Unexpected IN vec expression children length: " + children.length);
         Preconditions.checkArgument(children[1] instanceof InValuesVectorizedExpression,
-            "Unexpected in values expression type: " + children[1].getClass().getSimpleName());
+            "Unexpected IN values expression type: " + children[1].getClass().getSimpleName());
         InValuesVectorizedExpression inExpr = (InValuesVectorizedExpression) children[1];
-        this.operandsHaveNull = inExpr.hasNull();
+        this.operandsAllNull = inExpr.allNull();
         this.inValuesSet = inExpr.getInValueSet();
     }
 
@@ -58,14 +56,22 @@ public class FastInVectorizedExpression extends AbstractVectorizedExpression {
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
 
         long[] output = outputVectorSlot.cast(LongBlock.class).longArray();
-        if (operandsHaveNull) {
+        if (operandsAllNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
-            outputVectorSlot.setHasNull(true);
-            for (int i = 0; i < batchSize; i++) {
-                outputNulls[i] = true;
+            if (isSelectionInUse) {
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    outputNulls[j] = true;
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    outputNulls[i] = true;
+                }
             }
             return;
         }
+
+        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
 
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());

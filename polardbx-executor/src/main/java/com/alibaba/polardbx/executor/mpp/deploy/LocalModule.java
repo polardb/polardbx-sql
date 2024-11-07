@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.mpp.deploy;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.version.Version;
 import com.alibaba.polardbx.executor.mpp.Threads;
 import com.alibaba.polardbx.executor.mpp.discover.LocalNodeManager;
@@ -53,6 +55,7 @@ import com.alibaba.polardbx.executor.operator.spill.ForAsyncSpill;
 import com.alibaba.polardbx.executor.operator.spill.GenericSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SingleStreamSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.node.AllNodes;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
@@ -130,23 +133,25 @@ public class LocalModule extends BaseModule {
         jaxrsBinder(binder).bind(NodeResource.class);
 
         //---------------- web ui ----------------------
-        httpServerBinder(binder).bindResource("/ui", "webapp").withWelcomeFile("index.html");
-        httpServerBinder(binder).bindResource("/tableau", "webapp/tableau");
-        jaxrsBinder(binder).bind(WebUiResource.class);
+        if (MppConfig.getInstance().isEnableMppUI()) {
+            httpServerBinder(binder).bindResource("/ui", "webapp").withWelcomeFile("index.html");
+            httpServerBinder(binder).bindResource("/tableau", "webapp/tableau");
+            jaxrsBinder(binder).bind(WebUiResource.class);
 
-        //---------------- server web ui ----------------------
-        jaxrsBinder(binder).bind(QueryResource.class);
-        jaxrsBinder(binder).bind(StageResource.class);
-        jaxrsBinder(binder).bind(ClusterStatsResource.class);
-        jaxrsBinder(binder).bind(DdlResource.class);
-        httpClientBinder(binder).bindHttpClient("queryInfo", ForQueryInfo.class);
+            //---------------- server web ui ----------------------
+            jaxrsBinder(binder).bind(QueryResource.class);
+            jaxrsBinder(binder).bind(StageResource.class);
+            jaxrsBinder(binder).bind(ClusterStatsResource.class);
+            jaxrsBinder(binder).bind(DdlResource.class);
+            httpClientBinder(binder).bindHttpClient("queryInfo", ForQueryInfo.class);
 
-        //---------------- worker web ui ----------------------
-        jaxrsBinder(binder).bind(ThreadResource.class);
-        jaxrsBinder(binder).bind(WorkerResource.class);
-        jaxrsBinder(binder).bind(StatusResource.class);
-        httpClientBinder(binder).bindHttpClient("workerInfo", ForWorkerInfo.class);
-        //----------------worker web ui ----------------------
+            //---------------- worker web ui ----------------------
+            jaxrsBinder(binder).bind(ThreadResource.class);
+            jaxrsBinder(binder).bind(WorkerResource.class);
+            jaxrsBinder(binder).bind(StatusResource.class);
+            httpClientBinder(binder).bindHttpClient("workerInfo", ForWorkerInfo.class);
+            //----------------worker web ui ----------------------
+        }
 
         // Spiller
         binder.bind(FileCleaner.class).to(AsyncFileCleaner.class).in(Scopes.SINGLETON);

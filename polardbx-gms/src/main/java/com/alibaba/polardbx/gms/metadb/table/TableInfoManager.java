@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.alibaba.polardbx.gms.metadb.table;
 
 import com.alibaba.polardbx.common.Engine;
@@ -63,6 +62,8 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.ttl.TtlInfoAccessor;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
@@ -93,6 +94,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.tablegroup.TableGroupRecord.TG_TYPE_PARTITION_TBL_TG;
+import static java.lang.String.CASE_INSENSITIVE_ORDER;
 
 public class TableInfoManager extends AbstractAccessor {
 
@@ -116,12 +118,15 @@ public class TableInfoManager extends AbstractAccessor {
 
     private final ColumnEvolutionAccessor columnEvolutionAccessor;
     private final TableLocalPartitionAccessor localPartitionAccessor;
+    private final TtlInfoAccessor ttlInfoAccessor;
     private final ScheduledJobsAccessor scheduledJobsAccessor;
     private final FiredScheduledJobsAccessor firedScheduledJobsAccessor;
     private final JoinGroupTableDetailAccessor joinGroupTableDetailAccessor;
     private final ColumnarTableMappingAccessor columnarTableMappingAccessor;
     private final ColumnarColumnEvolutionAccessor columnarColumnEvolutionAccessor;
     private final ColumnarTableEvolutionAccessor columnarTableEvolutionAccessor;
+    private final ColumnarPartitionEvolutionAccessor columnarPartitionEvolutionAccessor;
+    private final ColumnarCheckpointsAccessor columnarCheckpointsAccessor;
 
     public TableInfoManager() {
         schemataAccessor = new SchemataAccessor();
@@ -138,12 +143,15 @@ public class TableInfoManager extends AbstractAccessor {
         columnMappingAccessor = new ColumnMappingAccessor();
         columnEvolutionAccessor = new ColumnEvolutionAccessor();
         localPartitionAccessor = new TableLocalPartitionAccessor();
+        ttlInfoAccessor = new TtlInfoAccessor();
         scheduledJobsAccessor = new ScheduledJobsAccessor();
         firedScheduledJobsAccessor = new FiredScheduledJobsAccessor();
         joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
         columnarTableMappingAccessor = new ColumnarTableMappingAccessor();
         columnarTableEvolutionAccessor = new ColumnarTableEvolutionAccessor();
         columnarColumnEvolutionAccessor = new ColumnarColumnEvolutionAccessor();
+        columnarPartitionEvolutionAccessor = new ColumnarPartitionEvolutionAccessor();
+        columnarCheckpointsAccessor = new ColumnarCheckpointsAccessor();
         foreignAccessor = new ForeignAccessor();
         foreignColsAccessor = new ForeignColsAccessor();
     }
@@ -301,12 +309,15 @@ public class TableInfoManager extends AbstractAccessor {
         columnMappingAccessor.setConnection(connection);
         columnEvolutionAccessor.setConnection(connection);
         localPartitionAccessor.setConnection(connection);
+        ttlInfoAccessor.setConnection(connection);
         scheduledJobsAccessor.setConnection(connection);
         firedScheduledJobsAccessor.setConnection(connection);
         joinGroupTableDetailAccessor.setConnection(connection);
         columnarTableMappingAccessor.setConnection(connection);
         columnarTableEvolutionAccessor.setConnection(connection);
         columnarColumnEvolutionAccessor.setConnection(connection);
+        columnarPartitionEvolutionAccessor.setConnection(connection);
+        columnarCheckpointsAccessor.setConnection(connection);
         foreignAccessor.setConnection(connection);
         foreignColsAccessor.setConnection(connection);
     }
@@ -433,7 +444,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<ColumnsRecord>> queryVisibleColumns(String tableSchema) {
-        Map<String, List<ColumnsRecord>> visibleRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<ColumnsRecord>> visibleRecords = new TreeMap<>(CASE_INSENSITIVE_ORDER);
         List<ColumnsRecord> records = queryColumns(tableSchema);
         for (ColumnsRecord record : records) {
             if (record.status != ColumnStatus.ABSENT.getValue()) {
@@ -456,7 +467,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<ColumnMappingRecord>> queryColumnMappings(String tableSchema) {
-        Map<String, List<ColumnMappingRecord>> visibleRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<ColumnMappingRecord>> visibleRecords = new TreeMap<>(CASE_INSENSITIVE_ORDER);
         List<ColumnMappingRecord> records = columnMappingAccessor.querySchema(tableSchema);
         for (ColumnMappingRecord record : records) {
             visibleRecords.computeIfAbsent(record.tableName, k -> new ArrayList<>()).add(record);
@@ -480,7 +491,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<IndexesRecord>> queryVisibleIndexes(String tableSchema) {
-        Map<String, List<IndexesRecord>> visibleRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<IndexesRecord>> visibleRecords = new TreeMap<>(CASE_INSENSITIVE_ORDER);
         List<IndexesRecord> records = queryIndexes(tableSchema);
         for (IndexesRecord record : records) {
             if (record.indexStatus == IndexStatus.PUBLIC.getValue()) {
@@ -499,7 +510,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<ForeignRecord>> queryReferencedForeignKeys(String tableSchema) {
-        Map<String, List<ForeignRecord>> allReferencedFkRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<ForeignRecord>> allReferencedFkRecords = new TreeMap<>(CASE_INSENSITIVE_ORDER);
         List<ForeignRecord> records = foreignAccessor.queryReferencedForeignKeys(tableSchema);
         for (ForeignRecord record : records) {
             allReferencedFkRecords.computeIfAbsent(record.refTableName, k -> new ArrayList<>()).add(record);
@@ -512,7 +523,7 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     public Map<String, List<ForeignRecord>> queryForeignKeys(String tableSchema) {
-        Map<String, List<ForeignRecord>> allFkRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, List<ForeignRecord>> allFkRecords = new TreeMap<>(CASE_INSENSITIVE_ORDER);
         List<ForeignRecord> records = foreignAccessor.queryForeignKeys(tableSchema);
         for (ForeignRecord record : records) {
             allFkRecords.computeIfAbsent(record.tableName, k -> new ArrayList<>()).add(record);
@@ -660,6 +671,16 @@ public class TableInfoManager extends AbstractAccessor {
         indexesAccessor.renameLocalIndexes(tableSchema, originName, newName);
     }
 
+    public int alterTableExtNameAndIndexes(String tableSchema, String originName, String newName) {
+        indexesAccessor.renameLocalIndexes(tableSchema, originName, newName);
+        return tablesExtAccessor.alterName(tableSchema, originName, newName);
+    }
+
+    public void truncateTableCutOver(String tableSchema, String originName, String newName) {
+        tablePartitionAccessor.rename(tableSchema, originName, newName);
+        indexesAccessor.renameLocalIndexes(tableSchema, originName, newName);
+    }
+
     public void alterPartitionCountCutOver(String tableSchema, String originIndexTableName, String newIndexTableName) {
         indexesAccessor.cutOverGlobalIndex(tableSchema, originIndexTableName, newIndexTableName);
     }
@@ -720,6 +741,7 @@ public class TableInfoManager extends AbstractAccessor {
                                                                       long ddlJobId) {
 
         final List<ColumnsRecord> columnRecords = columnsAccessor.query(schemaName, columnarTableName);
+        final List<TablePartitionRecord> partitionRecords = queryTablePartitions(schemaName, columnarTableName, false);
 
         return addCreateCciSchemaEvolutionMeta(schemaName,
             primaryTableName,
@@ -727,7 +749,8 @@ public class TableInfoManager extends AbstractAccessor {
             options,
             versionId,
             ddlJobId,
-            columnRecords);
+            columnRecords,
+            partitionRecords);
     }
 
     public ColumnarTableMappingRecord addCreateCciSchemaEvolutionMeta(String schemaName,
@@ -736,7 +759,8 @@ public class TableInfoManager extends AbstractAccessor {
                                                                       Map<String, String> options,
                                                                       long versionId,
                                                                       long ddlJobId,
-                                                                      List<ColumnsRecord> columnsRecords) {
+                                                                      List<ColumnsRecord> columnsRecords,
+                                                                      List<TablePartitionRecord> partitionRecords) {
         final ColumnarTableMappingRecord tableMappingRecord = addColumnarTableMappingRecord(schemaName,
             primaryTableName,
             columnarTableName,
@@ -746,6 +770,9 @@ public class TableInfoManager extends AbstractAccessor {
 
         // Insert column evolution records
         addCciColumnEvolutionRecords(columnsRecords, tableId, versionId, ddlJobId);
+
+        // Insert partition evolution records
+        addCciPartitionEvolutionRecords(partitionRecords, tableId, versionId, ddlJobId);
 
         // Insert table evolution record
         addCreateCciTableEvolutionRecord(tableMappingRecord, options, versionId, ddlJobId, DdlType.CREATE_INDEX);
@@ -782,12 +809,26 @@ public class TableInfoManager extends AbstractAccessor {
         columnarColumnEvolutionAccessor.updateFieldIdAsId(tableId, versionId);
     }
 
+    public void addCciPartitionEvolutionRecords(List<TablePartitionRecord> partitionRecords, long tableId,
+                                                long versionId,
+                                                long ddlJobId) {
+        // Insert column evolution records
+        List<ColumnarPartitionEvolutionRecord> partitionEvolutionRecords = new ArrayList<>(partitionRecords.size());
+        for (TablePartitionRecord partitionRecord : partitionRecords) {
+            partitionEvolutionRecords.add(
+                new ColumnarPartitionEvolutionRecord(tableId, partitionRecord.partName,
+                    versionId, ddlJobId, partitionRecord, ColumnarPartitionStatus.PUBLIC.getValue()));
+        }
+        columnarPartitionEvolutionAccessor.insert(partitionEvolutionRecords);
+        columnarPartitionEvolutionAccessor.updatePartitionIdAsId(tableId, versionId);
+    }
+
     public void addCciTableEvolutionRecord(String schemaName, String primaryTableName,
                                            String columnarTableName,
                                            Map<String, String> options,
                                            long tableId, long versionId,
                                            long ddlJobId, DdlType ddlType,
-                                           List<Long> columns) {
+                                           List<Long> columns, List<Long> partitions) {
         final ColumnarTableEvolutionRecord columnarTableEvolutionRecord = new ColumnarTableEvolutionRecord(
             versionId,
             tableId,
@@ -798,13 +839,15 @@ public class TableInfoManager extends AbstractAccessor {
             ddlJobId,
             ddlType.name(),
             Long.MAX_VALUE,
-            columns);
+            columns,
+            partitions);
 
         columnarTableEvolutionAccessor.insert(ImmutableList.of(columnarTableEvolutionRecord));
     }
 
     public void addCciTableEvolutionRecord(ColumnarTableMappingRecord tableMappingRecord, long versionId, long ddlJobId,
-                                           DdlType ddlType, List<Long> columns, Map<String, String> options) {
+                                           DdlType ddlType, List<Long> columns, List<Long> partitions,
+                                           Map<String, String> options) {
         addCciTableEvolutionRecord(tableMappingRecord.tableSchema,
             tableMappingRecord.tableName,
             tableMappingRecord.indexName,
@@ -813,7 +856,8 @@ public class TableInfoManager extends AbstractAccessor {
             versionId,
             ddlJobId,
             ddlType,
-            columns);
+            columns,
+            partitions);
     }
 
     /**
@@ -831,8 +875,11 @@ public class TableInfoManager extends AbstractAccessor {
         final List<ColumnarColumnEvolutionRecord> columnEvolutionRecords =
             columnarColumnEvolutionAccessor.queryTableIdVersionIdOrderById(tableId, versionId);
         final List<Long> columns = columnEvolutionRecords.stream().map(r -> r.id).collect(Collectors.toList());
+        final List<ColumnarPartitionEvolutionRecord> partitionEvolutionRecords =
+            columnarPartitionEvolutionAccessor.queryTableIdVersionIdOrderById(tableId, versionId);
+        final List<Long> partitions = partitionEvolutionRecords.stream().map(r -> r.id).collect(Collectors.toList());
 
-        addCciTableEvolutionRecord(tableMappingRecord, versionId, ddlJobId, ddlType, columns, options);
+        addCciTableEvolutionRecord(tableMappingRecord, versionId, ddlJobId, ddlType, columns, partitions, options);
     }
 
     /**
@@ -855,7 +902,7 @@ public class TableInfoManager extends AbstractAccessor {
             queryColumnarTableEvolution(tableId, latestVersionId).get(0);
 
         addCciTableEvolutionRecord(tableMappingRecord, versionId, ddlJobId, ddlType,
-            latestTableEvolution.columns, latestTableEvolution.options);
+            latestTableEvolution.columns, latestTableEvolution.partitions, latestTableEvolution.options);
 
         return tableMappingRecord;
     }
@@ -875,7 +922,7 @@ public class TableInfoManager extends AbstractAccessor {
             queryColumnarTableEvolution(tableId, fromVersionId).get(0);
 
         addCciTableEvolutionRecord(fromTableMappingRecord, versionId, ddlJobId, ddlType,
-            fromTableEvolution.columns, fromTableEvolution.options);
+            fromTableEvolution.columns, fromTableEvolution.partitions, fromTableEvolution.options);
 
         return fromTableMappingRecord;
     }
@@ -938,23 +985,80 @@ public class TableInfoManager extends AbstractAccessor {
         Set<Pair<Long, String>> indexes =
             columnarTableMappingRecords.stream()
                 .filter(record -> !record.status.equals(ColumnarTableStatus.DROP.name()))
+                .filter(record -> !record.status.equals(ColumnarTableStatus.PURGE.name()))
                 .map(record -> new Pair<>(record.tableId, record.indexName))
                 .collect(Collectors.toSet());
         return indexes;
     }
 
+    public List<ColumnarTableMappingRecord> queryColumnarMappingBySchemaTable(String schemaName,
+                                                                              String primaryTableName) {
+        return columnarTableMappingAccessor.querySchemaTable(schemaName, primaryTableName);
+    }
+
+    public void renameColumnarTable(String schemaName, String primaryTableName, Set<Pair<Long, String>> indexes,
+                                    List<Pair<String, String>> renamedIndexes, long versionId, long ddlJobId) {
+        TreeMap<String, String> old2NewIndexNameMap = renamedIndexes.stream().collect(Collectors.toMap(Pair::getValue,
+            Pair::getKey, (before, after) -> after, () -> new TreeMap<>(CASE_INSENSITIVE_ORDER)));
+
+        for (Pair<Long, String> index : indexes) {
+            Long tableId = index.getKey();
+            String indexName = index.getValue();
+            if (!old2NewIndexNameMap.containsKey(indexName)) {
+                continue;
+            }
+            String newIndexName = old2NewIndexNameMap.get(indexName);
+
+            final ColumnarTableMappingRecord tableMapping =
+                columnarTableMappingAccessor.querySchemaTableIndex(schemaName, primaryTableName, indexName).get(0);
+            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name()) ||
+                tableMapping.status.equals(ColumnarTableStatus.PURGE.name())) {
+                continue;
+            }
+            long latestVersionId = tableMapping.latestVersionId;
+            ColumnarTableEvolutionRecord columnarTableEvolutionRecord =
+                columnarTableEvolutionAccessor.queryByVersionIdLatest(latestVersionId).get(0);
+            columnarTableEvolutionRecord =
+                new ColumnarTableEvolutionRecord(versionId, tableId, schemaName, primaryTableName, newIndexName,
+                    columnarTableEvolutionRecord.options, ddlJobId, DdlType.ALTER_TABLE.name(),
+                    Long.MAX_VALUE, columnarTableEvolutionRecord.columns, columnarTableEvolutionRecord.partitions);
+
+            columnarTableEvolutionAccessor.insert(ImmutableList.of(columnarTableEvolutionRecord));
+            columnarTableMappingAccessor.updateIndexNameId(newIndexName, latestVersionId, tableId);
+            columnarTableMappingAccessor.updateVersionId(versionId, tableId);
+        }
+    }
+
     public void alterColumnarTableColumns(String schemaName, String primaryTableName, Set<Pair<Long, String>> indexes,
                                           long versionId, long ddlJobId, DdlType ddlType,
-                                          List<Pair<String, String>> changeColumns) {
+                                          List<Pair<String, String>> changeColumns, List<String> droppedColumns) {
         for (Pair<Long, String> index : indexes) {
             Long tableId = index.getKey();
             String indexName = index.getValue();
             final ColumnarTableMappingRecord tableMapping =
                 columnarTableMappingAccessor.querySchemaTableIndex(schemaName, primaryTableName, indexName).get(0);
-            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name())) {
+            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name()) ||
+                tableMapping.status.equals(ColumnarTableStatus.PURGE.name())) {
                 continue;
             }
             long latestVersionId = tableMapping.latestVersionId;
+
+            List<ColumnarColumnEvolutionRecord> columnarColumnEvolutionRecords =
+                columnarColumnEvolutionAccessor.queryTableIdAndNotInStatus(tableId, ColumnStatus.ABSENT.getValue());
+
+            if (GeneralUtil.isNotEmpty(droppedColumns)) {
+                for (ColumnarColumnEvolutionRecord columnarColumnEvolutionRecord : columnarColumnEvolutionRecords) {
+                    if (droppedColumns.contains(columnarColumnEvolutionRecord.columnName)) {
+
+                        columnarColumnEvolutionRecord.columnsRecord.status = ColumnStatus.ABSENT.getValue();
+                        ColumnarColumnEvolutionRecord columnEvolutionRecord =
+                            new ColumnarColumnEvolutionRecord(tableId, columnarColumnEvolutionRecord.fieldId,
+                                columnarColumnEvolutionRecord.columnName,
+                                versionId, ddlJobId, columnarColumnEvolutionRecord.columnsRecord);
+                        columnarColumnEvolutionAccessor.insert(ImmutableList.of(columnEvolutionRecord));
+                    }
+                }
+            }
 
             // Fill primary table column meta into columns system table
             List<ColumnsRecord> columnsRecords = columnsAccessor.query(schemaName, primaryTableName);
@@ -964,83 +1068,25 @@ public class TableInfoManager extends AbstractAccessor {
                 columnarTableEvolutionAccessor.queryByVersionIdLatest(latestVersionId).get(0);
             List<Long> columns =
                 reorderColumns(columnarTableEvolutionRecord, columnsRecords, versionId, ddlJobId,
-                    indexName, changeColumns);
+                    indexName, changeColumns, droppedColumns);
 
             columnarTableEvolutionRecord =
                 new ColumnarTableEvolutionRecord(versionId, tableId, schemaName, primaryTableName, indexName,
                     columnarTableEvolutionRecord.options,
-                    ddlJobId, ddlType.name(), Long.MAX_VALUE, columns);
+                    ddlJobId, ddlType.name(), Long.MAX_VALUE, columns, columnarTableEvolutionRecord.partitions);
 
             columnarTableEvolutionAccessor.insert(ImmutableList.of(columnarTableEvolutionRecord));
-            columnarTableMappingAccessor.updateVersionId(versionId, tableId);
-        }
-    }
-
-    public void dropColumnarTableColumns(String schemaName, String primaryTableName, Set<Pair<Long, String>> indexes,
-                                         List<String> droppedColumns, long versionId, long ddlJobId) {
-        if (GeneralUtil.isEmpty(droppedColumns)) {
-            return;
-        }
-
-        for (Pair<Long, String> index : indexes) {
-            Long tableId = index.getKey();
-            String indexName = index.getValue();
-            final ColumnarTableMappingRecord tableMapping =
-                columnarTableMappingAccessor.querySchemaTableIndex(schemaName, primaryTableName, indexName).get(0);
-            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name())) {
-                continue;
-            }
-            long latestVersionId = tableMapping.latestVersionId;
-
-            columnsAccessor.delete(schemaName, indexName, droppedColumns);
-
-            List<ColumnarColumnEvolutionRecord> columnarColumnEvolutionRecords =
-                columnarColumnEvolutionAccessor.queryTableIdAndNotInStatus(tableId, ColumnStatus.ABSENT.getValue());
-
-            for (ColumnarColumnEvolutionRecord columnarColumnEvolutionRecord : columnarColumnEvolutionRecords) {
-                if (droppedColumns.contains(columnarColumnEvolutionRecord.columnName)) {
-
-                    columnarColumnEvolutionRecord.columnsRecord.status = ColumnStatus.ABSENT.getValue();
-                    ColumnarColumnEvolutionRecord columnEvolutionRecord =
-                        new ColumnarColumnEvolutionRecord(tableId, columnarColumnEvolutionRecord.fieldId,
-                            columnarColumnEvolutionRecord.columnName,
-                            versionId, ddlJobId, columnarColumnEvolutionRecord.columnsRecord);
-                    columnarColumnEvolutionAccessor.insert(ImmutableList.of(columnEvolutionRecord));
-                }
-            }
-
-            List<ColumnsRecord> columnsRecords = columnsAccessor.query(schemaName, primaryTableName);
-
-            ColumnarTableEvolutionRecord columnarTableEvolutionRecord =
-                columnarTableEvolutionAccessor.queryByVersionIdLatest(latestVersionId).get(0);
-            List<Long> columns =
-                reorderColumns(columnarTableEvolutionRecord, columnsRecords, versionId, ddlJobId,
-                    indexName, new ArrayList<>());
-
-            columnarTableEvolutionRecord =
-                new ColumnarTableEvolutionRecord(versionId, tableId, schemaName, primaryTableName, indexName,
-                    columnarTableEvolutionRecord.options,
-                    ddlJobId, DdlType.ALTER_TABLE_DROP_COLUMN.name(), Long.MAX_VALUE, columns);
-
-            columnarTableEvolutionAccessor.insert(ImmutableList.of(columnarTableEvolutionRecord));
-
             columnarTableMappingAccessor.updateVersionId(versionId, tableId);
         }
     }
 
     public void changeColumnarIndexTableColumns(List<String> indexTableNames, String schemaName,
-                                                String primaryTableName, List<Pair<String, String>> changeColumns) {
-        // for alter table change column -> rename column
-        Map<String, String> changeColumnsMap = new HashMap<>();
-        for (Pair<String, String> changeColumn : changeColumns) {
-            // <new name, old name>
-            changeColumnsMap.put(changeColumn.getKey(), changeColumn.getValue());
-        }
-
+                                                String primaryTableName) {
         for (String indexTableName : indexTableNames) {
             final ColumnarTableMappingRecord tableMapping =
                 columnarTableMappingAccessor.querySchemaTableIndex(schemaName, primaryTableName, indexTableName).get(0);
-            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name())) {
+            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name()) ||
+                tableMapping.status.equals(ColumnarTableStatus.PURGE.name())) {
                 continue;
             }
             long latestVersionId = tableMapping.latestVersionId;
@@ -1054,6 +1100,10 @@ public class TableInfoManager extends AbstractAccessor {
                 columnarColumnEvolutionAccessor.queryIdsWithOrder(columnarTableEvolutionRecord.columns);
             final int pos = getPos(columnsRecords, columnarColumnEvolutionRecords);
             List<ColumnsRecord> newRecords = new ArrayList<>();
+            List<String> oldColumns = new ArrayList<>();
+            for (int i = 0; i < Math.min(pos, columnsRecords.size()); i++) {
+                oldColumns.add(columnsRecords.get(i).columnName);
+            }
             for (int i = pos; i < columnsRecords.size(); i++) {
                 ColumnsRecord record = columnsRecords.get(i);
                 record.tableName = indexTableName;
@@ -1061,16 +1111,12 @@ public class TableInfoManager extends AbstractAccessor {
             }
 
             // insert/update index table column records in columns
+            if (!oldColumns.isEmpty()) {
+                columnsAccessor.deleteNotIn(schemaName, indexTableName, oldColumns);
+            } else {
+                columnsAccessor.delete(schemaName, indexTableName);
+            }
             if (!newRecords.isEmpty()) {
-                List<String> deleteColumns = new ArrayList<>();
-                for (ColumnsRecord record : newRecords) {
-                    if (changeColumnsMap.containsKey(record.columnName)) {
-                        deleteColumns.add(changeColumnsMap.get(record.columnName));
-                    } else {
-                        deleteColumns.add(record.columnName);
-                    }
-                }
-                columnsAccessor.delete(schemaName, indexTableName, deleteColumns);
                 columnsAccessor.insert(newRecords, schemaName, indexTableName);
             }
         }
@@ -1078,7 +1124,8 @@ public class TableInfoManager extends AbstractAccessor {
 
     public List<Long> reorderColumns(ColumnarTableEvolutionRecord columnarTableEvolutionRecord,
                                      List<ColumnsRecord> columnsRecords, Long versionId, Long ddlJobId,
-                                     String indexTableName, List<Pair<String, String>> changeColumns) {
+                                     String indexTableName, List<Pair<String, String>> changeColumns,
+                                     List<String> dropColumns) {
         List<ColumnarColumnEvolutionRecord> columnarColumnEvolutionRecords =
             columnarColumnEvolutionAccessor.queryIdsWithOrder(columnarTableEvolutionRecord.columns);
 
@@ -1106,7 +1153,8 @@ public class TableInfoManager extends AbstractAccessor {
         for (int i = pos; i < columnsRecords.size(); i++) {
             ColumnsRecord record = columnsRecords.get(i);
             record.tableName = indexTableName;
-            if (columnMap.containsKey(record.columnName)) {
+            if (columnMap.containsKey(record.columnName) &&
+                (dropColumns == null || !dropColumns.contains(record.columnName))) {
                 records.add(
                     new ColumnarColumnEvolutionRecord(tableId, columnMap.get(record.columnName), record.columnName,
                         versionId, ddlJobId, record));
@@ -1185,11 +1233,29 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
+    public void renameColumnarIndex(String tableSchema, String newIndexName) {
+        indexesAccessor.renameCciIndex(tableSchema, newIndexName);
+    }
+
     /**
      * Query columnar table evolution by tableId
      */
     public List<ColumnarTableEvolutionRecord> queryColumnarTableEvolutionLatest(Long tableId) {
         return columnarTableEvolutionAccessor.queryTableIdLatest(tableId);
+    }
+
+    /**
+     * Query columnar table evolution by versionId
+     */
+    public ColumnarTableEvolutionRecord queryColumnarTableEvolutionByVersionId(long versionId) {
+        return columnarTableEvolutionAccessor.queryByVersionIdLatest(versionId).get(0);
+    }
+
+    /**
+     * Query columnar checkpoints by commit ts
+     */
+    public List<ColumnarCheckpointsRecord> queryColumnarCheckpointsByCommitTs(long commitTs) {
+        return columnarCheckpointsAccessor.queryByTso(commitTs);
     }
 
     /**
@@ -1214,10 +1280,24 @@ public class TableInfoManager extends AbstractAccessor {
     }
 
     /**
+     * Query first(CREATE_INDEX) columnar table evolution by tableId
+     */
+    public List<ColumnarTableEvolutionRecord> queryColumnarTableEvolutionFirst(Long tableId) {
+        return columnarTableEvolutionAccessor.queryTableIdFirst(tableId);
+    }
+
+    /**
      * Query columnar column evolution by versionId and fieldId list
      */
     public List<ColumnarColumnEvolutionRecord> queryColumnarColumnEvolution(List<Long> fieldList) {
         return columnarColumnEvolutionAccessor.queryIds(fieldList);
+    }
+
+    /**
+     * Query columnar partition evolution by versionId and id list
+     */
+    public List<ColumnarPartitionEvolutionRecord> queryColumnarPartitionEvolution(List<Long> ids) {
+        return columnarPartitionEvolutionAccessor.queryIds(ids);
     }
 
     /**
@@ -1248,11 +1328,25 @@ public class TableInfoManager extends AbstractAccessor {
         return columnarTableMappingAccessor.queryTableId(tableId);
     }
 
+    public void renameColumnarTables(String schemaName, List<Pair<String, String>> tableRenameMap,
+                                     List<Long> versionIds, long ddlJobID) {
+        for (int i = 0; i < tableRenameMap.size(); i++) {
+            Long versionId = versionIds.get(i);
+            String oldName = tableRenameMap.get(i).getKey();
+            String newName = tableRenameMap.get(i).getValue();
+            renameColumnarTable(schemaName, oldName, newName, versionId, ddlJobID);
+        }
+    }
+
     public void renameColumnarTable(String schemaName, String primaryTableName, String newPrimaryTableName,
                                     long versionId, long ddlJobID) {
         List<ColumnarTableMappingRecord> tableMappingRecords =
             columnarTableMappingAccessor.querySchemaTable(schemaName, primaryTableName);
         for (ColumnarTableMappingRecord tableMappingRecord : tableMappingRecords) {
+            if (tableMappingRecord.status.equals(ColumnarTableStatus.DROP.name()) ||
+                tableMappingRecord.status.equals(ColumnarTableStatus.PURGE.name())) {
+                continue;
+            }
             long tableId = tableMappingRecord.tableId;
             ColumnarTableEvolutionRecord latest = columnarTableEvolutionAccessor.queryTableIdLatest(tableId).get(0);
             latest.versionId = versionId;
@@ -1330,10 +1424,6 @@ public class TableInfoManager extends AbstractAccessor {
 
     public void addOssFile(String tableSchema, String tableName, FilesRecord filesRecord) {
         filesAccessor.insert(ImmutableList.of(filesRecord), tableSchema, tableName);
-    }
-
-    public void addOssFileWithTso(String tableSchema, String tableName, FilesRecord filesRecord) {
-        filesAccessor.insertWithTso(ImmutableList.of(filesRecord));
     }
 
     public List<FilesRecord> queryFilesByLogicalSchemaTable(String logicalSchemaName, String logicalTableName) {
@@ -1600,7 +1690,20 @@ public class TableInfoManager extends AbstractAccessor {
 
     public void updatePartitionBoundDesc(String tableSchema, String tableName, String partitionName, String boundDesc) {
         tablePartitionAccessor.updatePartBoundDescForOnePartition(tableSchema, tableName, partitionName, boundDesc);
+    }
 
+    public void updateArcStateByFirstLevelPartitionList(String tableSchema, String tableName,
+                                                        List<String> partitionNames,
+                                                        Integer newArcState) throws Exception {
+        tablePartitionAccessor.setPartitionTtlStateByPartitionNames(tableSchema, tableName,
+            partitionNames, newArcState, null);
+    }
+
+    public void updateArcStateByFirstLevelPartitionList(String tableSchema, String tableName,
+                                                        List<String> partitionNames,
+                                                        Integer beforeArcState, Integer newArcState) throws Exception {
+        tablePartitionAccessor.setPartitionTtlStateByPartitionNames(tableSchema, tableName,
+            partitionNames, newArcState, beforeArcState);
     }
 
     private void updateStatus(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord,
@@ -1650,12 +1753,58 @@ public class TableInfoManager extends AbstractAccessor {
         removeTable(schemaName, columnarTableName, null, true);
     }
 
+    public void truncateColumnarTable(String schemaName, String primaryTableName, Set<Pair<Long, String>> indexes,
+                                      long versionId, long ddlJobId, DdlType ddlType) {
+        for (Pair<Long, String> index : indexes) {
+            Long tableId = index.getKey();
+            String indexName = index.getValue();
+            final ColumnarTableMappingRecord tableMapping =
+                columnarTableMappingAccessor.querySchemaTableIndex(schemaName, primaryTableName, indexName).get(0);
+            if (tableMapping.status.equals(ColumnarTableStatus.DROP.name()) ||
+                tableMapping.status.equals(ColumnarTableStatus.PURGE.name())) {
+                continue;
+            }
+            long latestVersionId = tableMapping.latestVersionId;
+            // Insert column evolution records
+            ColumnarTableEvolutionRecord columnarTableEvolutionRecord =
+                columnarTableEvolutionAccessor.queryByVersionIdLatest(latestVersionId).get(0);
+            columnarTableEvolutionRecord =
+                new ColumnarTableEvolutionRecord(versionId, tableId, schemaName, primaryTableName, indexName,
+                    columnarTableEvolutionRecord.options,
+                    ddlJobId, ddlType.name(), Long.MAX_VALUE, columnarTableEvolutionRecord.columns,
+                    columnarTableEvolutionRecord.partitions);
+
+            columnarTableEvolutionAccessor.insert(ImmutableList.of(columnarTableEvolutionRecord));
+            columnarTableMappingAccessor.updateVersionId(versionId, tableId);
+        }
+    }
+
+    public boolean haveColumnarTable(String tableSchema, String tableName) {
+        //列存索引只会是数字
+        if (!StringUtils.isNumeric(tableName)) {
+            return false;
+        }
+        long tableId;
+        try {
+            //数字解析失败，返回false，列存索引是正常的long值
+            tableId = Long.parseLong(tableName);
+        } catch (Exception e) {
+            return false;
+        }
+
+        return !columnarTableMappingAccessor.querySchemaTableId(tableSchema, tableId).isEmpty();
+    }
+
     public void removeTable(String tableSchema, String tableName, SequenceBaseRecord sequenceRecord,
                             boolean withTablesExtOrPartition) {
         tablesAccessor.delete(tableSchema, tableName);
         columnsAccessor.delete(tableSchema, tableName);
         indexesAccessor.delete(tableSchema, tableName);
-        filesAccessor.delete(tableSchema, tableName);
+
+        //删表时，包含列存的情况不能直接删除files系统表，而oss冷热归档需要删files，特殊判断下
+        if (!haveColumnarTable(tableSchema, tableName)) {
+            filesAccessor.delete(tableSchema, tableName);
+        }
         columnMetaAccessor.delete(tableSchema, tableName);
         foreignAccessor.delete(tableSchema, tableName);
         foreignColsAccessor.delete(tableSchema, tableName);
@@ -1669,6 +1818,7 @@ public class TableInfoManager extends AbstractAccessor {
         if (withTablesExtOrPartition && DbInfoManager.getInstance().isNewPartitionDb(tableSchema)) {
             this.deletePartitionInfo(tableSchema, tableName);
             this.removeLocalPartitionRecord(tableSchema, tableName);
+            this.removeTtlInfoRecord(tableSchema, tableName);
             this.removeScheduledJobRecord(tableSchema, tableName);
             this.joinGroupTableDetailAccessor.deleteJoinGroupTableDetailBySchemaTable(tableSchema, tableName);
         }
@@ -1678,8 +1828,9 @@ public class TableInfoManager extends AbstractAccessor {
         columnarTableEvolutionAccessor.updateDdlType(ddlType, ddlId);
     }
 
-    public void updateColumnarTableStatusBySchema(String schema, String status) {
-        columnarTableMappingAccessor.updateStatusBySchema(schema, status);
+    public void updateColumnarTableStatusAndVersionIDBySchema(String schema, long versionId, String status) {
+        columnarTableMappingAccessor.
+            updateStatusAndVersionIdBySchema(schema, versionId, status);
     }
 
     public void updateColumnarTableStatus(String schema, String tableName, String indexName, String status,
@@ -1794,6 +1945,14 @@ public class TableInfoManager extends AbstractAccessor {
         columnMappingAccessor.rename(tableSchema, tableName, newTableName);
     }
 
+    public void renameColumnarTable(String tableSchema, String tableName, String newTableName) {
+        tablesAccessor.rename(tableSchema, tableName, newTableName);
+        tablePartitionAccessor.rename(tableSchema, tableName, newTableName);
+        columnsAccessor.rename(tableSchema, tableName, newTableName);
+        indexesAccessor.renameCciIndex(tableSchema, newTableName);
+        filesAccessor.rename(tableSchema, tableName, newTableName);
+    }
+
     public void renamePartitionTablePhyTable(String tableSchema, String tableName, String newTableName) {
         TablePartitionConfig tablePartitionConfig =
             tablePartitionAccessor.getTablePartitionConfig(tableSchema, tableName, false);
@@ -1804,15 +1963,15 @@ public class TableInfoManager extends AbstractAccessor {
         }
     }
 
-    public void renameIndexes(String tableSchema, String indexName, String newIndexName) {
-        indexesAccessor.renameGsiIndexes(tableSchema, indexName, newIndexName);
-    }
-
     public void renameLocalPartitionInfo(String tableSchema, String tableName, String newTableName) {
         String newScheduleName = "LOCAL_PARTITION:" + tableSchema + "." + newTableName;
         String oldScheduleName = "LOCAL_PARTITION:" + tableSchema + "." + tableName;
         scheduledJobsAccessor.rename(newTableName, newScheduleName, tableSchema, oldScheduleName);
         localPartitionAccessor.rename(newTableName, tableSchema, tableName);
+    }
+
+    public void renameIndexes(String tableSchema, String indexName, String newIndexName) {
+        indexesAccessor.renameGsiIndexes(tableSchema, indexName, newIndexName);
     }
 
     public void setMultiWriteSourceColumn(String tableSchema, String tableName, String columnsName) {
@@ -1927,8 +2086,10 @@ public class TableInfoManager extends AbstractAccessor {
                 context.tableName);
 
         List<ColumnsRecord> oldColumnsRecords = queryColumns(context.tableSchema, context.tableName);
-        Map<String, ColumnsRecord> oldColumnRecordMap =
-            oldColumnsRecords.stream().collect(Collectors.toMap(o -> o.columnName, o -> o));
+        TreeMap<String, ColumnsRecord> oldColumnRecordMap =
+            oldColumnsRecords.stream().collect(
+                Collectors.toMap(o -> o.columnName, o -> o, (before, after) -> after,
+                    () -> new TreeMap<>(CASE_INSENSITIVE_ORDER)));
         for (ColumnsRecord columnsRecord : columnsRecords) {
             String columnName = columnsRecord.columnName;
             columnsRecord.ordinalPosition = oldColumnRecordMap.get(columnName).ordinalPosition;
@@ -1951,10 +2112,10 @@ public class TableInfoManager extends AbstractAccessor {
     public void changeColumns(PhyInfoSchemaContext context, Map<String, Map<String, Object>> columnsJdbcExtInfo,
                               List<Pair<String, String>> columnNamePairs) {
         // columnNamePairs: new_column_name => old_column_name
-        Map<String, String> New2OldColumnNameMap = new HashMap<>();
-        Map<String, String> old2NewColumnNameMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, String> new2OldColumnNameMap = new TreeMap<>(CASE_INSENSITIVE_ORDER);
+        Map<String, String> old2NewColumnNameMap = new TreeMap<>(CASE_INSENSITIVE_ORDER);
         for (Pair<String, String> pair : columnNamePairs) {
-            New2OldColumnNameMap.put(pair.getKey(), pair.getValue());
+            new2OldColumnNameMap.put(pair.getKey(), pair.getValue());
             old2NewColumnNameMap.put(pair.getValue(), pair.getKey());
         }
 
@@ -1970,12 +2131,14 @@ public class TableInfoManager extends AbstractAccessor {
                 context.tableName);
         // recover all the changed column ordinalPosition by oldColumn meta.
         List<ColumnsRecord> oldColumnsRecords = queryColumns(context.tableSchema, context.tableName);
-        Map<String, ColumnsRecord> oldColumnRecordMap =
-            oldColumnsRecords.stream().collect(Collectors.toMap(o -> o.columnName, o -> o));
+        TreeMap<String, ColumnsRecord> oldColumnRecordMap =
+            oldColumnsRecords.stream().collect(
+                Collectors.toMap(o -> o.columnName, o -> o, (before, after) -> after,
+                    () -> new TreeMap<>(CASE_INSENSITIVE_ORDER)));
         for (ColumnsRecord columnsRecord : columnsRecords) {
             String columnName = columnsRecord.columnName;
-            if (New2OldColumnNameMap.containsKey(columnName)) {
-                ColumnsRecord oldColumnsRecord = oldColumnRecordMap.get(New2OldColumnNameMap.get(columnName));
+            if (new2OldColumnNameMap.containsKey(columnName)) {
+                ColumnsRecord oldColumnsRecord = oldColumnRecordMap.get(new2OldColumnNameMap.get(columnName));
                 ColumnsAccessor.copyFromOldToNewColumnRecord(oldColumnsRecord, columnsRecord);
             }
         }
@@ -1991,7 +2154,7 @@ public class TableInfoManager extends AbstractAccessor {
         }
 
         // change column def by columnsRecordsInOrder.
-        columnsAccessor.change(context.tableSchema, context.tableName, columnsRecordsInOrder, New2OldColumnNameMap);
+        columnsAccessor.change(context.tableSchema, context.tableName, columnsRecordsInOrder, new2OldColumnNameMap);
 
         // change index def by old2NewColumnNameMap.
         List<IndexesRecord> indexesRecords =
@@ -2013,7 +2176,7 @@ public class TableInfoManager extends AbstractAccessor {
             resetColumnDefaultExprFlag(context.tableSchema, context.tableName, columnName);
         }
 
-        columnMappingAccessor.change(columnsRecords, New2OldColumnNameMap);
+        columnMappingAccessor.change(columnsRecords, new2OldColumnNameMap);
         TablesRecord tablesRecord = tablesAccessor.query(context.tableSchema, context.tableName, false);
         if (Engine.isFileStore(tablesRecord.engine)) {
             addColumnEvolution(context, columnsRecords, context.ts);
@@ -2297,8 +2460,8 @@ public class TableInfoManager extends AbstractAccessor {
         List<IndexesRecord> indexesRecords =
             indexesAccessor.queryTableIndexes(tableSchema, tableName);
 
-        Map<String, String> old2NewIndexNameMap = indexNamePairs.stream().collect(Collectors.toMap(Pair::getValue,
-            Pair::getKey));
+        TreeMap<String, String> old2NewIndexNameMap = indexNamePairs.stream().collect(Collectors.toMap(Pair::getValue,
+            Pair::getKey, (before, after) -> after, () -> new TreeMap<>(CASE_INSENSITIVE_ORDER)));
         List<String> indexNames = indexesRecords.stream().map(o -> o.indexName).collect(Collectors.toList());
         for (IndexesRecord indexesRecord : indexesRecords) {
             if (old2NewIndexNameMap.containsKey(indexesRecord.indexName)) {
@@ -2659,7 +2822,13 @@ public class TableInfoManager extends AbstractAccessor {
         sequencesAccessor.deleteAll(schemaName);
         tablePartitionAccessor.deleteTablePartitionConfigsByDbName(schemaName);
         localPartitionAccessor.deleteAll(schemaName);
-        filesAccessor.delete(schemaName);
+        ttlInfoAccessor.deleteByDbName(schemaName);
+
+        //删库时，包含列存的情况不能直接删除files系统表，而oss冷热归档需要删files，特殊判断下
+        List<ColumnarTableMappingRecord> columnarRecords = columnarTableMappingAccessor.querySchema(schemaName);
+        if (columnarRecords.isEmpty()) {
+            filesAccessor.delete(schemaName);
+        }
         columnMetaAccessor.delete(schemaName);
         columnEvolutionAccessor.delete(schemaName);
         columnMappingAccessor.delete(schemaName);
@@ -2827,6 +2996,17 @@ public class TableInfoManager extends AbstractAccessor {
         return recordList;
     }
 
+    public List<TtlInfoRecord> getTtlInfoRecordBySchema(String schemaName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(schemaName));
+        List<TtlInfoRecord> recordList = ttlInfoAccessor.queryTtlInfoListByDb(schemaName);
+        return recordList;
+    }
+
+    public List<TtlInfoRecord> getAllTtlInfoRecords() {
+        List<TtlInfoRecord> recordList = ttlInfoAccessor.queryAllTtlInfoList();
+        return recordList;
+    }
+
     public List<TableLocalPartitionRecord> getAllLocalPartitionRecord() {
         List<TableLocalPartitionRecord> recordList = localPartitionAccessor.query();
         return recordList;
@@ -2835,6 +3015,24 @@ public class TableInfoManager extends AbstractAccessor {
     public TableLocalPartitionRecord getLocalPartitionRecord(String schemaName, String tableName) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(schemaName));
         TableLocalPartitionRecord record = localPartitionAccessor.queryByTableName(schemaName, tableName);
+        return record;
+    }
+
+    public TtlInfoRecord getTtlInfoRecord(String schemaName, String tableName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(schemaName));
+        TtlInfoRecord record = ttlInfoAccessor.queryTtlInfoByDbAndTb(schemaName, tableName);
+        return record;
+    }
+
+    public TtlInfoRecord getTtlInfoRecordByArchiveTable(String arcSchemaName, String arcTableName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(arcSchemaName));
+        TtlInfoRecord record = ttlInfoAccessor.queryTtlInfoByArcDbAndArcTb(arcSchemaName, arcTableName);
+        return record;
+    }
+
+    public TtlInfoRecord getTtlInfoRecordByArchiveTmpTable(String arcTmpTblSchema, String arcTmpTblName) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(arcTmpTblName));
+        TtlInfoRecord record = ttlInfoAccessor.queryTtlInfoByArcTmpDbAndArcTmpTb(arcTmpTblSchema, arcTmpTblName);
         return record;
     }
 
@@ -2851,9 +3049,52 @@ public class TableInfoManager extends AbstractAccessor {
         return localPartitionAccessor.insert(tableLocalPartitionRecord);
     }
 
+    public int insertTtlInfoRecord(TtlInfoRecord ttlInfoRecord) {
+        Preconditions.checkNotNull(ttlInfoRecord);
+        return ttlInfoAccessor.insertNewTtlInfo(ttlInfoRecord);
+    }
+
+    public int updateTtlInfoRecord(TtlInfoRecord ttlInfoRecord,
+                                   String tblSchema, String tblName) {
+        Preconditions.checkNotNull(ttlInfoRecord);
+        return ttlInfoAccessor.updateTtlInfoByDbNameAndTbName(ttlInfoRecord, tblSchema, tblName);
+    }
+
     public void updateArchiveTable(String schemaName, String tableName, String archiveTableSchema,
                                    String archiveTableName) {
         localPartitionAccessor.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
+    }
+
+    public void updateArchiveTableForTtlInfo(String ossTableSchema,
+                                             String ossTableName,
+                                             String arcTmpTableSchema,
+                                             String arcTmpTableName,
+                                             String ttlSchemaName,
+                                             String ttlTableName) {
+        ttlInfoAccessor.updateArcTableInfoByByDbAndTb(TtlInfoRecord.ARCHIVE_STATUS_DISABLE_OSS_ARCHIVE, ossTableSchema,
+            ossTableName, arcTmpTableSchema, arcTmpTableName, ttlSchemaName, ttlTableName);
+    }
+
+    public void renameTtlTableForTtlInfo(String newTtlTableSchema,
+                                         String newTtlTableName,
+                                         String ttlSchemaName,
+                                         String ttlTableName) {
+        ttlInfoAccessor.updateTtlTableNameByDbAndTb(newTtlTableSchema, newTtlTableName, ttlSchemaName, ttlTableName);
+    }
+
+    public void updateArchiveTableForTtlInfo(Integer arcKind,
+                                             String ossTableSchema,
+                                             String ossTableName,
+                                             String arcTmpTableSchema,
+                                             String arcTmpTableName,
+                                             String ttlSchemaName,
+                                             String ttlTableName) {
+        ttlInfoAccessor.updateArcTableInfoByByDbAndTb(arcKind, ossTableSchema, ossTableName, arcTmpTableSchema,
+            arcTmpTableName, ttlSchemaName, ttlTableName);
+    }
+
+    public void unBindingByArchiveTableNameForTtlInfo(String archiveTableSchema, String archiveTableName) {
+        ttlInfoAccessor.unBindingByArchiveTableName(archiveTableSchema, archiveTableName);
     }
 
     public void unBindingByArchiveTableName(String archiveTableSchema, String archiveTableName) {
@@ -2869,15 +3110,21 @@ public class TableInfoManager extends AbstractAccessor {
         return scheduledJobsAccessor.insert(scheduledJobsRecord);
     }
 
-    public int replaceScheduledJob(ScheduledJobsRecord scheduledJobsRecord) {
+    public int updateScheduledJobsRecordByScheduleId(ScheduledJobsRecord scheduledJobsRecord) {
         Preconditions.checkNotNull(scheduledJobsRecord);
-        return scheduledJobsAccessor.replace(scheduledJobsRecord);
+        return scheduledJobsAccessor.updateScheduledJobsRecordByScheduleId(scheduledJobsRecord);
     }
 
     public int removeLocalPartitionRecord(String schemaName, String tableName) {
         Preconditions.checkNotNull(schemaName);
         Preconditions.checkNotNull(tableName);
         return localPartitionAccessor.delete(schemaName, tableName);
+    }
+
+    public int removeTtlInfoRecord(String schemaName, String tableName) {
+        Preconditions.checkNotNull(schemaName);
+        Preconditions.checkNotNull(tableName);
+        return ttlInfoAccessor.deleteTtlInfoByDbAndTb(schemaName, tableName);
     }
 
     public int removeScheduledJobRecord(String schemaName, String tableName) {
@@ -2891,6 +3138,20 @@ public class TableInfoManager extends AbstractAccessor {
         for (ScheduledJobsRecord record : recordList) {
             count += scheduledJobsAccessor.deleteById(record.getScheduleId());
             firedScheduledJobsAccessor.deleteById(record.getScheduleId());
+        }
+        return count;
+    }
+
+    public int removeTtlFiredScheduledJobRecords(String schemaName, String tableName) {
+        Preconditions.checkNotNull(schemaName);
+        Preconditions.checkNotNull(tableName);
+        List<ScheduledJobsRecord> recordList = scheduledJobsAccessor.query(schemaName, tableName, "TTL_JOB");
+        int count = 0;
+        if (CollectionUtils.isEmpty(recordList)) {
+            return count;
+        }
+        for (ScheduledJobsRecord record : recordList) {
+            firedScheduledJobsAccessor.deleteQueuedJobsById(record.getScheduleId());
         }
         return count;
     }

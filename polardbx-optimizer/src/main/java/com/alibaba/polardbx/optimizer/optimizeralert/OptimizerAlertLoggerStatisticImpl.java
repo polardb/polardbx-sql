@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.optimizeralert;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 public class OptimizerAlertLoggerStatisticImpl extends OptimizerAlertLoggerBaseImpl {
@@ -25,8 +26,26 @@ public class OptimizerAlertLoggerStatisticImpl extends OptimizerAlertLoggerBaseI
     }
 
     @Override
-    public boolean logDetail(ExecutionContext ec) {
-        // do nothing
+    public boolean logDetail(ExecutionContext ec, Object object) {
+        if (ec == null) {
+            return false;
+        }
+        if (lock.tryLock()) {
+            try {
+                long lastTime = lastAccessTime.get();
+                long currentTime = System.currentTimeMillis();
+                if (currentTime >= lastTime + DynamicConfig.getInstance().getOptimizerAlertLogInterval()) {
+                    lastAccessTime.set(currentTime);
+                    logger.info(String.format("alert_type{ %s }: schema{ %s } trace_id { %s }",
+                        optimizerAlertType.name(),
+                        ec.getSchemaName(),
+                        ec.getTraceId()));
+                    return true;
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
         return false;
     }
 }

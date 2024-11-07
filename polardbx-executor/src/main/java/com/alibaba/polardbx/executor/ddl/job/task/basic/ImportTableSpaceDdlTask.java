@@ -22,16 +22,25 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.BasePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
+import com.alibaba.polardbx.gms.metadb.misc.ImportTableSpaceInfoStatAccessor;
+import com.alibaba.polardbx.gms.metadb.misc.ImportTableSpaceInfoStatRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableList;
+import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -39,26 +48,37 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.alibaba.polardbx.common.TddlConstants.LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_SYSTEM_LOCK;
 
 @Getter
 @TaskName(name = "ImportTableSpaceDdlTask")
-public class ImportTableSpaceDdlTask extends BaseDdlTask {
+public class ImportTableSpaceDdlTask extends BaseDdlTask implements RemoteExecutableDdlTask {
 
     private String logicalTableName;
     private String phyDbName;
     private String phyTableName;
     private Pair<String, Integer> targetHost;//leader、follower or leaner
     private Pair<String, String> userAndPasswd;
+    private long dataSize;
+    private long ioAdvise;
 
     @JSONCreator
     public ImportTableSpaceDdlTask(String schemaName, String logicalTableName, String phyDbName, String phyTableName,
-                                   Pair<String, Integer> targetHost, Pair<String, String> userAndPasswd) {
+                                   Pair<String, Integer> targetHost, Pair<String, String> userAndPasswd,
+                                   String targetDnId,
+                                   long dataSize,
+                                   long ioAdvise) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.phyDbName = phyDbName.toLowerCase();
         this.phyTableName = phyTableName.toLowerCase();
         this.targetHost = targetHost;
         this.userAndPasswd = userAndPasswd;
+        this.dataSize = dataSize;
+        this.ioAdvise = ioAdvise;
+        setResourceAcquired(buildResourceRequired(targetDnId, phyDbName + "//" + phyTableName, dataSize));
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -66,6 +86,24 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask {
     protected void beforeTransaction(ExecutionContext executionContext) {
         updateTaskStateInNewTxn(DdlTaskState.DIRTY);
         executeImpl(executionContext);
+    }
+
+    DdlEngineResources buildResourceRequired(String targetDnId, String phyDbTableName, long dataSize) {
+        DdlEngineResources resourceRequired = new DdlEngineResources();
+        String owner = "ImportTableSpace:" + phyDbTableName;
+        long importTableSpaceIo = 40L;
+        if (ioAdvise >= 10L && ioAdvise <= 100L) {
+            importTableSpaceIo = ioAdvise;
+        }
+        resourceRequired.request(targetDnId + DN_IO, importTableSpaceIo, owner);
+        resourceRequired.request(targetDnId + DN_CPU, 25L, owner);
+        resourceRequired.request(targetDnId + DN_SYSTEM_LOCK, 40L, owner);
+        return resourceRequired;
+    }
+
+    @Override
+    public DdlEngineResources getDdlEngineResources() {
+        return this.resourceAcquired;
     }
 
     public void executeImpl(ExecutionContext executionContext) {
@@ -88,7 +126,9 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask {
                 SQLRecorderLogger.ddlLogger.info(
                     String.format("begin to execute import tablespace command %s, in host: %s, db:%s", importTableSpace,
                         targetHost, phyDbName));
+                long startTime = System.currentTimeMillis();
                 conn.execQuery(importTableSpace);
+                addImportTableSpaceStat(startTime);
                 SQLRecorderLogger.ddlLogger.info(
                     String.format("finish execute import tablespace command %s, in host: %s, db:%s", importTableSpace,
                         targetHost, phyDbName));
@@ -135,7 +175,8 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask {
 
     @Override
     public String remark() {
-        return "|alter table " + phyTableName + " import tablespace, phyDb:" + phyDbName + " host:" + targetHost;
+        return "|alter table " + phyTableName + " import tablespace, phyDb:" + phyDbName + " host:" + targetHost
+            + " dataSize: " + DataSize.succinctBytes(dataSize);
     }
 
     public List<String> explainInfo() {
@@ -143,5 +184,26 @@ public class ImportTableSpaceDdlTask extends BaseDdlTask {
         List<String> command = new ArrayList<>(1);
         command.add(importTableSpace);
         return command;
+    }
+
+    private void addImportTableSpaceStat(long startTime) {
+        try (Connection metadb = MetaDbUtil.getConnection()) {
+            ImportTableSpaceInfoStatRecord infoStatRecord = new ImportTableSpaceInfoStatRecord();
+            infoStatRecord.setTaskId(taskId);
+            infoStatRecord.setTableSchema(schemaName);
+            infoStatRecord.setTableName(logicalTableName);
+            infoStatRecord.setPhysicalDb(phyDbName);
+            infoStatRecord.setPhysicalTable(phyTableName);
+            infoStatRecord.setDataSize(dataSize);
+            infoStatRecord.setStartTime(startTime);
+            infoStatRecord.setEndTime(System.currentTimeMillis());
+            ImportTableSpaceInfoStatAccessor importTableSpaceInfoStatAccessor = new ImportTableSpaceInfoStatAccessor();
+            importTableSpaceInfoStatAccessor.setConnection(metadb);
+            importTableSpaceInfoStatAccessor.insert(ImmutableList.of(infoStatRecord));
+            metadb.commit();
+        } catch (Exception ex) {
+            SQLRecorderLogger.ddlLogger.info(
+                String.format("fail to insert into IMPORT_TABLESPACE_INFO_STAT due to %s ", ex.toString()));
+        }
     }
 }

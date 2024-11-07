@@ -110,10 +110,11 @@ public class OmcMirrorCopyExtractor extends Extractor {
                                                 long batchSize, long speedMin, long speedLimit, long parallelism,
                                                 Map<String, String> tableNameMapping,
                                                 Map<String, Set<String>> sourcePhyTables,
-                                                boolean useChangeSet, boolean useBinary,
+                                                boolean useChangeSet, boolean useBinary, boolean onlineModifyColumn,
                                                 ExecutionContext ec) {
-        Extractor.ExtractorInfo
-            info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true);
+        Extractor.ExtractorInfo info =
+            Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true, false,
+                onlineModifyColumn);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, ec);
 
         final TableMeta tableMeta = info.getSourceTableMeta();
@@ -237,7 +238,7 @@ public class OmcMirrorCopyExtractor extends Extractor {
                     throttle.feedback(new com.alibaba.polardbx.executor.backfill.Throttle.FeedbackStats(
                         System.currentTimeMillis() - start, start, currentSuccessRowCount.get()));
                 }
-                DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
+//                DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
 
                 if (rateLimiter != null) {
                     // Limit rate.
@@ -271,7 +272,7 @@ public class OmcMirrorCopyExtractor extends Extractor {
                 dbIndex, phyTable, successRowCount, ec, rangeBackfillStartTime, lastBatch, backfillObjects);
         } while (!finished.get());
 
-        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
+//        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
         reporter.addBackfillCount(successRowCount);
 
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Last backfill row for {1}[{2}][{3}]: {4}",

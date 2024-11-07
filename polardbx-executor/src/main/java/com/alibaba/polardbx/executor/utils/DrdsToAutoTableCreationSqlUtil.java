@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.utils;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
@@ -45,10 +48,22 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlPartitionByKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSubPartitionByKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.sharding.utils.DrdsDefaultPartitionNumUtil;
+import com.alibaba.polardbx.repo.mysql.handler.LogicalShowTablesMyHandler;
+import org.apache.calcite.sql.SqlShowTables;
+import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.sql.Types;
 import java.util.ArrayList;
@@ -72,6 +87,7 @@ import static java.lang.Math.min;
  */
 public class DrdsToAutoTableCreationSqlUtil {
     static final int largestIndexPrefixLengthInBytes = 767;
+    static final String TABLE_TYPE = "base table";
 
     //ignore the 'locality' option in auto-mode db
     public static String buildCreateAutoModeDatabaseSql(String drdsSchemaName, String autoSchemaName) {
@@ -827,7 +843,7 @@ public class DrdsToAutoTableCreationSqlUtil {
             month.addArgument(col);
             autoSqlSubPartitionBy.addColumn(month);
             //build subpartition definition
-            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 12, 12);
+            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 13, 13);
         } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("DD")) {
             //build dayofmonth(`col`)
             autoSqlSubPartitionBy = new SQLSubPartitionByRange();
@@ -1265,6 +1281,36 @@ public class DrdsToAutoTableCreationSqlUtil {
         }
 
         return result;
+    }
+
+    public static List<String> getTableNamesFromDatabase(String schemaName, ExecutionContext executionContext) {
+        SqlShowTables sqlShowTables =
+            SqlShowTables.create(SqlParserPos.ZERO, true, null, schemaName, null, null, null, null);
+        ExecutionContext copiedContext = executionContext.copy();
+        copiedContext.setSchemaName(schemaName);
+        PlannerContext plannerContext = PlannerContext.fromExecutionContext(copiedContext);
+        ExecutionPlan showTablesPlan = Planner.getInstance().getPlan(sqlShowTables, plannerContext);
+        LogicalShow logicalShowTables = (LogicalShow) showTablesPlan.getPlan();
+
+        IRepository sourceRepo = ExecutorContext
+            .getContext(schemaName)
+            .getTopologyHandler()
+            .getRepositoryHolder()
+            .get(Group.GroupType.MYSQL_JDBC.toString());
+        LogicalShowTablesMyHandler logicalShowTablesMyHandler = new LogicalShowTablesMyHandler(sourceRepo);
+
+        Cursor showTablesCursor =
+            logicalShowTablesMyHandler.handle(logicalShowTables, copiedContext);
+
+        List<String> tables = new ArrayList<>();
+        Row showTablesResult = null;
+        while ((showTablesResult = showTablesCursor.next()) != null) {
+            if (showTablesResult.getColNum() >= 1 && showTablesResult.getString(0) != null
+                && TABLE_TYPE.equalsIgnoreCase(showTablesResult.getString(1))) {
+                tables.add(showTablesResult.getString(0));
+            }
+        }
+        return tables;
     }
 
 }

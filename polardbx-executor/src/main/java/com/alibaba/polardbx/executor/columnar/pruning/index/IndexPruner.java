@@ -202,14 +202,15 @@ public class IndexPruner {
             return indexPruner;
         }
 
-        public IndexPrunerBuilder appendSortKeyIndex(OrcProto.IntegerStatistics integerStatistics) {
-            sortKeyIndexBuilder.appendDataEntry(integerStatistics);
+        public IndexPrunerBuilder appendSortKeyIndex(OrcProto.ColumnStatistics columnStatistics) {
+            sortKeyIndexBuilder.appendDataEntry(columnStatistics);
             curRgNum++;
             return this;
         }
 
-        public IndexPrunerBuilder appendSortKeyIndex(long min, long max) {
-            sortKeyIndexBuilder.appendDataEntry(min, max);
+        //only for test
+        public IndexPrunerBuilder appendMockSortKeyIndex(Object min, Object max, DataType dt) {
+            sortKeyIndexBuilder.appendMockDataEntry(min, max, dt);
             curRgNum++;
             return this;
         }

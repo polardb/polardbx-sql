@@ -25,14 +25,14 @@ import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.StringUtils;
-import com.alibaba.polardbx.gms.locality.LocalityDesc;
-import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.gms.lbac.LBACSecurityEntity;
 import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
 import com.alibaba.polardbx.gms.lbac.PolarSecurityLabelColumn;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.lbac.LBACException;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.DefaultExprUtil;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
@@ -47,6 +47,8 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfo;
 import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -381,12 +383,12 @@ public class LogicalCreateTable extends LogicalTableOperation {
                     defaultCharset, defaultCollation, true);
 
             if (defaultCharset == null && defaultCollation == null && createTbCharInfo.finalCharset != null) {
-                builder.append(" CHARSET `").append(createTbCharInfo.finalCharset.toLowerCase()).append("`");
+                builder.append(" CHARSET ").append(createTbCharInfo.finalCharset.toLowerCase());
                 sqlCreateTable.setDefaultCharset(createTbCharInfo.finalCharset.toLowerCase());
             }
 
             if (defaultCollation == null && createTbCharInfo.finalCollate != null) {
-                builder.append(" COLLATE `").append(createTbCharInfo.finalCollate.toLowerCase()).append("`");
+                builder.append(" COLLATE ").append(createTbCharInfo.finalCollate.toLowerCase());
                 sqlCreateTable.setDefaultCollation(createTbCharInfo.finalCollate.toLowerCase());
             }
 
@@ -405,11 +407,18 @@ public class LogicalCreateTable extends LogicalTableOperation {
             tableMeta.getTableName(),
             (SqlPartitionByRange) sqlCreateTable.getLocalPartition()
         );
+
+        TtlDefinitionInfo ttlDefinitionInfo = null;
+        SqlNode ttlDefinitionExpr = null;
         if (localPartitionDefinitionInfo != null) {
             SQLPartitionByRange sqlPartitionByRange = LocalPartitionDefinitionInfo.generateLocalPartitionStmtForCreate(
                 localPartitionDefinitionInfo,
                 localPartitionDefinitionInfo.evalPivotDate(executionContext));
             sqlCreateTable.setLocalPartitionSuffix(sqlPartitionByRange);
+        } else {
+            if (sqlCreateTable.getTtlDefinition() != null) {
+                ttlDefinitionExpr = sqlCreateTable.getTtlDefinition();
+            }
         }
 
         CreateTablePreparedData res = prepareCreateTableData(tableMeta,
@@ -422,6 +431,8 @@ public class LogicalCreateTable extends LogicalTableOperation {
             sqlCreateTable.getTbpartitions(),
             sqlCreateTable.getSqlPartition(),
             localPartitionDefinitionInfo,
+            ttlDefinitionInfo,
+            ttlDefinitionExpr,
             sqlCreateTable.getTableGroupName(),
             sqlCreateTable.isWithImplicitTableGroup(),
             sqlCreateTable.getJoinGroupName(),
@@ -543,17 +554,39 @@ public class LogicalCreateTable extends LogicalTableOperation {
         LocalityDesc desc = LocalityDesc.parse(sqlCreateTable.getLocality());
         res.setLocality(desc);
 
-        if (sqlCreateTable.getLoadTableName() != null) {
-            res.setLoadTableName(sqlCreateTable.getLoadTableName());
-            if (sqlCreateTable.getLoadTableSchema() != null) {
-                res.setLoadTableSchema(sqlCreateTable.getLoadTableSchema());
-            } else {
-                res.setLoadTableSchema(schemaName);
-            }
-        }
+        /**
+         * Check if the loading-source table of archive Table is using
+         * local-partition or row-level-ttl
+         */
+        boolean archiveFromRowLevelTtlTbl = false;
 
         if (sqlCreateTable.getArchiveMode() == ArchiveMode.TTL) {
-            res.setArchiveTableName(sqlCreateTable.getLoadTableName());
+            String srcTblSchema = sqlCreateTable.getLoadTableSchema();
+            if (srcTblSchema == null) {
+                srcTblSchema = schemaName;
+            }
+            String srcTblName = sqlCreateTable.getLoadTableName();
+            archiveFromRowLevelTtlTbl = TtlUtil.checkIfUsingRowLevelTtl(srcTblSchema, srcTblName, executionContext);
+        }
+
+        if (!archiveFromRowLevelTtlTbl) {
+            /**
+             * Archive from local-partition table
+             */
+            if (sqlCreateTable.getLoadTableName() != null) {
+                res.setLoadTableName(sqlCreateTable.getLoadTableName());
+                if (sqlCreateTable.getLoadTableSchema() != null) {
+                    res.setLoadTableSchema(sqlCreateTable.getLoadTableSchema());
+                } else {
+                    res.setLoadTableSchema(schemaName);
+                }
+            }
+
+            if (sqlCreateTable.getArchiveMode() == ArchiveMode.TTL) {
+                res.setArchiveTmpTableName(sqlCreateTable.getLoadTableName());
+            }
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_TTL, "Not support create oss table like a ttl-defined table");
         }
 
         if (res.isWithImplicitTableGroup()) {
@@ -626,6 +659,12 @@ public class LogicalCreateTable extends LogicalTableOperation {
         Engine engine;
         if ((engine = this.sqlCreateTable.getEngine()) != null) {
             createTableAst.setEngine(engine);
+
+            createTableAst.setTtlEnable(null);
+            createTableAst.setTtlExpr(null);
+            createTableAst.setTtlJob(null);
+            createTableAst.setTtlDefinition(null);
+
         }
 
         ArchiveMode archiveMode;
@@ -740,4 +779,5 @@ public class LogicalCreateTable extends LogicalTableOperation {
             getCreateTableWithGsiPreparedData().setDdlVersionId(ddlVersionId);
         }
     }
+
 }

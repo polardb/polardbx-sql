@@ -724,8 +724,7 @@ public class DropAddPrimaryKeyMultiWriteTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, dmlHintStr + sql);
         sql = String.format("REPLACE INTO %s VALUES ('678', 7, 8)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
-        trace = getTrace(tddlConnection);
-        Assert.assertThat(trace.size(), is(12));
+        trace = checkTraceRowCount(is(12));
         assertTraceContains(trace, "DELETE", 4);
     }
 

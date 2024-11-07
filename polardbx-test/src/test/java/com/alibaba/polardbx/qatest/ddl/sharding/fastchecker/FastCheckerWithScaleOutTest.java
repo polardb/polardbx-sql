@@ -15,6 +15,7 @@
  */
 
 package com.alibaba.polardbx.qatest.ddl.sharding.fastchecker;
+
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.*;
@@ -28,17 +29,16 @@ import java.util.Set;
 
 /**
  * Created by zhuqiwei.
- *
- * @author: zhuqiwei
  */
 
 @Ignore
 @NotThreadSafe
 public class FastCheckerWithScaleOutTest extends FastCheckerTestBase {
     private static String scaleOutTemplate =
-            "move database " +
-                    "/*+TDDL: CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALEOUT_CHECK_AFTER_BACKFILL={0})*/" +
-                    "{1} to {2}";
+        "move database " +
+            "/*+TDDL: CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALEOUT_CHECK_AFTER_BACKFILL={0})*/"
+            +
+            "{1} to {2}";
     private static final String checkFinished = "show move database;";
 
     @Before
@@ -49,11 +49,11 @@ public class FastCheckerWithScaleOutTest extends FastCheckerTestBase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "use " + schemaName);
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, MessageFormat
-                .format(srcTableTemplate, srcLogicTable, srcTbPartition));
+            .format(srcTableTemplate, srcLogicTable, srcTbPartition));
 
         for (int i = 1; i <= 500; i++) {
             JdbcUtil.executeUpdateSuccess(tddlConnection, MessageFormat
-                    .format(fullColumnInsert, srcLogicTable, i, "uuid()", "uuid()", "FLOOR(Rand() * 1000)", "now()"));
+                .format(fullColumnInsert, srcLogicTable, i, "uuid()", "uuid()", "FLOOR(Rand() * 1000)", "now()"));
         }
     }
 
@@ -67,16 +67,18 @@ public class FastCheckerWithScaleOutTest extends FastCheckerTestBase {
         Set<String> storages = new HashSet<>();
         groupAndStorage.forEach((group, sids) -> {
             sids.forEach(
-                    sid -> storages.add(sid)
+                sid -> storages.add(sid)
             );
         });
         Map<String, Set<String>> groupAndTables = getTableTopology(srcLogicTable);
         String srcGroup = groupAndTables.keySet().stream().findFirst().get();
-        String srcStorageId = groupAndStorage.get(srcGroup).stream().filter(sid -> sid.contains("master")).findAny().get();
-        String dstStorageId = storages.stream().filter(sid -> !sid.equals(srcStorageId) && sid.contains("master")).findAny().get();
+        String srcStorageId =
+            groupAndStorage.get(srcGroup).stream().filter(sid -> sid.contains("master")).findAny().get();
+        String dstStorageId =
+            storages.stream().filter(sid -> !sid.equals(srcStorageId) && sid.contains("master")).findAny().get();
 
         String tddlSql = MessageFormat
-                .format(scaleOutTemplate, withFastChecker ? "true" : "false", srcGroup, "\'" + dstStorageId + "\'");
+            .format(scaleOutTemplate, withFastChecker ? "true" : "false", srcGroup, "\'" + dstStorageId + "\'");
         String jobId = null;
         JdbcUtil.executeUpdateSuccess(tddlConnection, tddlSql);
         waitUntilDdlJobSucceed(schemaName);
@@ -90,7 +92,7 @@ public class FastCheckerWithScaleOutTest extends FastCheckerTestBase {
             try {
                 while (rs.next()) {
                     String db = rs.getString("SCHEMA");
-                    if(db == null || !db.equalsIgnoreCase(schemaName)) {
+                    if (db == null || !db.equalsIgnoreCase(schemaName)) {
                         continue;
                     }
                     String progress = rs.getString("PROGRESS");

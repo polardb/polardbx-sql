@@ -72,8 +72,8 @@ ugidx_$,CREATE TABLE `ugidx_$` (
 	`a` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`c`,`d`)
 PARTITIONS #@#
@@ -126,8 +126,8 @@ ugidx_$,CREATE TABLE `ugidx_$` (
 	`a` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`d` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`c`,`d`)
 PARTITIONS 4

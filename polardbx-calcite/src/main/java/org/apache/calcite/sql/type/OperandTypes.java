@@ -256,6 +256,26 @@ public abstract class OperandTypes {
           }
       });
 
+  public static final FamilyOperandTypeChecker STRING_OPTIONAL_NUMERIC =
+        family(ImmutableList.of(SqlTypeFamily.STRING, SqlTypeFamily.NUMERIC),
+        new PredicateImpl<Integer>() {
+            // Second operand optional (operand index 0, 1)
+            @Override
+            public boolean test(Integer number) {
+                return number == 1;
+            }
+        });
+
+  public static final FamilyOperandTypeChecker BINARY_OPTIONAL_NUMERIC =
+        family(ImmutableList.of(SqlTypeFamily.BINARY, SqlTypeFamily.NUMERIC),
+        new PredicateImpl<Integer>() {
+            // Second operand optional (operand index 0, 1)
+            @Override
+            public boolean test(Integer number) {
+                return number == 1;
+            }
+        });
+
   public static final FamilyOperandTypeChecker ANY_STRING_STRING =
             family(SqlTypeFamily.ANY, SqlTypeFamily.STRING, SqlTypeFamily.STRING);
 

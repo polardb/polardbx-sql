@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.pl;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
@@ -104,7 +105,7 @@ public class PLUtils {
         } else {
             printStr = value.toString();
         }
-        return "\"" + printStr + "\"";
+        return "'" + TStringUtil.escape(printStr, '\'', '\'') + "'";
     }
 
     private static MemoryPool createCursorMemoryPool(PlContext procContext, MemoryPool parentMemoryPool) {

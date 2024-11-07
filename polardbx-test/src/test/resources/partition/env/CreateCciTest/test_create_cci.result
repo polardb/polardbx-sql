@@ -109,7 +109,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
@@ -138,7 +138,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
@@ -167,7 +167,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
@@ -196,7 +196,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
@@ -225,7 +225,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 9
+		PARTITIONS 9 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS 3
@@ -255,7 +255,7 @@ t_order_1,CREATE PARTITION TABLE `t_order_1` (
 	PRIMARY KEY (`_drds_implicit_id_`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`_drds_implicit_id_`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`_drds_implicit_id_`)
 PARTITIONS #@#
@@ -284,7 +284,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS 3
@@ -313,7 +313,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS 3
@@ -342,7 +342,7 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY KEY(`id`)
 PARTITIONS 3
@@ -370,7 +370,7 @@ t_order_single,CREATE TABLE `t_order_single` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 9
+		PARTITIONS 9 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 SINGLE
 /* tablegroup = `single_tg` */
@@ -398,7 +398,7 @@ t_order_single,CREATE TABLE `t_order_single` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 SINGLE
 /* tablegroup = `single_tg` */
@@ -426,7 +426,7 @@ t_order_single,CREATE TABLE `t_order_single` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 SINGLE
 /* tablegroup = `single_tg` */
@@ -454,7 +454,7 @@ t_order_single,CREATE TABLE `t_order_single` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 SINGLE
 /* tablegroup = `single_tg` */
@@ -482,7 +482,7 @@ t_order_single,CREATE TABLE `t_order_single` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 SINGLE
 /* tablegroup = `single_tg` */
@@ -511,7 +511,7 @@ t_order_single_1,CREATE TABLE `t_order_single_1` (
 	PRIMARY KEY (`_drds_implicit_id_`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`_drds_implicit_id_`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 SINGLE
 /* tablegroup = `single_tg` */
@@ -539,7 +539,7 @@ t_order_broadcast,CREATE TABLE `t_order_broadcast` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 9
+		PARTITIONS 9 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 BROADCAST
 /* tablegroup = `broadcast_tg` */
@@ -567,7 +567,7 @@ t_order_broadcast,CREATE TABLE `t_order_broadcast` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 BROADCAST
 /* tablegroup = `broadcast_tg` */
@@ -595,7 +595,7 @@ t_order_broadcast,CREATE TABLE `t_order_broadcast` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 BROADCAST
 /* tablegroup = `broadcast_tg` */
@@ -623,7 +623,7 @@ t_order_broadcast,CREATE TABLE `t_order_broadcast` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 20
+		PARTITIONS 20 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 BROADCAST
 /* tablegroup = `broadcast_tg` */
@@ -651,7 +651,7 @@ t_order_broadcast_1,CREATE TABLE `t_order_broadcast_1` (
 	PRIMARY KEY (`_drds_implicit_id_`),
 	CLUSTERED COLUMNAR INDEX /* cci_seller_id_$ */ `cci_seller_id` (`seller_id`)
 		PARTITION BY HASH(`_drds_implicit_id_`)
-		PARTITIONS 16
+		PARTITIONS 16 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8
 BROADCAST
 /* tablegroup = `broadcast_tg` */
@@ -670,7 +670,7 @@ heavy_qps_table,CREATE TABLE `heavy_qps_table` (
 	PRIMARY KEY (`id`),
 	CLUSTERED COLUMNAR INDEX /* heavy_qps_table_cci_$ */ `heavy_qps_table_cci` (`id`)
 		PARTITION BY HASH(`id`)
-		PARTITIONS 4
+		PARTITIONS 4 ENGINE=OSS
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
@@ -682,7 +682,10 @@ CCI,error_type,status,primary_key,details
 DROP INDEX `heavy_qps_table_cci` ON `heavy_qps_table`;
 
 # create cci on partition table with dictionary columns
-/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE CLUSTERED COLUMNAR INDEX `nation_col_index` ON `nation` (`n_nationkey`) PARTITION BY HASH (`n_nationkey`) PARTITIONS 1 DICTIONARY_COLUMNS = 'n_name,n_comment';
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE CLUSTERED COLUMNAR INDEX `nation_col_index` ON `nation` (`n_nationkey`) PARTITION BY HASH (`n_nationkey`) PARTITIONS 1 DICTIONARY_COLUMNS = 'n_name,n_comment'
+COLUMNAR_OPTIONS='{
+	"DICTIONARY_COLUMNS":"N_NAME,N_COMMENT",
+}';
 SHOW CREATE TABLE `nation`;
 Table,Create Table
 nation,CREATE TABLE `nation` (
@@ -707,7 +710,10 @@ nation,CREATE TABLE `nation` (
 	PRIMARY KEY (`n_nationkey`),
 	CLUSTERED COLUMNAR INDEX /* nation_col_index_$ */ `nation_col_index` (`n_nationkey`)
 		PARTITION BY HASH(`n_nationkey`)
-		PARTITIONS 1 DICTIONARY_COLUMNS = '`n_name`,`n_comment`'
+		PARTITIONS 1 ENGINE=OSS
+		COLUMNAR_OPTIONS='{
+			"DICTIONARY_COLUMNS":"`N_NAME`,`N_COMMENT`",
+		}'
 ) ENGINE = InnoDB DEFAULT CHARSET = latin1
 PARTITION BY KEY(`n_nationkey`)
 PARTITIONS #@#

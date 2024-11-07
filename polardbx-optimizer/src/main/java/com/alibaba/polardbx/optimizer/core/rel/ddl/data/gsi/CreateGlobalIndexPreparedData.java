@@ -86,6 +86,9 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     private boolean repartition;
 
+    // for omc
+    private boolean omcRebuildPrimaryTable;
+
     public CreateGlobalIndexPreparedData() {
     }
 
@@ -411,6 +414,14 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         this.repartition = repartition;
     }
 
+    public boolean isOmcRebuildPrimaryTable() {
+        return omcRebuildPrimaryTable;
+    }
+
+    public void setOmcRebuildPrimaryTable(boolean omcRebuildPrimaryTable) {
+        this.omcRebuildPrimaryTable = omcRebuildPrimaryTable;
+    }
+
     public boolean isCreateTableWithIndex() {
         return createTableWithIndex;
     }
@@ -476,7 +487,8 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
             sqlCreateIndex.getEngineName(),
             sqlCreateIndex.getDictColumns(),
             sqlCreateIndex.isWithImplicitTableGroup(),
-            sqlCreateIndex.isVisible()
+            sqlCreateIndex.isVisible(),
+            sqlCreateIndex.getColumnarOptions()
         );
     }
 
@@ -517,7 +529,8 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
             sqlIndexDefinition.isWithImplicitTableGroup(),
             sqlIndexDefinition.getEngineName(),
             sqlIndexDefinition.getDictColumns(),
-            sqlIndexDefinition.isVisible()
+            sqlIndexDefinition.isVisible(),
+            sqlIndexDefinition.getColumnarOptions()
         );
     }
 }

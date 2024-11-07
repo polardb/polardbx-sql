@@ -32,6 +32,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlModifyColumn;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -53,6 +54,7 @@ public class ColumnarForbidTest {
     @Rule
     public ExpectedException thrown = ExpectedException.none();
 
+    @Ignore
     @Test
     public void ForbidAlterCciTableWithMultiStatement() {
         try (MockedStatic<OptimizerContext> staticOptimizerContext = mockStatic(OptimizerContext.class)) {

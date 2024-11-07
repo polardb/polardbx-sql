@@ -50,10 +50,14 @@ public abstract class NodeStatusManager {
     public final static int ROLE_MASTER = 4;
     //是否Leader
     public final static int ROLE_LEADER = 8;
+
     //加到黑名单中的节点不提供mpp服务
     public final static int ROLE_BLACKLIST = 16;
+
     //ROLE_SLAVE: 1 - 只读实例（HTAP使用），主实例     0 - 只读实例节点未加入HTAP链路
     public final static int ROLE_HTAP = 32;
+
+    public final static int ROLE_COLUMNAR = 64;
 
     protected InternalNode localNode;
     protected String selectSql;
@@ -103,9 +107,6 @@ public abstract class NodeStatusManager {
 
     protected abstract void doDestroy(boolean stop);
 
-    protected abstract void updateActiveNodes(
-        String instId, InternalNode node, Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes, int role);
-
     protected abstract String updateTableMetaSql(int status);
 
     protected abstract void checkLeader(Connection conn, String leaderId);
@@ -141,10 +142,9 @@ public abstract class NodeStatusManager {
         }
     }
 
-    private String injectNode(ResultSet rs, Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes,
-                              Set<InternalNode> inactiveNodes,
-                              Set<InternalNode> shuttingDownNodes,
-                              Set<String> htapInstIds)
+    private String injectNode(ResultSet rs, Set<InternalNode> currentActiveNodes,
+                              Set<InternalNode> remoteActiveRowNodes, Set<InternalNode> remoteActiveColumnarNodes,
+                              Set<InternalNode> inactiveNodes, Set<InternalNode> shuttingDownNodes)
         throws SQLException {
         String leaderId = null;
         String nodeId = rs.getString("NODEID");
@@ -159,17 +159,12 @@ public abstract class NodeStatusManager {
         long timeAlive = rs.getLong("TIMEALIVE");
 
         InternalNode node = new InternalNode(nodeId, cluster, instId, host, port, rpcPort, new NodeVersion(version),
-            (role & ROLE_COORDINATOR) == ROLE_COORDINATOR,
-            (role & ROLE_WORKER) == ROLE_WORKER,
-            (role & ROLE_BLACKLIST) == ROLE_BLACKLIST,
-            (role & ROLE_HTAP) == ROLE_HTAP);
+            (role & ROLE_COORDINATOR) == ROLE_COORDINATOR, (role & ROLE_WORKER) == ROLE_WORKER,
+            (role & ROLE_BLACKLIST) == ROLE_BLACKLIST, (role & ROLE_HTAP) == ROLE_HTAP ||
+            (role & ROLE_COLUMNAR) == ROLE_COLUMNAR);
 
         if ((role & ROLE_MASTER) == ROLE_MASTER) {
             node.setMaster(true);
-        }
-
-        if ((role & ROLE_HTAP) == ROLE_HTAP) {
-            htapInstIds.add(instId);
         }
 
         if (status == STATUS_SHUTDOWN) {
@@ -189,7 +184,15 @@ public abstract class NodeStatusManager {
             }
 
             if (!node.isInBlacklist()) {
-                updateActiveNodes(instId, node, activeNodes, otherActiveNodes, role);
+                if (localNode.getInstId().equalsIgnoreCase(instId)) {
+                    //主实例或者当前节点是只读实例，取这个只读实例相同instId的节点
+                    currentActiveNodes.add(node);
+                } else if (ConfigDataMode.isMasterMode() && (role & ROLE_HTAP) == ROLE_HTAP) {
+                    //当前处理是主实例，且获取的节点开启了HTAP节点
+                    remoteActiveRowNodes.add(node);
+                } else if (ConfigDataMode.isMasterMode() && (role & ROLE_COLUMNAR) == ROLE_COLUMNAR) {
+                    remoteActiveColumnarNodes.add(node);
+                }
             }
         }
         return leaderId;
@@ -220,17 +223,16 @@ public abstract class NodeStatusManager {
         if (ConfigDataMode.isFastMock()) {
             return;
         }
-        try (Statement statement = conn.createStatement();
-            ResultSet resultSet = statement.executeQuery(selectSql)) {
-            Set<InternalNode> activeNodes = new HashSet<>();
-            Set<InternalNode> otherActiveNodes = new HashSet<>();
+        try (Statement statement = conn.createStatement(); ResultSet resultSet = statement.executeQuery(selectSql)) {
+            Set<InternalNode> currentActiveNodes = new HashSet<>();
+            Set<InternalNode> remoteActiveRowNodes = new HashSet<>();
+            Set<InternalNode> remoteActiveColumnarNodes = new HashSet<>();
             Set<InternalNode> inactiveNodes = new HashSet<>();
             Set<InternalNode> shuttingDownNodes = new HashSet<>();
-            Set<String> htapInstIds = new HashSet<>();
             String leaderId = null;
             while (resultSet.next()) {
-                String ret = injectNode(
-                    resultSet, activeNodes, otherActiveNodes, inactiveNodes, shuttingDownNodes, htapInstIds);
+                String ret = injectNode(resultSet, currentActiveNodes, remoteActiveRowNodes, remoteActiveColumnarNodes,
+                    inactiveNodes, shuttingDownNodes);
                 if (!StringUtils.isEmpty(ret)) {
                     leaderId = ret;
                 }
@@ -239,27 +241,16 @@ public abstract class NodeStatusManager {
 
             if (localNode.isWorker()) {
                 //本节点是worker节点的话，不写0库也有效
-                activeNodes.add(localNode);
+                currentActiveNodes.add(localNode);
             }
             //主实例可以选择所有只读实例的worker节点， 只读实例只能选择本只读实例节点
-            //otherActiveNodes 存储只读实例的活跃节点
-            nodeManager.updateNodes(activeNodes, otherActiveNodes, inactiveNodes, shuttingDownNodes);
+            //remoteActiveRowNodes 存储只读实例的活跃节点
+            nodeManager.updateNodes(currentActiveNodes, remoteActiveRowNodes, remoteActiveColumnarNodes, inactiveNodes,
+                shuttingDownNodes);
 
         } catch (Throwable e) {
             throw e;
         }
-    }
-
-    /**
-     * @param role 附加角色，比如给node加上leader角色
-     */
-    protected String replaceTableMetaSql(Node node, int role) {
-        return "replace into " + tableName
-            + " (`CLUSTER`, `INST_ID`, `NODEID`, `VERSION`, `IP`, `PORT`, `RPC_PORT`, `ROLE`, `STATUS`) "
-            + "values ('" + node.getCluster() + "', '" + node.getInstId() + "', '" + node.getNodeIdentifier() + "', '"
-            + node.getVersion() + "', '" + node.getHost()
-            + "', " + node.getPort() + ", " + node.getRpcPort() + ", " + (getRole(node) | role) + ", " + STATUS_ACTIVE
-            + ")";
     }
 
     protected String insertOrUpdateTableMetaSql(Node node, int role) {
@@ -278,7 +269,7 @@ public abstract class NodeStatusManager {
             " `STATUS` = '" + STATUS_ACTIVE + "'";
     }
 
-    protected int getRole(Node node) {
+    public int getRole(Node node) {
         int role = 0;
         if (node.isWorker()) {
             role = role | ROLE_WORKER;
@@ -293,7 +284,11 @@ public abstract class NodeStatusManager {
             role = role | ROLE_BLACKLIST;
         }
         if (node.isHtap()) {
-            role = role | ROLE_HTAP;
+            if (ConfigDataMode.isColumnarMode()) {
+                role = role | ROLE_COLUMNAR;
+            } else {
+                role = role | ROLE_HTAP;
+            }
         }
 
         if (ConfigDataMode.isMasterMode()) {

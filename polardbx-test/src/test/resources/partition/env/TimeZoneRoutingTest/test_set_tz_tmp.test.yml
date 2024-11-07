@@ -1,0 +1,99 @@
+## DISABLE_FAST_SQL_PARSER
+
+set LOGICAL_DB_TIME_ZONE='Asia/Shanghai';
+
+set time_zone='+08:00';
+CREATE TABLE part_ts (
+a INT,
+b varchar(32),
+ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY (ts)
+)
+partition by range( unix_timestamp(ts) )
+(
+  partition p1 values less than (unix_timestamp('2024-09-30 00:00:00')),
+  partition p2 values less than (unix_timestamp('2024-10-01 12:00:00')),
+  partition p3 values less than (unix_timestamp('2024-10-01 12:30:00')),
+  partition p4 values less than (unix_timestamp('2024-10-02 01:00:00')),
+  partition p5 values less than (unix_timestamp('2024-10-02 01:30:00')),
+  partition p6 values less than (unix_timestamp('2024-10-03 00:00:00')),
+  partition p7 values less than (maxvalue)
+);
+
+set time_zone='UTC';
+
+
+set time_zone='+08:00';
+insert into part_ts values (1, '+08:00/shanghai', '2024-10-01 12:00:00');
+
+set time_zone='+09:00';
+insert into part_ts values (2, '+09:00/tokyo', '2024-10-01 12:00:00');
+
+set time_zone='-05:00';
+insert into part_ts values (3, '-05:00/chicago', '2024-10-01 12:00:00');
+
+set time_zone='+08:00';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+
+set time_zone='+09:00';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+
+set time_zone='-05:00';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+
+
+##########
+
+
+set time_zone='Asia/Shanghai';
+insert into part_ts values (1, '+08:00/shanghai', '2024-10-01 12:00:00');
+
+set time_zone='Asia/Tokyo';
+insert into part_ts values (2, '+09:00/tokyo', '2024-10-01 12:00:00');
+
+set time_zone='America/Chicago';
+insert into part_ts values (3, '-05:00/chicago', '2024-10-01 12:00:00');
+
+set time_zone='Asia/Shanghai';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+
+set time_zone='Asia/Tokyo';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+
+set time_zone='America/Chicago';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+
+##############
+
+set time_zone='Asia/Tokyo';
+insert into part_ts values (5, '2008-12-31 23:59:00');
+
+set time_zone='Asia/Shanghai';
+explain select * from part_ts where ts='2008-12-31 23:59:00';
+set time_zone='America/Chicago';
+explain select * from part_ts where ts='2008-12-31 23:59:00';
+
+# CTT : set time_zone='+08:00'
+set time_zone='Asia/Shanghai';
+## shanghai time: "2024-10-01 12:00:00"
+select unix_timestamp('2024-10-01 12:00:00');
+select CONVERT_TZ('2024-10-01 12:00:00','America/Chicago','+08:00');
+  
+##  set time_zone='+09:00'
+set time_zone='Asia/Tokyo';
+## shanghai time: "2024-10-01 11:00:00"
+select unix_timestamp('2024-10-01 12:00:00');
+
+select CONVERT_TZ(FROM_UNIXTIME( unix_timestamp('2024-10-01 12:00:00'), '%Y-%m-%d %H:%i:%s'),'Asia/Tokyo','Asia/Shanghai');
+  
+# CST : set time_zone='-05:00' / set time_zone='EST'
+set time_zone='America/Chicago';
+## shanghai time: "2024-10-02 01:00:00"
+select unix_timestamp('2024-10-01 12:00:00');
+select CONVERT_TZ(FROM_UNIXTIME( unix_timestamp('2024-10-01 12:00:00'), '%Y-%m-%d %H:%i:%s'),'America/Chicago','Asia/Shanghai');

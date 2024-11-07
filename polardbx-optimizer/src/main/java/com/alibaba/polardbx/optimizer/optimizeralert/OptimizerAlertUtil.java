@@ -72,27 +72,23 @@ public class OptimizerAlertUtil {
         }
     }
 
-    public static void xplanAlert(ExecutionContext ec, double executeTimeMs, long lastAffectedRows) {
+    public static void selectivityAlert(ExecutionContext ec, Throwable throwable) {
         if (!DynamicConfig.getInstance().optimizerAlert()) {
             return;
         }
         try {
-            if (xplanShouldAlert(ec, executeTimeMs, lastAffectedRows)) {
-                OptimizerAlertManager.getInstance().log(OptimizerAlertType.XPLAN_SLOW, ec);
-            }
+            OptimizerAlertManager.getInstance().log(OptimizerAlertType.SELECTIVITY_ERR, ec, throwable);
         } catch (Exception e) {
             // ignore
         }
     }
 
-    public static void plancacheAlert(ExecutionContext ec) {
+    public static void spmAlert(ExecutionContext ec, Throwable throwable) {
         if (!DynamicConfig.getInstance().optimizerAlert()) {
             return;
         }
         try {
-            if (planCacheShouldAlert(ec)) {
-                OptimizerAlertManager.getInstance().log(OptimizerAlertType.PLAN_CACHE_FULL, ec);
-            }
+            OptimizerAlertManager.getInstance().log(OptimizerAlertType.SPM_ERR, ec, throwable);
         } catch (Exception e) {
             // ignore
         }

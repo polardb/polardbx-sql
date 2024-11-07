@@ -55,7 +55,6 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Function;
 import com.google.common.base.Preconditions;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.map.HashedMap;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -91,6 +90,11 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
                 task.setState(DdlTaskState.DIRTY);
             } else {
                 task.setRollbackSubJobId(jobId);
+            }
+
+            if (task.isSkipCdcMarkTask()) {
+                // subjob 有自己的 ddl context 不用担心被污染
+                ddlContext.setSkipSubJobCdcMark(true);
             }
 
             DdlEngineRecord jobRecord = buildJobRecord(jobId, ddlJob, ddlContext);
@@ -192,12 +196,20 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
     /**
      * Restore DdlJob & DdlTask from metaDB
      */
-    public Pair<DdlJob, DdlContext> restoreJob(long jobId) {
+    public Pair<DdlJob, DdlContext> restoreJob(long jobId, long taskId) {
         try {
-            LOGGER.info(String.format("start restoring DDL JOB: [%s]", jobId));
+            LOGGER.info(String.format("start restoring DDL JOB: [%d], DDL TASK: [%d]", jobId, taskId));
             FailPoint.injectException("FP_RESTORE_DDL_ERROR");
             //for now, always rebuild job and task structure from metadata
-            Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> jobAndTasks = fetchJobAndTasks(jobId);
+            Boolean deserializeFullJob;
+            Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> jobAndTasks;
+            if (taskId <= 0L) {
+                jobAndTasks = fetchJobAndTask(jobId);
+                deserializeFullJob = true;
+            } else {
+                jobAndTasks = fetchJobAndTask(jobId, taskId);
+                deserializeFullJob = false;
+            }
             DdlEngineRecord record = jobAndTasks.getKey();
             if (record == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "fetch a DDL job record",
@@ -211,7 +223,8 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
             List<DdlEngineTaskRecord> taskRecordList = jobAndTasks.getValue();
 
             ExecutableDdlJob ddlJob =
-                deSerializeTasks(record.taskGraph, TaskHelper.fromDdlEngineTaskRecord(taskRecordList));
+                deSerializeTasks(record.taskGraph, TaskHelper.fromDdlEngineTaskRecord(taskRecordList),
+                    deserializeFullJob);
 
             ddlJob.setMaxParallelism(record.maxParallelism);
 
@@ -381,10 +394,8 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
         return result;
     }
 
-    private ExecutableDdlJob deSerializeTasks(String dagStr, List<DdlTask> taskList) {
+    private ExecutableDdlJob deSerializeTasks(String dagStr, List<DdlTask> taskList, Boolean deSerializeFullJob) {
         DirectedAcyclicGraph taskGraph = DirectedAcyclicGraph.create();
-        Map<Long, List<Long>> dag = JSON.parseObject(dagStr, new TypeReference<Map<Long, List<Long>>>() {
-        });
         Map<Long, DirectedAcyclicGraph.Vertex> vertexMap = new HashMap<>(taskList.size());
         for (DdlTask d : taskList) {
             if (vertexMap.containsKey(d.getTaskId())) {
@@ -395,19 +406,22 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
             vertexMap.put(d.getTaskId(), vertex);
         }
 
-        for (Map.Entry<Long, List<Long>> entry : dag.entrySet()) {
-            if (CollectionUtils.isEmpty(entry.getValue())) {
-                continue;
-            }
+        if (deSerializeFullJob) {
+            Map<Long, List<Long>> dag = JSON.parseObject(dagStr, new TypeReference<Map<Long, List<Long>>>() {
+            });
+            for (Map.Entry<Long, List<Long>> entry : dag.entrySet()) {
+                if (CollectionUtils.isEmpty(entry.getValue())) {
+                    continue;
+                }
 
-            DirectedAcyclicGraph.Vertex sourceVertex = vertexMap.get(entry.getKey());
+                DirectedAcyclicGraph.Vertex sourceVertex = vertexMap.get(entry.getKey());
 
-            for (Long l : entry.getValue()) {
-                DirectedAcyclicGraph.Vertex targetVertex = vertexMap.get(l);
-                taskGraph.addEdgeIgnoreCheck(sourceVertex, targetVertex);
+                for (Long l : entry.getValue()) {
+                    DirectedAcyclicGraph.Vertex targetVertex = vertexMap.get(l);
+                    taskGraph.addEdgeIgnoreCheck(sourceVertex, targetVertex);
+                }
             }
         }
-
         ExecutableDdlJob ddlJob = new ExecutableDdlJob(taskGraph);
         return ddlJob;
     }
@@ -467,6 +481,7 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
                     DdlEngineRecord jobRecord = engineAccessor.query(o);
                     validateDdlStateContains(DdlState.valueOf(jobRecord.state), DdlState.FINISHED);
                     int count = engineAccessor.delete(o);
+                    backfillSampleRowsAccessor.deleteByJobId(o);
                     engineTaskAccessor.deleteByJobId(o);
 
                     if (o == jobId) {
@@ -514,6 +529,7 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
                     protected Boolean invoke() {
                         engineAccessor.deleteArchive(jobId);
                         engineTaskAccessor.deleteArchiveByJobId(jobId);
+                        backfillSampleRowsAccessor.deleteArchiveByJobId(jobId);
                         return true;
                     }
                 }.execute();

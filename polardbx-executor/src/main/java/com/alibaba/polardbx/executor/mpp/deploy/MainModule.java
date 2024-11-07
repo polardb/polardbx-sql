@@ -47,6 +47,7 @@ import com.alibaba.polardbx.executor.operator.spill.ForAsyncSpill;
 import com.alibaba.polardbx.executor.operator.spill.GenericSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SingleStreamSpillerFactory;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.node.AllNodes;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
@@ -146,9 +147,12 @@ public class MainModule extends BaseModule {
             });
 
         //---------------- web ui ----------------------
-        httpServerBinder(binder).bindResource("/ui", "webapp").withWelcomeFile("index.html");
-        httpServerBinder(binder).bindResource("/tableau", "webapp/tableau");
-        jaxrsBinder(binder).bind(WebUiResource.class);
+        if (MppConfig.getInstance().isEnableMppUI()) {
+            httpServerBinder(binder).bindResource("/ui", "webapp")
+                .withWelcomeFile("index.html");
+            httpServerBinder(binder).bindResource("/tableau", "webapp/tableau");
+            jaxrsBinder(binder).bind(WebUiResource.class);
+        }
 
         // Determine the NodeVersion
         NodeVersion nodeVersion = new NodeVersion(Version.getVersion());

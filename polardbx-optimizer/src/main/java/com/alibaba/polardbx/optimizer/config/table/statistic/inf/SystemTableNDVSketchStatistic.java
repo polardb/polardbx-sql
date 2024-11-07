@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,8 +33,8 @@ public interface SystemTableNDVSketchStatistic {
 
     SketchRow[] loadByTableName(String schemaName, String tableName);
 
-    void loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
-                                      Map<String, byte[]> shardParts, int[] registers);
+    boolean loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
+                                         Map<String, byte[]> shardParts, int[] registers);
 
     void batchReplace(final SketchRow[] rowList);
 
@@ -53,6 +52,8 @@ public interface SystemTableNDVSketchStatistic {
          */
         private String shardPart;
 
+        private String indexName;
+
         /**
          * the ndv value record from dn, most likely not accurate
          */
@@ -68,30 +69,33 @@ public interface SystemTableNDVSketchStatistic {
 
         private long gmtUpdate;
 
-        public SketchRow(String schemaName, String tableName, String columnNames, String shardPart,
+        public SketchRow(String schemaName, String tableName, String columnNames, String shardPart, String indexName,
                          long dnCardinality, long compositeCardinality, String sketchType) {
             this.schemaName = schemaName;
             this.tableName = tableName;
             this.columnNames = columnNames;
             this.shardPart = shardPart;
+            this.indexName = indexName;
             this.dnCardinality = dnCardinality;
             this.compositeCardinality = compositeCardinality;
             this.sketchType = sketchType;
         }
 
-        public SketchRow(String schemaName, String tableName, String columnNames, String shardPart,
+        public SketchRow(String schemaName, String tableName, String columnNames, String shardPart, String indexName,
                          long dnCardinality, long compositeCardinality, String sketchType, long gmtCreate,
                          long gmtUpdate) {
-            this(schemaName, tableName, columnNames, shardPart, dnCardinality, compositeCardinality, sketchType);
+            this(schemaName, tableName, columnNames, shardPart, indexName, dnCardinality, compositeCardinality,
+                sketchType);
             this.gmtCreate = gmtCreate;
             this.gmtUpdate = gmtUpdate;
         }
 
-        public SketchRow(String schemaName, String tableName, String columnNames, String shardPart,
+        public SketchRow(String schemaName, String tableName, String columnNames, String shardPart, String indexName,
                          long dnCardinality, long compositeCardinality, String sketchType, byte[] sketchBytes,
                          long gmtCreate,
                          long gmtUpdate) {
-            this(schemaName, tableName, columnNames, shardPart, dnCardinality, compositeCardinality, sketchType,
+            this(schemaName, tableName, columnNames, shardPart, indexName, dnCardinality, compositeCardinality,
+                sketchType,
                 gmtCreate, gmtUpdate);
             this.sketchBytes = sketchBytes;
         }
@@ -195,6 +199,14 @@ public interface SystemTableNDVSketchStatistic {
 
         public void setCompositeCardinality(long compositeCardinality) {
             this.compositeCardinality = compositeCardinality;
+        }
+
+        public String getIndexName() {
+            return indexName;
+        }
+
+        public void setIndexName(String indexName) {
+            this.indexName = indexName;
         }
     }
 }

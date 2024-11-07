@@ -32,6 +32,10 @@ import com.alibaba.polardbx.optimizer.core.function.SqlFunctionWithOneStringArg;
 import com.alibaba.polardbx.optimizer.core.function.SqlGroupConcatFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlIfFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlIfNullFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayGlobalAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectGlobalAggFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlLocateFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericConvFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlNumericCrc32Function;
@@ -50,6 +54,7 @@ import com.alibaba.polardbx.optimizer.core.function.SqlTimeStampFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlTrimFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlValuesFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlWeekYearFunction;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.trx.SqlTimeToTsoFunction;
 import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlBinaryOperator;
@@ -290,6 +295,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         OperandTypes.ANY,
         SqlFunctionCategory.STRING);
     public static SqlFunction CRC32 = new SqlNumericCrc32Function("CRC32");
+    public static SqlFunction TIME_TO_TSO = new SqlTimeToTsoFunction("TIME_TO_TSO");
     public static SqlFunction CURDATE = new SqlFunction("CURDATE",
         SqlKind.OTHER_FUNCTION,
         MySQLStandardTypeInference.DATE_0,
@@ -926,6 +932,20 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     public static SqlFunction UUID = FunctionWithoutArg.UUID;
     public static SqlFunction UUID_SHORT = FunctionWithoutArg.UUID_SHORT;
+
+    public static SqlFunction UUID_TO_BIN = new SqlFunction("UUID_TO_BIN",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.VARCHAR_BINARY,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.STRING_OPTIONAL_NUMERIC,
+        SqlFunctionCategory.STRING);
+    public static SqlFunction BIN_TO_UUID = new SqlFunction("BIN_TO_UUID",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.VARCHAR_2000,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.BINARY_OPTIONAL_NUMERIC,
+        SqlFunctionCategory.STRING);
+
     /**
      * VALIDATE_PASSWORD_STRENGTH VERSION WEEK WEEKDAY WEEKOFYEAR WEIGHT_STRING XOR
      */
@@ -1002,6 +1022,14 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     public static SqlFunction BIT_AND = new SqlBitAndFunction();
 
     public static SqlFunction BIT_XOR = new SqlBitXorFunction();
+
+    public static SqlFunction JSON_OBJECTAGG = new SqlJsonObjectAggFunction();
+
+    public static SqlFunction JSON_OBJECT_GLOBALAGG = new SqlJsonObjectGlobalAggFunction();
+
+    public static SqlFunction JSON_ARRAYAGG = new SqlJsonArrayAggFunction();
+
+    public static SqlFunction JSON_ARRAY_GLOBALAGG = new SqlJsonArrayGlobalAggFunction();
 
     /**
      * Variadic operands functions
@@ -2264,6 +2292,13 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
+    public static SqlFunction JSON_OVERLAPS = new SqlFunction("JSON_OVERLAPS",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT_NULLABLE,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.VARIADIC,
+        SqlFunctionCategory.SYSTEM);
+
     public static SqlFunction JSON_CONTAINS_PATH = new SqlFunction("JSON_CONTAINS_PATH",
         SqlKind.OTHER_FUNCTION,
         ReturnTypes.BIGINT_NULLABLE,
@@ -2388,20 +2423,6 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,
         OperandTypes.ANY,
-        SqlFunctionCategory.SYSTEM);
-
-    public static SqlFunction JSON_ARRAYAGG = new SqlFunction("JSON_ARRAYAGG",
-        SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
-        InferTypes.FIRST_KNOWN,
-        OperandTypes.ANY,
-        SqlFunctionCategory.SYSTEM);
-
-    public static SqlFunction JSON_OBJECTAGG = new SqlFunction("JSON_OBJECTAGG",
-        SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
-        InferTypes.FIRST_KNOWN,
-        OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction USER = new SqlFunction("USER",

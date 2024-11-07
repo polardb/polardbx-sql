@@ -23,13 +23,15 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.mysql.jdbc.MysqlErrorNumbers;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.group.config.Weight;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
+import com.mysql.jdbc.MysqlErrorNumbers;
 import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -79,7 +81,10 @@ public class CheckTableUtil {
             while (rs.next()) {
                 String columnName = rs.getString("COLUMN_NAME");
                 String tableName = rs.getString("TABLE_NAME");
-                tableColumns.add(Pair.of(tableName, columnName));
+                if (columnName != null) {
+                    //mysql 8.0 函数索引，列名为null
+                    tableColumns.add(Pair.of(tableName, columnName));
+                }
             }
         } catch (Exception e) {
             // 打好相关的日志

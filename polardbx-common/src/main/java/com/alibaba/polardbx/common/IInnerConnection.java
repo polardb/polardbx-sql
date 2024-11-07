@@ -18,9 +18,10 @@ package com.alibaba.polardbx.common;
 
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 
+import java.sql.Connection;
 import java.util.function.Consumer;
 
-public interface IInnerConnection {
+public interface IInnerConnection extends Connection {
     ITransactionPolicy getTrxPolicy();
 
     void setTrxPolicy(ITransactionPolicy trxPolicy);

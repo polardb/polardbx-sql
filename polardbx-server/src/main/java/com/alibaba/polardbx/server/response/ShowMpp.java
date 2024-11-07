@@ -21,6 +21,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
+import com.alibaba.polardbx.gms.node.MppScope;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -87,9 +88,21 @@ public final class ShowMpp {
             proxy = eof.write(proxy);
         }
 
-        // write rows
-        for (InternalNode node : getNodes()) {
-            RowDataPacket row = getRow(charset, node);
+        // write master rows
+        for (InternalNode node : getNodes(MppScope.CURRENT)) {
+            RowDataPacket row = getRow(charset, node, MppScope.CURRENT);
+            row.packetId = ++tmpPacketId;
+            proxy = row.write(proxy);
+        }
+
+        for (InternalNode node : getNodes(MppScope.SLAVE)) {
+            RowDataPacket row = getRow(charset, node, MppScope.SLAVE);
+            row.packetId = ++tmpPacketId;
+            proxy = row.write(proxy);
+        }
+
+        for (InternalNode node : getNodes(MppScope.COLUMNAR)) {
+            RowDataPacket row = getRow(charset, node, MppScope.COLUMNAR);
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
@@ -104,20 +117,35 @@ public final class ShowMpp {
         return true;
     }
 
-    private static RowDataPacket getRow(String charset, InternalNode node) {
+    protected static RowDataPacket getRow(String charset, InternalNode node, MppScope scope) {
+        String role = null;
+
+        if (scope == MppScope.CURRENT) {
+            if (ConfigDataMode.isMasterMode()) {
+                role = "W";
+            } else if (ConfigDataMode.isRowSlaveMode()) {
+                role = "R";
+            } else {
+                role = "CR";
+            }
+        } else if (scope == MppScope.SLAVE) {
+            role = "R";
+        } else {
+            role = "CR";
+        }
+
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
         row.add(StringUtil.encode(node.getInstId(), charset));
         row.add(StringUtil.encode(node.getHostPort(), charset));
-        row.add(StringUtil.encode(ConfigDataMode.isMasterMode() ? "W" : "R", charset));
+        row.add(StringUtil.encode(role, charset));
         row.add(StringUtil.encode(node.isLeader() ? "Y" : "N", charset));
         return row;
     }
 
-    private static Set<InternalNode> getNodes() {
+    public static Set<InternalNode> getNodes(MppScope scope) {
         InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
         Set<InternalNode> allActiveNodes = new HashSet<>();
-        allActiveNodes.addAll(manager.getAllNodes().getActiveNodes());
-        allActiveNodes.addAll(manager.getAllNodes().getOtherActiveNodes());
+        allActiveNodes.addAll(manager.getAllNodes().getAllWorkers(scope));
         return allActiveNodes;
     }
 }

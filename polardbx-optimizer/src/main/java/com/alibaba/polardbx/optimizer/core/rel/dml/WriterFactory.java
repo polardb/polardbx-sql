@@ -508,7 +508,7 @@ public class WriterFactory {
             targetColumns.add(new SqlIdentifier(ImmutableList.of(c), SqlParserPos.ZERO));
             sourceExpressions.add(new SqlDynamicParam(index + 2, SqlParserPos.ZERO));
             sourceExpressionList.add(rexBuilder.makeDynamicParam(
-                getUpdateColumnType(parent, updateColumnListLocal.get(index), updateSourceMapping.get(index)), index));
+                getUpdateColumnType(parent, updateColumnList.get(index), updateSourceMapping.get(index)), index));
         });
 
         /**

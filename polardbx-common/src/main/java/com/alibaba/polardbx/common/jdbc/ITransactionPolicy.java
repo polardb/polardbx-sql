@@ -18,7 +18,6 @@ package com.alibaba.polardbx.common.jdbc;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 
 import java.util.EnumSet;
@@ -44,7 +43,7 @@ public interface ITransactionPolicy {
         AUTO_COMMIT_SINGLE_SHARD,
 
         /**
-         * XA transaction with Commit TimeStamp.
+         * XA transaction with TSO as commit_seq.
          */
         XA_TSO,
 
@@ -70,7 +69,8 @@ public interface ITransactionPolicy {
 
         AUTO_COMMIT_TSO,
 
-        ARCHIVE;
+        ARCHIVE,
+        IGNORE_BINLOG_TRANSACTION;
 
         public boolean isA(EnumSet<TransactionClass> set) {
             return set.contains(this);
@@ -83,7 +83,8 @@ public interface ITransactionPolicy {
                 TransactionClass.TSO_READONLY,
                 TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
                 TSO_2PC_OPT,
-                TransactionClass.ARCHIVE);
+                TransactionClass.ARCHIVE,
+                TransactionClass.IGNORE_BINLOG_TRANSACTION);
 
         public static final EnumSet<TransactionClass> EXPLICIT_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
@@ -92,7 +93,8 @@ public interface ITransactionPolicy {
                 TransactionClass.ALLOW_READ_CROSS_DB,
                 TransactionClass.COBAR_STYLE,
                 TSO_2PC_OPT,
-                TransactionClass.ARCHIVE);
+                TransactionClass.ARCHIVE,
+                TransactionClass.IGNORE_BINLOG_TRANSACTION);
 
         public static final EnumSet<TransactionClass> TSO_TRANSACTION = EnumSet
             .of(TransactionClass.TSO,
@@ -116,7 +118,8 @@ public interface ITransactionPolicy {
                 TransactionClass.XA_TSO,
                 TransactionClass.TSO,
                 TSO_2PC_OPT,
-                TransactionClass.ARCHIVE);
+                TransactionClass.ARCHIVE,
+                TransactionClass.IGNORE_BINLOG_TRANSACTION);
 
         public static final EnumSet<TransactionClass> SUPPORT_PARALLEL_GET_CONNECTION_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
@@ -126,7 +129,8 @@ public interface ITransactionPolicy {
                 TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
                 TransactionClass.AUTO_COMMIT_TSO,
                 TransactionClass.TSO_READONLY,
-                TransactionClass.ARCHIVE);
+                TransactionClass.ARCHIVE,
+                TransactionClass.IGNORE_BINLOG_TRANSACTION);
 
         public static final EnumSet<TransactionClass> ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW_TRANSACTION =
             EnumSet.of(TransactionClass.AUTO_COMMIT,
@@ -138,19 +142,24 @@ public interface ITransactionPolicy {
     NoTransaction NO_TRANSACTION = new NoTransaction();
     DefaultPolicy XA = new DefaultPolicy(TransactionClass.XA);
     Tso TSO = new Tso();
-    DefaultPolicy ARCHIVE = new DefaultPolicy(TransactionClass.ARCHIVE);
+    DefaultPolicy BEST_EFFORT = new DefaultPolicy(TransactionClass.BEST_EFFORT);
+    Archive ARCHIVE = new Archive();
+    DefaultPolicy IGNORE_BINLOG_TRANSACTION = new DefaultPolicy(TransactionClass.IGNORE_BINLOG_TRANSACTION);
 
-    TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly);
-
-    default TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard) {
-        return getTransactionType(isAutoCommit, isReadOnly);
-    }
+    /**
+     * If isAutoCommit is true but isForbidAutoCommitTrx is true,
+     * it means this session is in autocommit mode,
+     * but we will not create an autocommit transaction object.
+     */
+    TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                        boolean isForbidAutoCommitTrx);
 
     class Free implements ITransactionPolicy {
 
         @Override
-        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly) {
-            if (isAutoCommit) {
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                                   boolean isForbidAutoCommitTrx) {
+            if (isAutoCommit && !isForbidAutoCommitTrx) {
                 return TransactionClass.AUTO_COMMIT;
             }
 
@@ -166,8 +175,9 @@ public interface ITransactionPolicy {
     class AllowRead implements ITransactionPolicy {
 
         @Override
-        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly) {
-            if (isAutoCommit) {
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                                   boolean isForbidAutoCommitTrx) {
+            if (isAutoCommit && !isForbidAutoCommitTrx) {
                 return TransactionClass.AUTO_COMMIT;
             }
 
@@ -181,19 +191,14 @@ public interface ITransactionPolicy {
     }
 
     class Tso implements ITransactionPolicy {
-
         @Override
-        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly) {
-            return getTransactionType(isAutoCommit, isReadOnly, false);
-        }
-
-        @Override
-        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard) {
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                                   boolean isForbidAutoCommitTrx) {
             if (isSingleShard && isReadOnly) {
                 return TransactionClass.AUTO_COMMIT_SINGLE_SHARD;
             } else if (isReadOnly) {
                 return TransactionClass.TSO_READONLY;
-            } else if (isAutoCommit && !DynamicConfig.getInstance().isForbidAutoCommitTrx()) {
+            } else if (isAutoCommit && !isForbidAutoCommitTrx) {
                 return TransactionClass.AUTO_COMMIT;
             } else {
                 return TransactionClass.TSO;
@@ -209,7 +214,11 @@ public interface ITransactionPolicy {
     class NoTransaction implements ITransactionPolicy {
 
         @Override
-        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly) {
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                                   boolean isForbidAutoCommitTrx) {
+            if (isForbidAutoCommitTrx) {
+                return TransactionClass.TSO;
+            }
             return TransactionClass.AUTO_COMMIT;
         }
 
@@ -229,14 +238,10 @@ public interface ITransactionPolicy {
             this.auto = false;
         }
 
-        public DefaultPolicy(TransactionClass type, boolean auto) {
-            this.type = type;
-            this.auto = auto;
-        }
-
         @Override
-        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly) {
-            if (!auto && isAutoCommit && !DynamicConfig.getInstance().isForbidAutoCommitTrx()) {
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                                   boolean isForbidAutoCommitTrx) {
+            if (!auto && isAutoCommit && !isForbidAutoCommitTrx) {
                 return TransactionClass.AUTO_COMMIT;
             }
             return type;
@@ -245,6 +250,20 @@ public interface ITransactionPolicy {
         @Override
         public String toString() {
             return type.toString();
+        }
+    }
+
+    class Archive implements ITransactionPolicy {
+
+        @Override
+        public TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly, boolean isSingleShard,
+                                                   boolean isForbidAutoCommitTrx) {
+            return TransactionClass.ARCHIVE;
+        }
+
+        @Override
+        public String toString() {
+            return "ARCHIVE";
         }
     }
 
@@ -269,6 +288,8 @@ public interface ITransactionPolicy {
             return ITransactionPolicy.NO_TRANSACTION;
         case "ARCHIVE":
             return ITransactionPolicy.ARCHIVE;
+        case "IGNORE_BINLOG_TRANSACTION":
+            return ITransactionPolicy.IGNORE_BINLOG_TRANSACTION;
         default:
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "Unknown transaction policy: " + name);
         }

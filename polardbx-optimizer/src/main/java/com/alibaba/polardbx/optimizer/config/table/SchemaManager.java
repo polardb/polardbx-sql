@@ -80,6 +80,10 @@ public interface SchemaManager extends Lifecycle {
 
     public GsiMetaBean getGsi(String primaryOrIndexTableName, EnumSet<IndexStatus> statusSet);
 
+    public default boolean cciExists(String columnarTableName, boolean isColumnar) {
+        return false;
+    }
+
     default Set<String> guessGsi(String unwrappedName, Predicate<GsiMetaManager.GsiIndexMetaBean> filter) {
         return Collections.emptySet();
     }
@@ -107,11 +111,13 @@ public interface SchemaManager extends Lifecycle {
 
     default void toNewVersionInTrx(List<String> tableNameList,
                                    boolean preemtive, long initWait, long interval, TimeUnit timeUnit,
-                                   long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+                                   long connId, boolean allowTwoVersion, boolean sameTableGroup,
+                                   boolean forceSyncFailed) {
         throw new AssertionError("NOT SUPPORTED");
     }
 
-    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion) {
+    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion,
+                                   boolean forceSyncFailed) {
         throw new AssertionError("NOT SUPPORTED");
     }
 

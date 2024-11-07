@@ -1,0 +1,159 @@
+SQL:
+  - sql: |
+      select count(*) from test_tc group by a,b
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select count(*) as `count(*)` from `test_tc` as `test_tc` group by `a`, `b`")
+  - sql: |
+      select 1 from test_tc group by c
+    plan: |
+      project(1="?0")
+        hashagg(group="c")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `c` from `test_tc` as `test_tc` group by `c`")
+  - sql: |
+      select count(userid) from user_log group by name, actionDate
+
+    plan: |
+      project(count(userid)="count(userid)")
+        hashagg(group="name,actiondate", count(userid)="sum(count(userid))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `name`, `actiondate`, count(`userid`) as `count(userid)` from `user_log` as `user_log` group by `name`, `actiondate`")
+
+  - sql: |
+      select count(distinct userid),group_concat(operation, ',') from user_log group by name, actionDate
+
+    plan: |
+      project(count(distinct userid)="count(distinct userid)", group_concat(operation, ',')="group_concat(operation, ',')")
+        hashagg(group="name,actiondate", count(distinct userid)="count(userid) filter $4", group_concat(operation, ',')="min(group_concat(operation, ',')) filter $5")
+          project(name="name", actiondate="actiondate", userid="userid", group_concat(operation, ',')="group_concat(operation, ',')", $g_0="case(=($3, 0), 0, 1) = 0", $g_1="case(=($3, 0), 0, 1) = 1")
+            hashagg(group="name,actiondate,userid,$e", group_concat(operation, ',')="group_concat(operation, $f4)")
+              expand(projects="{name=name, actiondate=actiondate, userid=userid, operation=operation, $f4=$f4, $e=0}, {name=name, actiondate=actiondate, userid=null, operation=operation, $f4=$f4, $e=1}")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `name`, `actiondate`, `userid`, `operation`, ',' as `$f4` from `user_log` as `user_log`")
+  - sql: |
+      select count(*) from user_log limit 1
+
+    plan: |
+      limit(offset=0, fetch=?0)
+        hashagg(count(*)="sum(count(*))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select count(*) as `count(*)` from `user_log` as `user_log`")
+  - sql: |
+      select count(userid),group_concat(operation, ',') from user_log group by userid, name, actionDate
+
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select count(`userid`) as `count(userid)`, group_concat(`operation`, ','  ) as `group_concat(operation, ',')` from `user_log` as `user_log` group by `userid`, `name`, `actiondate`")
+  - sql: |
+      select count(*) from user_log
+
+    plan: |
+      hashagg(count(*)="sum(count(*))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select count(*) as `count(*)` from `user_log` as `user_log`")
+  - sql: |
+      select avg(userid) from user_log group by name, actionDate
+
+    plan: |
+      project(avg(userid)="$f2 / $f3")
+        hashagg(group="name,actiondate", $f2="sum($f2)", $f3="sum($f3)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `name`, `actiondate`, sum(`userid`) as `$f2`, count(`userid`) as `$f3` from `user_log` as `user_log` group by `name`, `actiondate`")
+  - sql: |
+      select max(userid) from user_log group by name, actionDate
+
+    plan: |
+      project(max(userid)="max(userid)")
+        hashagg(group="name,actiondate", max(userid)="max(max(userid))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `name`, `actiondate`, max(`userid`) as `max(userid)` from `user_log` as `user_log` group by `name`, `actiondate`")
+  - sql: |
+      select min(userid) from user_log group by name, actionDate
+
+    plan: |
+      project(min(userid)="min(userid)")
+        hashagg(group="name,actiondate", min(userid)="min(min(userid))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `name`, `actiondate`, min(`userid`) as `min(userid)` from `user_log` as `user_log` group by `name`, `actiondate`")
+  - sql: |
+      select userid from user_log group by userid, name, actionDate
+
+    plan: |
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid` as `userid` from `user_log` as `user_log` group by `userid`, `name`, `actiondate`")
+  - sql: |
+      select distinct userid from user_log
+
+    plan: |
+      hashagg(group="userid")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid` from `user_log` as `user_log` group by `userid`")
+  - sql: |
+      select distinct userid from user_log  where userid!=3 order by userid
+
+    plan: |
+      memsort(sort="userid asc")
+        hashagg(group="userid")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid` from `user_log` as `user_log` where (`userid` <> ?) group by `userid`")
+  - sql: |
+      select b, c, avg(a), group_id() as g, grouping(b) as gb, grouping(c) as gc, grouping_id(b) as gib, GROUPING_ID(b, c) as gid from test_tb  group by cube(b, c)
+
+    plan: |
+      project(b="b", c="c", avg(a)="$f3 / $f4", g="case(=($2, 0), 0, =($2, 1), 0, =($2, 2), 0, 0)", gb="case(=($2, 0), 0, =($2, 1), 0, =($2, 2), 1, 1)", gc="case(=($2, 0), 0, =($2, 1), 1, =($2, 2), 0, 1)", gib="case(=($2, 0), 0, =($2, 1), 0, =($2, 2), 1, 1)", gid="case(=($2, 0), 0, =($2, 1), 1, =($2, 2), 2, 3)")
+        hashagg(group="b,c,$e", $f3="sum(a)", $f4="count(a)")
+          expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=c, a=a, $e=2}, {b=null, c=null, a=a, $e=3}")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `b`, `c`, `a` from `test_tb` as `test_tb`")
+  - sql: |
+      select b, c, avg(a) from test_tb group by rollup(b, c)
+
+    plan: |
+      project(b="b", c="c", avg(a)="$f3 / $f4")
+        hashagg(group="b,c,$e", $f3="sum(a)", $f4="count(a)")
+          expand(projects="{b=b, c=c, a=a, $e=0}, {b=b, c=null, a=a, $e=1}, {b=null, c=null, a=a, $e=3}")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `b`, `c`, `a` from `test_tb` as `test_tb`")
+DDL:
+  user_log:
+    CREATE TABLE user_log(
+    userId int,
+    name varchar(30),
+    operation varchar(30),
+    actionDate varchar(30)
+    ) dbpartition by hash(userId) tbpartition by HASH(actionDate) tbpartitions 7;
+
+  test_tb:
+    CREATE TABLE test_tb(
+    a int,
+    b bigint,
+    c int
+    ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;
+
+  test_tc:
+    CREATE TABLE test_tc(
+    a int,
+    b bigint,
+    c int,
+    unique key(b,a),
+    unique key(c)
+    ) dbpartition by hash(a) tbpartition by HASH(a) tbpartitions 7;
+STATISTICS:
+  user_log:
+    10000
+  test_tb:
+    10000
+  test_tc:
+    10000
+CONFIG:
+  PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD:
+    -1
+  PREFER_PUSH_AGG:
+    true
+  PREFER_PARTIAL_AGG:
+    true
+  ENABLE_CBO_PUSH_AGG:
+    false
+  defaltxxAPPName.isNew:
+    false

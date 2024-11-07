@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.gms.partition;
 
 import com.alibaba.fastjson.JSON;
-import lombok.Value;
 
 /**
  * Extensible extra fields for table_partitions
@@ -28,10 +27,29 @@ public class ExtraFieldJSON {
     protected String timeZone;
     protected String charset;
     protected String collation;
-    
+    /**
+     * The ttl state of a partition of ttl_tmp (only used by ttl_tmp table) ,
+     * this state is used to label if a part has been finished oss archiving.
+     * <pre>
+     *  arc_state_archived(state=3): means current part has been finish oss archiving;
+     *  arc_state_archiving(state=2): means current part is performing oss archiving;
+     *  arc_state_ready(state=1):  means current part has be ready to do archiving, waiting do archiving;
+     *  arc_state_not_ready(state=0):  means current part is performing oss archiving.
+     *
+     *  (The enum definition is TtlPartArcState)
+     *
+     *  Notice:
+     *  When a part is on the state of ttl_state_ready, it means that
+     *  all the expired data of this part has been inserted, and not more increment。
+     *  So, a ttl_state_ready-state part will REJECT any insert/update/delete operation.
+     *
+     * </pre>
+     */
+    protected Integer arcState;
+
     public ExtraFieldJSON() {
     }
-    
+
     public static ExtraFieldJSON fromJson(String json) {
         return JSON.parseObject(json, ExtraFieldJSON.class);
     }
@@ -86,5 +104,13 @@ public class ExtraFieldJSON {
 
     public void setCollation(String collation) {
         this.collation = collation;
+    }
+
+    public Integer getArcState() {
+        return arcState;
+    }
+
+    public void setArcState(Integer arcState) {
+        this.arcState = arcState;
     }
 }

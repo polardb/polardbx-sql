@@ -16,11 +16,21 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexesInfoSchemaRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexColumnMetaBean;
@@ -41,11 +51,17 @@ import com.alibaba.polardbx.optimizer.view.PerformanceSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlShow;
 import org.apache.calcite.sql.SqlShowIndex;
+import org.apache.commons.lang.StringUtils;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
@@ -257,14 +273,77 @@ public class LogicalShowIndexHandler extends BaseDalHandler {
         return result;
     }
 
+    private Cursor handleForColumnarMode(RelNode logicalPlan, ExecutionContext ec, String schemaName) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+        final SqlShowIndex showIndex = (SqlShowIndex) dal.getNativeSqlNode();
+        final String tableName = RelUtils.lastStringValue(showIndex.getTableName());
+        String sql = "select * from " + SqlIdentifier.surroundWithBacktick(GmsSystemTables.INDEXES)
+            + "where table_schema = ? and table_name = ? and index_type = ? and column_name != ?";
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
+        //ignore columnar index
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, "BTree");
+        //ignore primary key of _drds_implicit_id_
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, "_drds_implicit_id_");
+        List<IndexesInfoSchemaRecord> indexesInfoSchemaRecords;
+        try (Connection connection = dataSource.getConnection()) {
+            indexesInfoSchemaRecords = MetaDbUtil.query(sql, params, IndexesInfoSchemaRecord.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                "fail to access metadb" + e.getMessage());
+        }
+
+        ArrayResultCursor result = new ArrayResultCursor("STATISTICS");
+        result.addColumn("Table", null, DataTypes.StringType);
+        result.addColumn("Non_unique", null, DataTypes.IntegerType);
+        result.addColumn("Key_name", null, DataTypes.StringType);
+        result.addColumn("Seq_in_index", null, DataTypes.IntegerType);
+        result.addColumn("Column_name", null, DataTypes.StringType);
+        result.addColumn("Collation", null, DataTypes.StringType);
+        result.addColumn("Cardinality", null, DataTypes.LongType);
+        result.addColumn("Sub_part", null, DataTypes.IntegerType);
+        result.addColumn("Packed", null, DataTypes.StringType);
+        result.addColumn("Null", null, DataTypes.StringType);
+        result.addColumn("Index_type", null, DataTypes.StringType);
+        result.addColumn("Comment", null, DataTypes.StringType);
+        result.addColumn("Index_comment", null, DataTypes.StringType);
+        result.initMeta();
+        for (IndexesInfoSchemaRecord record : indexesInfoSchemaRecords) {
+            String indexName = record.indexName;
+            if (StringUtils.startsWith(indexName, "_local_")) {
+                indexName = StringUtils.substring(indexName, "_local_".length());
+            }
+            result.addRow(new Object[] {
+                record.tableName,
+                record.nonUnique,
+                indexName,
+                record.seqInIndex,
+                record.columnName,
+                record.collation,
+                record.cardinality,
+                record.subPart,
+                record.packed,
+                record.nullable,
+                record.indexType,
+                record.comment,
+                record.indexComment
+            });
+        }
+        return result;
+    }
+
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         String schemaName = ((BaseDalOperation) logicalPlan).getSchemaName();
         if (schemaName == null) {
             schemaName = executionContext.getSchemaName();
         }
-
-        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+        if (ConfigDataMode.isColumnarMode() || executionContext.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LOGICAL_TABLE_META)) {
+            return handleForColumnarMode(logicalPlan, executionContext, schemaName);
+        } else if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             return handleForPartitionDatabase(logicalPlan, executionContext);
         } else {
             return handleForShardingDatabase(logicalPlan, executionContext);

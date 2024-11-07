@@ -27,7 +27,9 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
+import com.alibaba.polardbx.gms.privilege.PolarPrivUtil;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.FrontendAuthenticator;
 import com.alibaba.polardbx.net.handler.FrontendAuthorityAuthenticator;
@@ -75,6 +77,7 @@ public abstract class FrontendConnection extends AbstractConnection {
     protected int connectionCharsetIndex;
     protected byte[] seed;
     protected String user;
+    protected boolean isPolardbxRoot;
     protected String schema;
     protected boolean trustLogin = false;
     protected NIOHandler handler;
@@ -260,6 +263,11 @@ public abstract class FrontendConnection extends AbstractConnection {
 
     public void setUser(String user) {
         this.user = user;
+        this.isPolardbxRoot = PolarPrivUtil.isPolarxRootUser(user);
+    }
+
+    public boolean isPolardbxRoot() {
+        return this.isPolardbxRoot;
     }
 
     public String getSchema() {

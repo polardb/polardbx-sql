@@ -31,7 +31,7 @@ public class ClusterAcceptIdGenerator {
 
     private static final ClusterAcceptIdGenerator INSTANCE = new ClusterAcceptIdGenerator();
 
-    private ClusterAcceptIdGenerator() {
+    protected ClusterAcceptIdGenerator() {
     }
 
     public static ClusterAcceptIdGenerator getInstance() {

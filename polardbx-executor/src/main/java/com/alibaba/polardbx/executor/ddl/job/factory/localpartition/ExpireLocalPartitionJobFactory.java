@@ -41,6 +41,9 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.FileValidationMppTas
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.FileValidationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileCommitTsTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcExpireLocalPartitionMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcExpireLocalPartitionMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
@@ -290,6 +293,9 @@ public class ExpireLocalPartitionJobFactory extends DdlJobFactory {
                 taskList.add(genPhyDdlTask(schemaName, gsiName, phySql));
             });
         }
+        CdcExpireLocalPartitionMarkTask
+            cdcMarkTask = new CdcExpireLocalPartitionMarkTask(schemaName, primaryTableName);
+        taskList.add(cdcMarkTask);
         executableDdlJob.addSequentialTasksAfter(headTask, taskList);
         return executableDdlJob;
     }

@@ -1,13 +1,12 @@
 package com.alibaba.polardbx.executor.operator.scan;
 
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.archive.schemaevolution.ColumnMetaWithTs;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.operator.scan.impl.AsyncStripeLoader;
 import com.alibaba.polardbx.executor.operator.scan.impl.PreheatFileMeta;
@@ -17,7 +16,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
@@ -50,6 +48,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -151,7 +150,7 @@ public class ScanTestBase {
     protected PreheatFileMeta preheatFileMeta;
     protected OrcTail orcTail;
 
-    protected static String getFileFromClasspath(String name) {
+    public static String getFileFromClasspath(String name) {
         URL url = ClassLoader.getSystemResource(name);
         if (url == null) {
             throw new IllegalArgumentException("Could not find " + name);
@@ -432,6 +431,11 @@ public class ScanTestBase {
         }
 
         @Override
+        public void reload(ReloadType type) {
+
+        }
+
+        @Override
         public long latestTso() {
             return 0;
         }
@@ -459,12 +463,17 @@ public class ScanTestBase {
         }
 
         @Override
-        public List<Chunk> csvData(long tso, String csvFileName) {
+        public Iterator<Chunk> csvData(long tso, String csvFileName) {
             return null;
         }
 
         @Override
-        public int fillSelection(String fileName, long tso, int[] selection, IntegerBlock positionBlock) {
+        public Iterator<Chunk> csvData(String csvFileName, long position) {
+            return null;
+        }
+
+        @Override
+        public int fillSelection(String fileName, long tso, int[] selection, LongBlock positionBlock) {
             return 0;
         }
 

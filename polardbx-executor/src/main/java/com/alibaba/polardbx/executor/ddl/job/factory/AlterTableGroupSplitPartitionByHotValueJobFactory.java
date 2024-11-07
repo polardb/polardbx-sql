@@ -123,7 +123,7 @@ public class AlterTableGroupSplitPartitionByHotValueJobFactory extends AlterTabl
         ));
         List<DdlTask> bringUpAlterTableGroupTasks =
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
-                taskType, executionContext);
+                taskType, preparedData.getDdlVersionId(), executionContext);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
@@ -208,6 +208,7 @@ public class AlterTableGroupSplitPartitionByHotValueJobFactory extends AlterTabl
             }
             DdlTask dropUselessTableTask = ComplexTaskFactory
                 .CreateDropUselessPhyTableTask(schemaName, entry.getKey(), sourceTablesTopology.get(entry.getKey()),
+                    targetTablesTopology.get(entry.getKey()),
                     executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
             executableDdlJob

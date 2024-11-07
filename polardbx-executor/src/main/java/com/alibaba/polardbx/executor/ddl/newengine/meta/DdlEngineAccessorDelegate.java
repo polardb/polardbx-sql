@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.gms.metadb.delegate.MetaDbAccessorWrapper;
+import com.alibaba.polardbx.gms.metadb.misc.BackfillSampleRowsAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -34,17 +35,20 @@ public abstract class DdlEngineAccessorDelegate<T> extends MetaDbAccessorWrapper
 
     protected final DdlEngineAccessor engineAccessor;
     protected final DdlEngineTaskAccessor engineTaskAccessor;
+    protected final BackfillSampleRowsAccessor backfillSampleRowsAccessor;
     protected Connection connection;
 
     public DdlEngineAccessorDelegate() {
         this.engineAccessor = new DdlEngineAccessor();
         this.engineTaskAccessor = new DdlEngineTaskAccessor();
+        this.backfillSampleRowsAccessor = new BackfillSampleRowsAccessor();
     }
 
     @Override
     protected void open(Connection metaDbConn) {
         this.engineAccessor.setConnection(metaDbConn);
         this.engineTaskAccessor.setConnection(metaDbConn);
+        this.backfillSampleRowsAccessor.setConnection(metaDbConn);
         this.connection = metaDbConn;
     }
 
@@ -82,6 +86,7 @@ public abstract class DdlEngineAccessorDelegate<T> extends MetaDbAccessorWrapper
     protected void close() {
         this.engineAccessor.setConnection(null);
         this.engineTaskAccessor.setConnection(null);
+        this.backfillSampleRowsAccessor.setConnection(null);
     }
 
     public Connection getConnection() {

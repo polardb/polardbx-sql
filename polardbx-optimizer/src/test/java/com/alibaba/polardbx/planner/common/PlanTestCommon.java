@@ -101,6 +101,8 @@ public abstract class PlanTestCommon extends BasePlannerTest {
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName, executionContext.getExtraCmds(),
             executionContext.getGroupHint());
 
+        executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, enableAutoForceIndex);
+        executionContext.getExtraCmds().putAll(configMaps);
         executionContext.getExtraCmds().put(ConnectionProperties.PARALLELISM, enableParallelQuery ? -1 : 0);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_JOIN_CLUSTERING, enableJoinClustering);
         executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, enableMpp);

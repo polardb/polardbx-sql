@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.gms.config.impl.ConnPoolConfigManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
@@ -46,6 +47,11 @@ import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.rule.OptimizeModifyReturningRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PushModifyRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PushProjectRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.profiler.cpu.CpuStat;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
@@ -55,6 +61,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableModifyViewBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
@@ -75,8 +82,10 @@ import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils.LogicalModifyViewBuilder;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
@@ -98,6 +107,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Util;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -107,9 +117,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.BiConsumer;
 
+import static com.alibaba.polardbx.optimizer.core.planner.rule.OptimizeModifyReturningRule.OPTIMIZE_MODIFY_RETURNING_RULES;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
+import static com.alibaba.polardbx.optimizer.utils.OptimizerUtils.hasDNHint;
 import static com.google.common.util.concurrent.Runnables.doNothing;
 
 /**
@@ -156,7 +170,7 @@ public class PostPlanner {
                 return skipPostPlan;
             }
         }
-        if (direct || shouldSkipPostPlanner) {
+        if (direct || shouldSkipPostPlanner || plannerContext.hasLocalIndexHint() || hasDNHint(plannerContext)) {
             plannerContext.setSkipPostOpt(true);
             return;
         }
@@ -246,12 +260,27 @@ public class PostPlanner {
 
             List<String> schemaNamesOfPlan = new ArrayList<String>();
 
+            // Optimize modify on topN
+            final List<RelNode> modifyTopNOperands = new ArrayList<>();
+            final boolean isModifyTopN =
+                isModifyTopNCanBeOptimizedByReturning(executionPlan, modifyTopNOperands, executionContext);
+
+            final boolean cachePartPrunedResult = isModifyTopN;
+            final Map<String, List<PartPrunedResult>> partitionResult = new TreeMap<>(String::compareToIgnoreCase);
+            final BiConsumer<String, PartPrunedResult> partitionResultConsumer = cachePartPrunedResult ?
+                (tableName, partResult) -> partitionResult
+                    .computeIfAbsent(tableName, (k) -> new ArrayList<>())
+                    .add(partResult)
+                : null;
+
+            // Build target tables
             Map<String, List<List<String>>> targetTables = getTargetTablesAndSchemas(logTableNames,
                 executionPlan,
                 executionContext,
                 schemaNamesOfPlan,
                 forceAllowFullTableScan,
-                false);
+                false,
+                partitionResultConsumer);
 
             boolean canPushdown = (schemaNamesOfPlan.size() == 1);
             if (ScaleOutPlanUtil.isEnabledScaleOut(executionContext.getParamManager())
@@ -295,13 +324,10 @@ public class PostPlanner {
                 boolean needRelicateWrite = true;
                 boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaNamesOfAst);
                 String groupName = targetTables.keySet().iterator().next();
-                boolean needOnlineColumnModify = false;
                 boolean hasGeneratedColumn = false;
                 for (String tableName : logTableNames) {
                     withGsi &=
-                        GlobalIndexMeta.hasIndex(tableName, schemaNamesOfAst, executionContext);
-                    needOnlineColumnModify |=
-                        TableColumnUtils.isModifying(schemaNamesOfAst, tableName, executionContext);
+                        GlobalIndexMeta.hasGsi(tableName, schemaNamesOfAst, executionContext);
                     hasGeneratedColumn |=
                         GeneratedColumnUtil.containLogicalGeneratedColumn(schemaNamesOfAst,
                             tableName,
@@ -324,11 +350,13 @@ public class PostPlanner {
                         }
 
                     }
-                    canPushdown &= !withGsi & !needRelicateWrite & !needOnlineColumnModify
-                        & !hasGeneratedColumn;
+                    canPushdown &= !withGsi & !needRelicateWrite & !hasGeneratedColumn;
                 }
             }
-            canPushdown &= !RelUtils.existUnPushableLastInsertId(plan);
+
+            // handle optimize modify top n by returning
+
+            canPushdown &= !RelUtils.existUnPushableLastInsertId(executionPlan);
             canPushdown &= isAllAtOnePhyTb && !existUnPushableRelNode(plan);
             if (canPushdown) {
                 String schemaNamesOfAst = schemaNamesOfPlan.get(0);
@@ -424,6 +452,19 @@ public class PostPlanner {
                 } // end of switch
 
             } else {
+                // Check pruned partition is ordered by partition key
+                final boolean pushModifyTopN = isModifyTopN
+                    && modifyTopNOperands.size() > 1
+                    && PartitionUtils.checkPrunedPartitionMonotonic(
+                    (LogicalView) modifyTopNOperands.get(2),
+                    partitionResult.values().iterator().next());
+                if (pushModifyTopN) {
+                    if (!isAllAtOnePhyTb) {
+                        executionPlan.getPlanProperties().set(ExecutionPlanProperties.MODIFY_CROSS_DB);
+                    }
+                    return executionPlan.copy(pushdownModifyOnTopN(modifyTopNOperands));
+                }
+
                 /*
                  * Maybe some tables at one group
                  */
@@ -443,6 +484,17 @@ public class PostPlanner {
                         throw new TddlRuntimeException(ErrorCode.ERR_UPDATE_DELETE_NO_PRIMARY_KEY,
                             String.join(",", ((LogicalModify) plan).getTargetTableNames()));
                     } else {
+                        if (isAllAtOnePhyTb) {
+                            final List<RelNode> bindings = new ArrayList<>();
+                            final LogicalModifyViewBuilder lmvBuilder =
+                                isLogicalMultiWriteCanBeOptimizedByReturning(executionPlan, bindings, executionContext);
+
+                            if (lmvBuilder != null) {
+                                final LogicalModify modify = (LogicalModify) bindings.get(0);
+                                modify.getMultiWriteInfo().setLmvBuilder(lmvBuilder);
+                                modify.getMultiWriteInfo().setOptimizeByReturning(true);
+                            }
+                        }
                         executionPlan = executionPlan.copy(executionPlan.getPlan());
                         executionPlan.getPlanProperties()
                             .set(ExecutionPlanProperties.MODIFY_CROSS_DB);
@@ -477,6 +529,144 @@ public class PostPlanner {
             }
         }
         return executionPlan;
+    }
+
+    private static LogicalModifyViewBuilder isLogicalMultiWriteCanBeOptimizedByReturning(
+        @NotNull ExecutionPlan executionPlan,
+        @NotNull List<RelNode> bindings,
+        @NotNull ExecutionContext ec) {
+        if (!supportOptimizeMultiWriteByReturning(executionPlan, ec)) {
+            return null;
+        }
+
+        return isPushableLogicalMultiWrite(executionPlan, bindings);
+    }
+
+    /**
+     * Check xrpc is enabled and returning is supported
+     */
+    private static boolean supportOptimizeMultiWriteByReturning(@NotNull ExecutionPlan plan,
+                                                                @NotNull ExecutionContext ec) {
+        if (plan.getSchemaNames().size() != 1) {
+            // do not support cross schema
+            return false;
+        }
+
+        final String schemaName = plan.getSchemaNames().iterator().next();
+
+        // check DML_USE_RETURNING enabled
+        // check OPTIMIZE_DELETE_BY_RETURNING enabled
+        // check returning supported in dn
+        // check xrpc enabled
+        if (!ec.getParamManager().getBoolean(ConnectionParams.DML_USE_RETURNING)
+            || !ec.getParamManager().getBoolean(ConnectionParams.OPTIMIZE_DELETE_BY_RETURNING)
+            || !ec.getStorageInfo(schemaName).isSupportsReturning()
+            || !ConnPoolConfigManager.getInstance().getConnPoolConfig().isStorageDbXprotoEnabled()) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Validate plan is logical multi write and can be pushdown
+     *
+     * @param executionPlan plan
+     * @param bindings for return binding operands, List{LogicalModify,MergeSort,LogicalView}
+     */
+    private static LogicalModifyViewBuilder isPushableLogicalMultiWrite(@NotNull ExecutionPlan executionPlan,
+                                                                        @NotNull List<RelNode> bindings) {
+        final boolean isMultiWriteCanBeOptimizedByReturning = executionPlan.getPlan() instanceof LogicalModify
+            && ((LogicalModify) executionPlan.getPlan()).isMultiWriteCanBeOptimizedByReturning();
+
+        if (!isMultiWriteCanBeOptimizedByReturning) {
+            return null;
+        }
+
+        for (OptimizeModifyReturningRule rule : OPTIMIZE_MODIFY_RETURNING_RULES) {
+            if (RelUtils.matchPlan(executionPlan.getPlan(), rule.getOperand(), bindings, null)) {
+                return rule;
+            }
+        }
+
+        return null;
+    }
+
+    private static LogicalModifyView pushdownModifyOnTopN(List<RelNode> modifyOnTopNOperands) {
+        LogicalModify modify = (LogicalModify) modifyOnTopNOperands.get(0);
+        final LogicalView lv = (LogicalView) modifyOnTopNOperands.get(2);
+        final LogicalModifyView lmv =
+            new LogicalModifyView(lv, modify.getModifyTopNInfo().setOptimizeByReturning(true));
+        lmv.push(modify);
+        RelUtils.changeRowType(lmv, modify.getRowType());
+
+        return lmv;
+    }
+
+    /**
+     * Validation for pushdown logicalModify at runtime in case of xrpc is closed manually
+     *
+     * @return <pre>
+     * true means:
+     *  1. current plan is a modify-on-topN (order by limit)
+     *  2. current plan is possible to be optimized by returning, when partitions to be scanned is monotonic on order by column
+     * </pre>
+     */
+    private static boolean isModifyTopNCanBeOptimizedByReturning(@NotNull ExecutionPlan executionPlan,
+                                                                 @NotNull List<RelNode> bindings,
+                                                                 @NotNull ExecutionContext ec) {
+        if (!supportOptimizeModifyTopNByReturning(executionPlan, ec)) {
+            return false;
+        }
+
+        return isModifyTopN(executionPlan, bindings);
+    }
+
+    /**
+     * Check xrpc is enabled and returning is supported
+     */
+    private static boolean supportOptimizeModifyTopNByReturning(@NotNull ExecutionPlan plan,
+                                                                @NotNull ExecutionContext ec) {
+        if (plan.getSchemaNames().size() != 1) {
+            // do not support cross schema
+            return false;
+        }
+
+        final String schemaName = plan.getSchemaNames().iterator().next();
+
+        // check DML_USE_RETURNING enabled
+        // check OPTIMIZE_MODIFY_TOP_N_BY_RETURNING enabled
+        // check returning supported in dn
+        // check xrpc enabled
+        if (!ec.getParamManager().getBoolean(ConnectionParams.DML_USE_RETURNING)
+            || !ec.getParamManager().getBoolean(ConnectionParams.OPTIMIZE_MODIFY_TOP_N_BY_RETURNING)
+            || !ec.getStorageInfo(schemaName).isSupportsReturning()
+            || !ConnPoolConfigManager.getInstance().getConnPoolConfig().isStorageDbXprotoEnabled()) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Validate plan is modify on topN
+     *
+     * @param executionPlan plan
+     * @param bindings for return binding operands, List{LogicalModify,MergeSort,LogicalView}
+     */
+    private static boolean isModifyTopN(@NotNull ExecutionPlan executionPlan, @NotNull List<RelNode> bindings) {
+
+        /*
+        * Plan for
+        *   update t1 set pad = 11 where id=1 and user_id=1 and create_time<=now() order by create_time desc limit 1;
+        * looks like:
+        | LogicalModify(TYPE="UPDATE", SET="t1.pad=?0")                                                                                                                                                                                                                                           |
+        |   MergeSort(sort="create_time DESC", fetch=?4)                                                                                                                                                                                                                                          |
+        |     LogicalView(tables="t1[p16sp202403a,p16sp202403b,p16sp202403c,p16sp202404a]", shardCount=4, sql="SELECT `id`, `user_id`, `pad`, `create_time`, ? FROM `t1` AS `t1` WHERE ((`id` = ?) AND (`user_id` = ?) AND (`create_time` <= ?)) ORDER BY `create_time` DESC LIMIT ? FOR UPDATE")
+        */
+
+        // check plan is modify on topN
+        return executionPlan.getPlan() instanceof LogicalModify
+            && ((LogicalModify) executionPlan.getPlan()).isModifyTopN()
+            && RelUtils.matchPlan(executionPlan.getPlan(), PushModifyRule.MERGESORT.getOperand(), bindings, null);
     }
 
     /**
@@ -520,7 +710,7 @@ public class PostPlanner {
      * 2. Choose a random group if it's the first statement in transaction
      * 3. Skip single-group if any other groups exist
      */
-    private String getBroadcastTableGroup(ExecutionContext executionContext, String schemaName) {
+    public static String getBroadcastTableGroup(ExecutionContext executionContext, String schemaName) {
         ITransaction transaction = executionContext.getTransaction();
         List<String> candidateGroups = null;
         if (transaction != null) {
@@ -582,6 +772,9 @@ public class PostPlanner {
             return true;
         }
 
+        if (plan instanceof Gather && ((Gather) plan).getInput() instanceof LogicalView) {
+            return true;
+        }
         // For Pushed DML with subquery, sqlTemplate in LogicalModifyView should be replaced by original ast
         return plan instanceof LogicalModifyView && !RelUtils.dmlWithDerivedSubquery(plan, ast);
     }
@@ -608,7 +801,8 @@ public class PostPlanner {
                                                                       ExecutionContext executionContext,
                                                                       List<String> schemasToBeReturn,
                                                                       boolean forceAllowFullTableScan,
-                                                                      boolean allowMultiSchema) {
+                                                                      boolean allowMultiSchema,
+                                                                      BiConsumer<String, PartPrunedResult> partPrunedResultBiConsumer) {
 
         Map<Integer, ParameterContext> params =
             executionContext.getParams() == null ? null :
@@ -693,6 +887,10 @@ public class PostPlanner {
                     PartPrunedResult prunedResult =
                         PartitionPruner.doPruningByStepInfo(stepInfo, executionContext);
 
+                    if (null != partPrunedResultBiConsumer) {
+                        partPrunedResultBiConsumer.accept(name, prunedResult);
+                    }
+
                     // covert to targetDbList
                     targetDBs.add(
                         PartitionPrunerUtils.buildTargetDbsByPartPrunedResults(prunedResult));
@@ -748,6 +946,11 @@ public class PostPlanner {
                             PartitionPruneStep stepInfo = shardInfo.getPartPruneStepInfo();
                             PartPrunedResult prunedResult =
                                 PartitionPruner.doPruningByStepInfo(stepInfo, executionContext);
+
+                            if (null != partPrunedResultBiConsumer) {
+                                partPrunedResultBiConsumer.accept(name, prunedResult);
+                            }
+
                             // covert to targetDbList
                             targetDBs.add(PartitionPrunerUtils.buildTargetDbsByPartPrunedResults(
                                 prunedResult));

@@ -1,0 +1,6 @@
+test_drop_ttl_tbl
+test_rename_ttl_tbl
+test_add_col_on_ttl_tbl
+test_auto_split_cci_part
+test_create_like_ttl_tbl
+test_create_like_ttl_tbl2

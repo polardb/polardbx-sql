@@ -61,9 +61,9 @@ public abstract class BlockEncodingBuilders {
             } else if (clazz == Byte.class) {
                 blockEncodingList.add(new ByteBlockEncoding());
             } else if (clazz == Double.class) {
-                blockEncodingList.add(new DoubleBlockEncoding());
+                blockEncodingList.add(new DoubleBlockEncoding(type.getScale()));
             } else if (clazz == Float.class) {
-                blockEncodingList.add(new FloatBlockEncoding());
+                blockEncodingList.add(new FloatBlockEncoding(type.getScale()));
             } else if (clazz == String.class) {
                 blockEncodingList.add(new StringBlockEncoding());
             } else if (clazz == Timestamp.class) {
@@ -124,7 +124,7 @@ public abstract class BlockEncodingBuilders {
             case MYSQL_TYPE_FLOAT:
             case MYSQL_TYPE_DOUBLE: {
                 // Double block encoder.
-                blockEncodingList.add(new DoubleBlockEncoding());
+                blockEncodingList.add(new DoubleBlockEncoding(type.getScale()));
                 break;
             }
             case MYSQL_TYPE_DECIMAL:

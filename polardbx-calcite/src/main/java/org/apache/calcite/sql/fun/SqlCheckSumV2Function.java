@@ -45,7 +45,6 @@ public class SqlCheckSumV2Function extends SqlAggFunction {
             false);
     }
 
-
     @Override
     public RelDataType deriveType(
         SqlValidator validator,

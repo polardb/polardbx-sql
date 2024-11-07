@@ -19,7 +19,6 @@ package com.alibaba.polardbx.repo.mysql.handler;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -82,8 +81,8 @@ public class LogicalViewHandler extends HandlerCommon {
             params = executionContext.getParams().getCurrentParameter();
         }
         ReplaceCallWithLiteralVisitor visitor = null;
-        //不是select类型，或包含 flashback，需要替换不确定性函数
-        if (executionContext.getSqlType() != SqlType.SELECT || logicalView.getFlashback() != null) {
+        // MODIFY_CROSS_DB 或包含 flashback，需要替换不确定性函数
+        if (executionContext.isModifyCrossDb() || logicalView.getFlashback() != null) {
             visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
                 params, RexUtils.getEvalFunc(executionContext), true);
         }

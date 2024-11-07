@@ -20,10 +20,14 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupDropPartitionBuilder;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupDisableDropPartitionMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupDropPartitionRefreshMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
@@ -33,6 +37,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.google.common.collect.ImmutableList;
@@ -45,6 +50,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * @author luoyanxin
@@ -88,37 +94,28 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                 tablesVersion, true,
                 isBrdTg ? null : alterTableGroupDropPartitionPreparedData.getTargetPhysicalGroups(), false);
 
-        Set<Long> outdatedPartitionGroupId = new HashSet<>();
-        List<String> outdatedPartitionNames = new ArrayList();
-        outdatedPartitionNames.addAll(preparedData.getOldPartitionNames());
-        outdatedPartitionNames.addAll(preparedData.getNewPartitionNames());
-        for (String mergePartitionName : outdatedPartitionNames) {
-            for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
-                if (record.partition_name.equalsIgnoreCase(mergePartitionName)) {
-                    outdatedPartitionGroupId.add(record.id);
-                    break;
-                }
-            }
-        }
-        List<String> targetDbList = new ArrayList<>();
-        int targetDbCnt = alterTableGroupDropPartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
-        List<String> newPartitions = new ArrayList<>();
-        for (int i = 0; i < alterTableGroupDropPartitionPreparedData.getNewPartitionNames().size(); i++) {
-            targetDbList.add(alterTableGroupDropPartitionPreparedData.getTargetGroupDetailInfoExRecords()
-                .get(i % targetDbCnt).phyDbName);
-            newPartitions.add(alterTableGroupDropPartitionPreparedData.getNewPartitionNames().get(i));
-        }
-        DdlTask addMetaTask =
-            new AlterTableGroupAddMetaTask(schemaName, tableGroupName, tableGroupConfig.getTableGroupRecord().getId(),
-                alterTableGroupDropPartitionPreparedData.getSourceSql(),
-                ComplexTaskMetaManager.ComplexTaskStatus.DOING_REORG.getValue(), taskType.getValue(),
-                outdatedPartitionGroupId, targetDbList, newPartitions);
+        Set<String> oldPartitionNames = new TreeSet<>(String::compareToIgnoreCase);
+        oldPartitionNames.addAll(preparedData.getOldPartitionNames());
 
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(validateTask, addMetaTask));
+        DdlTask disableDropPartitionMetaTask = new AlterTableGroupDisableDropPartitionMetaTask(schemaName,
+            tableGroupName,
+            tableGroupConfig.getTableGroupRecord().getId(),
+            null, true,
+            alterTableGroupDropPartitionPreparedData.getSourceSql(),
+            oldPartitionNames,
+            preparedData.isOperateOnSubPartition());
+
+        DdlTask refreshMetaTask =
+            new AlterTableGroupDropPartitionRefreshMetaTask(schemaName, tableGroupName, tableGroupName,
+                null, true,
+                alterTableGroupDropPartitionPreparedData.getSourceSql(), oldPartitionNames,
+                preparedData.isOperateOnSubPartition());
+
+        executableDdlJob.addSequentialTasks(Lists.newArrayList(
+            validateTask,
+            disableDropPartitionMetaTask
+        ));
         executableDdlJob.labelAsHead(validateTask);
-        List<DdlTask> bringUpAlterTableGroupTasks =
-            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null, taskType, executionContext);
-
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
         boolean stayAtPublic = true;
@@ -128,11 +125,13 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
         }
 
         if (stayAtPublic) {
-            executableDdlJob.addSequentialTasks(bringUpAlterTableGroupTasks);
-            constructSubTasks(schemaName, executableDdlJob, addMetaTask, bringUpAlterTableGroupTasks, null);
+            constructSubTasks(schemaName, executableDdlJob, disableDropPartitionMetaTask,
+                ImmutableList.of(refreshMetaTask),
+                null);
         } else {
             PauseCurrentJobTask pauseCurrentJobTask = new PauseCurrentJobTask(schemaName);
-            constructSubTasks(schemaName, executableDdlJob, addMetaTask, ImmutableList.of(pauseCurrentJobTask), null);
+            constructSubTasks(schemaName, executableDdlJob, disableDropPartitionMetaTask,
+                ImmutableList.of(pauseCurrentJobTask), null);
         }
 
         // TODO(luoyanxin)
@@ -184,40 +183,60 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
                                   List<DdlTask> bringUpAlterTableGroupTasks, String targetPartitionName) {
 
         EmptyTask emptyTask = new EmptyTask(schemaName);
+        BaseDdlTask tableGroupSyncTask = null;
         boolean emptyTaskAdded = false;
 
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
-            boolean skipBackfill = GeneralUtil.isEmpty(sourceTablesTopology.get(entry.getKey()));
-            AlterTableGroupSubTaskJobFactory subTaskJobFactory =
-                new AlterTableGroupSubTaskJobFactory(ddl, preparedData, tablesPrepareData.get(entry.getKey()),
-                    newPartitionsPhysicalPlansMap.get(entry.getKey()), tablesTopologyMap.get(entry.getKey()),
-                    targetTablesTopology.get(entry.getKey()), sourceTablesTopology.get(entry.getKey()),
-                    orderedTargetTablesLocations.get(entry.getKey()), targetPartitionName, skipBackfill, taskType,
+            AlterTableDropPartitionSubTaskJobFactory subTaskJobFactory =
+                new AlterTableDropPartitionSubTaskJobFactory(ddl,
+                    (AlterTableGroupDropPartitionPreparedData) preparedData,
+                    tablesPrepareData.get(entry.getKey()),
+                    newPartitionsPhysicalPlansMap.get(entry.getKey()),
+                    tablesTopologyMap.get(entry.getKey()),
+                    targetTablesTopology.get(entry.getKey()),
+                    sourceTablesTopology.get(entry.getKey()),
+                    orderedTargetTablesLocations.get(entry.getKey()),
+                    "",
+                    false,
+                    taskType,
                     executionContext);
-            ExecutableDdlJob subTask = subTaskJobFactory.create();
-            executableDdlJob.combineTasks(subTask);
-            executableDdlJob.addTaskRelationship(tailTask, subTask.getHead());
-
+            ExecutableDdlJob subDdlJob = subTaskJobFactory.create();
+            List<DdlTask> subTasks = subDdlJob.getAllTasks();
+            DdlTask dropUselessTableTask =
+                ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, entry.getKey(),
+                    getTheDeletedPartitionsLocation((AlterTableGroupDropPartitionPreparedData) preparedData,
+                        entry.getKey()),
+                    null, executionContext);
+            executableDdlJob.getExcludeResources().addAll(subDdlJob.getExcludeResources());
+            executableDdlJob.addTaskRelationship(tailTask, subTasks.get(0));
+            executableDdlJob.addTaskRelationship(subTasks.get(0), subTasks.get(1));
+            executableDdlJob.addTaskRelationship(subTasks.get(1), subTasks.get(2));
             if (subTaskJobFactory.getCdcTableGroupDdlMarkTask() != null) {
+                executableDdlJob.addTaskRelationship(subTasks.get(subTasks.size() - 1),
+                    subTaskJobFactory.getCdcTableGroupDdlMarkTask());
                 if (!emptyTaskAdded) {
-                    executableDdlJob.addTask(emptyTask);
-                    emptyTaskAdded = true;
+                    executableDdlJob.addTaskRelationship(subTaskJobFactory.getCdcTableGroupDdlMarkTask(),
+                        bringUpAlterTableGroupTasks.get(0));
                 }
-                executableDdlJob.addTask(subTaskJobFactory.getCdcTableGroupDdlMarkTask());
-                executableDdlJob.addTaskRelationship(subTask.getTail(), emptyTask);
-                executableDdlJob.addTaskRelationship(emptyTask, subTaskJobFactory.getCdcTableGroupDdlMarkTask());
-                executableDdlJob.addTaskRelationship(subTaskJobFactory.getCdcTableGroupDdlMarkTask(), bringUpAlterTableGroupTasks.get(0));
-            } else {
-                executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
-            }
 
-            DdlTask dropUselessTableTask = ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, entry.getKey(),
-                getTheDeletedPartitionsLocation(preparedData.getSchemaName(), entry.getKey()), executionContext);
-            executableDdlJob.addTask(dropUselessTableTask);
+                List<DdlTask> syncTasks =
+                    subTaskJobFactory.generateSyncTask(schemaName, entry.getKey(), executionContext);
+                executableDdlJob.addTaskRelationship(bringUpAlterTableGroupTasks.get(0), syncTasks.get(0));
+                executableDdlJob.addTaskRelationship(syncTasks.get(0), syncTasks.get(1));
+                executableDdlJob.addTaskRelationship(syncTasks.get(1), emptyTask);
+
+                if (!emptyTaskAdded) {
+                    tableGroupSyncTask =
+                        new TableGroupSyncTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
+                    executableDdlJob.addTaskRelationship(emptyTask, tableGroupSyncTask);
+                }
+                executableDdlJob.addTaskRelationship(tableGroupSyncTask, dropUselessTableTask);
+                emptyTaskAdded = true;
+            } else {
+                executableDdlJob.addTaskRelationship(subTasks.get(subTasks.size() - 1),
+                    bringUpAlterTableGroupTasks.get(0));
+            }
             executableDdlJob.labelAsTail(dropUselessTableTask);
-            executableDdlJob.addTaskRelationship(
-                bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1), dropUselessTableTask);
-            executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
         }
     }
 

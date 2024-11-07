@@ -90,7 +90,8 @@ public class OrcRawTypeBlockLoader extends ReactiveBlockLoader {
         return block;
     }
 
-    private Block parseBlock(DataType dataType, int[] selection, int selSize) throws IOException {
+    @Override
+    protected Block parseBlock(DataType dataType, int[] selection, int selSize) throws IOException {
         Block targetBlock = allocateBlock(dataType);
 
         // Start decoding from given position.

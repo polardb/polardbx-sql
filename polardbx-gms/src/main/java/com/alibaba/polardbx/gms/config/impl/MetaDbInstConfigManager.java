@@ -77,9 +77,9 @@ public class MetaDbInstConfigManager extends AbstractLifecycle implements InstCo
 
     @Override
     protected void doInit() {
-        SystemDefaultPropertyHelper.initDefaultInstConfig();
         Properties newProps = null;
         if (configFromMetaDb) {
+            SystemDefaultPropertyHelper.initDefaultInstConfig();
             try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
                 newProps = loadPropertiesFromMetaDbConn(conn);
             } catch (Throwable ex) {

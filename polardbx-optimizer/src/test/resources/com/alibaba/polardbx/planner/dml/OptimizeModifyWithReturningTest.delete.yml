@@ -1,0 +1,75 @@
+# one sharding table
+- sql: |
+    delete a from test_tb_pk_auto_increment_with_ugsi a where a.c1 = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_tb_pk_auto_increment_with_ugsi", optimizebyreturning=true)
+      logicalview(tables="test_tb_pk_auto_increment_with_ugsi[p4sp1]", sql="select `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` from `test_tb_pk_auto_increment_with_ugsi` as `test_tb_pk_auto_increment_with_ugsi` where (`c1` = ?) for update")
+
+- sql: |
+    delete a from test_tb_pk_auto_increment_with_ugsi a where a.c1 = last_insert_id();
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_tb_pk_auto_increment_with_ugsi", optimizebyreturning=true)
+      logicalview(tables="test_tb_pk_auto_increment_with_ugsi[p33sp4]", sql="select `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` from `test_tb_pk_auto_increment_with_ugsi` as `test_tb_pk_auto_increment_with_ugsi` where (`c1` = ?) for update")
+
+# TODO optimize this with returning
+- sql: |
+    delete a from t1 a where a.c3 = last_insert_id(1);
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.t1")
+      filter(condition="c3 = last_insert_id(?0)")
+        project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+          bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+            gather(concurrent=true)
+              indexscan(tables="t1_i_b[p1sp1,p1sp2,p2sp1,...p64sp2]", shardcount=128, sql="select `pk`, `c1`, `c2`, `c5` from `t1_i_b` as `t1_i_b` for update")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1sp1,p1sp2,p1sp3,...p64sp7]", shardcount=448, sql="select `pk`, `c1`, `c3`, `c4`, `c6`, `c7`, `c8` from `t1` as `t1` force index(`primary`) where (`pk` in (...)) for update")
+
+- sql: |
+    delete a from t1 a where a.c3 = 1;
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.t1", optimizebyreturning=true)
+      project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+        bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+          indexscan(tables="t1_i_a[p4sp1]", sql="select `pk`, `c1`, `c3`, `c5`, `c6` from `t1_i_a` as `t1_i_a` force index(`auto_shard_key_c3`) where (`c3` = ?) for update")
+          gather(concurrent=true)
+            logicalview(tables="t1[p1sp1,p1sp2,p1sp3,...p64sp7]", shardcount=448, sql="select `pk`, `c1`, `c2`, `c4`, `c7`, `c8` from `t1` as `t1` force index(`primary`) where ((`c3` = ?) and (`pk` in (...))) for update")
+
+- sql: |
+    delete a from t1 a, t2 b where a.c3 = b.c3 and a.c3 = 1;
+
+  plan: |
+    logicalmodify(type="delete", tables="optest.t1")
+      bkajoin(condition="c3 = c3", type="inner")
+        project(pk="pk", c1="c1", c2="c2", c3="c3", c4="c4", c5="c5", c6="c6", c7="c7", c8="c8")
+          bkajoin(condition="pk = pk and c1 <=> c1", type="inner")
+            indexscan(tables="t1_i_a[p4sp1]", sql="select `pk`, `c1`, `c3`, `c5`, `c6` from `t1_i_a` as `t1_i_a` force index(`auto_shard_key_c3`) where (`c3` = ?) for update")
+            gather(concurrent=true)
+              logicalview(tables="t1[p1sp1,p1sp2,p1sp3,...p64sp7]", shardcount=448, sql="select `pk`, `c1`, `c2`, `c4`, `c7`, `c8` from `t1` as `t1` force index(`primary`) where ((`c3` = ?) and (`pk` in (...))) for update")
+        gather(concurrent=true)
+          logicalview(tables="t2[p1sp1,p1sp2,p2sp1,...p64sp2]", shardcount=128, sql="select `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` from `t2` as `t2` where ((`c3` = ?) and (`c3` in (...))) for update")
+
+# TODO 多表下推给 DN 会报错
+- sql: |
+    delete b from t1 a join t1 b on a.c1 = b.c1 and a.pk > b.pk where a.pk > 0;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.t1", optimizebyreturning=true)
+      gather(concurrent=true)
+        logicalview(tables="t1[p1sp1,p1sp2,p1sp3,...p64sp7],t1[p1sp1,p1sp2,p1sp3,...p64sp7]", shardcount=448, sql="select `t1`.`pk`, `t1`.`c1`, `t1`.`c2`, `t1`.`c3`, `t1`.`c4`, `t1`.`c5`, `t1`.`c6`, `t1`.`c7`, `t1`.`c8`, `t10`.`pk` as `pk0`, `t10`.`c1` as `c10`, `t10`.`c2` as `c20`, `t10`.`c3` as `c30`, `t10`.`c4` as `c40`, `t10`.`c5` as `c50`, `t10`.`c6` as `c60`, `t10`.`c7` as `c70`, `t10`.`c8` as `c80` from `t1` as `t1` inner join `t1` as `t10` on ((`t1`.`c1` = `t10`.`c1`) and (`t1`.`pk` > `t10`.`pk`) and (`t1`.`pk` > ?)) for update")
+
+# TODO 多表下推给 DN 会报错
+- sql: |
+    delete from t1 where c1 > 0 and exists (select id from test_broadcast_b where t1.c5 = name);
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.t1", optimizebyreturning=true)
+      gather(concurrent=true)
+        logicalview(tables="t1[p1sp1,p1sp2,p1sp3,...p64sp7],test_broadcast_b", shardcount=448, sql="select `pk`, `c1`, `c2`, `c3`, `c4`, `c5`, `c6`, `c7`, `c8` from `t1` as `t1` where ((`c1` > ?) and (exists (select `id` from `test_broadcast_b` as `test_broadcast_b` where (`t1`.`c5` = `name`)))) for update")

@@ -94,8 +94,6 @@ public class RulePruneTest extends BasePlannerTest {
                 partialAggBucketThreshold);
         }
 
-        // enable cbo rule counter
-        executionContext.setEnableRuleCounter(true);
         // disable push join limit
         executionContext.getExtraCmds().put(ConnectionProperties.CBO_RESTRICT_PUSH_JOIN_LIMIT, -1);
         return executionContext;
@@ -111,11 +109,12 @@ public class RulePruneTest extends BasePlannerTest {
 
         ExecutionContext executionContext = getExecutionContext(ast);
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+        plannerContext.setEnableRuleCounter(true);
         plannerContext.setSchemaName(appName);
 
         // reset cluster for every statement
         Planner.getInstance().getPlan(ast, plannerContext);
-        long prevCount = executionContext.getRuleCount();
+        long prevCount = plannerContext.getRuleCount();
 
         ast = new FastsqlParser().parse(testSql).get(0);
         executionContext = getExecutionContext(ast);
@@ -126,7 +125,7 @@ public class RulePruneTest extends BasePlannerTest {
         executionContext.getExtraCmds().put(ConnectionProperties.CBO_RESTRICT_PUSH_JOIN_LIMIT, 0);
         executionContext.getExtraCmds().put(ConnectionProperties.CBO_RESTRICT_PUSH_JOIN_COUNT, 0);
         Planner.getInstance().getPlan(ast, plannerContext);
-        long curCount = executionContext.getRuleCount();
+        long curCount = plannerContext.getRuleCount();
         assertTrue("previous is " + prevCount + " now is " + curCount, prevCount <= 0 || curCount < prevCount);
 
         return null;

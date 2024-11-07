@@ -21,8 +21,6 @@ import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.PolarQuarantineManager;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
-import com.alibaba.polardbx.common.TddlNode;
-import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
@@ -30,6 +28,7 @@ import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.InstanceRole;
+import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.InstanceRoleManager;
@@ -62,17 +61,17 @@ import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
 import com.alibaba.polardbx.optimizer.core.expression.JavaFunctionManager;
+import com.alibaba.polardbx.transaction.DeadlockManager;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * @author chenghui.lch
@@ -85,6 +84,10 @@ public class GmsClusterLoader extends ClusterLoader {
     protected String instanceType;
     protected boolean isUsing = false;
     protected Long opVersion = -1L;
+    /**
+     * A thread executor for async warming up new created db
+     */
+    private ThreadPoolExecutor newCreatedDbWarmingUpExecutor;
 
     protected static class InstInfoListener implements ConfigListener {
 
@@ -164,6 +167,53 @@ public class GmsClusterLoader extends ClusterLoader {
         }
     }
 
+    protected static class WarmupOneSchemaTask implements Runnable {
+
+        private SchemaConfig schema;
+
+        public WarmupOneSchemaTask(SchemaConfig schemaConfig) {
+            this.schema = schemaConfig;
+        }
+
+        @Override
+        public void run() {
+            if (schema == null) {
+                return;
+            }
+
+            if (schema.isDropped()) {
+                return;
+            }
+            final TDataSource ds = schema.getDataSource();
+            if (ds == null) {
+                return;
+            }
+            long startTime = System.nanoTime();
+            Throwable ex = TDataSourceInitUtils.initDataSource(ds);
+            if (ex == null) {
+
+                logger.info("Init schema '{}' costs {} secs", schema.getName(),
+                    (System.nanoTime() - startTime) / 1e9);
+
+                try {
+                    // Before init the next schema,
+                    // wait for this schema finish some init task,
+                    // e.g. RotateTrxLogTask, StatisticsTask, etc.
+                    long sleepSeconds = DynamicConfig.getInstance().getWarmUpDbInterval();
+                    if (sleepSeconds > 0 && 0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+                        Thread.sleep(sleepSeconds * 1000);
+                    }
+                } catch (InterruptedException e) {
+                    logger.info("LogicalDb-Warming-Up-Thread is interrupted unexpectedly");
+                    return;
+                }
+            } else {
+                logger.warn(
+                    "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(), ex);
+            }
+        }
+    }
+
     public GmsClusterLoader(SystemConfig systemConfig) {
         super(systemConfig.getClusterName(), systemConfig.getUnitName());
         this.systemConfig = systemConfig;
@@ -171,6 +221,7 @@ public class GmsClusterLoader extends ClusterLoader {
 
     @Override
     public void doInit() {
+        initAsyncDbWarmingUpExecutor();
         this.appLoader = new GmsAppLoader(this.cluster, this.unitName);
         if (StringUtils.isNotEmpty(cluster)) {
             this.appLoader.init();
@@ -245,6 +296,13 @@ public class GmsClusterLoader extends ClusterLoader {
 
         //init ccl
         CclManager.getService();
+
+        // start some background threads.
+        initBackgroundTasks();
+    }
+
+    private void initBackgroundTasks() {
+        DeadlockManager.getInstance();
     }
 
     private void registerStoredFunction() {
@@ -372,34 +430,41 @@ public class GmsClusterLoader extends ClusterLoader {
         if (ConfigDataMode.isPolarDbX() && systemConfig.getEnableLogicalDbWarmmingUp()) {
             // Auto load all schemas here
             ConcurrentLinkedDeque<SchemaConfig> schemas = new ConcurrentLinkedDeque<>(appLoader.getSchemas().values());
+//            final Runnable warmupLogicalDbTask = () -> {
+//                SchemaConfig schema;
+//                while (null != (schema = schemas.poll())) {
+//                    if (schema.isDropped()) {
+//                        continue;
+//                    }
+//                    final TDataSource ds = schema.getDataSource();
+//                    long startTime = System.nanoTime();
+//                    Throwable ex = TDataSourceInitUtils.initDataSource(ds);
+//                    if (ex == null) {
+//                        logger.info("Init schema '{}' costs {} secs", schema.getName(),
+//                            (System.nanoTime() - startTime) / 1e9);
+//                        try {
+//                            // Before init the next schema,
+//                            // wait for this schema finish some init task,
+//                            // e.g. RotateTrxLogTask, StatisticsTask, etc.
+//                            long sleepSeconds = DynamicConfig.getInstance().getWarmUpDbInterval();
+//                            if (sleepSeconds > 0 && 0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+//                                Thread.sleep(sleepSeconds * 1000);
+//                            }
+//                        } catch (InterruptedException e) {
+//                            logger.info("LogicalDb-Warming-Up-Thread is interrupted unexpectedly");
+//                            return;
+//                        }
+//                    } else {
+//                        logger.warn(
+//                            "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(), ex);
+//                    }
+//                }
+//            };
             final Runnable warmupLogicalDbTask = () -> {
                 SchemaConfig schema;
                 while (null != (schema = schemas.poll())) {
-                    if (schema.isDropped()) {
-                        continue;
-                    }
-                    final TDataSource ds = schema.getDataSource();
-                    long startTime = System.nanoTime();
-                    Throwable ex = TDataSourceInitUtils.initDataSource(ds);
-                    if (ex == null) {
-                        logger.info("Init schema '{}' costs {} secs", schema.getName(),
-                            (System.nanoTime() - startTime) / 1e9);
-                        try {
-                            // Before init the next schema,
-                            // wait for this schema finish some init task,
-                            // e.g. RotateTrxLogTask, StatisticsTask, etc.
-                            long sleepSeconds = DynamicConfig.getInstance().getWarmUpDbInterval();
-                            if (sleepSeconds > 0 && 0 == DynamicConfig.getInstance().getTrxLogMethod()) {
-                                Thread.sleep(sleepSeconds * 1000);
-                            }
-                        } catch (InterruptedException e) {
-                            logger.info("LogicalDb-Warming-Up-Thread is interrupted unexpectedly");
-                            return;
-                        }
-                    } else {
-                        logger.warn(
-                            "Failed to init schema " + schema.getName() + ", cause is " + ex.getMessage(), ex);
-                    }
+                    WarmupOneSchemaTask warmupOneSchemaTask = new WarmupOneSchemaTask(schema);
+                    warmupOneSchemaTask.run();
                 }
             };
 
@@ -486,6 +551,7 @@ public class GmsClusterLoader extends ClusterLoader {
 
     protected void allocResourceForLogicalDb(String dbName) {
         this.appLoader.loadApp(dbName);
+        this.submitWarmingUpOneSchemaTask(dbName);
     }
 
     protected void releaseResourceForLogicalDb(String dbName) {
@@ -536,5 +602,34 @@ public class GmsClusterLoader extends ClusterLoader {
 
     public void setOpVersion(Long opVersion) {
         this.opVersion = opVersion;
+    }
+
+    protected void initAsyncDbWarmingUpExecutor() {
+        ThreadPoolExecutor newCreatedDbWarmingUpExecutor =
+            ExecutorUtil.createBufferedExecutor("NewCreatedDbWarmingUpTaskExecutor", 1,
+                1024);
+        this.newCreatedDbWarmingUpExecutor = newCreatedDbWarmingUpExecutor;
+    }
+
+    protected void submitWarmingUpOneSchemaTask(String dbName) {
+        try {
+            SchemaConfig schemaConfig = this.appLoader.getSchemas().get(dbName);
+            if (schemaConfig == null) {
+                return;
+            }
+            if (schemaConfig.isDropped()) {
+                return;
+            }
+            if (schemaConfig.getDataSource() == null) {
+                return;
+            }
+            if (schemaConfig.getDataSource().isInited()) {
+                return;
+            }
+            WarmupOneSchemaTask warmupOneSchemaTask = new WarmupOneSchemaTask(schemaConfig);
+            this.newCreatedDbWarmingUpExecutor.submit(warmupOneSchemaTask);
+        } catch (Throwable ex) {
+            logger.warn(ex.getMessage(), ex);
+        }
     }
 }

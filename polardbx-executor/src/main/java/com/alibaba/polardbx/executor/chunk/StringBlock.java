@@ -40,7 +40,7 @@ public class StringBlock extends AbstractCommonBlock {
 
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(StringBlock.class).instanceSize();
 
-    private final int[] offsets;
+    private int[] offsets;
     private char[] data;
 
     public StringBlock(DataType dataType, int positionCount) {
@@ -72,17 +72,16 @@ public class StringBlock extends AbstractCommonBlock {
     }
 
     public static StringBlock from(StringBlock other, int selSize, int[] selection) {
-        int[] newOffsets = new int[selSize];
-
         if (other.data == null) {
+            int[] newOffsets = new int[selSize];
             return new StringBlock(other.dataType, 0, selSize,
                 BlockUtils.copyNullArray(other.isNull, selection, selSize),
                 newOffsets, null);
         }
         if (selection == null) {
             return new StringBlock(other.dataType, 0, selSize,
-                BlockUtils.copyNullArray(other.isNull, selection, selSize),
-                newOffsets, Arrays.copyOf(other.data, other.data.length));
+                Arrays.copyOf(other.isNull, selSize), Arrays.copyOf(other.offsets, selSize),
+                Arrays.copyOf(other.data, other.data.length));
         } else {
             StringBlockBuilder stringBlockBuilder = new StringBlockBuilder(other.dataType, selSize,
                 other.data.length / (other.positionCount + 1) * selSize);
@@ -158,7 +157,7 @@ public class StringBlock extends AbstractCommonBlock {
             return 0;
         }
 
-        return ChunkUtil.hashCode(data, beginOffset(position), endOffset(position), true);
+        return ChunkUtil.hashCodeIgnoreCase(data, beginOffset(position), endOffset(position));
     }
 
     @Override
@@ -222,6 +221,10 @@ public class StringBlock extends AbstractCommonBlock {
 
     public int[] getOffsets() {
         return offsets;
+    }
+
+    public void setOffsets(int[] offsets) {
+        this.offsets = offsets;
     }
 
     public char[] getData() {

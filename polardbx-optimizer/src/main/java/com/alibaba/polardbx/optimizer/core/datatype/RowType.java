@@ -1,33 +1,21 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.datatype.RowValue;
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprUtil;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 
+import static com.alibaba.polardbx.common.type.MySQLStandardFieldType.MYSQL_TYPE_VAR_STRING;
 import static com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil.getTypeOfObject;
 
 public class RowType extends AbstractDataType<RowValue> {
-
     private List<DataType> dataTypes;
 
     public RowType() {
@@ -36,7 +24,6 @@ public class RowType extends AbstractDataType<RowValue> {
     public RowType(List<DataType> dataTypes) {
         this.dataTypes = dataTypes;
     }
-
     @Override
     public Class getDataClass() {
         return RowValue.class;
@@ -44,22 +31,35 @@ public class RowType extends AbstractDataType<RowValue> {
 
     @Override
     public ResultGetter getResultGetter() {
-        throw new UnsupportedOperationException();
+        return new ResultGetter() {
+
+            @Override
+            public Object get(ResultSet rs, int index) throws SQLException {
+                Object val = rs.getString(index);
+                return convertFrom(val);
+            }
+
+            @Override
+            public Object get(Row rs, int index) {
+                Object val = rs.getObject(index);
+                return convertFrom(val);
+            }
+        };
     }
 
     @Override
     public RowValue getMaxValue() {
-        throw new UnsupportedOperationException();
+        return null;
     }
 
     @Override
     public RowValue getMinValue() {
-        throw new UnsupportedOperationException();
+        return null;
     }
 
     @Override
     public Calculator getCalculator() {
-        throw new UnsupportedOperationException();
+        throw new NotSupportException("row类型不支持计算操作");
     }
 
     @Override
@@ -69,12 +69,12 @@ public class RowType extends AbstractDataType<RowValue> {
 
     @Override
     public String getStringSqlType() {
-        return "ROW";
+        return "VARCHAR";
     }
 
     @Override
     public MySQLStandardFieldType fieldType() {
-        throw new UnsupportedOperationException();
+        return MYSQL_TYPE_VAR_STRING;
     }
 
     public Long nullNotSafeEqual(Object o1, Object o2) {
@@ -148,25 +148,34 @@ public class RowType extends AbstractDataType<RowValue> {
         if (o1 == o2) {
             return 0;
         }
-        if ((o1 instanceof RowValue)
-            && (o2 instanceof RowValue)) {
 
-            List<Object> o1s = ((RowValue) o1).getValues();
-            List<Object> o2s = ((RowValue) o2).getValues();
-            if (o1s.size() == o2s.size() && o1s.size() == dataTypes.size()) {
-                for (int i = 0; i < o1s.size(); i++) {
-                    int ret = dataTypes.get(i).compare(o1s.get(i), o2s.get(i));
-                    if (ret != 0) {
-                        return ret;
-                    }
-                }
-                return 0;
-            } else {
-                throw new UnsupportedOperationException();
-            }
-        } else {
-            throw new UnsupportedOperationException();
+        RowValue no1 = convertFrom(o1);
+        RowValue no2 = convertFrom(o2);
+        int num1 = no1.getValues().size();
+        int num2 = no2.getValues().size();
+        if (num1 != num2) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                String.format("Operand should contain %s column(s)", num1));
         }
+        for (int i = 0; i < num1; i++) {
+            Object val1 = no1.getValues().get(i);
+            Object val2 = no2.getValues().get(i);
+            if (val1 == val2) {
+                continue;
+            }
+            if (val1 == null) {
+                return -1;
+            } else if (val2 == null) {
+                return 1;
+            } else {
+                DataType type = inferCmpType(getTypeOfObject(val1), getTypeOfObject(val2));
+                int ret = type.compare(val1, val2);
+                if (ret != 0) {
+                    return ret;
+                }
+            }
+        }
+        return 0;
     }
 
     private DataType inferCmpType(DataType leftType, DataType rightType) {
@@ -176,6 +185,4 @@ public class RowType extends AbstractDataType<RowValue> {
             return Rex2ExprUtil.compareTypeOf(leftType, rightType, true, true);
         }
     }
-
 }
-

@@ -204,7 +204,7 @@ public class ReactiveBlockLoader implements BlockLoader {
         }
     }
 
-    private Block parseBlock(DataType dataType, int[] selection, int selSize) throws IOException {
+    protected Block parseBlock(DataType dataType, int[] selection, int selSize) throws IOException {
         boolean compatible = context.isEnableOssCompatible();
         Block targetBlock = allocateBlock(dataType, compatible, timeZone);
 

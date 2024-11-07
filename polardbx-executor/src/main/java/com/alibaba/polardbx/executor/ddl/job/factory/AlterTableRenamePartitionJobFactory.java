@@ -29,20 +29,20 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupVali
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableRenamePartitionChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.CleanupEmptyTableGroupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableRenamePartitionPreparedData;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
@@ -66,7 +66,8 @@ public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobF
 
     @Override
     protected void validate() {
-
+        TableValidator.validateTableWithCCI(preparedData.getSchemaName(), preparedData.getTableName(), executionContext,
+            SqlKind.RENAME_PARTITION);
     }
 
     @Override
@@ -293,8 +294,11 @@ public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobF
             placeHolder = false;
         }
 
+        String logicalTable = preparedData.getTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(logicalTable);
+
         return new CdcAlterTableRenamePartitionMarkTask(preparedData.getSchemaName(),
-            preparedData.getTableName(), placeHolder);
+            preparedData.getTableName(), placeHolder, tableMeta.isColumnar(), preparedData.getDdlVersionId());
     }
 
     private boolean isFromSetTableGroup(ExecutionContext executionContext) {

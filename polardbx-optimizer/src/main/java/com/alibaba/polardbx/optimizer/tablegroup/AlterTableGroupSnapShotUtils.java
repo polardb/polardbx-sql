@@ -35,8 +35,10 @@ import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupAddPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupExtractPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupModifyPartitionPreparedData;
@@ -73,13 +75,11 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
 import org.apache.calcite.sql.SqlAlterTableExtractPartition;
-import org.apache.calcite.sql.SqlAlterTableGroup;
-import org.apache.calcite.sql.SqlAlterTableGroupMergePartition;
-import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
+import org.apache.calcite.sql.SqlAlterTableOptimizePartition;
 import org.apache.calcite.sql.SqlAlterTableRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableReorgPartition;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
@@ -110,8 +110,6 @@ import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
-import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_PARTITION;
 
 /**
  * Created by luoyanxin.
@@ -343,6 +341,9 @@ public class AlterTableGroupSnapShotUtils {
                     partSpecAstParams.setPhySpecCounter(phyPartCounter);
                     partSpecAstParams.setAutoBuildPart(isAutoSubPart);
                     partSpecAstParams.setPartBoundValBuilder(boundValBuilder);
+                    partSpecAstParams.setPartEngine(curPartitionInfo.isColumnar() ?
+                        TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+                        TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
                     PartitionSpec subPartSpec = PartitionInfoBuilder.buildPartSpecByAstParams(partSpecAstParams);
                     subPartSpec.setLocation(new PartitionLocation());
@@ -644,6 +645,9 @@ public class AlterTableGroupSnapShotUtils {
             partSpecAstParams.setPartComment(sqlPartition.getComment());
             partSpecAstParams.setPartLocality(sqlPartition.getLocality());
             partSpecAstParams.setPartBndValuesAst(sqlPartition.getValues());
+            partSpecAstParams.setPartEngine(curPartitionInfo.isColumnar() ?
+                TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+                TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
             partSpecAstParams.setLogical(false);
 
@@ -1288,6 +1292,7 @@ public class AlterTableGroupSnapShotUtils {
                             physicalPartIndex,
                             isReorgSubPartition,
                             isAlterTableGroup,
+                            curPartitionInfo.isColumnar(),
                             executionContext
                         );
                     } else {
@@ -1312,6 +1317,7 @@ public class AlterTableGroupSnapShotUtils {
                         physicalPartIndex,
                         isReorgSubPartition,
                         isAlterTableGroup,
+                        curPartitionInfo.isColumnar(),
                         executionContext
                     );
                 } else {
@@ -1341,6 +1347,7 @@ public class AlterTableGroupSnapShotUtils {
                                                 AtomicLong physicalPartIndex,
                                                 boolean isReorgSubPartition,
                                                 boolean isAlterTableGroup,
+                                                boolean isColumnarIndex,
                                                 ExecutionContext executionContext) {
         PartitionByDefinition partByDef = curPartitionInfo.getPartitionBy();
         PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
@@ -1403,6 +1410,9 @@ public class AlterTableGroupSnapShotUtils {
             partSpecAstParams.setPartComment(sqlPartition.getComment());
             partSpecAstParams.setPartLocality(sqlPartition.getLocality());
             partSpecAstParams.setPartBndValuesAst(sqlPartition.getValues());
+            partSpecAstParams.setPartEngine(isColumnarIndex ?
+                TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+                TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
             partSpecAstParams.setLogical(false);
 
@@ -1653,6 +1663,7 @@ public class AlterTableGroupSnapShotUtils {
                                                                     SqlAlterTableAddPartition addPartition,
                                                                     Map<String, Pair<String, String>> physicalTableAndGroupPairs,
                                                                     Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
+                                                                    boolean isColumnarIndex,
                                                                     ExecutionContext executionContext) {
         PartitionInfo newPartitionInfo = PartitionInfoBuilder.buildNewPartitionInfoByAddingPartition(
             executionContext,
@@ -1661,7 +1672,8 @@ public class AlterTableGroupSnapShotUtils {
             addPartition,
             partBoundExprInfoByLevel,
             unVisiablePartitionGroupRecords,
-            physicalTableAndGroupPairs
+            physicalTableAndGroupPairs,
+            isColumnarIndex
         );
 
         updatePartitionSpecRelationship(newPartitionInfo);
@@ -1669,20 +1681,15 @@ public class AlterTableGroupSnapShotUtils {
         return newPartitionInfo;
     }
 
+    @Deprecated
     private static PartitionInfo getNewPartitionInfoForDropPartition(PartitionInfo curPartitionInfo,
                                                                      SqlAlterTableDropPartition dropPartition,
                                                                      List<String> oldPartitionNames,
-                                                                     List<String> newPartitionNames,
-                                                                     List<PartitionGroupRecord> invisiblePartitionGroupRecords,
-                                                                     Map<String, Pair<String, String>> physicalTableAndGroupPairs,
                                                                      ExecutionContext context) {
         PartitionInfo newPartitionInfo = PartitionInfoBuilder.buildNewPartitionInfoByDroppingPartition(
             curPartitionInfo,
             dropPartition,
             oldPartitionNames,
-            newPartitionNames,
-            invisiblePartitionGroupRecords,
-            physicalTableAndGroupPairs,
             context
         );
 
@@ -2177,19 +2184,13 @@ public class AlterTableGroupSnapShotUtils {
                 addPartition,
                 physicalTableAndGroupPairs,
                 addPartitionPreparedData.getPartBoundExprInfoByLevel(),
+                curPartitionInfo.isColumnar(),
                 executionContext
             );
         } else if (sqlNode instanceof SqlAlterTableDropPartition) {
-            SqlAlterTableDropPartition dropPartition = (SqlAlterTableDropPartition) sqlNode;
-            newPartInfo = getNewPartitionInfoForDropPartition(
-                curPartitionInfo,
-                dropPartition,
-                oldPartitionNames,
-                newPartitionNames,
-                invisiblePartitionGroupRecords,
-                physicalTableAndGroupPairs,
-                executionContext
-            );
+            newPartInfo =
+                generateNewPartitionInfoForDropPartition((AlterTableGroupDropPartitionPreparedData) parentPreparedData,
+                    curPartitionInfo.getTableName());
         } else if (sqlNode instanceof SqlAlterTableModifyPartitionValues) {
             AlterTableGroupModifyPartitionPreparedData modifyPartitionPreparedData =
                 (AlterTableGroupModifyPartitionPreparedData) parentPreparedData;
@@ -2232,6 +2233,56 @@ public class AlterTableGroupSnapShotUtils {
         PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
 
         return newPartInfo;
+    }
+
+    public static PartitionInfo generateNewPartitionInfoForDropPartition(
+        AlterTableGroupDropPartitionPreparedData parentPrepareData,
+        String tableName) {
+        PartitionInfo curPartitionInfo =
+            OptimizerContext.getContext(parentPrepareData.getSchemaName()).getPartitionInfoManager()
+                .getPartitionInfo(tableName);
+        List<PartitionSpec> newPartitions = new ArrayList<>();
+        if (parentPrepareData.isOperateOnSubPartition()) {
+            boolean isTempPart = curPartitionInfo.getPartitionBy().getSubPartitionBy().isUseSubPartTemplate();
+            for (PartitionSpec partitionSpec : curPartitionInfo.getPartitionBy().getPartitions()) {
+                PartitionSpec newPartSpec = partitionSpec.copy();
+                newPartitions.add(newPartSpec);
+                newPartSpec.getSubPartitions().clear();
+                for (PartitionSpec subPartSpec : partitionSpec.getSubPartitions()) {
+                    boolean del = false;
+                    for (String oldPart : parentPrepareData.getOldPartitionNames()) {
+                        if (isTempPart && subPartSpec.getTemplateName().equalsIgnoreCase(oldPart)
+                            || !isTempPart && subPartSpec.getName().equalsIgnoreCase(oldPart)) {
+                            del = true;
+                            break;
+                        }
+                    }
+                    if (!del) {
+                        newPartSpec.getSubPartitions().add(subPartSpec.copy());
+                    }
+                }
+            }
+        } else {
+            for (PartitionSpec partitionSpec : curPartitionInfo.getPartitionBy().getPartitions()) {
+                boolean del = false;
+                for (String oldPart : parentPrepareData.getOldPartitionNames()) {
+                    if (partitionSpec.getName().equalsIgnoreCase(oldPart)) {
+                        del = true;
+                        break;
+                    }
+                }
+                if (!del) {
+                    newPartitions.add(partitionSpec.copy());
+                }
+            }
+        }
+
+        PartitionInfo newPartitionInfo = curPartitionInfo.copy();
+        newPartitionInfo.getPartitionBy().setPartitions(newPartitions);
+        updateSubPartitionTemplate(newPartitionInfo);
+        updatePartitionSpecRelationship(newPartitionInfo);
+        newPartitionInfo.getPartitionBy().getPhysicalPartitions().clear();
+        return newPartitionInfo;
     }
 
     public static void updateTemplateSubPartitions(PartitionInfo newPartitionInfo) {

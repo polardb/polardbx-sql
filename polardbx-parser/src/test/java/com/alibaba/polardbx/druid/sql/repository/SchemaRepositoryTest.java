@@ -1454,4 +1454,61 @@ public class SchemaRepositoryTest {
         System.out.println(tableMeta7);
         System.out.println(tableMeta8);
     }
+
+    @Test
+    public void testTableWithLocalPartition() {
+
+        String sql1 = "ALTER TABLE t_ttl_single\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "STARTWITH '2023-08-20'\n"
+            + "INTERVAL 1 MONTH\n"
+            + "EXPIRE AFTER 1\n"
+            + "PRE ALLOCATE 3\n"
+            + "PIVOTDATE now()";
+        String sql2 = "ALTER TABLE t_ttl_single\n"
+            + "\t LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "\t STARTWITH '2023-08-20'\n"
+            + "\t INTERVAL 1 MONTH\n"
+            + "\t EXPIRE AFTER 1\n"
+            + "\t PRE ALLOCATE 3\n"
+            + "\t PIVOTDATE now()";
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql1, DbType.mysql, FEATURES);
+        StringBuffer sb = new StringBuffer();
+        stmtList.get(0).output(sb);
+        Assert.assertEquals(sql2, sb.toString());
+    }
+
+    @Test
+    public void testCreateTableWithLocalPartition() {
+
+        String sql1 = "CREATE TABLE t_local_partition (\n"
+            + "    id bigint NOT NULL AUTO_INCREMENT,\n"
+            + "    gmt_modified DATETIME NOT NULL,\n"
+            + "    PRIMARY KEY (id, gmt_modified)\n"
+            + ")\n"
+            + "PARTITION BY HASH(id) PARTITIONS 8\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "STARTWITH '2023-08-20'\n"
+            + "INTERVAL 1 MONTH\n"
+            + "EXPIRE AFTER 1\n"
+            + "PRE ALLOCATE 3\n"
+            + "PIVOTDATE NOW();";
+        String sql2 = "CREATE TABLE t_local_partition (\n"
+            + "\tid bigint NOT NULL AUTO_INCREMENT,\n"
+            + "\tgmt_modified DATETIME NOT NULL,\n"
+            + "\tPRIMARY KEY (id, gmt_modified)\n"
+            + ")\n"
+            + "PARTITION BY HASH (id) PARTITIONS 8\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + " STARTWITH '2023-08-20'\n"
+            + " INTERVAL 1 MONTH\n"
+            + " EXPIRE AFTER 1\n"
+            + " PRE ALLOCATE 3\n"
+            + " PIVOTDATE NOW();";
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql1, DbType.mysql, FEATURES);
+        StringBuffer sb = new StringBuffer();
+        stmtList.get(0).output(sb);
+        System.out.println(sb.toString());
+        Assert.assertEquals(sql2, sb.toString());
+    }
 }

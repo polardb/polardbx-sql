@@ -1,11 +1,9 @@
 package com.alibaba.polardbx.qatest.dql.auto.charset;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.columnar.dql.ColumnarUtils;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
-import org.apache.commons.lang.StringUtils;
 import org.junit.After;
 import org.junit.Before;
 
@@ -112,6 +110,8 @@ public class CharsetTestBase extends AutoReadBaseTestCase {
 
     protected static final String INSERT_SQL_FORMAT = "insert into %s (%s) values (?)";
 
+    protected static final String INSERT_TWO_COL_SQL_FORMAT = "insert into %s (%s, %s) values (?, ?)";
+
     protected static final String ORDER_BY_SQL_FORMAT =
         "/*+TDDL:ENABLE_PUSH_SORT=false*/select hex(%s) from %s order by %s, hex(%s)";
 
@@ -158,6 +158,15 @@ public class CharsetTestBase extends AutoReadBaseTestCase {
         executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, insertSql, params);
     }
 
+    protected void insertStrings(List<byte[]> bytesList, String col, String col2) {
+        final String insertSql = String.format(INSERT_TWO_COL_SQL_FORMAT, table, col, col2);
+        List params = bytesList.stream()
+            .map(bs -> new String(bs))
+            .map(s -> Arrays.asList(s, s))
+            .collect(Collectors.toList());
+        executeBatchOnMysqlAndTddl(mysqlConnection, tddlConnection, insertSql, params);
+    }
+
     protected void testOrderBy(List<byte[]> bytesList, String col) {
         insertStrings(bytesList, col);
         createColumnarIndexIfNeed(table, col);
@@ -189,8 +198,9 @@ public class CharsetTestBase extends AutoReadBaseTestCase {
         if (isMySQL80()) {
             return; // this test only for mysql57
         }
-        insertStrings(bytesList, col);
-        insertStrings(bytesList, col2);
+        JdbcUtil.executeSuccess(mysqlConnection, String.format("truncate table %s", table));
+        JdbcUtil.executeSuccess(tddlConnection, String.format("truncate table %s", table));
+        insertStrings(bytesList, col, col2);
         createColumnarIndexIfNeed(table, col);
         String selectSql = String.format(JOIN_SQL_FORMAT, col, col2, table, table, col, col2);
         selectContentSameAssert(selectSql, null, mysqlConnection, tddlConnection);

@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -29,6 +32,7 @@ import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ExecutorCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -36,8 +40,12 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.operator.FilterExec;
 import com.alibaba.polardbx.executor.operator.ResultSetCursorExec;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.table.DBVariableRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
@@ -49,24 +57,33 @@ import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.ssl.SSLVariables;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlShowVariables;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
-import org.apache.commons.lang.StringUtils;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+
+import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 /**
  * @author chenmo.cm
  */
 public class LogicalShowVariablesMyHandler extends HandlerCommon {
+    private static final Set<String> LEGACY_VARIABLES = ImmutableSet.of(
+        "transaction policy", "trans.policy", "drds_transaction_policy"
+    );
 
     private static final Logger logger = LoggerFactory.getLogger(LogicalShowVariablesMyHandler.class);
 
@@ -84,24 +101,43 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
         }
         if (executionContext.getExtraServerVariables() != null) {
             for (Map.Entry<String, Object> entry : executionContext.getExtraServerVariables().entrySet()) {
+                if (DynamicConfig.getInstance().isDisableLegacyVariable()) {
+                    String varName = entry.getKey();
+                    if (LEGACY_VARIABLES.contains(varName)) {
+                        continue;
+                    }
+                }
                 variables.put(entry.getKey(), entry.getValue());
             }
         }
 
-        if (!ConfigDataMode.needDNResource()) {
+        if (ConfigDataMode.needDNResource() && (!executionContext.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LOGICAL_TABLE_META))) {
+            //extract dn variables from mysql
+
+            Cursor cursor = null;
+            try {
+                cursor = repo.getCursorFactory().repoCursor(executionContext, show);
+                extractVariableFromCursor(variables, cursor);
+            } finally {
+                if (cursor != null) {
+                    cursor.close(new ArrayList<>());
+                }
+            }
             return;
         }
-
-        //extract dn variables from mysql
-
-        Cursor cursor = null;
-        try {
-            cursor = repo.getCursorFactory().repoCursor(executionContext, show);
-            extractVariableFromCursor(variables, cursor);
-        } finally {
-            if (cursor != null) {
-                cursor.close(new ArrayList<>());
-            }
+        //fetch date from GMS
+        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+        String sql = "show variables";
+        List<DBVariableRecord> dbVariableRecords;
+        try (Connection connection = dataSource.getConnection()) {
+            dbVariableRecords = MetaDbUtil.query(sql, DBVariableRecord.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                "fail to access metadb" + e.getMessage());
+        }
+        for (DBVariableRecord dbVariableRecord : dbVariableRecords) {
+            variables.put(dbVariableRecord.variableName, dbVariableRecord.value);
         }
     }
 
@@ -134,10 +170,24 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
             ConnectionProperties.SQL_SELECT_LIMIT.toLowerCase(Locale.ROOT),
             executionContext.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
 
-        // DRDS_TRANSACTION_POLICY
-        variables.put(
-            TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
-            executionContext.getConnection().getTrxPolicy().toString());
+        if (DynamicConfig.getInstance().isDisableLegacyVariable()) {
+            // TRANSACTION_POLICY
+            String policy = executionContext.getConnection().getTrxPolicy().toString();
+            ITransactionManager transactionManager =
+                ExecutorContext.getContext(DEFAULT_DB_NAME).getTransactionManager();
+            if ("XA".equalsIgnoreCase(policy) && executionContext.isEnableXaTso()
+                && null != transactionManager && transactionManager.supportXaTso()) {
+                policy = "XA_TSO";
+            }
+            variables.put(
+                ConnectionProperties.TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
+                policy);
+        } else {
+            // DRDS_TRANSACTION_POLICY
+            variables.put(
+                TransactionAttribute.DRDS_TRANSACTION_POLICY.toLowerCase(Locale.ROOT),
+                executionContext.getConnection().getTrxPolicy().toString());
+        }
 
         // BATCH_INSERT_POLICY
         variables.put(
@@ -200,6 +250,7 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
             ConnectionProperties.INSTANCE_READ_ONLY.toLowerCase(Locale.ROOT),
             MetaDbInstConfigManager.getInstance().getCnVariableConfigMap()
                 .getProperty(ConnectionProperties.INSTANCE_READ_ONLY, "false"));
+
     }
 
     public void updateReturnVariables(TreeMap<String, Object> variables, ExecutionContext executionContext) {
@@ -262,6 +313,15 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
                 variables.put(key, executionContext.getExtraServerVariables().get(key));
             }
         }
+
+        // sql_log_bin_x , use values from session to override values from dn
+        Boolean value = (Boolean) executionContext.getExtraServerVariables().get(ICdcManager.SQL_LOG_BIN);
+        String retValue = "ON";
+        if (value != null && !value) {
+            retValue = "OFF";
+        }
+        variables.put(ICdcManager.SQL_LOG_BIN, retValue);
+
     }
 
     @Override

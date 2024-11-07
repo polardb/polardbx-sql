@@ -19,11 +19,15 @@ package com.alibaba.polardbx.executor.operator;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.chunk.BlackHoleBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.operator.WorkProcessor;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
+import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
@@ -32,18 +36,23 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.google.common.collect.Lists;
+import it.unimi.dsi.fastutil.ints.AbstractIntComparator;
+import it.unimi.dsi.fastutil.ints.IntArrays;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.core.Sort;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTE_ON_MYSQL;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTOR;
 import static com.alibaba.polardbx.executor.mpp.operator.WorkProcessor.mergeSorted;
 
 public class TableScanSortExec extends TableScanExec {
@@ -80,8 +89,12 @@ public class TableScanSortExec extends TableScanExec {
         }
 
         if (fetched > 0) {
-            super.doOpen();
+            realOpen();
         }
+    }
+
+    protected void realOpen() {
+        super.doOpen();
     }
 
     @Override
@@ -111,6 +124,10 @@ public class TableScanSortExec extends TableScanExec {
             return null;
         }
 
+        return fetchSortedChunk();
+    }
+
+    protected Chunk fetchSortedChunk() {
         if (mergeSort) {
             if (!scanClient.noMorePrefetchSplit()) {
                 return null;

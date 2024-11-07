@@ -5,27 +5,27 @@
       hashjoin(condition="name = name and =", type="right", build="right")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t_shard_id2", shardcount=4, sql="select `name` from `t_shard_id2` as `t_shard_id2`")
-        logicalview(tables="optest_0002.t_shard_id1", sql="select `id`, `name`, (`id` = 1) as `=` from `t_shard_id1` as `t_shard_id1` where (`id` = 2)")
+        logicalview(tables="optest_0002.t_shard_id1", sql="select `id`, `name`, (`id` = 1) as `=` from `t_shard_id1` as `t_shard_id1` force index(`primary`) where (`id` = 2)")
 - sql: |
     select t_shard_id1.id from (t_shard_id1 left join t_shard_id2 on t_shard_id1.name = t_shard_id2.name and t_shard_id2.id = 1) where t_shard_id1.id = 2
   plan: |
     project(id="id")
       hashjoin(condition="name = name", type="right")
-        logicalview(tables="optest_0001.t_shard_id2", sql="select `name` from `t_shard_id2` as `t_shard_id2` where (`id` = 1)")
-        logicalview(tables="optest_0002.t_shard_id1", sql="select `id`, `name` from `t_shard_id1` as `t_shard_id1` where (`id` = 2)")
+        logicalview(tables="optest_0001.t_shard_id2", sql="select `name` from `t_shard_id2` as `t_shard_id2` force index(`primary`) where (`id` = 1)")
+        logicalview(tables="optest_0002.t_shard_id1", sql="select `id`, `name` from `t_shard_id1` as `t_shard_id1` force index(`primary`) where (`id` = 2)")
 - sql: |
     select t_shard_id1.id from (t_shard_id1 left join t_shard_id2 on t_shard_id1.name = t_shard_id2.name and t_shard_id1.id = 1) where t_shard_id2.id = 2
   plan: |
     project(id="id")
       hashjoin(condition="name = name", type="inner")
-        logicalview(tables="optest_0001.t_shard_id1", sql="select `id`, `name` from `t_shard_id1` as `t_shard_id1` where (`id` = 1)")
-        logicalview(tables="optest_0002.t_shard_id2", sql="select `name` from `t_shard_id2` as `t_shard_id2` where (`id` = 2)")
+        logicalview(tables="optest_0001.t_shard_id1", sql="select `id`, `name` from `t_shard_id1` as `t_shard_id1` force index(`primary`) where (`id` = 1)")
+        logicalview(tables="optest_0002.t_shard_id2", sql="select `name` from `t_shard_id2` as `t_shard_id2` force index(`primary`) where (`id` = 2)")
 - sql: |
     select t_shard_id1.id from (t_shard_id1 left join t_shard_id2 on t_shard_id1.name = t_shard_id2.name and t_shard_id2.id = 1 and t_shard_id1.id = 2)
   plan: |
     project(id="id")
       hashjoin(condition="name = name and =", type="right")
-        logicalview(tables="optest_0001.t_shard_id2", sql="select `name` from `t_shard_id2` as `t_shard_id2` where (`id` = 1)")
+        logicalview(tables="optest_0001.t_shard_id2", sql="select `name` from `t_shard_id2` as `t_shard_id2` force index(`primary`) where (`id` = 1)")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id`, `name`, (`id` = 2) as `=` from `t_shard_id1` as `t_shard_id1`")
 - sql: |

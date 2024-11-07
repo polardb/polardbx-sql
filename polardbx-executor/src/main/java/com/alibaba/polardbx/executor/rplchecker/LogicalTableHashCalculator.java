@@ -254,7 +254,7 @@ public class LogicalTableHashCalculator {
             throw new TddlRuntimeException(ErrorCode.ERR_CDC_GENERIC,
                 "failed to get table meta for table:" + schemaName + "." + tableName);
         }
-        final List<String> baseTablePks = FastChecker.getorderedPrimaryKeys(baseTableMeta);
+        final List<String> baseTablePks = FastChecker.getOrderedPrimaryKeys(baseTableMeta);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
         return builder.buildSelectHashCheckForChecker(baseTableMeta, checkColumnList, baseTablePks, withLowerBound,
             withUpperBound);

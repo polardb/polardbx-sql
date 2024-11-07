@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.common.datatype;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+
 public class DecimalTypeBase {
     public static final int DEFAULT_SCALE = 0;
 
     // for divide precision.
-    public final static int DEFAULT_DIV_PRECISION_INCREMENT = 4;
+    public static int getDefaultDivPrecisionIncrement() {
+        return DynamicConfig.getInstance().getCnDivPrecisionIncrement();
+    }
     public final static String DIV_PRECISION_INCREMENT = "div_precision_increment";
 
     // decimal memory
@@ -40,7 +44,6 @@ public class DecimalTypeBase {
     public static final int E_DEC_DEC64 = 32;
     public static final int E_DEC_DEC128 = 33;
 
-    public static final int DIV_PRECISION_INCREMENT_DEFAULT = 4;
     public static final byte[] BUFF_OFFSETS = {
         0, 4, 8, 12, 16, 20, 24, 28, 32
     };
@@ -97,6 +100,10 @@ public class DecimalTypeBase {
      */
     public static int[] POW_10 = {
         1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
+
+    public static long[] POW_10_LONG = {
+        1L, 10L, 100L, 1000L, 10000L, 100000L, 1000000L, 10000000L, 100000000L, 1000000000L, 10000000000L,
+        100000000000L, 1000000000000L};
 
     /**
      * Get the occupied bytes from digits (1~10).

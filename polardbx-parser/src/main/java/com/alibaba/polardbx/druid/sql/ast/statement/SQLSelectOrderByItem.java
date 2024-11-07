@@ -34,6 +34,14 @@ public final class SQLSelectOrderByItem extends SQLObjectImpl implements SQLRepl
 
     protected transient SQLSelectItem resolvedSelectItem;
 
+    // 是否有括号包裹表达式，创建索引时，mysql 8.0 对于表达式需要用括号包裹，否则会报错，例如：
+    // INDEX ((col1 + col2), (col3 - col4)) 是可以的
+    // INDEX (col1 + col2, col3 - col4) 报错
+    // INDEX ((col1), (col2)) 报错
+    // INDEX ((CAST(XX))) 可以的
+    // INDEX (CAST(XX)) 报错
+    protected boolean hasParen;
+
     public SQLSelectOrderByItem() {
 
     }
@@ -99,6 +107,7 @@ public final class SQLSelectOrderByItem extends SQLObjectImpl implements SQLRepl
         result = prime * result + ((collate == null) ? 0 : collate.hashCode());
         result = prime * result + ((expr == null) ? 0 : expr.hashCode());
         result = prime * result + ((type == null) ? 0 : type.hashCode());
+        result = prime * result + (hasParen ? 1 : 0);
         return result;
     }
 
@@ -129,6 +138,10 @@ public final class SQLSelectOrderByItem extends SQLObjectImpl implements SQLRepl
             return false;
         }
         if (type != other.type) {
+            return false;
+        }
+
+        if (hasParen != other.hasParen) {
             return false;
         }
         return true;
@@ -170,6 +183,7 @@ public final class SQLSelectOrderByItem extends SQLObjectImpl implements SQLRepl
         x.collate = collate;
         x.type = type;
         x.nullsOrderType = nullsOrderType;
+        x.hasParen = hasParen;
         return x;
     }
 
@@ -216,5 +230,13 @@ public final class SQLSelectOrderByItem extends SQLObjectImpl implements SQLRepl
         }
 
         return false;
+    }
+
+    public boolean isHasParen() {
+        return hasParen;
+    }
+
+    public void setHasParen(boolean hasParen) {
+        this.hasParen = hasParen;
     }
 }

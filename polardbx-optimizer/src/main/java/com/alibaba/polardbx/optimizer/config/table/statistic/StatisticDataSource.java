@@ -64,14 +64,14 @@ public interface StatisticDataSource {
      */
     void updateColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
                                  ThreadPoolExecutor sketchHllExecutor)
-        throws SQLException;
+        throws Exception;
 
     /**
      * force rebuilt ndv info by table name and column name from meta source
      */
     void rebuildColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
                                   ThreadPoolExecutor sketchHllExecutor)
-        throws SQLException;
+        throws Exception;
 
     /**
      * get current ndv value from cache

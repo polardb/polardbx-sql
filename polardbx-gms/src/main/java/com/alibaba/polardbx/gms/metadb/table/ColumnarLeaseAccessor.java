@@ -40,6 +40,14 @@ public class ColumnarLeaseAccessor extends AbstractAccessor {
         + " set `owner` = ?, `lease` = ?"
         + " where `id` = 1 and (`lease` + 500 < ? or `owner` = ?)";
 
+    // 强制抢占租期
+    private static final String FORCE_ELECT = "update " + COLUMNAR_LEASE_TABLE
+        + " set `owner` = ?, `lease` = ?"
+        + " where `id` = 1";
+
+    // 取消租期
+    private static final String FORCE_CANCEL = "delete from " + COLUMNAR_LEASE_TABLE + "where `id` = 1 and `owner` = ?";
+
     // 续租，当前的leader续租自己的租期，只允许lease增长
     private static final String RENEW = "update " + COLUMNAR_LEASE_TABLE
         + " set `lease` = ?"
@@ -62,6 +70,10 @@ public class ColumnarLeaseAccessor extends AbstractAccessor {
     private static final String GET_NODES = "select `id`, `owner`, `lease` from " + COLUMNAR_LEASE_TABLE
         + " where `id` != 1 and `lease` >= ?";
 
+    // 加锁查询上次的leader的lease时间
+    private static final String LOCK_LEADER_LEASE = "select `id`, `owner`, `lease` from " + COLUMNAR_LEASE_TABLE
+        + " where `id` = 1 for update";
+
     public boolean elect(final String owner, final long nowUTC, final long leaseMs) {
         try {
             // try insert first
@@ -70,7 +82,7 @@ public class ColumnarLeaseAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, nowUTC + leaseMs);
 
             try {
-                final int inserts = MetaDbUtil.update(INIT, params, connection);
+                final int inserts = MetaDbUtil.insert(INIT, params, connection);
                 if (1 == inserts) {
                     return true;
                 }
@@ -84,6 +96,55 @@ public class ColumnarLeaseAccessor extends AbstractAccessor {
 
             final int updates = MetaDbUtil.update(ELECT, params, connection);
             return 1 == updates;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    /**
+     * 返回上一个leader的租约时间, 拆成三步，insert； select for update ； update
+     */
+    public long forceElectInsert(final String owner, final long nowUTC, final long leaseMs) {
+        try {
+            // try insert first
+            final Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, owner);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, nowUTC + leaseMs);
+
+            try {
+                final int inserts = MetaDbUtil.insert(INIT, params, connection);
+                if (1 == inserts) {
+                    return 0;
+                }
+            } catch (SQLIntegrityConstraintViolationException e) {
+                // ignore
+                return -1;
+            }
+            return -1;
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public List<ColumnarLeaseRecord> forceElectSelectForUpdate() {
+        try {
+            return MetaDbUtil.query(LOCK_LEADER_LEASE, null, ColumnarLeaseRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public void forceElectUpdate(final String owner, final long nowUTC, final long leaseMs) {
+        try {
+            // try insert first
+            final Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, owner);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, nowUTC + leaseMs);
+
+            final int updates = MetaDbUtil.update(FORCE_ELECT, params, connection);
+            if (updates != 1) {
+                throw new RuntimeException("Failed to force elect");
+            }
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -123,6 +184,16 @@ public class ColumnarLeaseAccessor extends AbstractAccessor {
 
             // get now nodes
             return MetaDbUtil.query(GET_NODES, params, ColumnarLeaseRecord.class, connection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public int delete(String owner) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(2);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, owner);
+            return MetaDbUtil.delete(FORCE_CANCEL, params, connection);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }

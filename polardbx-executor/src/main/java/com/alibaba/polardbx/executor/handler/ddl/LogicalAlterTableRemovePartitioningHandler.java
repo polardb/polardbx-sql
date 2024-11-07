@@ -95,9 +95,12 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
 
         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData = new HashMap<>();
 
+        Map<String, Boolean> relatedTableGroupInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        globalIndexPreparedDataList.forEach(o->relatedTableGroupInfo.putAll(o.getRelatedTableGroupInfo()));
         Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap =
             new TreeMap<>(String::compareToIgnoreCase);
         for (CreateGlobalIndexPreparedData createGsiPreparedData : globalIndexPreparedDataList) {
+            createGsiPreparedData.getRelatedTableGroupInfo().putAll(relatedTableGroupInfo);
             DdlPhyPlanBuilder builder = CreateGlobalIndexBuilder.create(
                 logicalAlterTableRemovePartitioning.relDdl,
                 createGsiPreparedData,
@@ -184,6 +187,12 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
             }
 
             String newGsiName = genGlobalIndexName(schema, indexName, executionContext);
+            SqlIdentifier tableGroupName = null;
+            boolean withImplicitTableGroup = false;
+            if(ast.getIndexTableGroupMap().get(indexName) != null) {
+                tableGroupName = new SqlIdentifier(ast.getIndexTableGroupMap().get(indexName), SqlParserPos.ZERO);
+                withImplicitTableGroup = true;
+            }
             SqlIndexDefinition localIndexGsi = AlterRepartitionUtils.initIndexInfo(
                 newGsiName,
                 indexKeys,
@@ -192,8 +201,8 @@ public class LogicalAlterTableRemovePartitioningHandler extends LogicalCommonDdl
                 indexMeta.isUniqueIndex(),
                 primaryTableInfo.getKey(),
                 primaryTableInfo.getValue(),
-                null,
-                false
+                    tableGroupName,
+                withImplicitTableGroup
             );
 
             // prepare for drop gsi columns

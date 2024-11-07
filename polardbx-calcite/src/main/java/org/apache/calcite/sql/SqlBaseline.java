@@ -38,20 +38,17 @@ public class SqlBaseline extends SqlDal {
     private String operation;
     private List<Long> baselineIds = new ArrayList<>();
 
-    private SqlSelect select;
-    private SqlNode statement;
+    private SqlNode select;
     private String sql;
     private String parameterizedSql;
     private String hint;
 
-    public SqlBaseline(SqlParserPos pos, String operation, List<Long> baselineIds, SqlSelect select,
-                       SqlNode statement) {
+    public SqlBaseline(SqlParserPos pos, String operation, List<Long> baselineIds, SqlNode select) {
         super(pos);
         this.operands = new ArrayList<>(0);
         this.operation = operation;
         this.baselineIds.addAll(baselineIds);
         this.select = select;
-        this.statement = statement;
         this.operator = new SqlBaselineOperator(operation);
     }
 
@@ -70,14 +67,6 @@ public class SqlBaseline extends SqlDal {
     public void setBaselineIds(List<Long> baselineIds) {
         this.baselineIds.clear();
         this.baselineIds.addAll(baselineIds);
-    }
-
-    public SqlSelect getSelect() {
-        return select;
-    }
-
-    public void setSelect(SqlSelect select) {
-        this.select = select;
     }
 
     public String getHint() {

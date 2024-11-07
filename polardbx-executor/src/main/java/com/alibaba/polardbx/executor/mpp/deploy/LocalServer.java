@@ -100,7 +100,10 @@ public class LocalServer extends Server {
             spillerFactory = injector.getInstance(SpillerFactory.class);
 
             nodeManager = injector.getInstance(InternalNodeManager.class);
-            this.manager = new PolarDBXNodeStatusManager(nodeManager, localNode);
+            if (ConfigDataMode.isPolarDbX()) {
+                this.manager = new PolarDBXNodeStatusManager(nodeManager, localNode);
+                this.manager.init();
+            }
         } catch (Throwable t) {
             log.error("LocalServer start error.", t);
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, t, "LocalServer start error");

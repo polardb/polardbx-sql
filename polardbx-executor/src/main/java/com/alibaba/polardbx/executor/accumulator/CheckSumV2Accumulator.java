@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.accumulator.state.NullableCheckSumGroupStat
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.chunk.DoubleBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 
@@ -35,9 +36,6 @@ public class CheckSumV2Accumulator implements Accumulator {
     private final DataType[] inputTypes;
 
     private final NullableCheckSumGroupState groupState;
-//
-//    private final static byte SEPARATOR_TAG = (byte) 255;
-//    private final static byte NULL_TAG = (byte) 254;
 
     public CheckSumV2Accumulator(Aggregator aggregator, DataType[] rowInputType, int capacity) {
         int[] inputColumnIndexes = aggregator.getInputColumnIndexes();
@@ -69,7 +67,7 @@ public class CheckSumV2Accumulator implements Accumulator {
                 crc.update(CrcAccumulator.NULL_TAG);
             } else {
                 // Must keep compatible to columnar writers.
-                int checksum = inputBlock.checksum(position);
+                int checksum = inputBlock.checksumV2(position);
                 crc.update(new byte[] {
                     (byte) (checksum >>> 24), (byte) (checksum >>> 16), (byte) (checksum >>> 8), (byte) checksum});
             }

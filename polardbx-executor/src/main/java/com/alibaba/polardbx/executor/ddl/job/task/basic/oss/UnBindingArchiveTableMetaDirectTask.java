@@ -30,23 +30,32 @@ import java.sql.Connection;
 public class UnBindingArchiveTableMetaDirectTask extends BaseGmsTask {
     private String archiveSchemaName;
     private String archiveTableName;
+    private boolean useRowLevelTtl = false;
 
     @JSONCreator
     public UnBindingArchiveTableMetaDirectTask(String schemaName,
                                                String logicalTableName,
+                                               boolean useRowLevelTtl,
                                                String archiveSchemaName,
                                                String archiveTableName) {
         super(schemaName, logicalTableName);
         this.archiveSchemaName = archiveSchemaName;
         this.archiveTableName = archiveTableName;
+        this.useRowLevelTtl = useRowLevelTtl;
     }
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
-        tableInfoManager
-            .unBindingByArchiveTableName(getSchemaName(), archiveTableName);
+
+        if (useRowLevelTtl) {
+            tableInfoManager
+                .unBindingByArchiveTableNameForTtlInfo(getSchemaName(), archiveTableName);
+        } else {
+            tableInfoManager
+                .unBindingByArchiveTableName(getSchemaName(), archiveTableName);
+        }
     }
 
     @Override

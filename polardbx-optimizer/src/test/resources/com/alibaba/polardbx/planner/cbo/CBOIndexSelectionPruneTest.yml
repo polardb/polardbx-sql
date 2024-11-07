@@ -3,7 +3,7 @@ SQL:
       select k1 from test_index2 where d1 = '1' limit 1;
     plan: |
       mergesort(sort="", offset=0, fetch=1)
-        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `test_index2` as `test_index2` where (`d1` = '1') limit 1")
+        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `test_index2` as `test_index2` force index(`idx_d1`) where (`d1` = '1') limit 1")
   - sql: |
       /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/select k1 from test_index2 where d1 = '1' limit 1;
     plan: |
@@ -33,12 +33,12 @@ SQL:
       select d3 from test_index2 where d1 = '1' limit 1;
     plan: |
       mergesort(sort="", offset=0, fetch=1)
-        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `d3` from `test_index2` as `test_index2` where (`d1` = '1') limit 1")
+        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `d3` from `test_index2` as `test_index2` force index(`idx_d1`) where (`d1` = '1') limit 1")
   - sql: |
       /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/select d3 from test_index2 where d1 = '1' limit 1;
     plan: |
       mergesort(sort="", offset=0, fetch=1)
-        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `d3` from `test_index2` as `test_index2` where (`d1` = '1') limit 1")
+        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `d3` from `test_index2` as `test_index2` force index(`idx_d1`) where (`d1` = '1') limit 1")
   - sql: |
       select * from (select k1 from test_index2 where d1 = '1' limit 1) A join test_index2 B on A.k1 = B.k2;
     plan: |
@@ -50,7 +50,7 @@ SQL:
             gather(concurrent=true)
               indexscan(tables="idx_k1_k2_d2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `k1`, `k2`, `d2` from `idx_k1_k2_d2` as `idx_k1_k2_d2`")
           gather(concurrent=true)
-            logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `value`, `d1`, `d3` from `test_index2` as `test_index2` where (`id` in (...))")
+            logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `value`, `d1`, `d3` from `test_index2` as `test_index2` force index(`primary`) where (`id` in (...))")
 DDL:
   test_index2:
     CREATE TABLE `test_index2` (

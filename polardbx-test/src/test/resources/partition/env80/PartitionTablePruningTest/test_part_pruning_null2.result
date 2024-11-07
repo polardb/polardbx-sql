@@ -1,10 +1,10 @@
 DROP TABLE IF EXISTS tbl_rng_col;
 CREATE TABLE `tbl_rng_col` (
-	`a` bigint(20) DEFAULT NULL,
-	`b` bigint(20) DEFAULT NULL,
-	`c` bigint(20) DEFAULT NULL,
-	`d` bigint(20) DEFAULT NULL,
-	`e` bigint(20) DEFAULT NULL
+	`a` bigint DEFAULT NULL,
+	`b` bigint DEFAULT NULL,
+	`c` bigint DEFAULT NULL,
+	`d` bigint DEFAULT NULL,
+	`e` bigint DEFAULT NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS (b) (
 	PARTITION p1 VALUES LESS THAN (1000)
@@ -34,7 +34,8 @@ EXPLAIN SELECT a
 FROM tbl_rng_col
 WHERE b <= NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col[p1]", sql="SELECT `tbl_rng_col`.`a` AS `a` FROM ? AS `tbl_rng_col` WHERE (`tbl_rng_col`.`b` <= NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col[p1]", sql="SELECT `a` FROM `tbl_rng_col` AS `tbl_rng_col` WHERE (`b` <= NULL)")
 EXPLAIN SELECT a
 FROM tbl_rng_col
 WHERE b = NULL;
@@ -50,13 +51,14 @@ EXPLAIN SELECT a
 FROM tbl_rng_col
 WHERE b < NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col[p1]", sql="SELECT `tbl_rng_col`.`a` AS `a` FROM ? AS `tbl_rng_col` WHERE (`tbl_rng_col`.`b` < NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col[p1]", sql="SELECT `a` FROM `tbl_rng_col` AS `tbl_rng_col` WHERE (`b` < NULL)")
 CREATE TABLE `tbl_rng_col2` (
-	`a` bigint(20) DEFAULT NULL,
-	`b` bigint(20) DEFAULT NULL,
-	`c` bigint(20) DEFAULT NULL,
-	`d` bigint(20) DEFAULT NULL,
-	`e` bigint(20) DEFAULT NULL
+	`a` bigint DEFAULT NULL,
+	`b` bigint DEFAULT NULL,
+	`c` bigint DEFAULT NULL,
+	`d` bigint DEFAULT NULL,
+	`e` bigint DEFAULT NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY RANGE COLUMNS (b, c) (
 	PARTITION p1 VALUES LESS THAN (1000, 10000)
@@ -92,12 +94,14 @@ EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b <= NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` <= NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1]", sql="SELECT `a` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE (`b` <= NULL)")
 EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b = NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` = ?)", params="NULL")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1]", sql="SELECT `a` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE (`b` = ?)")
 EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b > NULL;
@@ -108,7 +112,8 @@ EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b < NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` < NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1]", sql="SELECT `a` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE (`b` < NULL)")
 SELECT a
 FROM tbl_rng_col2
 WHERE (b, c) = (1001, NULL);

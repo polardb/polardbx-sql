@@ -34,11 +34,12 @@ import java.util.Queue;
 import static com.alibaba.polardbx.common.eventlogger.EventType.MODULE_ERROR;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_MODULE_LOG;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_MODULE_LOG_PARAMS_SIZE;
-import static com.alibaba.polardbx.gms.module.LogPattern.START_OVER;
-import static com.alibaba.polardbx.gms.module.Module.MODULE_LOG;
 import static com.alibaba.polardbx.common.utils.logger.LoggerFactory.getLogger;
 import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
+import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
+import static com.alibaba.polardbx.gms.module.LogPattern.START_OVER;
 import static com.alibaba.polardbx.gms.module.LogPattern.UNEXPECTED;
+import static com.alibaba.polardbx.gms.module.Module.MODULE_LOG;
 
 /**
  * Log event separated by module
@@ -72,6 +73,10 @@ public class ModuleLogInfo implements ModuleInfo {
         logRecord(m, lp, params, level, Thread.currentThread().getName(), null);
     }
 
+    public void logInfo(Module m, LogPattern lp, String[] params) {
+        logRecord(m, lp, params, NORMAL, Thread.currentThread().getName(), null);
+    }
+
     public void logRecord(Module m, LogPattern lp, String[] params, LogLevel level, String traceInfo) {
         logRecord(m, lp, params, level, traceInfo, null);
     }
@@ -82,6 +87,11 @@ public class ModuleLogInfo implements ModuleInfo {
 
     public void logRecord(Module m, LogPattern lp, String[] params, LogLevel level, String traceInfo, Throwable t) {
         logRecord(m, lp, params, level, traceInfo, t, false);
+    }
+
+    public void logError(Module m, String processInfo, Throwable t) {
+        logRecord(m, UNEXPECTED, new String[] {processInfo, t.getMessage()}, CRITICAL, Thread.currentThread().getName(),
+            t);
     }
 
     public void logRecord(Module m, LogPattern lp, String[] params, LogLevel level, String traceInfo, Throwable t,

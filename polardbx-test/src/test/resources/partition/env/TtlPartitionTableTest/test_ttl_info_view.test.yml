@@ -1,0 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+
+desc information_schema.ttl_info;
+
+desc information_schema.ttl_schedule;

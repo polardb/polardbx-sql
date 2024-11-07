@@ -36,6 +36,7 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.utils.CompileUtils;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
+import com.google.common.io.ByteStreams;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.schema.Function;
 import org.apache.calcite.schema.impl.TypeKnownScalarFunction;
@@ -50,7 +51,7 @@ import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 import org.apache.calcite.sql.validate.SqlUserDefinedFunction;
-import org.apache.curator.shaded.com.google.common.io.ByteStreams;
+import org.codehaus.commons.compiler.ICompiler;
 import org.codehaus.commons.compiler.ICompiler;
 import org.codehaus.commons.compiler.util.ResourceFinderClassLoader;
 import org.codehaus.commons.compiler.util.resource.MapResourceCreator;
@@ -101,7 +102,7 @@ public class JavaFunctionManager {
 
     private static final Logger logger = LoggerFactory.getLogger(JavaFunctionManager.class);
 
-    public static JavaFunctionManager INSTANCE = new JavaFunctionManager();
+    private static JavaFunctionManager INSTANCE = new JavaFunctionManager();
 
     public static JavaFunctionManager getInstance() {
         return INSTANCE;

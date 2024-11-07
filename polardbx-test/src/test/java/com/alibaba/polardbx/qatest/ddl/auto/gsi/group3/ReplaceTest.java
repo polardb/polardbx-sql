@@ -164,13 +164,16 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ ";
-        final String insert =
-            "replace into "
-                + tableName
+        final String insert = "replace into " + tableName
                 + "(id, c1, c5, c8) values(1, 1, 'a', '2020-06-16 06:49:32'), (2, 2, 'b', '2020-06-16 06:49:32'), (3, 3, 'c', '2020-06-16 06:49:32')";
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        String hint1 = hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/ ";
         // equal when first insert
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint + insert, null, true);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint1 + insert, null, true);
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -178,13 +181,27 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         // 已知问题，UK非拆分键，会导致replace没有检测到其他表的unique冲突，少replace
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, false);
         // 已知问题，replace 无 PK，会有隐式主键更新导致 affected rows 实在 delete+insert 多1
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint + insert, null,
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint1 + insert, null,
             false);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        checkTraceRowCount(Matchers.is(topology.size() + 3));
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        hint1 = hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=FALSE)*/ ";
+        // equal when first insert
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, hint1 + insert, null, true);
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        // 已知问题，replace 无 PK，会有隐式主键更新导致 affected rows 实在 delete+insert 多1
+        // 已知问题，UK非拆分键，会导致replace没有检测到其他表的unique冲突，少replace
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, false);
+        // 已知问题，replace 无 PK，会有隐式主键更新导致 affected rows 实在 delete+insert 多1
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + hint1 + insert, null,
+            false);
+        checkTraceRowCount(Matchers.is(3 + 3));
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
     }
 
@@ -216,19 +233,26 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ replace into " + tableName
-            + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ ";
+        final String insert = "replace into " + tableName
+            + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 3));
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -258,23 +282,27 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ replace into "
-                + tableName
-                + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        // VALUES 中有重复，affected rows 可能会比 MySQL 返回的小 1
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 1));
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ ";
+        final String insert = "replace into " + tableName
+                + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
+        // VALUES 中有重复，affected rows 可能会比 MySQL 返回的小 1
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 1));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(1 + 1));
     }
 
     /**
@@ -471,24 +499,27 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ replace into "
-                + tableName
-                + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (null, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ ";
+        final String insert = "replace into " + tableName
+                + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (null, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName,
+            Matchers.is(topology.size() + 3));
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -570,9 +601,10 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ replace into "
-                + tableName
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/ ";
+        final String insert = "replace into " + tableName
                 + "(c1, c2, c3, c5, c8) values"
                 + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
                 + "(null, 2, 3, 'b', '2020-06-16 06:49:32'), " // u_c2_c3 冲突, replace
@@ -580,20 +612,23 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
                 + "(1, 2, null, 'd', '2020-06-16 06:49:32')," // u_c1_c2 与第一行冲突，但是第一行被 replace, 这行保留
                 + "(1, 2, 4, 'e', '2020-06-16 06:49:32')," // u_c1_c2 冲突，replace
                 + "(2, 2, 4, 'f', '2020-06-16 06:49:32')"; // u_c2_c3 冲突，replace
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.lessThanOrEqualTo(topology.size() + 3));
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        Assert.assertThat(trace.size(), Matchers.is(9));
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /*
@@ -998,7 +1033,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     /**
      * 有 PK 无 UK, 一个 UGSI
      * UGSI 中未包含主表拆分键， 主表上 REPLACE 转 SELECT + DELETE + INSERT
-     * UGSI 中包含全部唯一键，UGSI 上 REPLACE 转 SELECT + REPLACE + INSERT
+     * UGSI 中包含全部唯一键，UGSI 上 REPLACE 转 SELECT + REPLACE
      */
     @Test
     public void tableWithPkNoUkWithUgsi_usingGsi() throws SQLException {
@@ -1054,7 +1089,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
         final List<Pair<String, String>> gsiTopology =
             JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
-        Assert.assertThat(trace.size(), Matchers.is(6));
+        Assert.assertThat(trace.size(), Matchers.is(5));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1064,7 +1099,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     /**
      * 有 PK 无 UK, 一个 UGSI
      * UGSI 中未包含主表拆分键， 主表上 REPLACE 转 SELECT + DELETE + INSERT
-     * UGSI 中包含全部唯一键，UGSI 上 REPLACE 转 SELECT + REPLACE + INSERT
+     * UGSI 中包含全部唯一键，UGSI 上 REPLACE 转 SELECT + REPLACE
      */
     @Test
     public void tableWithPkNoUkWithUgsi() throws SQLException {
@@ -1121,7 +1156,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(11));
+        Assert.assertThat(trace.size(), Matchers.is(10));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1196,7 +1231,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
      * 有 PK 无 UK, 一个 UGSI, 主键拆分
      * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
      * 主表 REPLACE 转 SELECT + DELETE + INSERT
-     * 主表 REPLACE 转 SELECT + REPLACE + INSERT
+     * 主表 REPLACE 转 SELECT + REPLACE
      */
     @Test
     public void tableWithPkNoUkWithUgsi_partitionByPk3_usingGsi() throws SQLException {
@@ -1257,7 +1292,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
         final List<Pair<String, String>> gsiTopology =
             JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
-        Assert.assertThat(trace.size(), Matchers.is(7));
+        Assert.assertThat(trace.size(), Matchers.is(6));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1268,7 +1303,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
      * 有 PK 无 UK, 一个 UGSI, 主键拆分
      * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
      * 主表 REPLACE 转 SELECT + DELETE + INSERT
-     * 主表 REPLACE 转 SELECT + REPLACE + INSERT
+     * 主表 REPLACE 转 SELECT + REPLACE
      */
     @Test
     public void tableWithPkNoUkWithUgsi_partitionByPk3() throws SQLException {
@@ -1327,7 +1362,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<List<String>> trace = getTrace(tddlConnection);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-        Assert.assertThat(trace.size(), Matchers.is(5));
+        Assert.assertThat(trace.size(), Matchers.is(4));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1397,7 +1432,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
         final List<Pair<String, String>> gsiTopology =
             JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName));
-        Assert.assertThat(trace.size(), Matchers.is(7));
+        Assert.assertThat(trace.size(), Matchers.is(6));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -1408,7 +1443,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
      * 有 PK 无 UK, 一个 UGSI, 主键拆分
      * 每个唯一键中都包含全部拆分键，但只有索引表包含全部 UK
      * 主表 REPLACE 转 SELECT + DELETE + INSERT
-     * 主表 REPLACE 转 SELECT + REPLACE + INSERT
+     * 主表 REPLACE 转 SELECT + REPLACE
      */
     @Test
     public void tableWithPkNoUkWithUgsi_partitionByPk32() throws SQLException {
@@ -1466,7 +1501,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<List<String>> trace = getTrace(tddlConnection);
 
 //        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-        Assert.assertThat(trace.size(), Matchers.is(5));
+        Assert.assertThat(trace.size(), Matchers.is(4));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -2973,7 +3008,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testLogicalReplace() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE)*/";
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/";
 
         testComplexDmlInternal(hint, "replace into", "replace_test_tbl", " partition by hash(id) PARTITIONS 3", false,
             true, true,
@@ -3065,6 +3101,42 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
                 checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName4));
             }
         }
+    }
+
+    private static final String[][] REPLACE_PARAMS_1 = new String[][] {
+        new String[] {
+            "(id,a,b)", "values (0,1,1),(1,2,2),(2,3,3),(100,101,101),(101,102,102)", "(id,a,b)",
+            "values (0,1,1),(1,2,2),(2,3,3),(100,101,101),(101,102,102)"},
+        new String[] {"(id)", "values (1)", "(id)", "values (1)"},
+        new String[] {"(id,a,b)", "values (4,0+2,0+2)", "(id,a,b)", "values (4,2,2)"},
+        new String[] {"(id,a,b)", "values (1,2,2),(2,3,3)", "(id,a,b)", "values (1,2,2),(2,3,3)"},
+        new String[] {
+            "(id,a,b)", String.format("select * from %s where id=100", SOURCE_TABLE_NAME), "(id,a,b)",
+            "values (100,101,101)"},
+        new String[] {
+            "(id,a,b)", String.format("select * from %s where id>100", SOURCE_TABLE_NAME), "(id,a,b)",
+            "values (101,102,102),(102,103,103)"}
+    };
+
+    @Test
+    public void testLogicalReplaceWithoutFullTableScan() throws SQLException {
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=FALSE)*/";
+
+        testComplexDmlInternal(hint, "replace into", "replace_test_tbl", " partition by hash(id) PARTITIONS 3", false,
+            true, true,
+            REPLACE_PARAMS_1);
+        testComplexDmlInternal(hint, "replace into", "replace_test_tbl_brd", " broadcast", false, true, false,
+            REPLACE_PARAMS_1);
+        testComplexDmlInternal(hint, "replace into", "replace_test_tbl_single", " single", false, true, false,
+            REPLACE_PARAMS_1);
+        testComplexDmlInternal(hint, "replace into", "replace_test_tbl", " partition by hash(id) PARTITIONS 3", true,
+            true, true,
+            REPLACE_PARAMS_1);
+        testComplexDmlInternal(hint, "replace into", "replace_test_tbl_brd", " broadcast", true, true, false,
+            REPLACE_PARAMS_1);
+        testComplexDmlInternal(hint, "replace into", "replace_test_tbl_single", " single", true, true, false,
+            REPLACE_PARAMS_1);
     }
 
     /**
@@ -3165,7 +3237,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     @Test
     public void testLogicalReplaceUsingIn() throws SQLException {
         String hint =
-            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/";
 
         testComplexDmlInternal(hint, "replace into", "replace_test_tbl", " partition by hash(id) PARTITIONS 3", false,
             true, true, REPLACE_PARAMS);
@@ -3231,7 +3303,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
                 + "(`b`) partition by range(`b`) (partition p0 values less than(0), partition p1 values less than(10), partition p2 values less than MAXVALUE)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, createIndex);
 
-        String insertSql = "insert into " + tableName + " values (3,3,5),(3,4,-5)";
+        String insertSql = "insert into " + tableName + " values (2,3,5),(3,4,-5)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, insertSql);
 
         String replaceSql = "replace into " + tableName + " values (4,4,-5)";

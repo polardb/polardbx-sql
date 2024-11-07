@@ -46,6 +46,7 @@
                 `table_name` varchar(64) not null,
                 `column_names` varchar(128) not null,
                 `shard_part` varchar(255) not null,
+                `index_name` varchar(64) NOT NULL DEFAULT '',
                 `dn_cardinality` bigint(20) not null,
                 `composite_cardinality` bigint(20) not null,
                 `sketch_bytes` varbinary(12288) not null,
@@ -56,5 +57,8 @@
                 PRIMARY KEY `logical_table_column` (`schema_name`, `table_name`, `column_names`, `shard_part`)
             ) engine=innodb default charset=UTF8
         ]]></Create>
+        <Change><![CDATA[
+            alter table `ndv_sketch_statistics` add column `index_name` varchar(64) not null default '' after `shard_part`;
+        ]]></Change>
     </SystemTable>
 </SystemTables>

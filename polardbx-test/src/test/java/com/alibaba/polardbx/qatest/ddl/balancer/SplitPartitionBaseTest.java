@@ -14,6 +14,7 @@ import org.junit.Test;
 import org.junit.runners.MethodSorters;
 
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
@@ -99,8 +100,16 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
         String explainSplitSql = genSplitPartitionSql(tableName1, splitPartitionSize, 10);
         explainSplitSql += " explain=true";
         try (ResultSet rs = JdbcUtil.executeQuery(explainSplitSql, tddlConnection)) {
-            Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
-                JdbcUtil.getColumnNameListToLowerCase(rs));
+            ResultSetMetaData rsmd = rs.getMetaData();
+            if (rsmd.getColumnCount() == 5) {
+                Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            } else {
+                Assert.assertEquals(
+                    Arrays.asList("job_id", "schema", "name", "action", "backfill_rows", "backfill_data_size",
+                        "backfill_estimated_time"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            }
             Assert.assertFalse("result should not be empty", JdbcUtil.getAllResult(rs).isEmpty());
         }
     }

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.mpp.split;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.oss.IDeltaReadOption;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -36,11 +37,10 @@ import com.alibaba.polardbx.executor.archive.reader.OSSReadOption;
 import com.alibaba.polardbx.executor.archive.reader.TypeComparison;
 import com.alibaba.polardbx.executor.archive.schemaevolution.ColumnMetaWithTs;
 import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.gms.ColumnarStoreUtils;
+import com.alibaba.polardbx.gms.metadb.columnar.FlashbackColumnarManager;
 import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
@@ -53,7 +53,6 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
-import com.alibaba.polardbx.optimizer.partition.PartSpecBase;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -66,7 +65,6 @@ import org.apache.calcite.rel.RelPartitionWise;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rex.RexBuilder;
-import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.collections.CollectionUtils;
@@ -81,16 +79,16 @@ import java.io.Serializable;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.optimizer.utils.PartitionUtils.calcPartition;
 
 import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -100,7 +98,7 @@ public class OssSplit implements ConnectorSplit {
 
     private List<OSSReadOption> readOptions;
 
-    private String logicalSchema;
+    protected String logicalSchema;
     private String physicalSchema;
 
     // all physical tables in a logical table share the parameters
@@ -115,12 +113,12 @@ public class OssSplit implements ConnectorSplit {
 
     private boolean enableAggPruner;
 
-    private String logicalTableName;
+    protected String logicalTableName;
     private List<String> phyTableNameList;
 
     // all fileMetas share the same version of schema
     private List<List<FileMeta>> allFileMetas;
-    private List<String> designatedFile;
+    protected List<String> designatedFile;
     private byte[] paramsBytes;
 
     private boolean isInit = false;
@@ -246,11 +244,37 @@ public class OssSplit implements ConnectorSplit {
             final PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
 
             Map<String, List<String>> allCsvFiles = new HashMap<>();
+            Map<String, List<Long>> allCsvPositions = null;
+            Map<String, List<Pair<String, Long>>> allDeletePositions = null;
             List<String> allOrcFiles = new ArrayList<>();
-            if (executionContext.isReadOrcOnly()) {
-                // Special hint, only read specified orc files.
-                // Normal columnar read should not get here.
-                allOrcFiles.addAll(executionContext.getReadOrcFiles());
+            if (ossTableScan.isFlashbackQuery()) {
+                allCsvPositions = new HashMap<>();
+                FlashbackColumnarManager flashbackManager =
+                    executionContext.getFlashbackColumnarManager(tso, logicalSchema, logicalTable);
+                Map<String, Pair<List<String>, List<Pair<String, Long>>>> columnarSnapshot =
+                    flashbackManager.getSnapshotInfo();
+                allDeletePositions = flashbackManager.getDeletePositions();
+
+                for (String physicalTable : phyTableList) {
+                    // Find part name from physical schema + physical table
+                    final String partName = partitionInfo.getPartitionNameByPhyLocation(physicalSchema, physicalTable);
+                    Pair<List<String>, List<Pair<String, Long>>> snapshot = columnarSnapshot.get(partName);
+                    if (snapshot == null) {
+                        continue;
+                    }
+
+                    List<String> orcFiles = snapshot.getKey();
+                    List<Pair<String, Long>> csvInfos = snapshot.getValue();
+                    allOrcFiles.addAll(orcFiles);
+                    if (GeneralUtil.isNotEmpty(csvInfos)) {
+                        allCsvFiles.put(physicalTable, csvInfos.stream().map(
+                            Pair::getKey
+                        ).collect(Collectors.toList()));
+                        allCsvPositions.put(physicalTable, csvInfos.stream().map(
+                            Pair::getValue
+                        ).collect(Collectors.toList()));
+                    }
+                }
             } else {
                 for (String physicalTable : phyTableList) {
                     // Find part name from physical schema + physical table
@@ -274,12 +298,6 @@ public class OssSplit implements ConnectorSplit {
                 }
             }
 
-            if (executionContext.isReadCsvOnly()) {
-                // Special hint, only read csv files, so we clear orc files here.
-                // Normal columnar read should not get here.
-                allOrcFiles.clear();
-            }
-
             if (allOrcFiles.isEmpty() && allCsvFiles.isEmpty()) {
                 return ImmutableList.of();
             }
@@ -292,6 +310,8 @@ public class OssSplit implements ConnectorSplit {
                 columnarManager.getPhysicalColumnIndexes(tso, null, projectList);
 
             deltaReadOption.setAllCsvFiles(allCsvFiles);
+            deltaReadOption.setAllPositions(allCsvPositions);
+            deltaReadOption.setAllDelPositions(allDeletePositions);
             deltaReadOption.setProjectColumnIndexes(correctedProjectList);
             return ImmutableList.of(new OssSplit(logicalSchema, physicalSchema, params,
                 logicalTable, phyTableList, allOrcFiles, deltaReadOption,
@@ -330,10 +350,222 @@ public class OssSplit implements ConnectorSplit {
         }
     }
 
+    private static List<OssSplit> getFileConcurrencySplitForColumnar(ExecutionContext executionContext,
+                                                                     OSSTableScan ossTableScan, TableMeta tableMeta,
+                                                                     String logicalSchema, String physicalSchema,
+                                                                     String logicalTableName,
+                                                                     List<String> phyTableNameList,
+                                                                     PhyTableScanBuilder phyOperationBuilder,
+                                                                     long tso) {
+        List<OssSplit> splits = new ArrayList<>();
+        final PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+        final ColumnarManager columnarManager = ColumnarManager.getInstance();
+
+        // for each physical table
+        Set<String> targetOrcFiles = null;
+        for (int i = 0; i < phyTableNameList.size(); i++) {
+            String phyTable = phyTableNameList.get(i);
+
+            // Find part name from physical schema + physical table
+            final String partName = partitionInfo.getPartitionNameByPhyLocation(physicalSchema, phyTable);
+
+            // Find csv files from tso + part name
+            Pair<List<String>, List<String>> files =
+                columnarManager.findFileNames(tso, logicalSchema, logicalTableName, partName);
+            List<String> orcFiles = files.getKey();
+            List<String> csvFiles = files.getValue();
+
+            // get partition number of this split, used for partition wise join
+            RelPartitionWise partitionWise = ossTableScan.getTraitSet().getPartitionWise();
+            boolean needPartition = partitionWise.isRemotePartition() || executionContext.getParamManager()
+                .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
+
+            int partition = needPartition ? calcPartition(logicalSchema, logicalTableName,
+                physicalSchema, phyTable) : NO_PARTITION_INFO;
+            boolean localPairWise =
+                executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
+                    && partitionWise.isLocalPartition();
+
+            // build split for orc files.
+            if (!orcFiles.isEmpty()) {
+                // build single physical table list and params,
+                // and split for each file.
+                List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
+
+                Map<Integer, ParameterContext> params =
+                    phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
+
+                for (String orcFile : orcFiles) {
+                    OssSplit ossSplit = new OssSplit(
+                        logicalSchema, physicalSchema, params,
+                        logicalTableName, singlePhyTableNameList,
+                        ImmutableList.of(orcFile), null,
+                        tso, partition, localPairWise);
+                    splits.add(ossSplit);
+                }
+            }
+
+            // build split for csv files.
+            if (!csvFiles.isEmpty()) {
+                for (String csvFile : csvFiles) {
+                    // build single physical table list and params,
+                    // and split for each file.
+                    List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
+
+                    Map<Integer, ParameterContext> params =
+                        phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
+
+                    // Build delta read option. There is only one physical table and one csv file name.
+                    DeltaReadOption deltaReadOption = new DeltaReadOption(tso);
+
+                    // correct project column indexes (skip implicit column)
+                    ImmutableList<Integer> projectList = ossTableScan.getOrcNode().getInProjects();
+
+                    // TODO(siyun): column mapping may defer for different files
+                    List<Integer> correctedProjectList =
+                        columnarManager.getPhysicalColumnIndexes(tso, null, projectList);
+
+                    deltaReadOption.setAllCsvFiles(Collections.singletonMap(phyTable, ImmutableList.of(csvFile)));
+                    deltaReadOption.setProjectColumnIndexes(correctedProjectList);
+
+                    OssSplit ossSplit = new OssSplit(
+                        logicalSchema, physicalSchema, params,
+                        logicalTableName, singlePhyTableNameList,
+                        null, deltaReadOption,
+                        tso, partition, localPairWise);
+                    splits.add(ossSplit);
+                }
+            }
+        }
+        return splits;
+    }
+
+    private static List<OssSplit> getFileConcurrencySplitForFlashback(ExecutionContext executionContext,
+                                                                      OSSTableScan ossTableScan, TableMeta tableMeta,
+                                                                      String logicalSchema, String physicalSchema,
+                                                                      String logicalTableName,
+                                                                      List<String> phyTableNameList,
+                                                                      PhyTableScanBuilder phyOperationBuilder,
+                                                                      long tso) {
+        List<OssSplit> splits = new ArrayList<>();
+        final PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
+        FlashbackColumnarManager flashbackColumnarManager =
+            executionContext.getFlashbackColumnarManager(tso, logicalSchema, logicalTableName);
+
+        Map<String, Pair<List<String>, List<Pair<String, Long>>>> snapshotInfo =
+            flashbackColumnarManager.getSnapshotInfo();
+        Map<String, List<Pair<String, Long>>> deletePositionMap = flashbackColumnarManager.getDeletePositions();
+
+        for (int i = 0; i < phyTableNameList.size(); i++) {
+            String phyTable = phyTableNameList.get(i);
+
+            // Find part name from physical schema + physical table
+            final String partName = partitionInfo.getPartitionNameByPhyLocation(physicalSchema, phyTable);
+            Pair<List<String>, List<Pair<String, Long>>> partInfo = snapshotInfo.get(partName);
+
+            if (partInfo == null) {
+                continue;
+            }
+
+            // get partition number of this split, used for partition wise join
+            RelPartitionWise partitionWise = ossTableScan.getTraitSet().getPartitionWise();
+            boolean needPartition = partitionWise.isRemotePartition() || executionContext.getParamManager()
+                .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
+
+            int partition = needPartition ?
+                calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable) : NO_PARTITION_INFO;
+            boolean localPairWise = partitionWise.isLocalPartition() && executionContext.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN);
+
+            List<String> orcFiles = partInfo.getKey();
+            if (!orcFiles.isEmpty()) {
+                List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
+
+                Map<Integer, ParameterContext> params =
+                    phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
+
+                DeltaReadOption deltaReadOption = new DeltaReadOption(tso);
+                deltaReadOption.setAllDelPositions(deletePositionMap);
+
+                for (String orcFile : orcFiles) {
+                    OssSplit ossSplit = new OssSplit(
+                        logicalSchema, physicalSchema, params,
+                        logicalTableName, singlePhyTableNameList,
+                        ImmutableList.of(orcFile), deltaReadOption,
+                        tso, partition, localPairWise);
+                    splits.add(ossSplit);
+                }
+            }
+
+            List<Pair<String, Long>> csvFileWithPositions = partInfo.getValue();
+            if (!csvFileWithPositions.isEmpty()) {
+                for (Pair<String, Long> fileNameAndPos : csvFileWithPositions) {
+                    String csvFile = fileNameAndPos.getKey();
+                    Long filePos = fileNameAndPos.getValue();
+                    // build single physical table list and params,
+                    // and split for each file.
+                    List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
+
+                    Map<Integer, ParameterContext> params =
+                        phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
+
+                    // Build delta read option. There is only one physical table and one csv file name.
+                    final DeltaReadOption deltaReadOption = new DeltaReadOption(tso);
+
+                    deltaReadOption.setAllCsvFiles(Collections.singletonMap(phyTable, ImmutableList.of(csvFile)));
+                    deltaReadOption.setAllPositions(Collections.singletonMap(phyTable, ImmutableList.of(filePos)));
+                    deltaReadOption.setAllDelPositions(deletePositionMap);
+
+                    OssSplit ossSplit = new OssSplit(
+                        logicalSchema, physicalSchema, params,
+                        logicalTableName, singlePhyTableNameList,
+                        null, deltaReadOption,
+                        tso, partition, localPairWise);
+                    splits.add(ossSplit);
+                }
+            }
+
+        }
+        return splits;
+    }
+
+    private static List<OssSplit> getFileConcurrencySplitForColdData(TableMeta tableMeta,
+                                                                     String logicalSchema, String physicalSchema,
+                                                                     String logicalTableName,
+                                                                     List<String> phyTableNameList,
+                                                                     PhyTableScanBuilder phyOperationBuilder) {
+
+        List<OssSplit> splits = new ArrayList<>();
+        Map<String, List<FileMeta>> flatFileMetas = tableMeta.getFlatFileMetas();
+
+        // for each physical table
+        for (int i = 0; i < phyTableNameList.size(); i++) {
+            String phyTable = phyTableNameList.get(i);
+            List<FileMeta> fileMetas = flatFileMetas.get(phyTable);
+            if (fileMetas.isEmpty()) {
+                continue;
+            }
+
+            // build single physical table list and params,
+            // and split for each file.
+            List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
+
+            Map<Integer, ParameterContext> params =
+                phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
+
+            for (FileMeta fileMeta : fileMetas) {
+                OssSplit ossSplit = new OssSplit(logicalSchema, physicalSchema, params,
+                    logicalTableName, singlePhyTableNameList, ImmutableList.of(fileMeta.getFileName()), null,
+                    null, NO_PARTITION_INFO, false);
+                splits.add(ossSplit);
+            }
+        }
+        return splits;
+    }
+
     public static List<OssSplit> getFileConcurrencySplit(OSSTableScan ossTableScan, RelNode relNode,
                                                          ExecutionContext executionContext, Long tso) {
         Preconditions.checkArgument(relNode instanceof PhyTableOperation);
-        List<OssSplit> splits = new ArrayList<>();
 
         PhyTableOperation phyTableOperation = (PhyTableOperation) relNode;
         String logicalSchema = phyTableOperation.getSchemaName();
@@ -348,149 +580,17 @@ public class OssSplit implements ConnectorSplit {
         TableMeta tableMeta = executionContext.getSchemaManager(logicalSchema).getTable(logicalTableName);
 
         if (ossTableScan.isColumnarIndex()) {
-            final PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
-            final ColumnarManager columnarManager = ColumnarManager.getInstance();
-
-            // for each physical table
-            Set<String> targetOrcFiles = null;
-            for (int i = 0; i < phyTableNameList.size(); i++) {
-                String phyTable = phyTableNameList.get(i);
-
-                // Find part name from physical schema + physical table
-                final String partName = partitionInfo.getPartitionNameByPhyLocation(physicalSchema, phyTable);
-
-                // Find csv files from tso + part name
-                Pair<List<String>, List<String>> files =
-                    columnarManager.findFileNames(tso, logicalSchema, logicalTableName, partName);
-                List<String> orcFiles = files.getKey();
-                List<String> csvFiles = files.getValue();
-
-                if (executionContext.isReadOrcOnly()) {
-                    // Special hint, only read specified files.
-                    // Normal columnar read should not get here.
-                    csvFiles = new ArrayList<>();
-                    if (null == targetOrcFiles) {
-                        targetOrcFiles = new HashSet<>(executionContext.getReadOrcFiles());
-                    }
-                    List<String> newOrcFiles = new ArrayList<>();
-                    for (String orcFile : orcFiles) {
-                        if (targetOrcFiles.contains(orcFile)) {
-                            newOrcFiles.add(orcFile);
-                        }
-                    }
-                    orcFiles = newOrcFiles;
-                }
-
-                if (executionContext.isReadCsvOnly()) {
-                    // Special hint, only read csv files, so we clear orc files here.
-                    orcFiles.clear();
-                }
-
-                // get partition number of this split, used for partition wise join
-                RelPartitionWise partitionWise = ossTableScan.getTraitSet().getPartitionWise();
-                boolean needPartition = partitionWise.isRemotePartition() || executionContext.getParamManager()
-                    .getBoolean(ConnectionParams.SCHEDULE_BY_PARTITION);
-
-                int partition = needPartition ?
-                    calcPartition(logicalSchema, logicalTableName, physicalSchema, phyTable) : NO_PARTITION_INFO;
-                boolean localPairWise =
-                    executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN)
-                        && partitionWise.isLocalPartition();
-
-                // build split for orc files.
-                if (!orcFiles.isEmpty()) {
-                    // build single physical table list and params,
-                    // and split for each file.
-                    List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
-
-                    Map<Integer, ParameterContext> params =
-                        phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
-
-                    for (String orcFile : orcFiles) {
-                        OssSplit ossSplit = new OssSplit(
-                            logicalSchema, physicalSchema, params,
-                            logicalTableName, singlePhyTableNameList,
-                            ImmutableList.of(orcFile), null,
-                            tso, partition, localPairWise);
-                        splits.add(ossSplit);
-                    }
-                }
-
-                // build split for csv files.
-                if (!csvFiles.isEmpty()) {
-                    for (String csvFile : csvFiles) {
-                        // build single physical table list and params,
-                        // and split for each file.
-                        List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
-
-                        Map<Integer, ParameterContext> params =
-                            phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
-
-                        // Build delta read option. There is only one physical table and one csv file name.
-                        DeltaReadOption deltaReadOption = new DeltaReadOption(tso);
-                        Map<String, List<String>> allCsvFiles = new HashMap<>();
-                        allCsvFiles.put(phyTable, ImmutableList.of(csvFile));
-
-                        // correct project column indexes (skip implicit column)
-                        ImmutableList<Integer> projectList = ossTableScan.getOrcNode().getInProjects();
-
-                        // TODO(siyun): column mapping may defer for different files
-                        List<Integer> correctedProjectList =
-                            columnarManager.getPhysicalColumnIndexes(tso, null, projectList);
-
-                        deltaReadOption.setAllCsvFiles(allCsvFiles);
-                        deltaReadOption.setProjectColumnIndexes(correctedProjectList);
-
-                        OssSplit ossSplit = new OssSplit(
-                            logicalSchema, physicalSchema, params,
-                            logicalTableName, singlePhyTableNameList,
-                            null, deltaReadOption,
-                            tso, partition, localPairWise);
-                        splits.add(ossSplit);
-                    }
-                }
+            if (ossTableScan.isFlashbackQuery()) {
+                return getFileConcurrencySplitForFlashback(executionContext, ossTableScan, tableMeta, logicalSchema,
+                    physicalSchema, logicalTableName, phyTableNameList, phyOperationBuilder, tso);
+            } else {
+                return getFileConcurrencySplitForColumnar(executionContext, ossTableScan, tableMeta, logicalSchema,
+                    physicalSchema, logicalTableName, phyTableNameList, phyOperationBuilder, tso);
             }
-            return splits;
         } else {
-            Map<String, List<FileMeta>> flatFileMetas = tableMeta.getFlatFileMetas();
-
-            // for each physical table
-            for (int i = 0; i < phyTableNameList.size(); i++) {
-                String phyTable = phyTableNameList.get(i);
-                List<FileMeta> fileMetas = flatFileMetas.get(phyTable);
-                if (fileMetas.isEmpty()) {
-                    continue;
-                }
-
-                // build single physical table list and params,
-                // and split for each file.
-                List<String> singlePhyTableNameList = ImmutableList.of(phyTable);
-
-                Map<Integer, ParameterContext> params =
-                    phyOperationBuilder.buildSplitParamMap(singlePhyTableNameList);
-
-                for (FileMeta fileMeta : fileMetas) {
-                    OssSplit ossSplit = new OssSplit(logicalSchema, physicalSchema, params,
-                        logicalTableName, singlePhyTableNameList, ImmutableList.of(fileMeta.getFileName()), null,
-                        null, NO_PARTITION_INFO, false);
-                    splits.add(ossSplit);
-                }
-            }
-            return splits;
+            return getFileConcurrencySplitForColdData(tableMeta, logicalSchema,
+                physicalSchema, logicalTableName, phyTableNameList, phyOperationBuilder);
         }
-    }
-
-    public static int calcPartition(String logicalSchema, String logicalTableName, String physicalSchema,
-                                    String physicalTableName) {
-        PartitionInfo partInfo =
-            OptimizerContext.getContext(logicalSchema).getPartitionInfoManager()
-                .getPartitionInfo(logicalTableName);
-        int partition = partInfo.getPartitionBy().getPartitions().stream().
-            filter(
-                t -> t.getLocation().getGroupKey().equalsIgnoreCase(physicalSchema)
-                    && t.getLocation().getPhyTableName().equalsIgnoreCase(physicalTableName))
-            .findFirst().map(PartSpecBase::getPosition).map(Long::intValue).orElse(-1);
-        return partition - 1;
     }
 
     @JsonIgnore
@@ -851,19 +951,7 @@ public class OssSplit implements ConnectorSplit {
                 (OSSOrcFileMeta) allFileMetas.get(0).get(0));
         }
 
-        Long readTs = null;
-        if (ossTableScan.getFlashback() instanceof RexDynamicParam) {
-
-            String timestampString = executionContext.getParams().getCurrentParameter()
-                .get(((RexDynamicParam) ossTableScan.getFlashback()).getIndex() + 1).getValue().toString();
-            TimeZone fromTimeZone;
-            if (executionContext.getTimeZone() != null) {
-                fromTimeZone = executionContext.getTimeZone().getTimeZone();
-            } else {
-                fromTimeZone = TimeZone.getDefault();
-            }
-            readTs = OSSTaskUtils.getTsFromTimestampWithTimeZone(timestampString, fromTimeZone);
-        }
+        Long readTs = ossTableScan.getFlashbackQueryTso(executionContext);
 
         for (int j = 0; j < allFileMetas.size(); j++) {
             String phyTable = phyTableNameList.get(j);
@@ -1178,7 +1266,7 @@ public class OssSplit implements ConnectorSplit {
             .toString();
     }
 
-    public static class DeltaReadOption implements Serializable {
+    public static class DeltaReadOption implements Serializable, IDeltaReadOption {
         /**
          * checkpoint tso for columnar store.
          */
@@ -1188,6 +1276,13 @@ public class OssSplit implements ConnectorSplit {
          * map: {physical table} -> {list <csv>}
          */
         private Map<String, List<String>> allCsvFiles;
+
+        private Map<String, List<Long>> allPositions;
+
+        /**
+         * map: {part name} -> {list <bitmap name, position>}
+         */
+        private Map<String, List<Pair<String, Long>>> allDelPositions;
 
         private List<Integer> projectColumnIndexes;
 
@@ -1199,9 +1294,13 @@ public class OssSplit implements ConnectorSplit {
         public DeltaReadOption(
             @JsonProperty("checkpointTso") long checkpointTso,
             @JsonProperty("allCsvFiles") Map<String, List<String>> allCsvFiles,
+            @JsonProperty("allPositions") Map<String, List<Long>> allPositions,
+            @JsonProperty("allDelPositions") Map<String, List<Pair<String, Long>>> allDelPositions,
             @JsonProperty("projectColumnIndexes") List<Integer> projectColumnIndexes) {
             this.checkpointTso = checkpointTso;
             this.allCsvFiles = allCsvFiles;
+            this.allPositions = allPositions;
+            this.allDelPositions = allDelPositions;
             this.projectColumnIndexes = projectColumnIndexes;
         }
 
@@ -1216,6 +1315,16 @@ public class OssSplit implements ConnectorSplit {
         }
 
         @JsonProperty
+        public Map<String, List<Long>> getAllPositions() {
+            return allPositions;
+        }
+
+        @JsonProperty
+        public Map<String, List<Pair<String, Long>>> getAllDelPositions() {
+            return allDelPositions;
+        }
+
+        @JsonProperty
         public List<Integer> getProjectColumnIndexes() {
             return projectColumnIndexes;
         }
@@ -1224,8 +1333,59 @@ public class OssSplit implements ConnectorSplit {
             this.allCsvFiles = allCsvFiles;
         }
 
+        public void setAllPositions(Map<String, List<Long>> allPositions) {
+            this.allPositions = allPositions;
+        }
+
+        public void setAllDelPositions(Map<String, List<Pair<String, Long>>> allDelPositions) {
+            // TODO(siyun): optimize the map to reduce the size
+            this.allDelPositions = allDelPositions;
+        }
+
         public void setProjectColumnIndexes(List<Integer> projectColumnIndexes) {
             this.projectColumnIndexes = projectColumnIndexes;
         }
+    }
+
+    public List<String> getPrunedOrcFiles(OSSTableScan ossTableScan, ExecutionContext executionContext) {
+        List<String> fileNames = getDesignatedFile();
+
+        if (fileNames == null) {
+            return null;
+        }
+
+        if (ossTableScan.isColumnarIndex()) {
+            return fileNames;
+        }
+
+        Long readTs = ossTableScan.getFlashbackQueryTso(executionContext);
+
+        if (readTs == null) {
+            return fileNames;
+        }
+
+        TableMeta tableMeta = executionContext.getSchemaManager(getLogicalSchema()).getTable(
+            getLogicalTableName());
+        Set<String> filterSet = getFilterSet(executionContext);
+        Map<String, List<FileMeta>> flatFileMetas = tableMeta.getFlatFileMetas();
+
+        return getPhyTableNameList().stream()
+            .map(flatFileMetas::get)
+            .flatMap(List::stream)
+            .filter(x -> {
+                if (filterSet == null || filterSet.contains(x.getFileName())) {
+                    if (readTs < x.getCommitTs()) {
+                        // not committed yet at this ts
+                        return false;
+                    }
+                    // not removed yet at this ts
+                    return x.getRemoveTs() == null || readTs <= x.getRemoveTs();
+                } else {
+                    // not designated for this split
+                    return false;
+                }
+            })
+            .map(FileMeta::getFileName)
+            .collect(Collectors.toList());
     }
 }

@@ -16,12 +16,27 @@
 
 package com.alibaba.polardbx.server.handler;
 
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
+import com.alibaba.polardbx.PolarPrivileges;
+import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.logger.MDC;
+import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
@@ -32,20 +47,6 @@ import com.alibaba.polardbx.net.packet.CommandPacket;
 import com.alibaba.polardbx.net.packet.MySQLPacket;
 import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.net.util.CharsetUtil;
-import com.alibaba.polardbx.server.QueryResultHandler;
-import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
-import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.google.common.base.Splitter;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ParamManager;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.logger.MDC;
-import com.alibaba.polardbx.common.utils.memory.SizeOf;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -60,6 +61,9 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.utils.LoadDataCacheManager;
+import com.alibaba.polardbx.server.QueryResultHandler;
+import com.alibaba.polardbx.server.ServerConnection;
+import com.google.common.base.Splitter;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.lang.StringEscapeUtils;
@@ -81,8 +85,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
-import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.alibaba.polardbx.optimizer.context.LoadDataContext.END;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 
 /**
  * mysql client need add --local-infile=1
@@ -657,6 +661,16 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
         dataContext.setSwapColumns(loadData.isSwapColumns());
         if (loadData.isLocal()) {
             handler.sendRequestFilePacket(strSql);
+        } else {
+            PolarPrivileges polarPrivileges = (PolarPrivileges) serverConnection.getPrivileges();
+            PolarAccountInfo polarUserInfo = polarPrivileges.checkAndGetMatchUser(
+                serverConnection.getUser(), serverConnection.getHost());
+            if (!polarUserInfo.getAccountType().isGod()) {
+                if (!InstConfUtil.getValBool(TddlConstants.ENABLE_LOAD_DATA_FILE)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
+                        "load data infile is not enabled!");
+                }
+            }
         }
         if (!isClosed.get()) {
             bStart = true;

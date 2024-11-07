@@ -1,0 +1,36 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sp_k_r_month` (
+`id` bigint(18) NOT NULL AUTO_INCREMENT,
+`snap_time` datetime NOT NULL,
+`school_id` bigint(18) DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 1684206033 DEFAULT CHARSET = utf8
+PARTITION BY KEY(`school_id`,`id`)
+PARTITIONS 2
+SUBPARTITION BY RANGE(MONTH(`snap_time`))
+(SUBPARTITION `sp1` VALUES LESS THAN (2),
+SUBPARTITION `sp2` VALUES LESS THAN (3),
+SUBPARTITION `sp3` VALUES LESS THAN (4),
+SUBPARTITION `sp4` VALUES LESS THAN (5),
+SUBPARTITION `sp5` VALUES LESS THAN (6),
+SUBPARTITION `sp6` VALUES LESS THAN (7),
+SUBPARTITION `sp7` VALUES LESS THAN (8),
+SUBPARTITION `sp8` VALUES LESS THAN (9),
+SUBPARTITION `sp9` VALUES LESS THAN (10),
+SUBPARTITION `sp10` VALUES LESS THAN (11),
+SUBPARTITION `sp11` VALUES LESS THAN (12),
+SUBPARTITION `sp12` VALUES LESS THAN (13)
+);
+
+show create table sp_k_r_month;
+explain select `snap_time` from `sp_k_r_month` t where t.snap_time >= '2024-05-21 17:30:27' and t.snap_time <= '2024-05-21 17:30:40' order by t.snap_time limit 10;
+explain select `snap_time` from `sp_k_r_month` t where t.snap_time >= '2024-05-21 17:30:27' and t.snap_time <= '2024-06-21 17:30:40' order by t.snap_time limit 10;
+explain select `snap_time` from `sp_k_r_month` t where t.snap_time >= '2024-05-21 17:30:27' and t.snap_time <= '2024-07-21 17:30:40' order by t.snap_time limit 10;
+insert into sp_k_r_month values (null, '2024-01-22 00:00:00', 0);
+insert into sp_k_r_month values (null, '2024-05-21 17:30:33', 0);
+insert into sp_k_r_month values (null, '2024-06-22 00:00:00', 0);
+select `snap_time` from `sp_k_r_month` t where t.snap_time >= '2024-05-21 17:30:27' and t.snap_time <= '2024-05-21 17:30:40' order by t.snap_time  limit 10;
+
+
+

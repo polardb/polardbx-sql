@@ -20,7 +20,11 @@ import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import org.junit.Assert;
 import org.junit.Ignore;
+import org.junit.Assert;
 import org.junit.Test;
+
+import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
 
 public class CharsetFactoryTest {
     @Test

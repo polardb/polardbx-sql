@@ -1,5 +1,6 @@
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -7,7 +8,12 @@ import com.google.common.collect.ImmutableList;
 import org.junit.Test;
 
 import java.sql.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
+import java.util.function.Consumer;
+
+import static com.alibaba.polardbx.optimizer.config.table.statistic.TopN.validateTopNValues;
 
 /**
  * test topn of statistic module
@@ -133,6 +139,72 @@ public class TopNTest {
                 checkRangeCount(topN, keys[i], keys[j], dataType, values, counts);
             }
         }
+    }
+
+    @Test
+    public void testValidateTopNValuesValidInput() {
+        /**
+         * Test Case #1: Valid Input - Ensure the method can handle an array that is non-empty and does not contain null or JSONObject elements.
+         */
+        Object[] validValues = {1, "string", true};
+        assertDoesNotThrow(t -> validateTopNValues(t), validValues);
+    }
+
+    private <T> void assertDoesNotThrow(Consumer<T> c, T t) {
+        try {
+            c.accept(t);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
+    public void testValidateTopNValuesEmptyArray() {
+        /**
+         * Test Case #2: Empty Array - When an empty array is passed, an IllegalArgumentException should be thrown.
+         */
+        Object[] emptyArray = {};
+        assertThrows(IllegalArgumentException.class, t -> validateTopNValues(t), emptyArray);
+    }
+
+    private <T> void assertThrows(Class<? extends Exception> exceptionClass, Consumer<T> c, T t) {
+        try {
+            c.accept(t);
+            throw new RuntimeException("Expected exception was not thrown.");
+        } catch (Exception e) {
+            e.printStackTrace();
+            if (!e.getClass().equals(exceptionClass)) {
+                throw new RuntimeException("Expected exception was not thrown.");
+            }
+        }
+    }
+
+    @Test
+    public void testValidateTopNValuesNullArray() {
+        /**
+         * Test Case #3: Null Array - When a null array is passed, an IllegalArgumentException should be thrown.
+         */
+        Object[] objs = null;
+        assertThrows(IllegalArgumentException.class, t -> validateTopNValues(t), objs);
+    }
+
+    @Test
+    public void testValidateTopNValuesArrayContainsNull() {
+        /**
+         * Test Case #4: Array Contains Null Element - When the array contains a null element, an IllegalArgumentException should be thrown.
+         */
+        Object[] arrayWithNull = {"a", null, "b"};
+        assertThrows(IllegalArgumentException.class, t -> validateTopNValues(t), arrayWithNull);
+    }
+
+    @Test
+    public void testValidateTopNValuesArrayContainsJSONObject() {
+        /**
+         * Test Case #5: Array Contains JSONObject - When the array contains an element of type JSONObject, an IllegalArgumentException should be thrown.
+         */
+        JSONObject jsonObject = new JSONObject();
+        Object[] arrayWithJSONObject = {"a", jsonObject, "b"};
+        assertThrows(IllegalArgumentException.class, t -> validateTopNValues(t), arrayWithJSONObject);
     }
 
     public void checkRangeCount(TopN topN, Object lower, Object upper, DataType dataType, Object[] values,

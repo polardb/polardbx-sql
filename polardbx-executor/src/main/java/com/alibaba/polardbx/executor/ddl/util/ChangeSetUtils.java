@@ -28,6 +28,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.changeset.ChangeSetManager;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyFinishTask;
@@ -59,6 +60,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.BooleanType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
+import com.alibaba.polardbx.optimizer.core.datatype.FloatType;
 import com.alibaba.polardbx.optimizer.core.datatype.TinyIntType;
 import com.alibaba.polardbx.optimizer.core.datatype.UTinyIntType;
 import com.alibaba.polardbx.optimizer.core.datatype.YearType;
@@ -102,6 +104,7 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_CHECK_TWICE;
+import static com.alibaba.polardbx.executor.columns.ColumnBackfillExecutor.isAllDnUseXDataSource;
 
 public class ChangeSetUtils {
     public final static String SQL_START_CHANGESET = "call polarx.changeset_start(%s, %s);";
@@ -822,6 +825,14 @@ public class ChangeSetUtils {
         }
 
         if (!tableMeta.isHasPrimaryKey()) {
+            return false;
+        }
+
+        final ExecutorContext executorContext = ExecutorContext.getContext(tableMeta.getSchemaName());
+        final TopologyHandler topologyHandler = executorContext.getTopologyHandler();
+        final boolean allDnUseXDataSource = isAllDnUseXDataSource(topologyHandler);
+        if (!allDnUseXDataSource && tableMeta.getPrimaryKey().stream()
+            .anyMatch(columnMeta -> columnMeta.getDataType() instanceof FloatType)) {
             return false;
         }
 

@@ -38,6 +38,16 @@ import static com.alibaba.polardbx.executor.chunk.EncoderUtil.encodeNullsAsBits;
 public class FloatBlockEncoding implements BlockEncoding {
     private static final String NAME = "FLOAT";
 
+    private final int scale;
+
+    public FloatBlockEncoding(int scale) {
+        this.scale = scale;
+    }
+
+    public int getScale() {
+        return scale;
+    }
+
     @Override
     public String getName() {
         return NAME;
@@ -67,6 +77,6 @@ public class FloatBlockEncoding implements BlockEncoding {
                 values[position] = sliceInput.readFloat();
             }
         }
-        return new FloatBlock(0, positionCount, valueIsNull, values);
+        return new FloatBlock(0, positionCount, valueIsNull, values, scale);
     }
 }

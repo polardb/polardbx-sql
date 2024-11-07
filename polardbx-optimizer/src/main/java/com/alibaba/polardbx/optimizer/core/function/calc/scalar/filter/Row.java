@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 
@@ -40,6 +41,11 @@ public class Row extends AbstractCollationScalarFunction {
             list.add(arg);
         }
         return new RowValue(list);
+    }
+
+    @Override
+    public DataType getReturnType() {
+        return DataTypes.RowType;
     }
 
     @Override

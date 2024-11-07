@@ -74,6 +74,9 @@ public class OptimizerContext {
     private ParamManager paramManager;
     private boolean sqlMock = false;
 
+    // Label if OptimizerContext of one db finished init
+    private volatile boolean finishInit = false;
+
     /**
      * <pre>
      *  KEY: APP_NAME
@@ -122,7 +125,7 @@ public class OptimizerContext {
         }
         String schemaNameLowerCase = schemaName.toLowerCase();
         OptimizerContext optimizerContext = optimizerContextMap.get(schemaNameLowerCase);
-        if (optimizerContext == null) {
+        if (optimizerContext == null || !optimizerContext.isFinishInit()) {
             IServerConfigManager serverConfigManager = OptimizerHelper.getServerConfigManager();
             if (serverConfigManager != null) {
                 // When running unit test, ServerConfigManager could be null
@@ -245,6 +248,14 @@ public class OptimizerContext {
 
     public void setParamManager(ParamManager paramManager) {
         this.paramManager = paramManager;
+    }
+
+    public boolean isFinishInit() {
+        return finishInit;
+    }
+
+    public void setFinishInit(boolean finishInit) {
+        this.finishInit = finishInit;
     }
 
     public static SchemaTransactionStatistics getTransStat(String schema) {

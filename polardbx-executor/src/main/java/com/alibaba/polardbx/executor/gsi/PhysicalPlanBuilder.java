@@ -68,6 +68,7 @@ import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDmlKeyword;
 import org.apache.calcite.sql.SqlDynamicParam;
+import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlInsert;
@@ -82,13 +83,13 @@ import org.apache.calcite.sql.SqlSelectWithPartition;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.fun.SqlBinaryFunction;
 import org.apache.calcite.sql.fun.SqlHashCheckAggFunction;
+import org.apache.calcite.sql.fun.SqlRandFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -241,6 +242,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
     protected void buildTargetTable() {
         targetTableNode = BuildPlanUtils.buildTargetTable();
+    }
+
+    protected void buildTargetTableAsLogicalTableName(String name) {
+        targetTableNode = new SqlIdentifier(name, SqlParserPos.ZERO);
     }
 
     protected void buildTargetTableParams(String tableName) {
@@ -1216,6 +1221,14 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return newPhysicalPlans;
     }
 
+    public PhyTableOperation buildSelectForBackfill(TableMeta tableMeta, List<String> selectKeys,
+                                                    List<String> primaryKeys, boolean withLowerBound,
+                                                    boolean withUpperBound, LockMode lockMode,
+                                                    String physicalPartition) {
+        return buildSelectForBackfill(tableMeta, selectKeys, primaryKeys, withLowerBound, withUpperBound, lockMode,
+            physicalPartition, false, true);
+    }
+
     /**
      * <pre>
      * SELECT {all_columns_exists_in_index_table}
@@ -1238,7 +1251,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
     public PhyTableOperation buildSelectForBackfill(TableMeta tableMeta, List<String> selectKeys,
                                                     List<String> primaryKeys, boolean withLowerBound,
                                                     boolean withUpperBound, LockMode lockMode,
-                                                    String physicalPartition) {
+                                                    String physicalPartition, Boolean useLogicalTableName,
+                                                    Boolean withLimit) {
         initParams(0);
 
         // build select list
@@ -1247,6 +1261,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         // build target table
         buildTargetTable();
+        if (useLogicalTableName) {
+            buildTargetTableAsLogicalTableName(tableMeta.getTableName());
+        }
 
         // build where
         SqlNode condition = null;
@@ -1269,7 +1286,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             SqlParserPos.ZERO);
 
         // limit ?
-        SqlNode fetch = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
+        SqlNode fetch = null;
+        if (withLimit) {
+            fetch = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
+        }
 
         final SqlSelect sqlSelect =
             new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null, orderBy,
@@ -1472,6 +1492,78 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
     /**
      * <pre>
+     *  SELECT (k0, .., kn)
+     *  FROM TABLE
+     *  WHERE (k0, ..., kn) > (?, ..., ?) AND (k0, ..., kn) <= (?, ..., ?) AND RAND() <= ?
+     *  ORDER BY (k0, ..., kn);
+     * </pre>
+     *
+     * @param tableMeta Table meta
+     * @param selectKeys Keys that need to be hash
+     * @return Query plan
+     */
+    public PhyTableOperation buildSelectPlanForSample(TableMeta tableMeta, List<String> selectKeys,
+                                                      List<String> conditionKeys,
+                                                      boolean buildTargetTableAsLogicalTableName,
+                                                      boolean withLowerBound,
+                                                      boolean withUpperBound) {
+
+        initParams(0);
+
+        // build select list
+        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
+        RelDataType rowType = buildRowTypeForSelect(selectKeys, tableMeta, selectList);
+
+        // build target table
+        buildTargetTable();
+        if (buildTargetTableAsLogicalTableName) {
+            buildTargetTableAsLogicalTableName(tableMeta.getTableName());
+        }
+
+        SqlNode condition = null;
+        if (withLowerBound) {
+            //where (k0, ..., kn) > (?, ..., ?)
+            condition = buildCondition(conditionKeys, SqlStdOperatorTable.GREATER_THAN);
+        }
+        if (withUpperBound) {
+            // where (k0, ..., kn) <= (?, ..., ?)
+            final SqlNode upperBound = buildCondition(conditionKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
+            if (condition == null) {
+                condition = upperBound;
+            } else {
+                condition = PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
+            }
+        }
+        // where rand() <= ?
+        final SqlNode sampleNode = buildRandCondition(SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
+        if (condition == null) {
+            condition = sampleNode;
+        } else {
+            condition = PlannerUtils.buildAndTree(ImmutableList.of(condition, sampleNode));
+        }
+
+        // order by primary keys
+        SqlNodeList orderBy = new SqlNodeList(
+            conditionKeys.stream().map(key -> new SqlIdentifier(key, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
+
+        // limit ?
+        SqlNode fetch = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
+        SqlNode offset = SqlLiteral.createExactNumeric("1", SqlParserPos.ZERO);
+
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null, orderBy,
+                offset, fetch);
+
+        // lock mode
+        sqlSelect.setLockMode(LockMode.UNDEF);
+
+        // create PhyTableOperation
+        return buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, LockMode.UNDEF, ec);
+    }
+
+    /**
+     * <pre>
      *  SELECT HASHCKECK({all_select_keys})
      *  FROM ?
      * </pre>
@@ -1526,17 +1618,20 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
     /**
      * <pre>
-     *  SELECT HASHCKECK({all_select_keys})
+     *  SELECT HASHCKECK({common_keys}), HASHCKECK({origin_keys}), HASHCKECK({check_keys})
      *  FROM ?
      * </pre>
      *
      * @param tableMeta Table meta
-     * @param selectKeys Keys that need to be hash
+     * @param commonKeys Keys which not changed
+     * @param originKeys Keys which changed
+     * @param checkKeys Keys which are generated columns are used for checking
      * @return Query plan
      */
     public PhyTableOperation buildSelectHashCheckForGSIChecker(TableMeta tableMeta,
-                                                               List<String> selectKeys,
-                                                               Map<String, String> virtualSelectKeys,
+                                                               List<String> commonKeys,
+                                                               List<String> originKeys,
+                                                               List<String> checkKeys,
                                                                List<String> conditionKeys,
                                                                boolean withLowerBound,
                                                                boolean withUpperBound) {
@@ -1545,18 +1640,41 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         // build select list
         SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
-        RelDataType rowType = buildRowTypeForSelect(selectKeys, tableMeta, selectList);
-
-        // for modify partition key check
-        if (MapUtils.isNotEmpty(virtualSelectKeys)) {
-            for (int i = 0; i < selectList.size(); ++i) {
-                SqlIdentifier colName = (SqlIdentifier) selectList.get(i);
-                String colNameStr = colName.getLastName().toLowerCase();
-                if (virtualSelectKeys.containsKey(colNameStr)) {
-                    selectList.set(i, new SqlIdentifier(virtualSelectKeys.get(colNameStr), SqlParserPos.ZERO));
-                }
-            }
+        SqlNodeList originColumnList = new SqlNodeList(SqlParserPos.ZERO);
+        SqlNodeList checkColumnList = new SqlNodeList(SqlParserPos.ZERO);
+        for (String colNameStr : commonKeys) {
+            selectList.add(new SqlIdentifier(colNameStr, SqlParserPos.ZERO));
         }
+        for (String colNameStr : originKeys) {
+            originColumnList.add(new SqlIdentifier(colNameStr, SqlParserPos.ZERO));
+        }
+        for (String colNameStr : checkKeys) {
+            checkColumnList.add(new SqlIdentifier(colNameStr, SqlParserPos.ZERO));
+        }
+
+        final SqlNodeList selectListWithFunctionCall = new SqlNodeList(SqlParserPos.ZERO);
+
+        int i = 0;
+        List<RelDataTypeFieldImpl> columns = new LinkedList<>();
+        if (originColumnList.size() > 0 && checkColumnList.size() > 0) {
+            final SqlNode functionCallNode1 =
+                new SqlBasicCall(new SqlHashCheckAggFunction(), originColumnList.toArray(), SqlParserPos.ZERO);
+            final SqlNode functionCallNode2 =
+                new SqlBasicCall(new SqlHashCheckAggFunction(), checkColumnList.toArray(), SqlParserPos.ZERO);
+            selectListWithFunctionCall.add(functionCallNode1);
+            selectListWithFunctionCall.add(functionCallNode2);
+            columns.add(new RelDataTypeFieldImpl("HASH1", ++i, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            columns.add(new RelDataTypeFieldImpl("HASH2", ++i, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        }
+
+        if (selectList.size() > 0) {
+            final SqlNode functionCallNode3 =
+                new SqlBasicCall(new SqlHashCheckAggFunction(), selectList.toArray(), SqlParserPos.ZERO);
+            selectListWithFunctionCall.add(functionCallNode3);
+            columns.add(new RelDataTypeFieldImpl("HASH3", ++i, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        }
+
+        RelDataType rowType = typeFactory.createStructType(columns);
 
         // build target table
         buildTargetTable();
@@ -1577,11 +1695,6 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             }
         }
 
-        final SqlNode functionCallNode =
-            new SqlBasicCall(new SqlHashCheckAggFunction(), selectList.toArray(), SqlParserPos.ZERO);
-
-        final SqlNodeList selectListWithFunctionCall = new SqlNodeList(SqlParserPos.ZERO);
-        selectListWithFunctionCall.add(functionCallNode);
         final SqlSelect sqlSelect =
             new SqlSelect(SqlParserPos.ZERO, null, selectListWithFunctionCall, targetTableNode, condition, null, null,
                 null, null, null, null);
@@ -1787,6 +1900,16 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         buildParams.setDbType(DbType.MYSQL);
         PhyTableOperation operation = PhyTableOperationFactory.getInstance().buildPhyTblOpTemplate(buildParams);
         return operation;
+    }
+
+    // where rand() < 0.2;
+    private SqlNode buildRandCondition(SqlOperator operator) {
+        // Infer non-final operator.
+        SqlNode comp = new SqlBasicCall(operator, new SqlNode[] {
+            new SqlBasicCall(new SqlRandFunction(), sqlNode.EMPTY_ARRAY, SqlParserPos.ZERO),
+            new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO)}, SqlParserPos.ZERO);
+        return comp;
+
     }
 
     /**

@@ -3,6 +3,5 @@ sql: |
 
 
 plan: |
-
-  MergeSort(sort="id ASC", offset=5, fetch=10)
-    LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb` ORDER BY `id` LIMIT 15")
+  mergesort(sort="id asc", offset=5, fetch=10)
+    logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) order by `id` limit 15")

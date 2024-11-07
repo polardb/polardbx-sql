@@ -28,11 +28,10 @@ import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.jetbrains.annotations.NotNull;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -42,13 +41,14 @@ import java.util.stream.Collectors;
  */
 public class SimpleCSVFileReader implements CSVFileReader {
     private int fieldNum;
-    private InputStream inputStream;
+    private FSDataInputStream inputStream;
     private List<ColumnProvider> columnProviders;
     private List<ColumnMeta> columnMetas;
     private ByteCSVReader rowReader;
     private ExecutionContext context;
     private int chunkLimit;
     private int offset;
+    private int length;
 
     @Override
     public void open(ExecutionContext context,
@@ -61,20 +61,17 @@ public class SimpleCSVFileReader implements CSVFileReader {
         this.chunkLimit = chunkLimit;
         this.context = context;
         this.fieldNum = columnMetas.size();
-        // synchronous reading
-        byte[] buffer;
-        if (offset == 0 && length == EOF) {
-            buffer = FileSystemUtils.readFullyFile(csvFileName, engine, true);
-        } else {
-            buffer = new byte[length];
-            FileSystemUtils.readFile(csvFileName, offset, length, buffer, engine, true);
-        }
 
-        this.inputStream = new ByteArrayInputStream(buffer);
+        this.inputStream = FileSystemUtils.openStreamFileWithBuffer(csvFileName, engine, true);
+        if (offset > 0) {
+            inputStream.seek(offset);
+        }
+        this.length = length == EOF ? Integer.MAX_VALUE : length;
+
         this.columnProviders = columnMetas.stream()
             .map(ColumnProviders::getProvider).collect(Collectors.toList());
         this.columnMetas = columnMetas;
-        this.rowReader = new ByteCSVReader(csvFileName, inputStream);
+        this.rowReader = new ByteCSVReader(csvFileName, inputStream, this.length);
         this.offset = offset;
     }
 
@@ -85,6 +82,7 @@ public class SimpleCSVFileReader implements CSVFileReader {
 
     @Override
     public Chunk nextUntilPosition(long pos) {
+        long positionBound = Math.min(pos, offset + length);
         List<BlockBuilder> blockBuilders = this.columnMetas
             .stream()
             .map(ColumnMeta::getDataType)
@@ -92,8 +90,8 @@ public class SimpleCSVFileReader implements CSVFileReader {
             .collect(Collectors.toList());
 
         int totalRow = 0;
-        while (offset + rowReader.position() < pos && rowReader.isReadable()) {
-            try {
+        try {
+            while (offset + rowReader.position() < positionBound && rowReader.isReadable()) {
                 CSVRow row = rowReader.nextRow();
 
                 // for each row, parse each column and append onto block-builder
@@ -111,10 +109,9 @@ public class SimpleCSVFileReader implements CSVFileReader {
                 if (++totalRow >= chunkLimit) {
                     return buildChunk(blockBuilders, totalRow);
                 }
-
-            } catch (IOException e) {
-                throw GeneralUtil.nestedException(e);
             }
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
         }
 
         // flush the remaining rows
@@ -122,7 +119,7 @@ public class SimpleCSVFileReader implements CSVFileReader {
     }
 
     @NotNull
-    private Chunk buildChunk(List<BlockBuilder> blockBuilders, int totalRow) {
+    protected Chunk buildChunk(List<BlockBuilder> blockBuilders, int totalRow) {
         return new Chunk(totalRow, blockBuilders.stream()
             .map(BlockBuilder::build).toArray(Block[]::new));
     }
@@ -134,7 +131,7 @@ public class SimpleCSVFileReader implements CSVFileReader {
         }
     }
 
-    public long position() {
+    public long position() throws IOException {
         return offset + rowReader.position();
     }
 }

@@ -18,7 +18,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DataManipulateUtil.prepareData;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DataManipulateUtil.prepareDataForDrds;
-import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.alterTableViaTwoPhaseDdl;
+import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.alterTableViaJdbc;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfCompleteFully;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfExecuteTwoPhaseDdl;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfRollbackFully;
@@ -76,10 +76,10 @@ public class TwoPhaseDdlDrdsPauseModifyColumnTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 500);
@@ -133,10 +133,10 @@ public class TwoPhaseDdlDrdsPauseModifyColumnTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 500);
@@ -202,10 +202,10 @@ public class TwoPhaseDdlDrdsPauseModifyColumnTest extends DDLBaseNewDBTestCase {
         String enableTwoPhaseDdlHint =
             String.format("/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 500);
@@ -266,10 +266,10 @@ public class TwoPhaseDdlDrdsPauseModifyColumnTest extends DDLBaseNewDBTestCase {
             String.format(
                 "/*+TDDL:CMD_EXTRA(ENABLE_DRDS_MULTI_PHASE_DDL=true,PURE_ASYNC_DDL_MODE=true,MULTI_PHASE_COMMIT_DELAY=20)*/");
         String recoverDdl = String.format("alter table %s modify column c varchar(32)", mytable);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, recoverDdl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, recoverDdl);
         String ddl = String.format("alter table %s modify column c varchar(16)", mytable);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 500);

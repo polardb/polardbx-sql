@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator.scan.impl;
 
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
@@ -392,6 +391,55 @@ public abstract class AbstractScanWork implements ScanWork<ColumnarSplit, Chunk>
                 columnReader.open(loadFuture, false, rgMatrix.get(columnId));
             }
         }
+    }
+
+    /**
+     * Not using block cache, do IO and parse for all needed row-groups.
+     * Read Tso column.
+     */
+    protected void mergeIONoCacheWithTsoColumn(List<Integer> inputRefs,
+                                               boolean[] rowGroupIncluded) {
+        List<Integer> columnIds = new ArrayList<>();
+        Map<Integer, boolean[]> rgMatrix = new HashMap<>();
+        for (int i = 0; i < inputRefs.size(); i++) {
+            final Integer columnId = columnTransformer.getLocInOrc(chunkRefMap[inputRefs.get(i)]);
+            if (columnId == null) {
+                continue;
+            }
+            // No matter whether rows are selected or not,
+            // We must load the whole column stream at once into memory.
+            ColumnReader columnReader = rgIterator.getColumnReader(columnId);
+            if (!columnReader.isOpened()) {
+                columnIds.add(columnId);
+                rgMatrix.put(columnId, rowGroupIncluded);
+            }
+        }
+
+        // Add TSO column.
+        ColumnReader tsoColumnReader = rgIterator.getColumnReader(1);
+        if (!tsoColumnReader.isOpened()) {
+            columnIds.add(1);
+            rgMatrix.put(1, rowGroupIncluded);
+        }
+
+        // Invoke stripe-level IO tasks that has been merged.
+        StripeLoader stripeLoader = rgIterator.getStripeLoader();
+        CompletableFuture<Map<StreamName, InStream>> loadFuture =
+            stripeLoader.load(columnIds, rgMatrix, () -> isIOCanceled.get());
+
+        for (int i = 0; i < inputRefs.size(); i++) {
+            final Integer columnId = columnTransformer.getLocInOrc(chunkRefMap[inputRefs.get(i)]);
+            if (columnId == null) {
+                continue;
+            }
+            ColumnReader columnReader = rgIterator.getColumnReader(columnId);
+            if (!columnReader.isOpened() && rgMatrix.get(columnId) != null) {
+                // Open column reader with IO task future.
+                columnReader.open(loadFuture, false, rgMatrix.get(columnId));
+            }
+        }
+        // Open TSO column reader.
+        tsoColumnReader.open(loadFuture, false, rgMatrix.get(1));
     }
 
     protected static boolean[] remove(boolean[] left, boolean[] right) {

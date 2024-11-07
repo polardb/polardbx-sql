@@ -23,6 +23,7 @@
               logicalview(tables="[0000-0003].l2_[0-7]", shardcount=8, sql="select `id` from `l2` as `l2`")
         exchange(distribution=hash[0], collation=[])
           logicalview(tables="[0000-0003].l1", shardcount=4, sql="select `id` from `l1` as `l1`")
+
 -
   sql: |
     /*+TDDL:cmd_extra(enable_broadcast_join=false) SEMI_HASH_JOIN(t1,t3) HASH_JOIN((t1,t3),t2)*/
@@ -55,6 +56,7 @@
       AND l6.id = l7.id
       AND l7.id = l8.id
   plan: |
+
     project(id="id6")
       bkajoin(condition="id = id5", type="inner")
         bkajoin(condition="id = id4", type="inner")
@@ -67,13 +69,14 @@
                       project(id="id0", id0="id")
                         bkajoin(condition="id = id", type="inner")
                           logicalview(tables="[0000-0003].l8_[00-31]", shardcount=32, sql="select `id` from `l8` as `l8`")
-                          logicalview(tables="[0000-0003].l7_[00-27]", shardcount=28, sql="select `id` from `l7` as `l7` where (`id` in (...))")
-                      logicalview(tables="[0000-0003].l6_[00-23]", shardcount=24, sql="select `id` from `l6` as `l6` where (`id` in (...))")
-                  logicalview(tables="[0000-0003].l5_[00-19]", shardcount=20, sql="select `id` from `l5` as `l5` where (`id` in (...))")
-              logicalview(tables="[0000-0003].l4_[00-15]", shardcount=16, sql="select `id` from `l4` as `l4` where (`id` in (...))")
-            logicalview(tables="[0000-0003].l3_[00-11]", shardcount=12, sql="select `id` from `l3` as `l3` where (`id` in (...))")
-          logicalview(tables="[0000-0003].l2_[0-7]", shardcount=8, sql="select `id` from `l2` as `l2` where (`id` in (...))")
-        logicalview(tables="[0000-0003].l1", shardcount=4, sql="select `id` from `l1` as `l1` where (`id` in (...))")
+                          logicalview(tables="[0000-0003].l7_[00-27]", shardcount=28, sql="select `id` from `l7` as `l7` force index(`primary`) where (`id` in (...))")
+                      logicalview(tables="[0000-0003].l6_[00-23]", shardcount=24, sql="select `id` from `l6` as `l6` force index(`primary`) where (`id` in (...))")
+                  logicalview(tables="[0000-0003].l5_[00-19]", shardcount=20, sql="select `id` from `l5` as `l5` force index(`primary`) where (`id` in (...))")
+              logicalview(tables="[0000-0003].l4_[00-15]", shardcount=16, sql="select `id` from `l4` as `l4` force index(`primary`) where (`id` in (...))")
+            logicalview(tables="[0000-0003].l3_[00-11]", shardcount=12, sql="select `id` from `l3` as `l3` force index(`primary`) where (`id` in (...))")
+          logicalview(tables="[0000-0003].l2_[0-7]", shardcount=8, sql="select `id` from `l2` as `l2` force index(`primary`) where (`id` in (...))")
+        logicalview(tables="[0000-0003].l1", shardcount=4, sql="select `id` from `l1` as `l1` force index(`primary`) where (`id` in (...))")
+
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(fact,l6) HASH_JOIN((fact,l6),l5) HASH_JOIN((fact,l6,l5),l4) HASH_JOIN((fact,l6,l5,l4),l3) HASH_JOIN((fact,l6,l5,l4,l3),l2) HASH_JOIN((fact,l6,l5,l4,l3,l2),l1) */
@@ -85,6 +88,7 @@
     left join l5 on l5.id = fact.id5
     left join l6 on l6.id = fact.id6
   plan: |
+
     project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id15", name0="name4", create_time0="create_time4", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2", id15="id14", name4="name3", create_time4="create_time3")
       hashjoin(condition="id = id1", type="left")
         project(id="id", id1="id1", id2="id2", id3="id3", id4="id4", id5="id5", id6="id6", id7="id7", id8="id8", id9="id9", id10="id10", id11="id14", name0="name3", create_time0="create_time3", id0="id11", name="name0", create_time="create_time0", id12="id0", name1="name", create_time1="create_time", id13="id12", name2="name1", create_time2="create_time1", id14="id13", name3="name2", create_time3="create_time2")
@@ -121,6 +125,7 @@
     /*+TDDL: cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v1,v3) HASH_JOIN(v4,v2) HASH_JOIN((v1,v3),(v4,v2)) */
     select v1_k, v2_k, v3_k, v4_k from v1 inner join v2 on v1_k = v2_k inner join (v3 inner join v4 on v3_k = v4_k)  on name1 = name3 and name2 = name4;
   plan: |
+
     project(v1_k="v1_k", v2_k="v2_k", v3_k="v3_k", v4_k="v4_k")
       hashjoin(condition="v4_k = v3_k and v2_k = v1_k", type="inner")
         exchange(distribution=hash[2, 0], collation=[])
@@ -142,42 +147,47 @@
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
     select * from v3 join v2 on v3.id = v2.id
   plan: |
-    HashJoin(condition="id = id", type="inner")
-      Exchange(distribution=hash[0], collation=[])
-        LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id`, `v3_k`, `name3`, `create_time` FROM `v3` AS `v3`")
-      Exchange(distribution=hash[0], collation=[])
-        LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id`, `v2_k`, `name2`, `create_time` FROM `v2` AS `v2`")
+
+    hashjoin(condition="id = id", type="inner")
+      exchange(distribution=hash[0], collation=[])
+        logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+      exchange(distribution=hash[0], collation=[])
+        logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
     select count(*) from v3 join v2 on v3.id = v2.id
   plan: |
-    HashAgg(count(*)="SUM(count(*))")
-      Exchange(distribution=single, collation=[])
-        PartialHashAgg(count(*)="COUNT()")
-          HashJoin(condition="id = id", type="inner")
-            Exchange(distribution=hash[0], collation=[])
-              LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id` FROM `v3` AS `v3`")
-            Exchange(distribution=hash[0], collation=[])
-              LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id` FROM `v2` AS `v2`")
+
+    hashagg(count(*)="sum(count(*))")
+      exchange(distribution=single, collation=[])
+        partialhashagg(count(*)="count()")
+          hashjoin(condition="id = id", type="inner")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id` from `v3` as `v3`")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2`")
+
 -
   sql: |
     /*+TDDL: BKA_JOIN(v3, v2)*/
     select count(*) from v3 join v2 on v3.id = v2.id group by v3.name3
   plan: |
+
     project(count(*)="count(*)")
       sortagg(group="name3", count(*)="count()")
         exchange(distribution=hash[1], collation=[1 asc-nulls-first])
           bkajoin(condition="id = id", type="inner")
             logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3` order by `name3`")
-            logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` where (`id` in (...))")
+            logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` force index(`primary`) where (`id` in (...))")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
     select * from v3 join v2 on v3.id = v2.id order by v3.name3 limit 2, 3
   plan: |
+
     limit(offset=2, fetch=3)
       exchange(distribution=single, collation=[2 asc-nulls-first])
         hashjoin(condition="id = id", type="inner")
@@ -191,20 +201,22 @@
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
     select * from v3 join v2 on v3.id = v2.id limit 2, 3
   plan: |
-    Limit(offset=2, fetch=3)
-      Exchange(distribution=single, collation=[])
-        Limit(fetch=5)
-          HashJoin(condition="id = id", type="inner")
-            Exchange(distribution=hash[0], collation=[])
-              LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id`, `v3_k`, `name3`, `create_time` FROM `v3` AS `v3`")
-            Exchange(distribution=hash[0], collation=[])
-              LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id`, `v2_k`, `name2`, `create_time` FROM `v2` AS `v2`")
+
+    limit(offset=2, fetch=3)
+      exchange(distribution=single, collation=[])
+        limit(fetch=5)
+          hashjoin(condition="id = id", type="inner")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+            exchange(distribution=hash[0], collation=[])
+              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v3, v2)*/
     select * from v3 join v2 on v3.id = v2.id order by v3.name3
   plan: |
+
     exchange(distribution=single, collation=[2 asc-nulls-first])
       hashjoin(condition="id = id", type="inner")
         exchange(distribution=hash[0], collation=[2 asc-nulls-first])
@@ -217,68 +229,73 @@
     /*+TDDL:cmd_extra(ENABLE_SORT_MERGE_JOIN=true,enable_broadcast_join=false) SORT_MERGE_JOIN(v3, v2)*/
     select count(*) from v3 join v2 on v3.id = v2.id group by v3.name3
   plan: |
-    Project(count(*)="count(*)")
-      HashAgg(group="name3", count(*)="SUM(count(*))")
-        Exchange(distribution=hash[0], collation=[])
-          PartialHashAgg(group="name3", count(*)="COUNT()")
-            SortMergeJoin(condition="id = id", type="inner")
-              Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
-                LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id`, `name3` FROM `v3` AS `v3` ORDER BY `id`")
-              Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
-                LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id` FROM `v2` AS `v2` ORDER BY `id`")
+
+    project(count(*)="count(*)")
+      hashagg(group="name3", count(*)="sum(count(*))")
+        exchange(distribution=hash[0], collation=[])
+          partialhashagg(group="name3", count(*)="count()")
+            sortmergejoin(condition="id = id", type="inner")
+              exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+                logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3` force index(`primary`) order by `id`")
+              exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+                logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` force index(`primary`) order by `id`")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_SORT_MERGE_JOIN=true,enable_broadcast_join=false) SORT_MERGE_JOIN(v3, v2)*/
     select * from v3 join v2 on v3.id = v2.id order by v3.id
   plan: |
-    Exchange(distribution=single, collation=[0 ASC-nulls-first])
-      SortMergeJoin(condition="id = id", type="inner")
-        Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
-          LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id`, `v3_k`, `name3`, `create_time` FROM `v3` AS `v3` ORDER BY `id`")
-        Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
-          LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id`, `v2_k`, `name2`, `create_time` FROM `v2` AS `v2` ORDER BY `id`")
 
+    exchange(distribution=single, collation=[0 asc-nulls-first])
+      sortmergejoin(condition="id = id", type="inner")
+        exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+          logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3` force index(`primary`) order by `id`")
+        exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+          logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` force index(`primary`) order by `id`")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE)*/
     select count(*) from v3 group by v3.name3 order by v3.name3
   plan: |
-    Project(count(*)="count(*)")
-      Exchange(distribution=single, collation=[0 ASC-nulls-first])
-        SortAgg(group="name3", count(*)="SUM(count(*))")
-          Exchange(distribution=hash[0], collation=[0 ASC-nulls-first])
-            LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `name3`, COUNT(*) AS `count(*)` FROM `v3` AS `v3` GROUP BY `name3` ORDER BY `name3`")
+
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 asc-nulls-first])
+        sortagg(group="name3", count(*)="sum(count(*))")
+          exchange(distribution=hash[0], collation=[0 asc-nulls-first])
+            logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `name3`, count(*) as `count(*)` from `v3` as `v3` group by `name3` order by `name3`")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE)*/
     select count(*) from v3 group by v3.name3 order by v3.name3 desc
   plan: |
-    Project(count(*)="count(*)")
-      Exchange(distribution=single, collation=[0 DESC-nulls-last])
-        SortAgg(group="name3", count(*)="SUM(count(*))")
-          Exchange(distribution=hash[0], collation=[0 DESC-nulls-last])
-            LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `name3`, COUNT(*) AS `count(*)` FROM `v3` AS `v3` GROUP BY `name3` ORDER BY `name3` DESC")
+
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 desc-nulls-last])
+        sortagg(group="name3", count(*)="sum(count(*))")
+          exchange(distribution=hash[0], collation=[0 desc-nulls-last])
+            logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `name3`, count(*) as `count(*)` from `v3` as `v3` group by `name3` order by `name3` desc")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE)*/
     select count(*) from v3 group by v3.name3 order by v3.name3 desc limit 1,2
   plan: |
-    Project(count(*)="count(*)")
-      Limit(offset=1, fetch=2)
-        Exchange(distribution=single, collation=[0 DESC-nulls-last])
-          SortAgg(group="name3", count(*)="SUM(count(*))")
-            Exchange(distribution=hash[0], collation=[0 DESC-nulls-last])
-              LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `name3`, COUNT(*) AS `count(*)` FROM `v3` AS `v3` GROUP BY `name3` ORDER BY `name3` DESC")
+
+    project(count(*)="count(*)")
+      limit(offset=1, fetch=2)
+        exchange(distribution=single, collation=[0 desc-nulls-last])
+          sortagg(group="name3", count(*)="sum(count(*))")
+            exchange(distribution=hash[0], collation=[0 desc-nulls-last])
+              logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `name3`, count(*) as `count(*)` from `v3` as `v3` group by `name3` order by `name3` desc")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_HASH_AGG=FALSE)*/
     select count(*) from v3 group by v3.name3 limit 1,2
   plan: |
+
     limit(offset=1, fetch=2)
       exchange(distribution=single, collation=[])
         limit(fetch=3)
@@ -292,42 +309,46 @@
     /*+TDDL: SEMI_SORT_MERGE_JOIN(v3, v2)*/
     select * from v3 where v3.id in (select id from v2)
   plan: |
+
     semisortmergejoin(condition="id = id", type="semi")
-      logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3` order by `id`")
+      logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3` force index(`primary`) order by `id`")
       exchange(distribution=broadcast, collation=[0 asc-nulls-first])
-        logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` order by `id`")
+        logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` force index(`primary`) order by `id`")
 
 -
   sql: |
     /*+TDDL: SEMI_SORT_MERGE_JOIN(v3, v2)*/
     select * from v3 where v3.id in (select id from v2) order by v3.id
   plan: |
+
     exchange(distribution=single, collation=[0 asc-nulls-first])
       semisortmergejoin(condition="id = id", type="semi")
-        logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3` order by `id`")
+        logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3` force index(`primary`) order by `id`")
         exchange(distribution=broadcast, collation=[0 asc-nulls-first])
-          logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` order by `id`")
+          logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2` force index(`primary`) order by `id`")
 
 -
   sql: |
     /*+TDDL: MATERIALIZED_SEMI_JOIN(v3, v2)*/
     select count(*) from v3 where v3.id in (select id from v2) group by v3.name3 order by v3.name3
   plan: |
-    Project(count(*)="count(*)")
-      Exchange(distribution=single, collation=[0 ASC-nulls-first])
-        SortAgg(group="name3", count(*)="COUNT()")
-          MemSort(sort="name3 ASC")
-            Exchange(distribution=hash[1], collation=[])
-              MaterializedSemiJoin(condition="id = id", type="semi")
-                LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `id`, `name3` FROM `v3` AS `v3` WHERE (`id` IN (...))")
-                Exchange(distribution=broadcast, collation=[])
-                  LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id` FROM `v2` AS `v2`")
+
+    project(count(*)="count(*)")
+      exchange(distribution=single, collation=[0 asc-nulls-first])
+        sortagg(group="name3", count(*)="count()")
+          memsort(sort="name3 asc")
+            exchange(distribution=hash[1], collation=[])
+              materializedsemijoin(condition="id = id", type="semi")
+                logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `name3` from `v3` as `v3` force index(`primary`) where (`id` in (...))")
+                exchange(distribution=broadcast, collation=[])
+                  logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id` from `v2` as `v2`")
 
 -
   sql: |
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join v3 on v2.id = v3.id limit 2
   plan: |
+
     exchange(distribution=single, collation=[])
       hashjoin(condition="id = id", type="left")
         exchange(distribution=hash[0], collation=[])
@@ -342,12 +363,13 @@
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join v3 on v2.id = v3.id order by v2.id limit 2
   plan: |
+
     exchange(distribution=single, collation=[0 asc-nulls-first])
       hashjoin(condition="id = id", type="left")
         exchange(distribution=hash[0], collation=[0 asc-nulls-first])
           limit(offset=0, fetch=2)
             exchange(distribution=single, collation=[0 asc-nulls-first])
-              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` order by `id` limit 2")
+              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` force index(`primary`) order by `id` limit 2")
         exchange(distribution=hash[0], collation=[])
           logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
 
@@ -356,36 +378,38 @@
     /*+TDDL:cmd_extra(ENABLE_BKA_JOIN=false,enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join v3 on v2.id = v3.v3_k order by v2.id limit 2
   plan: |
+
     limit(offset=0, fetch=2)
       exchange(distribution=single, collation=[0 asc-nulls-first])
         hashjoin(condition="id = v3_k", type="left")
           exchange(distribution=hash[0], collation=[0 asc-nulls-first])
             limit(fetch=2)
-              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` order by `id` limit 2")
+              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` force index(`primary`) order by `id` limit 2")
           exchange(distribution=hash[1], collation=[])
             logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
+
 -
   sql: |
     /*+TDDL: cmd_extra(enable_broadcast_join=false,PARTIAL_AGG_SELECTIVITY_THRESHOLD=0) HASH_JOIN(v2, v3)*/
     select * from v2 left join (select name3 from v3 group by name3) v3 on v2.name2 = v3.name3
   plan: |
-    HashJoin(condition="name2 = name3", type="left")
-      Exchange(distribution=hash[2], collation=[])
-        LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id`, `v2_k`, `name2`, `create_time` FROM `v2` AS `v2`")
-      HashAgg(group="name3")
-        Exchange(distribution=hash[0], collation=[])
-          LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `name3` FROM `v3` AS `v3` GROUP BY `name3`")
 
+    hashjoin(condition="name2 = name3", type="left")
+      exchange(distribution=hash[2], collation=[])
+        logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+      hashagg(group="name3")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `name3` from `v3` as `v3` group by `name3`")
 
 -
   sql: |
     /*+TDDL: cmd_extra(enable_broadcast_join=false) HASH_JOIN(v2, v3)*/
     select * from v2 left join (select name3, count(*) from v3 group by name3) v3 on v2.name2 = v3.name3
   plan: |
-    HashJoin(condition="name2 = name3", type="left")
-      Exchange(distribution=hash[2], collation=[])
-        LogicalView(tables="[0000-0003].v2_[0-7]", shardCount=8, sql="SELECT `id`, `v2_k`, `name2`, `create_time` FROM `v2` AS `v2`")
-      HashAgg(group="name3", count(*)="SUM(count(*))")
-        Exchange(distribution=hash[0], collation=[])
-          LogicalView(tables="[0000-0003].v3_[00-11]", shardCount=12, sql="SELECT `name3`, COUNT(*) AS `count(*)` FROM `v3` AS `v3` GROUP BY `name3`")
 
+    hashjoin(condition="name2 = name3", type="left")
+      exchange(distribution=hash[2], collation=[])
+        logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2`")
+      hashagg(group="name3", count(*)="sum(count(*))")
+        exchange(distribution=hash[0], collation=[])
+          logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `name3`, count(*) as `count(*)` from `v3` as `v3` group by `name3`")

@@ -26,7 +26,7 @@ import com.alibaba.polardbx.transaction.TransactionExecutor;
  * @version 1.0
  */
 public class KillTimeoutTransactionTask implements Runnable {
-    private static final Logger logger = LoggerFactory.getLogger(DeadlockDetectionTask.class);
+    private static final Logger logger = LoggerFactory.getLogger(KillTimeoutTransactionTask.class);
 
     private final String db;
 

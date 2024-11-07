@@ -385,6 +385,8 @@ public class TransactionConnectionHolder implements IConnectionHolder {
             boolean hasParticipant = hasParticipant(group, grpConnId);
             boolean shouldParticipate = shouldParticipateTransaction(rw, hasParticipant);
             boolean supportGroupMultiWrite = supportGroupMultiWriteConns();
+            boolean needSetFlashbackArea = executionContext.isFlashbackArea() && rw == ITransaction.RW.READ
+                && executionContext.getStorageInfo(schema).isSupportFlashbackArea();
             if (hasParticipant) {
 
 //                // 如果已存在写连接 优先复用写连接
@@ -399,14 +401,16 @@ public class TransactionConnectionHolder implements IConnectionHolder {
                     //groupWriteConn = writeConns.get(0);
                     groupWriteConn = writeConnCtx.getDefaultWriteConn();
                     if (reuseWriteConn(schema, group, rw, groupWriteConn)) {
-                        return wrapWithAutoSavepoint(groupWriteConn.connection, rw);
+                        return wrapWithAutoSavepoint(groupWriteConn.connection, rw)
+                            .enableFlashbackArea(needSetFlashbackArea);
                     }
                 } else {
                     HeldConnection freeWriteConn = findFreeWriteConn(group, grpConnId, writeConnCtx);
                     if (freeWriteConn != null) {
                         // Find free write conn from write conns
                         if (reuseWriteConn(group, schema, rw, freeWriteConn)) {
-                            return wrapWithAutoSavepoint(freeWriteConn.connection, rw);
+                            return wrapWithAutoSavepoint(freeWriteConn.connection, rw)
+                                .enableFlashbackArea(needSetFlashbackArea);
                         }
                     } else {
                         // No find any free conn from write conns, all writeConns are using
@@ -423,7 +427,8 @@ public class TransactionConnectionHolder implements IConnectionHolder {
                 final IConnection conn =
                     reuseFreeReadConn(schema, group, grpConnId, groupHeldReadConns, freeReadConn, rw,
                         shouldParticipate, ds);
-                return wrapWithAutoSavepoint(conn, rw);
+                return wrapWithAutoSavepoint(conn, rw)
+                    .enableFlashbackArea(needSetFlashbackArea);
             }
 
             // Try to create new connection.
@@ -432,7 +437,8 @@ public class TransactionConnectionHolder implements IConnectionHolder {
                     // Using extra connection
                     final IConnection conn = beginTrxInNewConn(schema, group, null, ds, rw, groupHeldReadConns,
                         shouldParticipate);
-                    return wrapWithAutoSavepoint(conn, rw);
+                    return wrapWithAutoSavepoint(conn, rw)
+                        .enableFlashbackArea(needSetFlashbackArea);
                 }
                 if (groupHeldReadConns.size() >= 1) {
                     if (shouldParticipate) {
@@ -449,7 +455,8 @@ public class TransactionConnectionHolder implements IConnectionHolder {
 
             final IConnection conn =
                 beginTrxInNewConn(schema, group, grpConnId, ds, rw, groupHeldReadConns, shouldParticipate);
-            return wrapWithAutoSavepoint(conn, rw);
+            return wrapWithAutoSavepoint(conn, rw)
+                .enableFlashbackArea(needSetFlashbackArea);
         } finally {
             lock.unlock();
         }

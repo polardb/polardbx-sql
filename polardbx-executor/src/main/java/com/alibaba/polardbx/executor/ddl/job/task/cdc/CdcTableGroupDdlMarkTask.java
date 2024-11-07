@@ -27,6 +27,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
@@ -54,7 +55,7 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PAR
 @Getter
 @Setter
 @Slf4j
-public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
+public class CdcTableGroupDdlMarkTask extends BaseCdcTask {
 
     private String tableGroup;
     private String tableName;
@@ -62,11 +63,12 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
     private Map<String, Set<String>> targetTableTopology;
     private String ddlStmt;
     private CdcDdlMarkVisibility cdcDdlMarkVisibility;
+    private boolean isColumnarIndex;
 
     @JSONCreator
     public CdcTableGroupDdlMarkTask(String tableGroup, String schemaName, String tableName, SqlKind sqlKind,
                                     Map<String, Set<String>> targetTableTopology, String ddlStmt,
-                                    CdcDdlMarkVisibility cdcDdlMarkVisibility) {
+                                    CdcDdlMarkVisibility cdcDdlMarkVisibility, boolean isColumnarIndex) {
         super(schemaName);
         this.tableGroup = tableGroup;
         this.tableName = tableName;
@@ -75,12 +77,15 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
 
         this.ddlStmt = ddlStmt;
         this.cdcDdlMarkVisibility = cdcDdlMarkVisibility;
+        this.isColumnarIndex = isColumnarIndex;
     }
 
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         updateSupportedCommands(true, false, metaDbConnection);
-        mark4TableGroupChange(executionContext);
+        if (!isColumnarIndex) {
+            mark4TableGroupChange(executionContext);
+        }
     }
 
     private void mark4TableGroupChange(ExecutionContext executionContext) {

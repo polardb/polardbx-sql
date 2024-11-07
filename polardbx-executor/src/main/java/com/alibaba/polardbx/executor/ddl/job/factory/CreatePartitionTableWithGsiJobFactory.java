@@ -17,16 +17,24 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.ColumnarTableOptions;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.ColumnarOptions;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar.CreateColumnarIndexJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateViewAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateViewSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CciSchemaEvolutionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.WaitColumnarTableCreationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -36,11 +44,19 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionTable;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateSelect;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlMetaValidationUtil;
+import com.alibaba.polardbx.optimizer.view.SystemTableView;
+import com.alibaba.polardbx.optimizer.view.ViewManager;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -73,6 +89,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     Map<String, List<List<String>>> primaryTableTopology;
     List<PhyDdlTableOperation> primaryTablePhysicalPlans;
     Map<String, List<PhyDdlTableOperation>> indexTablePhysicalPlansMap;
+    private CreatePartitionTableWithGsiBuilder createPartitionTableWithGsiBuilder;
 
     private final String schemaName;
     private final String primaryTableName;
@@ -97,8 +114,8 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
 
         CreatePartitionTableWithGsiBuilder createTableWithGsiBuilder =
             new CreatePartitionTableWithGsiBuilder(ddl, preparedData, executionContext);
-
         createTableWithGsiBuilder.build();
+        this.createPartitionTableWithGsiBuilder = createTableWithGsiBuilder;
 
         Map<String, List<List<String>>> primaryTableTopology = createTableWithGsiBuilder.getPrimaryTableTopology();
         List<PhyDdlTableOperation> primaryTablePhysicalPlans = createTableWithGsiBuilder.getPrimaryTablePhysicalPlans();
@@ -117,6 +134,49 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     @Override
     protected void validate() {
 
+        /**
+         * Check if the archive table name already exists if need creating  archive table and its cci
+         */
+
+        if (preparedData.getPrimaryTablePreparedData().getTtlDefinitionInfo() != null) {
+            TtlDefinitionInfo ttlDefinitionInfo = preparedData.getPrimaryTablePreparedData().getTtlDefinitionInfo();
+            String ttlTableSchema = ttlDefinitionInfo.getTtlInfoRecord().getTableSchema();
+            String ttlTableName = ttlDefinitionInfo.getTtlInfoRecord().getTableName();
+            String archiveTableName = ttlDefinitionInfo.getArchiveTableName();
+            String archiveTableSchema = ttlDefinitionInfo.getArchiveTableSchema();
+
+            if (ttlDefinitionInfo.needPerformExpiredDataArchivingByCci()) {
+                boolean foundTargetCciName = false;
+                String tarArcCciIdxName = null;
+                String arcTmpName = ttlDefinitionInfo.getTmpTableName().toLowerCase();
+                Set<String> allIndexTableNameSet = preparedData.getIndexTablePreparedDataMap().keySet();
+                for (String idxTblName : allIndexTableNameSet) {
+                    if (idxTblName.toLowerCase().startsWith(arcTmpName)) {
+                        foundTargetCciName = true;
+                        tarArcCciIdxName = idxTblName;
+                        break;
+                    }
+                }
+                if (foundTargetCciName) {
+                    CreateGlobalIndexPreparedData gsiPrepData =
+                        preparedData.getIndexTablePreparedDataMap().get(tarArcCciIdxName);
+                    if (gsiPrepData != null && gsiPrepData.isColumnarIndex()) {
+                        ViewManager viewManager = OptimizerContext.getContext(archiveTableSchema).getViewManager();
+                        if (viewManager != null) {
+                            SystemTableView.Row viewInfo = viewManager.select(archiveTableName);
+                            if (viewInfo != null) {
+//                                throw new TddlRuntimeException(ErrorCode.ERR_TTL, String.format(
+//                                    "Failed to create table `%s`.`%s` because the specifying archive table '%s'.'%s' of ttl definition already exists",
+//                                    ttlTableSchema, ttlTableName,
+//                                    archiveTableSchema, archiveTableName));
+                            }
+                        }
+                    }
+                }
+
+            }
+
+        }
     }
 
     @Override
@@ -146,7 +206,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         }
 
         ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable) thisParentJob;
-        ;
+
         createTableJob.removeTaskRelationship(
             createTableJob.getCreateTableAddTablesMetaTask(),
             createTableJob.getCdcDdlMarkTask()
@@ -201,6 +261,7 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
                     indexPreparedData.getDdlVersionId()));
 
                 // TODO is CreateGsiPreCheckTask necessary ?
+
             } else {
                 // Global secondary index
                 ExecutableDdlJob thisJob =
@@ -252,6 +313,48 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             result.addTaskRelationship(last, createTableJob.getCreateTableShowTableMetaTask());
         }
 
+        if (preparedData.getPrimaryTablePreparedData().getTtlDefinitionInfo() != null) {
+            TtlDefinitionInfo ttlDefinitionInfo = preparedData.getPrimaryTablePreparedData().getTtlDefinitionInfo();
+
+            if (ttlDefinitionInfo.needPerformExpiredDataArchivingByCci()) {
+                boolean foundTargetIdxName = false;
+                String arcTmpName = ttlDefinitionInfo.getTmpTableName().toLowerCase();
+                Set<String> allIndexTableNameSet = preparedData.getIndexTablePreparedDataMap().keySet();
+                for (String idxTblName : allIndexTableNameSet) {
+                    if (idxTblName.toLowerCase().startsWith(arcTmpName)) {
+                        foundTargetIdxName = true;
+                        break;
+                    }
+                }
+                if (foundTargetIdxName) {
+                    TableMeta primTblMeta = preparedData.getPrimaryTablePreparedData().getTableMeta();
+                    String ttlTblSchema = ttlDefinitionInfo.getTtlInfoRecord().getTableSchema();
+                    String ttlTblName = ttlDefinitionInfo.getTtlInfoRecord().getTableName();
+                    String cciName = ttlDefinitionInfo.getTtlInfoRecord().getArcTmpTblName();
+                    String arcTblName = ttlDefinitionInfo.getArchiveTableName();
+                    String viewName = arcTblName;
+                    List<ColumnMeta> colMetaList = new ArrayList<>();
+                    colMetaList.addAll(primTblMeta.getAllColumns());
+                    String viewDefinition =
+                        TtlTaskSqlBuilder.buildSqlForFullScanArcTbl(ttlTblSchema, ttlTblName, cciName, colMetaList);
+                    CreateViewAddMetaTask createViewAddMetaTask =
+                        new CreateViewAddMetaTask(ttlTblSchema, viewName, false, null, viewDefinition, null, null);
+                    CreateViewSyncTask createViewSyncTask = new CreateViewSyncTask(ttlTblSchema, viewName);
+
+                    List<DdlTask> tailNodes =
+                        result.getAllZeroOutDegreeVertexes().stream().map(o -> o.getObject()).collect(
+                            Collectors.toList());
+                    result.addTask(createViewAddMetaTask);
+                    result.addTask(createViewSyncTask);
+                    result.addTaskRelationship(createViewAddMetaTask, createViewSyncTask);
+                    for (int i = 0; i < tailNodes.size(); i++) {
+                        DdlTask tailTask = tailNodes.get(i);
+                        result.addTaskRelationship(tailTask, createViewAddMetaTask);
+                    }
+                }
+            }
+        }
+
         if (selectSql != null) {
             InsertIntoTask
                 insertIntoTask = new InsertIntoTask(schemaName, primaryTableName, selectSql, null, 0);
@@ -265,16 +368,22 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             insertIntoTask.setExceptionAction(DdlExceptionAction.ROLLBACK);
             return ans;
         }
+
         return result;
     }
 
     private Map<String, String> buildColumnarOptions(SqlIndexDefinition indexDefinition) {
-        Map<String, String> options = new HashMap<>();
-        if (indexDefinition != null && CollectionUtils.isNotEmpty(indexDefinition.getDictColumns())) {
-            String columns = indexDefinition.getDictColumns().stream()
-                .map(sqlIndexColumnName -> SqlIdentifier.surroundWithBacktick(sqlIndexColumnName.getColumnNameStr()))
+        if (indexDefinition == null) {
+            return new HashMap<>();
+        }
+        Map<String, String> options = indexDefinition.getColumnarOptions();
+        // Normalize dict columns.
+        String dictColumnStr = options.get(ColumnarOptions.DICTIONARY_COLUMNS);
+        if (null != dictColumnStr) {
+            dictColumnStr = SQLUtils.splitNamesByComma(dictColumnStr.toLowerCase()).stream()
+                .map(SqlIdentifier::surroundWithBacktick)
                 .collect(Collectors.joining(","));
-            options.put(ColumnarTableOptions.DICTIONARY_COLUMNS, columns);
+            options.put(ColumnarOptions.DICTIONARY_COLUMNS, dictColumnStr);
         }
         return options;
     }
@@ -286,9 +395,12 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             // Call SqlCreateTable.unparse(SqlWriter writer, int leftPrec, int rightPrec) will get create table
             // statement with cci name replaced (suffix added).
             // For GDN use, we need cci name without suffix
+            SqlCreateTable.PrepareSqlStringOptions options = new SqlCreateTable.PrepareSqlStringOptions();
+            options.setTtlDefinitionAllowed(true);
             final String normalizedOriginalDdl = this.normalizedOriginalDdl
 //                .toSqlString(MysqlSqlDialect.DEFAULT, false)
-                .toString();
+                .toSqlStringForCdc(options);
+
             cdcDdlMarkTask.setNormalizedOriginalDdl(normalizedOriginalDdl);
         } catch (Exception ignored) {
             logger.error(
@@ -334,5 +446,9 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
 
     public void setSelectSql(String selectSql) {
         this.selectSql = selectSql;
+    }
+
+    public CreatePartitionTableWithGsiBuilder getCreatePartitionTableWithGsiBuilder() {
+        return createPartitionTableWithGsiBuilder;
     }
 }

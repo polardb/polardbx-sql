@@ -32,29 +32,46 @@ import java.sql.Connection;
 @Getter
 @TaskName(name = "RebuildTableChangeMetaTask")
 public class RebuildTableChangeMetaTask extends BaseGmsTask {
+    protected String sql;
 
-    public RebuildTableChangeMetaTask(String schemaName, String logicalTableName) {
+    public RebuildTableChangeMetaTask(String schemaName, String logicalTableName, String sql) {
         super(schemaName, logicalTableName);
+        this.sql = sql;
     }
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        EventLogger.log(EventType.DDL_INFO, "Online modify column start");
+        EventLogger.log(EventType.DDL_INFO,
+            "Online modify column start, schema: " + schemaName + ", table: " + logicalTableName + ", sql: \"" + sql
+                + "\"");
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
 
         tableInfoManager.updateRebuildingTableFlag(schemaName, logicalTableName, false);
+
+        LOGGER.info(
+            String.format(
+                "[rebuild table] start set rebuild table flag for primary table: %s.%s",
+                schemaName, logicalTableName)
+        );
     }
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        EventLogger.log(EventType.DDL_WARN, "Online modify column rollback");
+        EventLogger.log(EventType.DDL_WARN,
+            "Online modify column rollback" + schemaName + ", table: " + logicalTableName);
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
 
         tableInfoManager.updateRebuildingTableFlag(schemaName, logicalTableName, true);
+
+        LOGGER.info(
+            String.format(
+                "[rebuild table] clean rebuild table flag for primary table: %s.%s by rollback",
+                schemaName, logicalTableName)
+        );
     }
 
     @Override

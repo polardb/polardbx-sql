@@ -66,7 +66,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class BaseVectorizedExpressionTest {
-    protected static final String APP_NAME = "obtest";
+    protected static final String APP_NAME = "optest";
     private static final String TABLE_DDL = "CREATE TABLE `t_table` (\n"
         + "  `id` int(11) NOT NULL,\n"
         + "  `test_double` DOUBLE DEFAULT NULL,\n"
@@ -97,7 +97,7 @@ public class BaseVectorizedExpressionTest {
     private OptimizerContext optimizerContext;
     private TableMeta tableMeta;
     private Map<ColumnMeta, Block> tableData;
-    private ExecutionContext executionContext;
+    protected ExecutionContext executionContext;
 
     public static Block output(DataType<?> dataType, Object... data) {
         BlockBuilder builder = BlockBuilders.create(dataType, new ExecutionContext());

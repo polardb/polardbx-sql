@@ -639,6 +639,13 @@ public class CreateTableTest extends PartitionTestBase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
+    @Test
+    public void testBug58096294() {
+        String sql =
+            "create table testBug58096294(a int, b int, local index `auto_shard_key_a`(b)) partition by key(a) partitions 2 ";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
     private static final String EMPTY = "";
 
     private String removeInvisibleChar(String sql) {

@@ -27,10 +27,9 @@ PARTITIONS 3
 SHOW CREATE TABLE g1;
 Table,Create Table
 g1_$,CREATE TABLE `g1_$` (
-	`id` varchar(20) DEFAULT NULL,
+	`id` varchar(20) NOT NULL,
 	`name` varchar(20) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_id` USING BTREE (`id`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS 3

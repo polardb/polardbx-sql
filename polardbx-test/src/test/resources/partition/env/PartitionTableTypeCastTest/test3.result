@@ -22,11 +22,13 @@ FROM nation
 WHERE N_NATIONKEY = 100
 	AND N_NATIONKEY < 100.5;
 Logical ExecutionPlan
-PhyTableOperation(tables="nation[p2]", sql="SELECT `nation`.`N_NATIONKEY`, `nation`.`N_NAME`, `nation`.`N_REGIONKEY`, `nation`.`N_COMMENT` FROM ? AS `nation` WHERE ((`nation`.`N_NATIONKEY` = ?) AND (`nation`.`N_NATIONKEY` < ?))", params="100.5,100")
+Gather(concurrent=true)
+  LogicalView(tables="nation[p2]", sql="SELECT `N_NATIONKEY`, `N_NAME`, `N_REGIONKEY`, `N_COMMENT` FROM `nation` AS `nation` WHERE ((`N_NATIONKEY` = ?) AND (`N_NATIONKEY` < ?))")
 EXPLAIN SELECT *
 FROM nation
 WHERE N_NATIONKEY = 100
 	AND N_NATIONKEY < 100.5
 	AND N_NATIONKEY > 99.12;
 Logical ExecutionPlan
-PhyTableOperation(tables="nation[p2]", sql="SELECT `nation`.`N_NATIONKEY`, `nation`.`N_NAME`, `nation`.`N_REGIONKEY`, `nation`.`N_COMMENT` FROM ? AS `nation` WHERE ((`nation`.`N_NATIONKEY` = ?) AND (`nation`.`N_NATIONKEY` < ?) AND (`nation`.`N_NATIONKEY` > ?))", params="100.5,100,99.12")
+Gather(concurrent=true)
+  LogicalView(tables="nation[p2]", sql="SELECT `N_NATIONKEY`, `N_NAME`, `N_REGIONKEY`, `N_COMMENT` FROM `nation` AS `nation` WHERE ((`N_NATIONKEY` = ?) AND (`N_NATIONKEY` < ?) AND (`N_NATIONKEY` > ?))")

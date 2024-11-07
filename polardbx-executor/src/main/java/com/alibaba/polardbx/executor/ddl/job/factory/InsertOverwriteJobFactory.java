@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
-import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.TruncateTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.LogicalInsertTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateTableWithGsiMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.TruncateColumnarTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateCutOverTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
@@ -109,6 +109,9 @@ public class InsertOverwriteJobFactory extends TruncateTableWithGsiJobFactory {
         result.appendJob2(validateJob);
         result.appendJob2(createTmpTableJob);
         result.appendJob2(insertJob);
+        if (preparedData.isHasColumnarIndex()) {
+            result.appendTask(new TruncateColumnarTableTask(schemaName, logicalTableName, preparedData.getVersionId()));
+        }
         result.appendJob2(cutOverJob);
         result.appendJob2(dropTmpTableJob);
 
@@ -127,7 +130,7 @@ public class InsertOverwriteJobFactory extends TruncateTableWithGsiJobFactory {
     private ExecutableDdlJob generateCutOverJob() {
         ExecutableDdlJob cutOverJob = new ExecutableDdlJob();
         CdcTruncateTableWithGsiMarkTask cdcTask =
-            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName);
+            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName, preparedData.getVersionId());
         TruncateCutOverTask cutOverTask =
             new TruncateCutOverTask(schemaName, logicalTableName, tmpIndexTableMap, tmpPrimaryTableName);
         TruncateSyncTask syncTask =

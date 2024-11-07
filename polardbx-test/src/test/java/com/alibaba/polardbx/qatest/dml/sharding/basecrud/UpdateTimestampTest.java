@@ -163,7 +163,8 @@ public class UpdateTimestampTest extends CrudBasedLockTestCase {
         }
 
         //设置精度为2
-        insertSql = "insert into " + tableName
+        insertSql = "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ "
+            + "insert into " + tableName
             + "(pk, sk) values(2, 3) ON DUPLICATE KEY UPDATE sk = 5, time = current_timestamp(2)";
         i = 0;
         //重试多次，防止偶发真的为0

@@ -1,0 +1,125 @@
+DROP TABLE IF EXISTS tb1
+CREATE TABLE tb1 (
+	a int PRIMARY KEY,
+	b text,
+	c text,
+	d text,
+	e text,
+	FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT INDEX `test_idx2`(`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx3` (`d`) WITH PARSER ngram,
+	FULLTEXT INDEX `test_idx4`(`e`) WITH PARSER ngram
+)
+PARTITION BY KEY (a)
+SHOW CREATE TABLE tb1
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` text,
+	`d` text,
+	`e` text,
+	PRIMARY KEY (`a`),
+	FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx2` (`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx3` (`d`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx4` (`e`) /*!50100 WITH PARSER `ngram` */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+ALTER TABLE tb1
+	ADD FULLTEXT KEY `test_idx5` (`c`) COMMENT '456' /*!50100 WITH PARSER `ngram` */
+ALTER TABLE tb1
+	ADD FULLTEXT INDEX `test_idx6` (`c`) COMMENT '789' /*!50100 WITH PARSER `ngram` */
+SHOW CREATE TABLE tb1
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` text,
+	`d` text,
+	`e` text,
+	PRIMARY KEY (`a`),
+	FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx2` (`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx3` (`d`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx4` (`e`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx5` (`c`) COMMENT '456' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx6` (`c`) COMMENT '789' /*!50100 WITH PARSER `ngram` */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+CREATE FULLTEXT INDEX `test_idx7` ON tb1 (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */
+CREATE FULLTEXT INDEX `test_idx8` ON tb1 (`c`) COMMENT '123' /*!50100 WITH PARSER `ngram` */
+SHOW CREATE TABLE tb1
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` text,
+	`d` text,
+	`e` text,
+	PRIMARY KEY (`a`),
+	FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx2` (`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx3` (`d`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx4` (`e`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx5` (`c`) COMMENT '456' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx6` (`c`) COMMENT '789' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx7` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx8` (`c`) COMMENT '123' /*!50100 WITH PARSER `ngram` */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+ALTER TABLE tb1
+	ADD FULLTEXT KEY `test_idx9` (`c`) WITH PARSER ngram
+ALTER TABLE tb1
+	ADD FULLTEXT INDEX `test_idx10` (`c`) WITH PARSER ngram
+SHOW CREATE TABLE tb1
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` text,
+	`d` text,
+	`e` text,
+	PRIMARY KEY (`a`),
+	FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx2` (`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx3` (`d`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx4` (`e`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx5` (`c`) COMMENT '456' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx6` (`c`) COMMENT '789' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx7` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx8` (`c`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx9` (`c`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx10` (`c`) /*!50100 WITH PARSER `ngram` */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+CREATE FULLTEXT INDEX `test_idx11` ON tb1 (`b`) WITH PARSER ngram
+CREATE FULLTEXT INDEX `test_idx12` ON tb1 (`c`) WITH PARSER ngram
+SHOW CREATE TABLE tb1
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) NOT NULL,
+	`b` text,
+	`c` text,
+	`d` text,
+	`e` text,
+	PRIMARY KEY (`a`),
+	FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx2` (`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx3` (`d`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx4` (`e`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx5` (`c`) COMMENT '456' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx6` (`c`) COMMENT '789' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx7` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx8` (`c`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx9` (`c`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx10` (`c`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx11` (`b`) /*!50100 WITH PARSER `ngram` */,
+	FULLTEXT KEY `test_idx12` (`c`) /*!50100 WITH PARSER `ngram` */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 3

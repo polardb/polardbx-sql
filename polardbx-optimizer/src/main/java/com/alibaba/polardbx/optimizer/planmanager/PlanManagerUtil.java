@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -41,7 +45,6 @@ import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.CollectTableNameVisitor;
-import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
@@ -66,6 +69,7 @@ import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -82,14 +86,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.stream.Collectors;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
@@ -125,11 +128,13 @@ public class PlanManagerUtil {
     }
 
     public static String relNodeToJson(RelNode plan, boolean supportMpp) {
+        if (plan == null) {
+            return null;
+        }
         DRDSRelJsonWriter drdsRelJsonWriter = new DRDSRelJsonWriter(supportMpp);
+        drdsRelJsonWriter.setPlannerContext(PlannerContext.getPlannerContext(plan));
         plan.explain(drdsRelJsonWriter);
-        String serialPlan = drdsRelJsonWriter.asString();
-
-        return serialPlan;
+        return drdsRelJsonWriter.asString();
     }
 
     public static RelNode jsonToRelNode(String json, RelOptCluster cluster, RelOptSchema relOptSchema) {
@@ -781,15 +786,110 @@ public class PlanManagerUtil {
         if (plan == null) {
             return false;
         }
-        // don't support any possible xplan
-        LogicalViewFinder logicalViewFinder = new LogicalViewFinder();
-        plan.accept(logicalViewFinder);
-        if (logicalViewFinder.getResult().size() == 1) {
-            LogicalView lv = logicalViewFinder.getResult().get(0);
-            if (lv != null && lv.getXPlanDirect() != null) {
-                return false;
-            }
+        PlannerContext context = PlannerContext.getPlannerContext(plan);
+        if (context.isHasConstantFold()) {
+            return false;
         }
         return true;
+    }
+
+    /**
+     * Changes parameter types based on table metadata.
+     *
+     * @param executionContext The execution context.
+     * @param plan The execution plan.
+     */
+    public static void changeParameterTypeByTableMetadata(ExecutionContext executionContext, ExecutionPlan plan) {
+        if (!DynamicConfig.getInstance().isEnableChangeParamTypeByMeta()) {
+            return;
+        }
+
+        try {
+            Map<String, Set<Integer>> parameterIndices = Maps.newHashMap();
+
+            // Retrieve the mapping between table scans and expressions from the execution plan.
+            // warning: this might be return null/throw runtime exception
+            Map<LogicalTableScan, RexNode> tableExpressionMap = getRexNodeTableMap(plan.getPlan());
+
+            if (tableExpressionMap == null || tableExpressionMap.isEmpty()) {
+                return;
+            }
+
+            for (Map.Entry<LogicalTableScan, RexNode> entry : tableExpressionMap.entrySet()) {
+                RexUtil.EqualAndInExprFinder finder = new RexUtil.EqualAndInExprFinder(entry.getKey());
+                entry.getValue().accept(finder);
+                processParameterTypeConversion(finder.getMap(), executionContext);
+            }
+        } catch (Throwable throwable) {
+            logger.warn("Failed to change parameter type by metadata:", throwable);
+        }
+    }
+
+    protected static void processParameterTypeConversion(Map<String, Set<Integer>> parameterIndices,
+                                                         ExecutionContext executionContext) {
+        if (parameterIndices.isEmpty()) {
+            return;
+        }
+
+        convertIntToCharParameters(parameterIndices.get("int2char"), executionContext);
+        convertCharToIntParameters(parameterIndices.get("char2int"), executionContext);
+    }
+
+    protected static void convertIntToCharParameters(Set<Integer> intToCharIndices,
+                                                     ExecutionContext executionContext) {
+        if (intToCharIndices != null) {
+            for (Integer index : intToCharIndices) {
+                ParameterContext parameterContext = executionContext.getParams().getCurrentParameter().get(index + 1);
+                Object value = parameterContext.getValue();
+
+                if (value instanceof Number) {
+                    parameterContext.setValue(value.toString());
+                    parameterContext.setParameterMethod(ParameterMethod.setString);
+                } else if (value instanceof RawString) {
+                    RawString rawString = (RawString) value;
+                    List<Object> originalList = rawString.getObjList();
+                    List<String> convertedList = originalList.stream()
+                        .map(Object::toString)
+                        .collect(Collectors.toList());
+                    parameterContext.setValue(new RawString(convertedList));
+                }
+            }
+        }
+    }
+
+    /**
+     * Generates a template ID based on the provided parameter SQL statement.
+     *
+     * @param parameterSql The SQL statement with parameters.
+     * @return A generated template ID as a fixed-length hexadecimal string.
+     */
+    public static String generateTemplateId(String parameterSql) {
+        // Calculate the hash code of the parameter SQL
+        int hashCode = parameterSql.hashCode();
+
+        // Convert the integer hash code to a fixed-length hexadecimal string as the template ID
+        return TStringUtil.int2FixedLenHexStr(hashCode);
+    }
+
+    protected static void convertCharToIntParameters(Set<Integer> charToIntIndices,
+                                                     ExecutionContext executionContext) {
+        if (charToIntIndices != null) {
+            for (Integer index : charToIntIndices) {
+                ParameterContext parameterContext = executionContext.getParams().getCurrentParameter().get(index + 1);
+                Object value = parameterContext.getValue();
+
+                if (value instanceof String) {
+                    parameterContext.setValue(Long.parseLong((String) value));
+                    parameterContext.setParameterMethod(ParameterMethod.setLong);
+                } else if (value instanceof RawString) {
+                    RawString rawString = (RawString) value;
+                    List<Object> originalList = rawString.getObjList();
+                    List<Long> convertedList = originalList.stream()
+                        .map(obj -> Long.parseLong((String) obj))
+                        .collect(Collectors.toList());
+                    parameterContext.setValue(new RawString(convertedList));
+                }
+            }
+        }
     }
 }

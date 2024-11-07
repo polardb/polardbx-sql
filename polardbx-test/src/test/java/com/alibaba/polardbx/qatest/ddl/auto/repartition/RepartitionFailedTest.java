@@ -2,7 +2,11 @@ package com.alibaba.polardbx.qatest.ddl.auto.repartition;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import org.junit.Assert;
 import org.junit.Test;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 public class RepartitionFailedTest extends DDLBaseNewDBTestCase {
 
@@ -36,7 +40,7 @@ public class RepartitionFailedTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "does not support");
 
         sql = "alter table tb123 remove partitioning CHARACTER SET = utf8mb4, COLLATE = utf8mb4_unicode_ci";
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "syntax error");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "does not support");
 
         sql = "alter table tb123 CHARACTER SET = utf8mb4, COLLATE = utf8mb4_unicode_ci partitions 1";
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "does not support");
@@ -66,6 +70,33 @@ public class RepartitionFailedTest extends DDLBaseNewDBTestCase {
 
         sql = "alter table tb1234 partition by hash(b)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testRepartitionExplain() {
+        String sql = "drop table if exists tb12345";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = "create table tb12345 (a int primary key auto_increment, b int) partition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = "explain alter table tb12345 partition by key(a, b)";
+        checkExplainCount(sql, 2);
+    }
+
+    public void checkExplainCount(String sql, int expected) {
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            int count = 0;
+            while (rs.next()) {
+                count++;
+            }
+            Assert.assertEquals(expected, count);
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
     }
 
     @Override

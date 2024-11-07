@@ -27,7 +27,7 @@ public class FullTypeTest extends ColumnarReadBaseTestCase {
     public static String COLUMNAR_INDEX_NAME = "full_type_index";
 
     @Before
-    public void before() {
+    public void prepareTable() {
         JdbcUtil.dropTable(tddlConnection, PRIMARY_TABLE_NAME);
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             ExecuteTableSelect.getFullTypeTableDef(PRIMARY_TABLE_NAME,

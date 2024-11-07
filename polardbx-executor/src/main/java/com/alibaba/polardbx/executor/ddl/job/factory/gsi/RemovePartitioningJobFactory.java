@@ -17,15 +17,14 @@
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
 import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcRepartitionMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterTableRemovePartitioningValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.RepartitionCutOverTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.RepartitionSyncTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.*;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
@@ -37,6 +36,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
@@ -44,14 +44,13 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility.Private;
+import static com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility.Protected;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.*;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLE;
 
 /**
  * @author wumu
@@ -107,14 +106,35 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
 
         // create gsi
         List<ExecutableDdlJob4CreatePartitionGsi> createGsiJobs = new ArrayList<>();
-        globalIndexPrepareData.forEach((createGlobalIndexPreparedData, physicalPlanData) -> {
+        for (Map.Entry<CreateGlobalIndexPreparedData, PhysicalPlanData> entry : globalIndexPrepareData.entrySet()) {
             CreateGsiJobFactory createGsiJobFactory =
-                CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, executionContext);
-            if (StringUtils.equalsIgnoreCase(createGlobalIndexPreparedData.getIndexTableName(), indexTableName)) {
+                    CreateGsiJobFactory.create(entry.getKey(), entry.getValue(), null, executionContext);
+
+            if (StringUtils.equalsIgnoreCase(entry.getKey().getIndexTableName(), indexTableName)) {
                 createGsiJobFactory.stayAtBackFill = true;
             }
-            createGsiJobs.add((ExecutableDdlJob4CreatePartitionGsi) createGsiJobFactory.create());
-        });
+            createGsiJobFactory.setGsiCdcMark(false);
+            createGsiJobFactory.setRemovePartitioning(true);
+            ExecutableDdlJob createGsiJob = createGsiJobFactory.create();
+            if (entry.getKey().getRelatedTableGroupInfo().values().stream().anyMatch(o -> o.booleanValue())
+                    || entry.getKey().isNeedToGetTableGroupLock()) {
+                return createGsiJob;
+            }
+            createGsiJobs.add((ExecutableDdlJob4CreatePartitionGsi) createGsiJob);
+        }
+        Set<Long> tgSet = new HashSet<>();
+        for (ExecutableDdlJob4CreatePartitionGsi job : createGsiJobs) {
+            TableGroupConfig tgConfig = job.getCreateGsiValidateTask().getTableGroupConfig();
+            if (tgConfig != null && GeneralUtil.isNotEmpty(tgConfig.getPartitionGroupRecords())) {
+                Long tgId = tgConfig.getPartitionGroupRecords().get(0).tg_id;
+                if (tgSet.contains(tgId)) {
+                    CreateGsiValidateTask validTask = job.getCreateGsiValidateTask();
+                    validTask.skipTgChangeCheck();
+                } else {
+                    tgSet.add(tgId);
+                }
+            }
+        }
 
         RepartitionCutOverTask cutOverTask =
             new RepartitionCutOverTask(schemaName, primaryTableName, indexTableName, false, false, true, false);
@@ -122,7 +142,12 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
 
         // cdc
         if (executionContext.getDdlContext().isSubJob()) {
-            throw new RuntimeException("unexpected parent ddl job");
+            DdlContext rootDdlContext = getRootParentDdlContext(executionContext.getDdlContext());
+            DdlType rootDdlType = rootDdlContext.getDdlType();
+            if (ALTER_TABLE_SET_TABLEGROUP != rootDdlType && ALTER_TABLE != rootDdlType
+                    && ALTER_TABLEGROUP != rootDdlType) {
+                throw new RuntimeException("unexpected parent ddl job " + rootDdlContext.getDdlType());
+            }
         }
         DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(
             schemaName, primaryTableName, SqlKind.ALTER_TABLE, CdcDdlMarkVisibility.Protected);
@@ -207,5 +232,13 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
         });
 
         return tasks;
+    }
+
+    private DdlContext getRootParentDdlContext(DdlContext ddlContext) {
+        if (ddlContext.getParentDdlContext() != null) {
+            return getRootParentDdlContext(ddlContext.getParentDdlContext());
+        } else {
+            return ddlContext;
+        }
     }
 }

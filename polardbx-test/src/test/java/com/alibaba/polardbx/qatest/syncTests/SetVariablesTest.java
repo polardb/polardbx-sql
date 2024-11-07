@@ -345,7 +345,6 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("enable_scale_out_all_phy_dml_log", "false", true));
         variableAssignmentList.add(new AssignmentItem("enable_scale_out_feature", "true", true));
         variableAssignmentList.add(new AssignmentItem("enable_scale_out_group_phy_dml_log", "true", true));
-        variableAssignmentList.add(new AssignmentItem("enable_select_into_outfile", "false", true));
         variableAssignmentList.add(new AssignmentItem("enable_semi_bka_join", "true", true));
         variableAssignmentList.add(new AssignmentItem("enable_semi_hash_join", "true", true));
         variableAssignmentList.add(new AssignmentItem("enable_semi_join_reorder", "true", true));
@@ -469,7 +468,6 @@ public class SetVariablesTest extends ReadBaseTestCase {
         variableAssignmentList.add(new AssignmentItem("plan_cache", "true", true));
         variableAssignmentList.add(new AssignmentItem("plan_externalize_test", "TRUE", true));
         variableAssignmentList.add(new AssignmentItem("polardbx_parallelism", "-1", true));
-        variableAssignmentList.add(new AssignmentItem("polardbx_slave_instance_first", "true", true));
         variableAssignmentList.add(new AssignmentItem("prefetch_shards", "-1", true));
 //        variableAssignmentList.add(new AssignmentItem("pure_async_ddl_mode", "false", true));
         variableAssignmentList.add(new AssignmentItem("purge_trans_before", "604801", true));

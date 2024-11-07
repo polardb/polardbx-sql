@@ -25,47 +25,47 @@ import org.apache.calcite.sql.SqlShowTableStatus;
 
 public class InfoSchemaCommon {
 
-    public static final String                INFO_SCHEMA_QUERY_TITLE        = "INFORMATION_SCHEMA_QUERY";
+    public static final String INFO_SCHEMA_QUERY_TITLE = "INFORMATION_SCHEMA_QUERY";
 
-    public static final String                INFO_SCHEMA_TABLES             = "TABLES";
-    public static final String                INFO_SCHEMA_COLUMNS            = "COLUMNS";
-    public static final String                INFO_SCHEMA_STATISTICS         = "STATISTICS";
-    public static final String                INFO_SCHEMA_SCHEMATA           = "SCHEMATA";
+    public static final String INFO_SCHEMA_TABLES = "TABLES";
+    public static final String INFO_SCHEMA_COLUMNS = "COLUMNS";
+    public static final String INFO_SCHEMA_STATISTICS = "STATISTICS";
+    public static final String INFO_SCHEMA_SCHEMATA = "SCHEMATA";
 
-    public static final String                COLUMN_TABLE_SCHEMA            = "TABLE_SCHEMA";
-    public static final String                COLUMN_TABLE_NAME              = "TABLE_NAME";
-    public static final String                COLUMN_TABLE_TYPE              = "TABLE_TYPE";
-    public static final String                COLUMN_COLUMN_NAME             = "COLUMN_NAME";
-    public static final String                COLUMN_INDEX_SCHEMA            = "INDEX_SCHEMA";
-    public static final String                COLUMN_INDEX_NAME              = "INDEX_NAME";
-    public static final String                COLUMN_SCHEMA_NAME             = "SCHEMA_NAME";
+    public static final String COLUMN_TABLE_SCHEMA = "TABLE_SCHEMA";
+    public static final String COLUMN_TABLE_NAME = "TABLE_NAME";
+    public static final String COLUMN_TABLE_TYPE = "TABLE_TYPE";
+    public static final String COLUMN_COLUMN_NAME = "COLUMN_NAME";
+    public static final String COLUMN_INDEX_SCHEMA = "INDEX_SCHEMA";
+    public static final String COLUMN_INDEX_NAME = "INDEX_NAME";
+    public static final String COLUMN_SCHEMA_NAME = "SCHEMA_NAME";
 
-    public static final int                   OFFSET_COLUMN_TABLE_SCHEMA     = -3;
-    public static final int                   OFFSET_COLUMN_TABLE_NAME       = -2;
-    public static final int                   OFFSET_COLUMN_TABLE_TYPE       = -1;
-    public static final int                   OFFSET_COLUMN_COLUMN_NAME      = -1;
-    public static final int                   OFFSET_COLUMN_INDEX_NAME       = -1;
-    public static final int                   OFFSET_COLUMN_SCHEMA_NAME      = -1;
+    public static final int OFFSET_COLUMN_TABLE_SCHEMA = -3;
+    public static final int OFFSET_COLUMN_TABLE_NAME = -2;
+    public static final int OFFSET_COLUMN_TABLE_TYPE = -1;
+    public static final int OFFSET_COLUMN_COLUMN_NAME = -1;
+    public static final int OFFSET_COLUMN_INDEX_NAME = -1;
+    public static final int OFFSET_COLUMN_SCHEMA_NAME = -1;
 
-    public static final String                KEYWORD_SECONDARY_INDEX        = "._";
+    public static final String KEYWORD_SECONDARY_INDEX = "._";
 
-    public static final String                DEFAULT_TABLE_TYPE             = "BASE TABLE";
+    public static final String DEFAULT_TABLE_TYPE = "BASE TABLE";
+    public static final String TABLE_TYPE_VIEW = "VIEW";
+    public static final int LIMIT_DEFAULT_OFFSET = 0;
+    public static final int LIMIT_NO_OFFSET_SPECIFIED = -1;
+    public static final int LIMIT_NO_ROW_COUNT_SPECIFIED = -1;
 
-    public static final int                   LIMIT_DEFAULT_OFFSET           = 0;
-    public static final int                   LIMIT_NO_OFFSET_SPECIFIED      = -1;
-    public static final int                   LIMIT_NO_ROW_COUNT_SPECIFIED   = -1;
+    public static final Set<String> MYSQL_SYS_SCHEMAS = new HashSet<>();
+    public static final Set<String> SUPPORTED_TABLE_TYPES = new HashSet<>();
 
-    public static final Set<String>           MYSQL_SYS_SCHEMAS              = new HashSet<>();
-    public static final Set<String>           SUPPORTED_TABLE_TYPES          = new HashSet<>();
+    public static final Set<String> TABLES_STAT_NAMES = new HashSet<>();
+    public static final Set<Integer> TABLES_STAT_INDEXES = new HashSet<>();
 
-    public static final Set<String>           TABLES_STAT_NAMES              = new HashSet<>();
-    public static final Set<Integer>          TABLES_STAT_INDEXES            = new HashSet<>();
+    public static final Map<String, String> TABLES_SPECIAL_COLUMNS = new HashMap<>();
+    public static final Map<String, Object[]> TABLES_COLUMN_MAPPING = new HashMap<>();
+    public static final Map<String, String> TABLES_COLUMN_MAPPING_REVERSED = new HashMap<>();
 
-    public static final Map<String, String>   TABLES_SPECIAL_COLUMNS         = new HashMap<>();
-    public static final Map<String, Object[]> TABLES_COLUMN_MAPPING          = new HashMap<>();
-    public static final Map<String, String>   TABLES_COLUMN_MAPPING_REVERSED = new HashMap<>();
-
-    public static final Set<String>           COLUMN_ALIAS_MAPPING           = new HashSet<>();
+    public static final Set<String> COLUMN_ALIAS_MAPPING = new HashSet<>();
 
     static {
         MYSQL_SYS_SCHEMAS.add("PERFORMANCE_SCHEMA");
@@ -96,10 +96,10 @@ public class InfoSchemaCommon {
             }
 
             if (TABLES_SPECIAL_COLUMNS.keySet().contains(columnName)) {
-                TABLES_COLUMN_MAPPING.put(TABLES_SPECIAL_COLUMNS.get(columnName), new Object[] { columnName, i });
+                TABLES_COLUMN_MAPPING.put(TABLES_SPECIAL_COLUMNS.get(columnName), new Object[] {columnName, i});
                 TABLES_COLUMN_MAPPING_REVERSED.put(columnName, TABLES_SPECIAL_COLUMNS.get(columnName));
             } else {
-                TABLES_COLUMN_MAPPING.put(columnName.toUpperCase(), new Object[] { columnName, i });
+                TABLES_COLUMN_MAPPING.put(columnName.toUpperCase(), new Object[] {columnName, i});
                 TABLES_COLUMN_MAPPING_REVERSED.put(columnName, columnName.toUpperCase());
             }
         }

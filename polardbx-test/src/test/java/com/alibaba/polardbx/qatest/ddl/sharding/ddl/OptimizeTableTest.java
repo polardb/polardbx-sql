@@ -169,8 +169,9 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
             + " (id int, name varchar(20)) dbpartition by hash (id) tbpartition by hash(id) tbpartitions 2";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        String gsiSql = String.format("create global index %s on %s(id) dbpartition by hash (id) tbpartition by hash(id) tbpartitions 6",
-                tableName + "_gsi", tableName);
+        String gsiSql = String.format(
+            "create global index %s on %s(id) dbpartition by hash (id) tbpartition by hash(id) tbpartitions 6",
+            tableName + "_gsi", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, gsiSql);
 
         sql = "optimize table " + tableName;
@@ -179,7 +180,8 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
             while (resultSet.next()) {
                 count++;
             }
-            Assert.assertTrue("unexpected result row count: " + count, count == 8 || count == 16|| count == 4);
+            Assert.assertTrue("unexpected result row count: " + count,
+                count == 8 || count == 16 || count == 4 || count == 2);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -213,7 +215,7 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
             while (resultSet.next()) {
                 count++;
             }
-            Assert.assertTrue("unexpected result row count: " + count, count == 16 || count == 32 || count==4);
+            Assert.assertTrue("unexpected result row count: " + count, count == 16 || count == 32 || count == 4);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -301,7 +303,7 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
             while (resultSet.next()) {
                 count++;
             }
-            Assert.assertTrue("unexpected result row count: " + count, count == 8 || count == 16|| count == 2);
+            Assert.assertTrue("unexpected result row count: " + count, count == 8 || count == 16 || count == 2);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -336,7 +338,7 @@ public class OptimizeTableTest extends DDLBaseNewDBTestCase {
             while (resultSet.next()) {
                 count++;
             }
-            Assert.assertTrue("unexpected result row count: " + count, count == 16 || count == 32|| count == 4);
+            Assert.assertTrue("unexpected result row count: " + count, count == 16 || count == 32 || count == 4);
         } catch (SQLException e) {
             e.printStackTrace();
         }

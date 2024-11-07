@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.utils;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -27,8 +28,9 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.RepoInst;
+import com.alibaba.polardbx.common.oss.ColumnarFileType;
+import com.alibaba.polardbx.common.oss.IDeltaReadOption;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
@@ -46,18 +48,17 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.gms.DynamicColumnarManager;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.discover.RefreshNodeSyncAction;
 import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.StageInfo;
 import com.alibaba.polardbx.executor.mpp.execution.TaskInfo;
+import com.alibaba.polardbx.executor.mpp.split.SpecifiedOssSplit;
 import com.alibaba.polardbx.executor.operator.util.ConcurrentRawHashTable;
-import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
-import com.alibaba.polardbx.executor.sync.CollectVariableSyncAction;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.sync.CollectVariableSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
@@ -67,13 +68,15 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
+import com.alibaba.polardbx.gms.node.MppScope;
 import com.alibaba.polardbx.gms.node.Node;
-import com.alibaba.polardbx.gms.node.NodeStatusManager;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -88,6 +91,7 @@ import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -156,14 +160,12 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.weakref.jmx.internal.guava.primitives.Bytes;
 
-import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -192,6 +194,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.TRX_LOG_SOCKET_TIMEOUT;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
 import static com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
@@ -330,16 +333,71 @@ public class ExecUtils {
         }
     }
 
-    public static int getMppMaxParallelism(ParamManager paramManager, boolean master) {
+    public static int getMppMaxParallelism(ParamManager paramManager, boolean isColumnar) {
         int maxParallelism = paramManager.getInt(ConnectionParams.MPP_MAX_PARALLELISM);
         if (maxParallelism < 1) {
-            int num = (ServiceProvider.getInstance().getServer()).getNodeManager()
-                .getAllWorkers(ConfigDataMode.isMasterMode() && paramManager
-                    .getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST)).size();
-            int cores = getPolarDBXCores(paramManager, master);
+            MppScope mppScope = ExecUtils.getMppSchedulerScope(!isColumnar);
+            int num = ServiceProvider.getInstance().getServer()
+                .getNodeManager().getAllNodes().getAllWorkers(mppScope).size();
+            int cores = getPolarDBXCNCores(paramManager, mppScope);
             maxParallelism = num * cores;
         }
         return maxParallelism;
+    }
+
+    public static boolean allowMppMode(ExecutionContext context) {
+        if (!ConfigDataMode.isMasterMode()) {
+            return true;
+        } else {
+            boolean columnarMode = context.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCHEDULE);
+            if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_MASTER_MPP)) {
+                return true;
+            } else if (columnarMode) {
+                if (ServiceProvider.getInstance().getServer() == null) {
+                    return false;
+                }
+                Set<InternalNode> columnarNodes =
+                    ServiceProvider.getInstance().getServer().getNodeManager().getAllNodes()
+                        .getOtherActiveColumnarNodes();
+                Set<InternalNode> rowNodes =
+                    ServiceProvider.getInstance().getServer().getNodeManager().getAllNodes().getOtherActiveRowNodes();
+                return columnarNodes.size() > 0 || rowNodes.size() > 0;
+            } else {
+                if (ServiceProvider.getInstance().getServer() == null) {
+                    return false;
+                }
+                Set<InternalNode> rowNodes =
+                    ServiceProvider.getInstance().getServer().getNodeManager().getAllNodes().getOtherActiveRowNodes();
+                return rowNodes.size() > 0;
+            }
+        }
+    }
+
+    public static MppScope getMppSchedulerScope(boolean rowPlan) {
+        if (!ConfigDataMode.isMasterMode()) {
+            return MppScope.CURRENT;
+        } else {
+            Set<InternalNode> rowNodes =
+                ServiceProvider.getInstance().getServer().getNodeManager().getAllNodes().getOtherActiveRowNodes();
+            Set<InternalNode> columnarNodes =
+                ServiceProvider.getInstance().getServer().getNodeManager().getAllNodes().getOtherActiveColumnarNodes();
+            if (rowPlan) {
+                if (!rowNodes.isEmpty()) {
+                    return MppScope.SLAVE;
+                } else {
+                    return MppScope.CURRENT;
+                }
+            } else {
+                if (!columnarNodes.isEmpty()) {
+                    return MppScope.COLUMNAR;
+                } else if (!rowNodes.isEmpty()) {
+                    return MppScope.SLAVE;
+                } else {
+                    return MppScope.CURRENT;
+                }
+            }
+        }
     }
 
     public static int getMppMinParallelism(ParamManager paramManager) {
@@ -354,35 +412,31 @@ public class ExecUtils {
     /**
      * 获取polarX Server节点的cpu核数
      */
-    public static int getPolarDBXCores(ParamManager paramManager, boolean master) {
+    public static int getPolarDBXCNCores(ParamManager paramManager, MppScope mppScope) {
         int polarXParallelism = paramManager.getInt(ConnectionParams.POLARDBX_PARALLELISM);
         if (polarXParallelism < 1) {
-            if (master) {
-                if (ConfigDataMode.isMasterMode()) {
-                    polarXParallelism = NUM_CORES;
-                } else {
-                    GmsNodeManager gmsNodeManager = GmsNodeManager.getInstance();
-                    if (gmsNodeManager.getReadOnlyNodes().size() > 0) {
-                        polarXParallelism =
-                            gmsNodeManager.getReadOnlyNodeCpuCore() > 0 ? gmsNodeManager.getReadOnlyNodeCpuCore() :
-                                NUM_CORES;
-                    } else {
-                        polarXParallelism = NUM_CORES;
-                    }
+            GmsNodeManager gmsNodeManager = GmsNodeManager.getInstance();
+            polarXParallelism = NUM_CORES;
+            switch (mppScope) {
+            case SLAVE:
+                int readOnlySize = gmsNodeManager.getReadOnlyNodes().size();
+                if (readOnlySize > 0) {
+                    polarXParallelism =
+                        gmsNodeManager.getReadOnlyNodeCpuCore() > 0 ? gmsNodeManager.getReadOnlyNodeCpuCore() :
+                            NUM_CORES;
                 }
-            } else {
-                if (!ConfigDataMode.isMasterMode()) {
-                    polarXParallelism = NUM_CORES;
-                } else {
-                    GmsNodeManager gmsNodeManager = GmsNodeManager.getInstance();
-                    if (gmsNodeManager.getReadOnlyNodes().size() > 0) {
-                        polarXParallelism =
-                            gmsNodeManager.getReadOnlyNodeCpuCore() > 0 ? gmsNodeManager.getReadOnlyNodeCpuCore() :
-                                NUM_CORES;
-                    } else {
-                        polarXParallelism = NUM_CORES;
-                    }
+                break;
+            case COLUMNAR:
+                int columnarReadOnlySize = gmsNodeManager.getColumnarReadOnlyNodes().size();
+                if (columnarReadOnlySize > 0) {
+                    polarXParallelism =
+                        gmsNodeManager.getReadOnlyColumnarCpuCore() > 0 ? gmsNodeManager.getReadOnlyColumnarCpuCore() :
+                            NUM_CORES;
                 }
+                break;
+            default:
+                polarXParallelism = NUM_CORES;
+                break;
             }
         }
         return polarXParallelism;
@@ -391,11 +445,10 @@ public class ExecUtils {
     /**
      * 获取polarX实例下挂载的mysql的cpu核数
      */
-    public static int getPolarDbCores(ParamManager paramManager, boolean master) {
+    public static int getPolarDbCores(ParamManager paramManager) {
         int dbParallelism = paramManager.getInt(ConnectionParams.DATABASE_PARALLELISM);
         if (dbParallelism < 1) {
-            //TODO 现在存储节点和计算节点的CPU核数一致，以后待定
-            dbParallelism = getPolarDBXCores(paramManager, master);
+            dbParallelism = 16;
         }
         return dbParallelism;
     }
@@ -588,6 +641,33 @@ public class ExecUtils {
 
     }
 
+    public static Comparator<Row> getComparatorForColumns(List<Integer> indexes, List<DataType> columnMetas,
+                                                          boolean isAsc) {
+        Preconditions.checkArgument(columnMetas != null);
+        Preconditions.checkArgument(indexes != null);
+        Preconditions.checkArgument(indexes.size() == columnMetas.size());
+        return new Comparator<Row>() {
+
+            @Override
+            public int compare(Row o1, Row o2) {
+                for (int i = 0; i < indexes.size(); i++) {
+                    Object c1 = o1.getObjectForCmp(indexes.get(i));
+                    Object c2 = o2.getObjectForCmp(indexes.get(i));
+                    if (c1 == null && c2 == null) {
+                        continue;
+                    }
+                    int n = comp(c1, c2, columnMetas.get(i), isAsc);
+                    if (n == 0) {
+                        continue;
+                    }
+                    return n;
+                }
+                return 0;
+            }
+        };
+
+    }
+
     public static int comp(Object c1, Object c2, DataType type, boolean isAsc) {
         if (type == null) {
             type = DataTypeUtil.getTypeOfObject(c1);
@@ -708,7 +788,10 @@ public class ExecUtils {
         }
 
         // Force SEQUENTIAL to reduce deadlocks in transactions, unless for SELECT statements
-        if (executionContext.getTransaction() instanceof IDistributedTransaction
+        // 5.4.19-0731版本后，新实例，update/delete默认忽略该规则
+        if (!executionContext.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION)
+            && executionContext.getTransaction() instanceof IDistributedTransaction
             && executionContext.getSqlType() != SqlType.SELECT && !executionContext.getParamManager().getBoolean(
             ConnectionParams.GSI_CONCURRENT_WRITE) && logicalView == null) {
             return QueryConcurrencyPolicy.SEQUENTIAL;
@@ -1877,28 +1960,6 @@ public class ExecUtils {
         return !(context.getExecuteMode() == ExecutorMode.MPP || context.getExecuteMode() == ExecutorMode.AP_LOCAL);
     }
 
-    public static boolean existMppOnlyInstanceNode() {
-        if (ServiceProvider.getInstance().getServer() == null) {
-            return false;
-        }
-        InternalNodeManager nodeManager = ServiceProvider.getInstance().getServer().getNodeManager();
-        Set<InternalNode> nodes = null;
-        if (ConfigDataMode.isMasterMode()) {
-            nodes = nodeManager.getAllNodes().getOtherActiveNodes();
-        } else {
-            nodes = nodeManager.getAllNodes().getActiveNodes();
-        }
-        return nodes != null && nodes.size() > 0;
-    }
-
-    public static int getActiveNodeCount() {
-        if (ServiceProvider.getInstance().getServer() == null) {
-            return 1;
-        }
-        InternalNodeManager nodeManager = ServiceProvider.getInstance().getServer().getNodeManager();
-        return Math.max(nodeManager.getAllNodes().getActiveNodes().size(), 1);
-    }
-
     public static boolean convertBuildSide(Join join) {
         boolean convertBuildSide = false;
         if (join instanceof HashJoin) {
@@ -1927,7 +1988,7 @@ public class ExecUtils {
     public static String getLeaderKey(String schema) {
         InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
         if (manager != null) {
-            List<Node> coordinators = manager.getAllCoordinators();
+            List<Node> coordinators = manager.getAllNodes().getAllCoordinators();
             if (coordinators != null && !coordinators.isEmpty()) {
                 for (Node node : coordinators) {
                     if (node.isLeader()) {
@@ -1937,10 +1998,6 @@ public class ExecUtils {
             }
         }
         return null;
-    }
-
-    public static NodeStatusManager getStatusManager(String schema) {
-        return ServiceProvider.getInstance().getServer().getStatusManager();
     }
 
     public static void syncNodeStatus(String schema) {
@@ -1998,7 +2055,7 @@ public class ExecUtils {
 
         ResultSet result;
         try (IConnection masterConn = dataSource.getConnection(MasterSlave.MASTER_ONLY)) {
-//            if (masterConn.isWrapperFor(XConnection.class)) {
+//            if (tso > 0 && masterConn.isWrapperFor(XConnection.class)) {
 //                masterConn.unwrap(XConnection.class).execUpdate(tsoSql, null, true);
 //            }
 
@@ -2138,7 +2195,7 @@ public class ExecUtils {
         //logicalThreads，physicalThreads <= 0 意味着根据环境自动设置
         if (physicalThreads <= 0) {
             int cnCores =
-                ExecUtils.getPolarDBXCores(ec.getParamManager(), ConfigDataMode.isMasterMode());
+                ExecUtils.getPolarDBXCNCores(ec.getParamManager(), MppScope.CURRENT);
             if (isSingleTable) {
                 //单表情况，执行物理任务线程等于核数
                 physicalThreads = Math.max(cnCores, 1);
@@ -2230,6 +2287,7 @@ public class ExecUtils {
             futures.add(executor.getExecutorService().submit(null, null, AsyncTask.build(() -> {
                 try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
                     Statement stmt = conn.createStatement()) {
+                    conn.setNetworkTimeout(TGroupDirectConnection.socketTimeoutExecutor, TRX_LOG_SOCKET_TIMEOUT);
                     if (conn.isWrapperFor(XConnection.class)) {
                         // Note: XA RECOVER will hold the LOCK_transaction_cache lock, so never block it.
                         conn.unwrap(XConnection.class).setDefaultTokenKb(Integer.MAX_VALUE);
@@ -2240,7 +2298,7 @@ public class ExecUtils {
                         int gtridLength = rs.getInt(2);
                         byte[] data = rs.getBytes(4);
 
-                        if (formatId == 1) {
+                        if (TransactionAttribute.FormatId.isUserTransaction((int) formatId)) {
                             byte[] gtridData = Arrays.copyOfRange(data, 0, gtridLength);
                             if (checkGtridPrefix(gtridData)) {
                                 int atSymbolIndex = ArrayUtils.indexOf(gtridData, (byte) '@');
@@ -2418,5 +2476,125 @@ public class ExecUtils {
                 throw new RuntimeException(e);
             }
         };
+    }
+
+    public static Map<String, Set<String>> diffOrcFiles(Map<String, Set<String>> v0, Map<String, Set<String>> v1) {
+        Iterator<Entry<String, Set<String>>> it = v1.entrySet().iterator();
+        while (it.hasNext()) {
+            Entry<String, Set<String>> entry = it.next();
+            String partitionName = entry.getKey();
+            Set<String> alreadyInV0 = v0.get(partitionName);
+            if (null != alreadyInV0) {
+                entry.getValue().removeAll(alreadyInV0);
+            }
+            if (entry.getValue().isEmpty()) {
+                // this partition is identical between v0 and v1
+                it.remove();
+            }
+        }
+        return v1;
+    }
+
+    public static Map<String, IDeltaReadOption> diffDeltaFiles(long tso0, long tso1, long tableId,
+                                                               Set<String> deltaFiles) {
+        Map<String, IDeltaReadOption> diff = new HashMap<>();
+
+        if (deltaFiles.isEmpty()) {
+            return diff;
+        }
+
+        final class Tuple {
+            String partName;
+            Long startPos;
+            Long endPos;
+        }
+
+        // file name -> tuple
+        Map<String, Tuple> tuples = new HashMap<>();
+        ColumnarAppendedFilesAccessor accessor = new ColumnarAppendedFilesAccessor();
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            accessor.setConnection(connection);
+            accessor.queryByFileNamesAndTsoRange(deltaFiles, tso0, tso1).forEach(record ->
+                tuples.compute(record.getFileName(), (k, v) -> {
+                    long start = record.getAppendOffset();
+                    long end = start + record.getAppendLength();
+                    String partName = record.getPartName();
+                    if (null == v) {
+                        v = new Tuple();
+                        v.partName = partName;
+                        v.startPos = start;
+                        v.endPos = end;
+                    } else if (v.startPos > start) {
+                        // an earlier start position
+                        v.startPos = start;
+                    } else if (v.endPos < end) {
+                        // a later end position
+                        v.endPos = end;
+                    }
+
+                    return v;
+                }));
+        } catch (Throwable t) {
+            logger.error("diff delta files failed.", t);
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_INDEX_CHECKER, t, "Failed to diff csv files");
+        }
+
+        for (Entry<String, Tuple> deltaFileEntry : tuples.entrySet()) {
+            String fileName = deltaFileEntry.getKey();
+            Tuple tuple = deltaFileEntry.getValue();
+            diff.compute(tuple.partName, (k, v) -> {
+                if (v == null) {
+                    v = new SpecifiedOssSplit.DeltaReadWithPositionOption(tso1, tso0, tso1, tableId);
+                }
+                SpecifiedOssSplit.DeltaReadWithPositionOption delta = (SpecifiedOssSplit.DeltaReadWithPositionOption) v;
+                ColumnarFileType columnarFileType =
+                    ColumnarFileType.of(fileName.substring(fileName.lastIndexOf('.') + 1));
+                switch (columnarFileType) {
+                case CSV:
+                    if (delta.getCsvFiles() == null) {
+                        delta.setCsvFiles(new ArrayList<>());
+                        delta.setCsvStartPos(new ArrayList<>());
+                        delta.setCsvEndPos(new ArrayList<>());
+                    }
+                    delta.getCsvFiles().add(fileName);
+                    delta.getCsvStartPos().add(tuple.startPos);
+                    delta.getCsvEndPos().add(tuple.endPos);
+                    break;
+                case DEL:
+                    if (delta.getDelFiles() == null) {
+                        delta.setDelFiles(new ArrayList<>());
+                        delta.setDelBeginPos(new ArrayList<>());
+                        delta.setDelEndPos(new ArrayList<>());
+                    }
+                    delta.getDelFiles().add(fileName);
+                    delta.getDelBeginPos().add(tuple.startPos);
+                    delta.getDelEndPos().add(tuple.endPos);
+                    break;
+                default:
+                    logger.warn("Increment check found unexpected file: " + fileName);
+                    break;
+                }
+                return delta;
+            });
+        }
+
+        return diff;
+    }
+
+    private static boolean haveCciDoneDdl(String schemaName, String indexName) throws SQLException {
+        long tableId = DynamicColumnarManager.getInstance().getTableId(0, schemaName, indexName);
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            ColumnarTableEvolutionAccessor accessor = new ColumnarTableEvolutionAccessor();
+            accessor.setConnection(connection);
+            return accessor.haveDoneDdl(tableId);
+        }
+    }
+
+    public static boolean canUseCciFastChecker(String schemaName, String indexName) {
+        try {
+            return !haveCciDoneDdl(schemaName, indexName);
+        } catch (SQLException e) {
+            return false;
+        }
     }
 }

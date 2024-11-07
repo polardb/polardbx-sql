@@ -803,13 +803,20 @@ public class XPlanUtil {
 
         public final Type type;
         public final int id;
-        public final RelDataType dataType;
+        private final boolean isBit;
         public final boolean nullable;
 
         public ScalarParamInfo(Type type, int id, RelDataType dataType, boolean nullable) {
             this.type = type;
             this.id = id;
-            this.dataType = dataType;
+            this.isBit = dataType == null ? false : dataType.getSqlTypeName() == SqlTypeName.BIT;
+            this.nullable = nullable;
+        }
+
+        public ScalarParamInfo(Type type, int id, boolean isBit, boolean nullable) {
+            this.type = type;
+            this.id = id;
+            this.isBit = isBit;
             this.nullable = nullable;
         }
 
@@ -821,12 +828,12 @@ public class XPlanUtil {
             return id;
         }
 
-        public RelDataType getDataType() {
-            return dataType;
-        }
-
         public boolean isNullable() {
             return nullable;
+        }
+
+        public boolean isBit() {
+            return isBit;
         }
     }
 }

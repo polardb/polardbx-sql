@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciMetaTask;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarColumnEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingAccessor;
@@ -86,9 +87,9 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
 
     @After
     public void after() {
-        dropTableIfExists(PRIMARY_TABLE_NAME1);
-        dropTableIfExists(PRIMARY_TABLE_NAME2);
-        dropTableIfExists(PRIMARY_TABLE_NAME3);
+//        dropTableIfExists(PRIMARY_TABLE_NAME1);
+//        dropTableIfExists(PRIMARY_TABLE_NAME2);
+//        dropTableIfExists(PRIMARY_TABLE_NAME3);
     }
 
     @Test
@@ -112,18 +113,21 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
         checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c2"));
+        checkCciMeta(indexName);
 
         sql = "alter table %s add c3 int first";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
         checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c3"));
+        checkCciMeta(indexName);
 
         sql = "alter table %s add c4 int after c3";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
         checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c4"));
+        checkCciMeta(indexName);
     }
 
     @Test
@@ -148,6 +152,16 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
         checkDropIndexesRecords(schemaName, tableName, ImmutableList.of("seller_id"));
+        checkCciMeta(indexName);
+
+        // drop last column
+        sql = "alter table %s drop order_snapshot";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkDropIndexesRecords(schemaName, tableName, ImmutableList.of("order_snapshot"));
+        checkCciMeta(indexName);
     }
 
     @Test
@@ -170,16 +184,19 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
 
         sql = "alter table %s modify column seller_id varchar(64) after id";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
 
         sql = "alter table %s modify column seller_id varchar(64) first";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
     }
 
     @Test
@@ -204,6 +221,192 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         compareColumnPositions(schemaName, tableName);
         compareColumnRecords(schemaName, tableName);
         checkChangeIndexesRecords(schemaName, tableName, ImmutableList.of(new Pair<>("seller_id_1", "seller_id")));
+        checkCciMeta(indexName);
+    }
+
+    @Test
+    public void testMultiAlters() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        // DO NOT SUPPORT MIXED ALTERS ON CLUSTERED INDEX
+//        String sql = "alter table %s add column c2 int, add column c3 int first, add column c4 int after c3";
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+//        compareColumnPositions(schemaName, tableName);
+//        compareColumnRecords(schemaName, tableName);
+//        checkAddIndexesRecords(schemaName, tableName, ImmutableList.of("c2, c3, c4"));
+
+        String sql = "alter table %s add c2 int";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        sql = "alter table %s add c3 int first";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        sql = "alter table %s add c4 int after c3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s modify column c2 bigint, modify column c3 int first, change column c4 c40 int after id";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkChangeIndexesRecords(schemaName, tableName, ImmutableList.of(new Pair<>("c40", "c4")));
+        checkCciMeta(indexName);
+
+        sql = "alter table %s change column c40 c4 int, drop column c2";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+
+        sql = "alter table %s add c2 int";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        sql = "alter table %s drop column c2, drop column c3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkDropIndexesRecords(schemaName, tableName, ImmutableList.of("c2, c3"));
+        checkCciMeta(indexName);
+    }
+
+    @Test
+    public void testRepartition() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+        String originCciName = fetchCciSysTable(schemaName, tableName, indexName);
+
+        String sql = SKIP_WAIT_CCI_CREATION_HINT + "alter table %s single";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        String afterCciName = fetchCciSysTable(schemaName, tableName, indexName);
+
+        Assert.assertTrue(originCciName.equals(afterCciName));
+
+        sql = SKIP_WAIT_CCI_CREATION_HINT + "alter table %s broadcast";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        afterCciName = fetchCciSysTable(schemaName, tableName, indexName);
+        Assert.assertTrue(originCciName.equals(afterCciName));
+        checkCciMeta(indexName);
+    }
+
+    @Test
+    public void testOMC() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        // SINGLE STATEMENT
+        String sql = "alter table %s modify column seller_id longtext, algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+
+        sql = "alter table %s modify column seller_id varchar(64) after id, algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+
+        sql = "alter table %s modify column seller_id longtext first, algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+
+        sql = "alter table %s change column seller_id seller_id_1 varchar(64), algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkChangeIndexesRecords(schemaName, tableName, ImmutableList.of(new Pair<>("seller_id_1", "seller_id")));
+        checkCciMeta(indexName);
+
+        // MULTI STATEMENTS
+        sql =
+            "alter table %s modify column seller_id_1 longtext, add column c2 int, add column c3 int first, add column c4 int, algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+
+        sql =
+            "alter table %s modify column c2 bigint, modify column c3 int first, change column c4 c40 int after id, algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkChangeIndexesRecords(schemaName, tableName, ImmutableList.of(new Pair<>("c40", "c4")));
+        checkCciMeta(indexName);
+
+        sql = "alter table %s change column c40 c4 int, drop column c2, add column tmp int algorithm = 'omc'";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
+        compareColumnPositions(schemaName, tableName);
+        compareColumnRecords(schemaName, tableName);
+        checkCciMeta(indexName);
+    }
+
+    @Test
+    public void testRenameCci() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET FORBID_DDL_WITH_CCI = false");
+
+        String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
+        String tableName = PRIMARY_TABLE_NAME1;
+        String indexName = INDEX_NAME1;
+        String newIndexName = INDEX_NAME2;
+
+        final String sqlCreateTable1 = String.format(
+            creatTableTmpl,
+            tableName,
+            indexName);
+
+        // Create table with cci
+        createCciSuccess(sqlCreateTable1);
+
+        String sql = "alter table %s rename index %s to %s";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName, indexName, newIndexName));
+
+        // show primary table
+        String showCreateTableSql = String.format("show create table %s", tableName);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, showCreateTableSql);
+        Assert.assertTrue(rs.next());
+        String createTableString = rs.getString(2);
+        Assert.assertTrue(createTableString.contains(newIndexName));
+
+        // show cci table
+        showCreateTableSql = String.format("show create table %s", newIndexName);
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, showCreateTableSql);
+        Assert.assertTrue(rs.next());
+        createTableString = rs.getString(2);
+        Assert.assertTrue(createTableString.contains(newIndexName));
     }
 
     private void compareColumnPositions(String schemaName, String tableName)
@@ -340,7 +543,7 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
         for (int i = 0; i < sysTableColumnRecords.size(); i++) {
             ColumnsRecord sysRecord = sysTableColumnRecords.get(i);
             ColumnsRecord evolutionRecord = evolutionTableColumnRecords.get(i);
-            if (!sysRecord.equals(evolutionRecord)) {
+            if (!CheckCciMetaTask.equalsColumnRecord(sysRecord, evolutionRecord)) {
                 Assert.fail("Different column records in '" + sysTableColumnRecords.get(i).columnName);
             }
         }
@@ -419,6 +622,28 @@ public class AlterTableWithCciTest extends DDLBaseNewDBTestCase {
                     indexesRecords.stream().noneMatch(record -> oldColumnsNames.contains(record.columnName)));
             }
         }
+    }
+
+    private String fetchCciSysTable(String schemaName, String tableName, String columnarName)
+        throws SQLException {
+        String sql = "select index_name from columnar_table_mapping "
+            + "where table_schema='%s' and table_name='%s' and index_name like '%%%s%%' order by latest_version_id desc limit 1";
+        try (Connection metaDbConn = getMetaConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery(String.format(sql, schemaName, tableName, columnarName))) {
+            if (rs.next()) {
+                return rs.getString(1);
+            }
+        }
+        return "";
+    }
+
+    private void checkCciMeta(String indexName) throws SQLException {
+        String sql = String.format("check columnar index %s meta", indexName);
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        org.junit.Assert.assertTrue(resultSet.next());
+        String detail = resultSet.getString("details");
+        Assert.assertTrue(detail.startsWith("OK"));
     }
 }
 

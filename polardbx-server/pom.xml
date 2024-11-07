@@ -32,12 +32,6 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>polardbx-executor</artifactId>
             <version>${project.version}</version>
-            <exclusions>
-                <exclusion>
-                    <artifactId>commons-beanutils</artifactId>
-                    <groupId>commons-beanutils</groupId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
@@ -59,15 +53,6 @@
             <artifactId>logback-classic</artifactId>
             <scope>compile</scope>
         </dependency>
-        <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-            <scope>compile</scope>
-        </dependency>
-<!--        <dependency>-->
-<!--            <groupId>org.jdom</groupId>-->
-<!--            <artifactId>jdom</artifactId>-->
-<!--        </dependency>-->
         <dependency>
             <groupId>com.googlecode.java-ipv6</groupId>
             <artifactId>java-ipv6</artifactId>

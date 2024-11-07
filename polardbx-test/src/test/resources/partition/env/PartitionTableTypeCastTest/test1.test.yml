@@ -13,7 +13,7 @@ CREATE TABLE `nation` (
 PARTITION BY KEY(`N_NATIONKEY`)
 PARTITIONS 8;
 
-explain /*+TDDL:IN_SUB_QUERY_THRESHOLD=8*/ SELECT 
+explain /*TDDL:IN_SUB_QUERY_THRESHOLD=10000*/ SELECT 
   nation.n_nationkey, 
   nation.n_regionkey, 
   nation.n_comment, 

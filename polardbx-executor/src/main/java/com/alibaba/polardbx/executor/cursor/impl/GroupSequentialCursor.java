@@ -21,32 +21,33 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.GenericPhyObjectRecorder;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.statistics.RuntimeStatHelper;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class GroupSequentialCursor extends AbstractCursor {
+
+    private final static Logger LOG = SQLRecorderLogger.ddlEngineLogger;
 
     protected String schemaName;
     protected Map<String, List<RelNode>> plansByInstance;
@@ -58,13 +59,9 @@ public class GroupSequentialCursor extends AbstractCursor {
     protected List<Cursor> cursors = new ArrayList<>();
     protected final ReentrantLock cursorLock = new ReentrantLock();
 
-    protected AtomicBoolean started = new AtomicBoolean(false);
     protected AtomicInteger numObjectsDone = new AtomicInteger(0);
     protected AtomicInteger numObjectsSkipped = new AtomicInteger(0);
-    protected BlockingQueue<Cursor> completedCursorQueue;
-
-    protected static final int INTERRUPT_TIMEOUT = 10 * 1000;
-    protected static final int EMPTY_QUEUE_CHECK_TIMEOUT = 60 * 1000;
+    protected List<FutureTask<List<Cursor>>> futures;
 
     protected List<Throwable> exceptionsWhenCloseSubCursor = new ArrayList<>();
     protected List<Throwable> exceptions;
@@ -77,7 +74,7 @@ public class GroupSequentialCursor extends AbstractCursor {
         for (List<RelNode> plans : this.plansByInstance.values()) {
             this.totalSize += plans.size();
         }
-        this.completedCursorQueue = new LinkedBlockingQueue<>(this.totalSize);
+        this.futures = new ArrayList<>(this.plansByInstance.size());
         this.executionContext = executionContext;
         this.exceptions = Collections.synchronizedList(exceptions);
 
@@ -97,31 +94,38 @@ public class GroupSequentialCursor extends AbstractCursor {
         String traceId = executionContext.getTraceId();
         for (List<RelNode> plans : plansByInstance.values()) {
             // Inter-instance in parallel and intra-instance sequentially
-            executionContext.getExecutorService().submit(schemaName, traceId, AsyncTask.build(() -> {
+            FutureTask<List<Cursor>> futureTask = new FutureTask<>(() -> {
                 // Execute sequentially on the same instance
-                executeSequentially(plans);
-            }));
+                return executeSequentially(plans);
+            });
+            futures.add(futureTask);
+            executionContext.getExecutorService().submit(schemaName, traceId, AsyncTask.build(futureTask));
         }
 
         super.doInit();
     }
 
-    private void executeSequentially(List<RelNode> plans) {
+    private List<Cursor> executeSequentially(List<RelNode> plans) {
         int numObjectsCountedOnInstance = 0;
         int delay = executionContext.getParamManager().getInt(ConnectionParams.EMIT_PHY_TABLE_DDL_DELAY);
         if (delay > 0) {
             try {
-                Thread.sleep(delay * 1000);
+                Thread.sleep(delay * 1000L);
             } catch (InterruptedException e) {
             }
         }
+        List<Cursor> retCursors = new ArrayList<>();
         for (RelNode plan : plans) {
             GenericPhyObjectRecorder phyObjectRecorder =
                 CrossEngineValidator.getPhyObjectRecorder(plan, executionContext);
 
-            try {
-                started.set(true);
+            if (CrossEngineValidator.isJobInterrupted(executionContext)) {
+                throwException();
+            }
 
+            FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_INTERRUPTED, executionContext, this::throwException);
+
+            try {
                 if (!phyObjectRecorder.checkIfDone()) {
                     Cursor cursor = ExecutorContext.getContext(schemaName)
                         .getTopologyExecutor()
@@ -139,7 +143,7 @@ public class GroupSequentialCursor extends AbstractCursor {
                         cursorLock.unlock();
                     }
 
-                    completedCursorQueue.put(cursor);
+                    retCursors.add(cursor);
                     numObjectsDone.incrementAndGet();
                     numObjectsCountedOnInstance++;
                 } else {
@@ -162,68 +166,42 @@ public class GroupSequentialCursor extends AbstractCursor {
                     // Skip the rest of objects.
                     numObjectsSkipped.addAndGet(plans.size() - numObjectsCountedOnInstance);
                     // Don't continue anymore since the job has been cancelled.
-                    return;
+                    return retCursors;
                 }
             }
-
         }
+        return retCursors;
     }
 
     @Override
     public Row doNext() {
         init();
 
-        Row ret;
+        for (FutureTask<List<Cursor>> future : futures) {
+            try {
+                List<Cursor> cursors = future.get();
 
-        long cursorStartTime = System.currentTimeMillis();
-        long elapsedTimeBeforeStart;
-        long emptyQueueStartTime = System.currentTimeMillis();
-        long emptyQueueDuration;
+                for (Cursor cursor : cursors) {
+                    currentCursor = cursor;
 
-        while (true) {
-            if ((numObjectsDone.get() + numObjectsSkipped.get() == totalSize) && currentIndex >= numObjectsDone.get()) {
-                return null;
-            }
-
-            if (numObjectsDone.get() == 0 && numObjectsSkipped.get() == 0 && !started.get()) {
-                elapsedTimeBeforeStart = System.currentTimeMillis() - cursorStartTime;
-                if (elapsedTimeBeforeStart >= INTERRUPT_TIMEOUT) {
-                    // The DDL job is very likely to have been interrupted and
-                    // never proceed, so we have to terminate.
-                    throwException();
-                }
-            }
-
-            if (currentCursor == null) {
-                try {
-                    currentCursor = completedCursorQueue.poll(DdlConstants.MEDIAN_WAITING_TIME, TimeUnit.MILLISECONDS);
-                    if (currentCursor == null) {
-                        emptyQueueDuration = System.currentTimeMillis() - emptyQueueStartTime;
-                        if (emptyQueueDuration > EMPTY_QUEUE_CHECK_TIMEOUT &&
-                            CrossEngineValidator.isJobInterrupted(executionContext)) {
-                            // The job has been cancelled/interrupted, so we have to terminate this
-                            // to avoid occupying the job scheduler permanently in some scenarios.
-                            throwException();
-                        }
-                        // Try again
-                        continue;
+                    if (currentCursor != null) {
+                        currentCursor.next();
                     }
-                    emptyQueueStartTime = System.currentTimeMillis();
-                } catch (InterruptedException e) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "The DDL job has been interrupted");
-                } catch (Throwable t) {
-                    throw GeneralUtil.nestedException(t);
+
+                    switchCursor();
                 }
-                RuntimeStatHelper.registerCursorStatByParentCursor(executionContext, this, currentCursor);
+            } catch (Throwable e) {
+                exceptions.add(e);
             }
-
-            ret = currentCursor.next();
-            if (ret != null) {
-                return ret;
-            }
-
-            switchCursor();
         }
+
+        // 打印完成情况
+        String errMsg = "GroupSequentialCursor physical DDLs execute info: "
+            + totalSize + " expected, " + numObjectsDone + " done, "
+            + numObjectsSkipped + " skipped.";
+        LOG.info(errMsg);
+
+        return null;
     }
 
     protected void switchCursor() {

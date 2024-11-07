@@ -107,7 +107,7 @@ public class TrxLogTableConstants {
         "CREATE TABLE IF NOT EXISTS " + SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE
             + " (\n"
             + "  `TXID` BIGINT UNSIGNED NOT NULL,\n"
-            + "  `TRX_SEQ` BIGINT UNSIGNED NOT NULL DEFAULT 18446744073709551615 COMMENT \"DEFAULT INVALID_SEQUENCE_NUMBER\",\n"
+            + "  `TRX_SEQ` BIGINT UNSIGNED NOT NULL DEFAULT 18446744073709551615 COMMENT 'DEFAULT INVALID_SEQUENCE_NUMBER',\n"
             + "  `N_PARTICIPANTS` INT UNSIGNED NOT NULL DEFAULT 0,\n"
             + "  PRIMARY KEY (`TXID`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
@@ -121,7 +121,7 @@ public class TrxLogTableConstants {
         "CREATE TABLE IF NOT EXISTS " + SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_TMP
             + " (\n"
             + "  `TXID` BIGINT UNSIGNED NOT NULL,\n"
-            + "  `TRX_SEQ` BIGINT UNSIGNED NOT NULL DEFAULT 18446744073709551615 COMMENT \"DEFAULT INVALID_SEQUENCE_NUMBER\",\n"
+            + "  `TRX_SEQ` BIGINT UNSIGNED NOT NULL DEFAULT 18446744073709551615 COMMENT 'DEFAULT INVALID_SEQUENCE_NUMBER',\n"
             + "  `N_PARTICIPANTS` INT UNSIGNED NOT NULL DEFAULT 0,\n"
             + "  PRIMARY KEY (`TXID`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
@@ -143,6 +143,10 @@ public class TrxLogTableConstants {
 
     public static final String SHOW_ALL_GLOBAL_TX_TABLE_V2 = String.format(
         "select table_name from information_schema.tables where table_schema = '%s' and table_name like '%s%%'",
+        SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_DB, SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_PREFIX);
+
+    public static final String QUERY_TABLE_ROWS_TX_TABLE_V2 = String.format(
+        "select table_rows from information_schema.tables where table_schema = '%s' and table_name = '%s'",
         SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_DB, SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_PREFIX);
 
     public static final String SELECT_MAX_TX_ID_IN_ARCHIVE =
@@ -195,12 +199,17 @@ public class TrxLogTableConstants {
     public static final String EXISTS_GLOBAL_TX_TABLE_V2 =
         "SELECT 1 FROM information_schema.tables WHERE table_schema = '"
             + SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_DB +
-            "' AND table_name = '" + SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_ARCHIVE_TABLE + "'";
+            "' AND table_name = '" + SystemTables.POLARDBX_GLOBAL_TX_LOG_TABLE_PREFIX + "'";
 
     /**
      * 18446744073709551611 is a magic snapshot sequence. Using it you can see prepared trx.
      */
     public static final String RECOVER_TIMESTAMP_SQL = "SET innodb_snapshot_seq = 18446744073709551611";
+
+    /**
+     * Socket timeout for handling trx log table.
+     */
+    public static final int TRX_LOG_SOCKET_TIMEOUT = 10_000;
 
     public static ByteString APPEND_TRX_DIGEST;
     public static ByteString APPEND_TRX_WITH_TS_DIGEST;

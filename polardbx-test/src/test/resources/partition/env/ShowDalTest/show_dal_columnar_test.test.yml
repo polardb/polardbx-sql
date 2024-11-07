@@ -1,0 +1,73 @@
+#test show dal with generated column
+DROP TABLE IF EXISTS `triangle`;
+CREATE TABLE `triangle` (
+`sidea` DOUBLE,
+`sideb` DOUBLE,
+`sidec` DOUBLE AS (SQRT(sidea * sidea + sideb * sideb))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+SHOW INDEX FROM triangle;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW INDEX FROM triangle;
+SHOW COLUMNS FROM triangle;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=ture*/ SHOW COLUMNS FROM triangle;
+DROP TABLE IF EXISTS `triangle`;
+  
+#test show dal with function index
+DROP TABLE IF EXISTS fi3;
+CREATE TABLE fi3 (
+id INT primary key,
+col1 INT,
+col2 INT,
+col3 CHAR(16)
+);
+/*+TDDL:CMD_EXTRA(ENABLE_CREATE_EXPRESSION_INDEX=TRUE,ENABLE_UNIQUE_KEY_ON_GEN_COL=TRUE)*/ 
+alter table fi3 add local unique index func_index(SUBSTRING(col3, 1, 2));
+
+SHOW INDEX FROM fi3;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW INDEX FROM fi3;
+SHOW COLUMNS FROM fi3;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW COLUMNS FROM fi3;
+DROP TABLE IF EXISTS fi3;
+
+#test show dal with two level partitions
+DROP TABLE IF EXISTS sp_tbl_list_key_tp;
+CREATE TABLE sp_tbl_list_key_tp(
+id int,
+country varchar(64),
+city varchar(64),
+order_time datetime not null,
+PRIMARY KEY(id)
+)
+PARTITION BY LIST COLUMNS(country,city)
+SUBPARTITION BY KEY(id) SUBPARTITIONS 4
+(
+PARTITION p1 VALUES IN (('China','Hangzhou')),
+PARTITION p2 VALUES IN (('Russian','Moscow')),
+PARTITION pd VALUES IN (DEFAULT)
+);
+
+SHOW INDEX FROM sp_tbl_list_key_tp;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW INDEX FROM sp_tbl_list_key_tp;
+SHOW COLUMNS FROM sp_tbl_list_key_tp;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW COLUMNS FROM sp_tbl_list_key_tp;
+DROP TABLE IF EXISTS sp_tbl_list_key_tp;
+
+#test show dal with global index
+DROP TABLE IF EXISTS user;
+CREATE TABLE user(
+user_id bigint,
+name varchar(10),
+addr varchar(30),
+GLOBAL INDEX `g_i_name` (name) PARTITION BY HASH(name),
+PRIMARY KEY(user_id)
+) PARTITION BY KEY(user_id);
+
+SHOW INDEX FROM user;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW INDEX FROM user;
+SHOW COLUMNS FROM user;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW COLUMNS FROM user;
+DROP INDEX `g_i_name` on user;
+DROP TABLE IF EXISTS user;
+
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW ENGINES;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW STATUS;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/ SHOW VARIABLES;

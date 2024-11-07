@@ -30,6 +30,7 @@ import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -70,7 +71,7 @@ public class AsyncTaskQueue {
             @Override
             public void run() {
                 if (!task.schedule()) {
-                    logger.warn("Ignore re-submit XA recover task");
+                    logger.debug("Ignore re-submit XA recover task");
                     return;
                 }
 
@@ -140,7 +141,7 @@ public class AsyncTaskQueue {
             @Override
             public void run() {
                 if (!task.schedule()) {
-                    logger.warn("Ignore re-submit deadlock detection task");
+                    logger.debug("Ignore re-submit deadlock detection task");
                     return;
                 }
 
@@ -172,12 +173,7 @@ public class AsyncTaskQueue {
         timer.scheduleAtFixedRate(timerTask, 0, interval);
 
         TransactionLogger.warn(schema + ": Scheduled deadlock detection task.");
-        EventLogger.log(EventType.DEAD_LOCK_DETECTION, String.format(
-            "Deadlock detection task for schema:%s is online",
-            schema
-        ));
-
-        EventLogger.log(EventType.DEAD_LOCK_DETECTION, String.format(
+        EventLogger.log(EventType.TRX_INFO, String.format(
             "Deadlock detection task for schema:%s is online",
             schema
         ));
@@ -209,7 +205,7 @@ public class AsyncTaskQueue {
 
         timer.scheduleAtFixedRate(timerTask, 0, intervalInMs);
         TransactionLogger.warn("Scheduled kill timeout transaction task");
-        EventLogger.log(EventType.DEAD_LOCK_DETECTION, String.format(
+        EventLogger.log(EventType.TRX_INFO, String.format(
             "Kill timeout transaction task for schema:%s is online",
             schema
         ));
@@ -218,8 +214,9 @@ public class AsyncTaskQueue {
     }
 
     public TimerTask scheduleMdlDeadlockDetectionTask(TransactionExecutor te, int intervalInMs,
+                                                      Collection<String> allSchema,
                                                       int mdlWaitTimeoutInSec) {
-        final MdlDeadlockDetectionTask detectTask = new MdlDeadlockDetectionTask(schema, te, mdlWaitTimeoutInSec);
+        final MdlDeadlockDetectionTask detectTask = new MdlDeadlockDetectionTask(schema, allSchema, te, mdlWaitTimeoutInSec);
         final ScheduleAsyncTask task = ScheduleAsyncTask.build(detectTask);
 
         TimerTask timerTask = new TimerTask() {
@@ -242,7 +239,7 @@ public class AsyncTaskQueue {
 
         timer.scheduleAtFixedRate(timerTask, 0, intervalInMs);
         TransactionLogger.warn("Scheduled MDL deadlock detection task");
-        EventLogger.log(EventType.DEAD_LOCK_DETECTION, String.format(
+        EventLogger.log(EventType.TRX_INFO, String.format(
             "MDL Deadlock detection task for schema:%s is online",
             schema
         ));
@@ -375,6 +372,50 @@ public class AsyncTaskQueue {
         timer.scheduleAtFixedRate(timerTask, 0, interval);
 
         TransactionLogger.info(schema + ": Scheduled transaction statistics task.");
+
+        return timerTask;
+    }
+
+    public TimerTask scheduleSyncPointTask(final long interval, final Runnable rawTask) {
+        final ScheduleAsyncTask task = ScheduleAsyncTask.build(rawTask);
+
+        final TimerTask timerTask = new TimerTask() {
+
+            @Override
+            public void run() {
+                if (!task.schedule()) {
+                    logger.warn("Ignore re-submit sync point task");
+                    return;
+                }
+
+                try {
+                    executor.submit(schema, null, task);
+                } catch (Throwable e) {
+                    task.cancel();
+                    logger.error("Submit sync point task failed", e);
+                }
+            }
+
+            @Override
+            public boolean cancel() {
+                try {
+                    // Cancel the async task in case that
+                    // it is already submitted but not yet executed.
+                    task.cancel();
+                } catch (Throwable t) {
+                    // Ignore.
+                    logger.error("Cancel transaction statistics task failed", t);
+                }
+                final boolean returnVal = super.cancel();
+                // Release space of cancelled timer task.
+                timer.purge();
+                return returnVal;
+            }
+        };
+
+        timer.scheduleAtFixedRate(timerTask, 0, interval);
+
+        TransactionLogger.info(schema + ": Scheduled sync point task.");
 
         return timerTask;
     }

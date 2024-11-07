@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.manager.parser;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.manager.response.AbstractSimpleSelect;
 import com.alibaba.polardbx.manager.response.MultiColumnSimpleSelect;
 import com.alibaba.polardbx.manager.response.NonsupportedStatement;
@@ -23,9 +25,9 @@ import com.alibaba.polardbx.manager.response.SelectX;
 import com.alibaba.polardbx.manager.response.SingleColumnSimpleSelect;
 import com.alibaba.polardbx.server.util.ParseUtil;
 import com.google.common.collect.Lists;
+import org.apache.commons.lang3.StringUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import org.apache.commons.lang.StringUtils;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;

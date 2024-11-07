@@ -1,5 +1,6 @@
 # datasource name, format: '${user_name}:${password}@tcp(${ip}:${port})/${db_name}'
 dsn = 'polardbx_root:123456@tcp(127.0.0.1:8527)/transfer_test'
+conn_properties='sessionVariables=polardbx_server_id=181818'
 
 # choices: local, docker
 runmode = 'local'
@@ -89,4 +90,8 @@ session_var = ''
 [check_cdc]
 enabled = false
 threads = 2
+replica_dsn = 'root:root@tcp(127.0.0.1:37306)/db1'
+
+[check_rpl_sync_point]
+enabled = false
 replica_dsn = 'root:root@tcp(127.0.0.1:37306)/db1'

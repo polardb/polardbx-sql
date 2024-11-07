@@ -1095,21 +1095,24 @@ public class StatsUtils {
                     Object physicalIndexLength = row.get(6);
                     phyTbStatInfo.put("physicalIndexLength", physicalIndexLength);
 
-                    if (row.size() > 7) {
+                    Object physicalDataFree = row.get(7);
+                    phyTbStatInfo.put("physicalDataFree", physicalDataFree);
+
+                    if (row.size() > 8) {
                         // ROWS_READ
-                        Object physicalRowsRead = row.get(7);
+                        Object physicalRowsRead = row.get(8);
                         phyTbStatInfo.put("physicalRowsRead", physicalRowsRead);
 
                         // ROWS_INSERTED
-                        Object physicalRowsInserted = row.get(8);
+                        Object physicalRowsInserted = row.get(9);
                         phyTbStatInfo.put("physicalRowsInserted", physicalRowsInserted);
 
                         // ROWS_UPDATED
-                        Object physicalRowsUpdated = row.get(9);
+                        Object physicalRowsUpdated = row.get(10);
                         phyTbStatInfo.put("physicalRowsUpdated", physicalRowsUpdated);
 
                         // ROWS_DELETED
-                        Object physicalRowsDeleted = row.get(10);
+                        Object physicalRowsDeleted = row.get(11);
                         phyTbStatInfo.put("physicalRowsDeleted", physicalRowsDeleted);
                     }
 
@@ -1339,6 +1342,7 @@ public class StatsUtils {
                     ", IFNULL(TABLE_ROWS,0) as TABLE_ROWS" +
                     ", IFNULL(DATA_LENGTH,0) as DATA_LENGTH" +
                     ", IFNULL(INDEX_LENGTH,0) as INDEX_LENGTH  " +
+                    ", IFNULL(DATA_FREE,0) as DATA_FREE  " +
                     " FROM information_schema.TABLES " +
                     " where table_schema = ");
             // handle schemaName filter

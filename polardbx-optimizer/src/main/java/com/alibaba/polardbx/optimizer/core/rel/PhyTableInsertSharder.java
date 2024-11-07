@@ -75,6 +75,7 @@ public class PhyTableInsertSharder {
     private Long lastInsertId = null;
     private Long returnedLastInsertId = null;
     private boolean usingSequence = true;
+    private boolean sequenceAlreadyFetched = false;
 
     /**
      * Generated sequence values. Format: [{fieldIndex, seqValue}, ...], each
@@ -84,12 +85,18 @@ public class PhyTableInsertSharder {
 
     private String schemaName = null;
 
-    public PhyTableInsertSharder(LogicalInsert parent, Parameters parameterSettings, boolean autoValueOnZero) {
+    public PhyTableInsertSharder(LogicalInsert parent, Parameters parameterSettings, boolean autoValueOnZero,
+                                 boolean sequenceAlreadyFetched) {
         this.parent = parent;
         this.sqlTemplate = (SqlInsert) parent.getSqlTemplate();
         this.parameterSettings = parameterSettings;
         this.autoValueOnZero = autoValueOnZero;
         this.schemaName = parent.getSchemaName();
+        this.sequenceAlreadyFetched = sequenceAlreadyFetched;
+    }
+
+    public PhyTableInsertSharder(LogicalInsert parent, Parameters parameterSettings, boolean autoValueOnZero) {
+        this(parent, parameterSettings, autoValueOnZero, false);
     }
 
     public long getLastInsertId() {
@@ -248,6 +255,10 @@ public class PhyTableInsertSharder {
         int seqColumnIndex = parent.getSeqColumnIndex();
 
         usingSequence = seqColumnIndex >= 0;
+
+        if (sequenceAlreadyFetched) {
+            return;
+        }
 
         // If it's not using sequence, and it's not using batch, which means
         // there won't be NEXTVAL, skip calculating sequence.

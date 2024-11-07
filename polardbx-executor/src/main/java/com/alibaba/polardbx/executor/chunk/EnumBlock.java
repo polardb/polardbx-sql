@@ -36,7 +36,7 @@ public class EnumBlock extends AbstractCommonBlock {
 
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(EnumBlock.class).instanceSize();
 
-    private final int[] offsets;
+    private int[] offsets;
     private final Map<String, Integer> enumValues;
     private char[] data;
 
@@ -63,17 +63,16 @@ public class EnumBlock extends AbstractCommonBlock {
     }
 
     public static EnumBlock from(EnumBlock other, int selSize, int[] selection) {
-        int[] newOffsets = new int[selSize];
-
         if (other.data == null) {
+            int[] newOffsets = new int[selSize];
             return new EnumBlock(0, selSize,
                 BlockUtils.copyNullArray(other.isNull, selection, selSize),
                 newOffsets, null, other.enumValues);
         }
         if (selection == null) {
             return new EnumBlock(0, selSize,
-                BlockUtils.copyNullArray(other.isNull, selection, selSize),
-                newOffsets, Arrays.copyOf(other.data, other.data.length), other.enumValues);
+                Arrays.copyOf(other.isNull, selSize), Arrays.copyOf(other.offsets, selSize),
+                Arrays.copyOf(other.data, other.data.length), other.enumValues);
         } else {
             EnumBlockBuilder enumBlockBuilder =
                 new EnumBlockBuilder(selSize, other.data.length / (other.positionCount + 1) * selSize,
@@ -133,7 +132,7 @@ public class EnumBlock extends AbstractCommonBlock {
             return 0;
         }
 
-        return ChunkUtil.hashCode(data, beginOffset(position), endOffset(position), true);
+        return ChunkUtil.hashCodeIgnoreCase(data, beginOffset(position), endOffset(position));
     }
 
     @Override
@@ -213,6 +212,10 @@ public class EnumBlock extends AbstractCommonBlock {
 
     public int[] getOffsets() {
         return offsets;
+    }
+
+    public void setOffsets(int[] offsets) {
+        this.offsets = offsets;
     }
 
     public char[] getData() {

@@ -38,25 +38,27 @@ public class LogicalAlterTableRemovePartitioning extends LogicalAlterTableRepart
     }
 
     public static LogicalAlterTableRemovePartitioning create(
-        AlterTableRemovePartitioning alterTableRemovePartitioning) {
+            AlterTableRemovePartitioning alterTableRemovePartitioning) {
         return new LogicalAlterTableRemovePartitioning(alterTableRemovePartitioning);
     }
 
     @Override
     public boolean isSupportedByBindFileStorage() {
         throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
-            "unarchive table " + schemaName + "." + tableName);
+                "unarchive table " + schemaName + "." + tableName);
     }
 
     public void prepareData() {
         createGlobalIndexesPreparedData = new ArrayList<>();
 
         final List<SqlAddIndex> sqlAddIndexes =
-            sqlAlterTableRemovePartitioning.getAlters().stream().map(e -> (SqlAddIndex) e).collect(Collectors.toList());
+                sqlAlterTableRemovePartitioning.getAlters().stream().map(e -> (SqlAddIndex) e).collect(Collectors.toList());
 
         for (SqlAddIndex sqlAddIndex : sqlAddIndexes) {
             final String indexName = sqlAddIndex.getIndexName().getLastName();
-            createGlobalIndexesPreparedData.add(prepareCreateGsiData(indexName, sqlAddIndex));
+            CreateGlobalIndexPreparedData preparedGsiData = prepareCreateGsiData(indexName, sqlAddIndex);
+            preparedGsiData.setWithImplicitTableGroup(preparedGsiData.getTableGroupName() != null);
+            createGlobalIndexesPreparedData.add(preparedGsiData);
         }
     }
 

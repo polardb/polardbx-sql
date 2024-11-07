@@ -168,15 +168,61 @@ public class ReloadHandler {
                 return true;
             }
 
-            pattern = "RELOAD[\\s]+COLUMNARMANAGER";
+            pattern = "RELOAD[\\s]+COLUMNARMANAGER.*";
             r = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
             m = r.matcher(stmt);
             if (m.matches()) {
-                SyncManagerHelper
-                    .sync(new ReloadSyncAction(ReloadUtils.ReloadType.COLUMNARMANAGER, c.getSchema()), c.getSchema(),
-                        SyncScope.ALL);
-                PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
-                return true;
+                String subPattern;
+                Pattern subR;
+                Matcher subM;
+
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+CACHE";
+                subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
+                subM = subR.matcher(stmt);
+                if (subM.matches()) {
+                    SyncManagerHelper
+                        .sync(new ReloadSyncAction(ReloadUtils.ReloadType.COLUMNARMANAGER_CACHE, c.getSchema()),
+                            c.getSchema(),
+                            SyncScope.ALL);
+                    PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                    return true;
+                }
+
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+SNAPSHOT";
+                subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
+                subM = subR.matcher(stmt);
+                if (subM.matches()) {
+                    SyncManagerHelper
+                        .sync(new ReloadSyncAction(ReloadUtils.ReloadType.COLUMNARMANAGER_SNAPSHOT, c.getSchema()),
+                            c.getSchema(),
+                            SyncScope.ALL);
+                    PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                    return true;
+                }
+
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER[\\s]+SCHEMA";
+                subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
+                subM = subR.matcher(stmt);
+                if (subM.matches()) {
+                    SyncManagerHelper
+                        .sync(new ReloadSyncAction(ReloadUtils.ReloadType.COLUMNARMANAGER_SCHEMA, c.getSchema()),
+                            c.getSchema(),
+                            SyncScope.ALL);
+                    PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                    return true;
+                }
+
+                subPattern = "RELOAD[\\s]+COLUMNARMANAGER";
+                subR = Pattern.compile(subPattern, Pattern.CASE_INSENSITIVE);
+                subM = subR.matcher(stmt);
+                if (subM.matches()) {
+                    SyncManagerHelper
+                        .sync(new ReloadSyncAction(ReloadUtils.ReloadType.COLUMNARMANAGER, c.getSchema()),
+                            c.getSchema(),
+                            SyncScope.ALL);
+                    PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+                    return true;
+                }
             }
 
             recordSql = false;

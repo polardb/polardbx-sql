@@ -17,7 +17,6 @@
 package org.apache.calcite.sql;
 
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.eclipse.jetty.util.BlockingCallback;
 
 import java.util.List;
 import java.util.Map;

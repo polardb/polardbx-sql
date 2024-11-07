@@ -77,5 +77,6 @@ a,b,a,b
 2,2,2,1
 explain select * from list_t2 t2 join list_t1 t1 on t2.a=t1.a and t2.a=2 for update;
 Logical ExecutionPlan
-PhyTableOperation(tables="list_t2[p2],list_t1[p2]", sql="SELECT `t2`.`a`, `t2`.`b`, `t1`.`a`, `t1`.`b` FROM ? AS `t2` INNER JOIN ? AS `t1` ON ((`t2`.`a` = `t1`.`a`) AND (`t2`.`a` = ?)) FOR UPDATE", params="2")
+Gather(concurrent=true)
+  LogicalView(tables="list_t2[p2],list_t1[p2]", sql="SELECT `list_t2`.`a`, `list_t2`.`b`, `list_t1`.`a` AS `a0`, `list_t1`.`b` AS `b0` FROM `list_t2` AS `list_t2` INNER JOIN `list_t1` AS `list_t1` ON ((`list_t2`.`a` = ?) AND (`list_t1`.`a` = ?) AND (`list_t2`.`a` = `list_t1`.`a`)) FOR UPDATE")
 commit;

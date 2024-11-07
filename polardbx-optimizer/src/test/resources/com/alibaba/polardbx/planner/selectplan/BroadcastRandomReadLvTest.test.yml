@@ -1,0 +1,59 @@
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_PUSH_JOIN=FALSE, ENABLE_CBO_PUSH_JOIN=FALSE, ENABLE_DIRECT_PLAN=FALSE, ENABLE_POST_PLANNER=FALSE)*/
+    select a.id as b
+    from test_broadcast a left join test_hash_tb b on a.name = b.name 
+    where a.id=1;
+
+  plan: |
+    project(b="id")
+      hashjoin(condition="name = name", type="right", build="right")
+        logicalview(tables="optest_000000_group.test_hash_tb", sql="select `name` from `test_hash_tb` as `test_hash_tb`")
+        logicalview(tables="optest_single_group.test_broadcast", sql="select `id`, `name` from `test_broadcast` as `test_broadcast` where (`id` = 1)")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_PUSH_JOIN=FALSE, ENABLE_CBO_PUSH_JOIN=FALSE, ENABLE_DIRECT_PLAN=FALSE, ENABLE_POST_PLANNER=FALSE, BROADCAST_RANDOM_READ_IN_LOGICALVIEW=TRUE)*/
+    select a.id as b
+    from test_broadcast a left join test_hash_tb b on a.name = b.name 
+    where a.id=1;
+
+  plan: |
+    project(b="id")
+      hashjoin(condition="name = name", type="right", build="right")
+        logicalview(tables="optest_000000_group.test_hash_tb", sql="select `name` from `test_hash_tb` as `test_hash_tb`")
+        logicalview(tables="optest_000000_group.test_broadcast", sql="select `id`, `name` from `test_broadcast` as `test_broadcast` where (`id` = 1)")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_DIRECT_PLAN=FALSE, ENABLE_POST_PLANNER=FALSE, BROADCAST_RANDOM_READ_IN_LOGICALVIEW=TRUE)*/
+    select a.id as b
+    from test_broadcast a left join test_hash_tb b on a.name = b.name 
+    where a.id=1;
+
+  plan: |
+    logicalview(tables="optest_000000_group.test_broadcast,test_hash_tb", sql="select `test_broadcast`.`id` as `b` from `test_broadcast` as `test_broadcast` left join `test_hash_tb` as `test_hash_tb` on (`test_broadcast`.`name` = `test_hash_tb`.`name`) where (`test_broadcast`.`id` = 1)")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_DIRECT_PLAN=FALSE, ENABLE_POST_PLANNER=FALSE, BROADCAST_RANDOM_READ_IN_LOGICALVIEW=TRUE)*/
+    select a.id as b
+    from test_single a  
+    where a.id=1;
+
+  plan: |
+    logicalview(tables="optest_single_group.test_single", sql="select `id` as `b` from `test_single` as `test_single` where (`id` = 1)")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_DIRECT_PLAN=FALSE, ENABLE_POST_PLANNER=FALSE, BROADCAST_RANDOM_READ_IN_LOGICALVIEW=TRUE)*/
+    select a.id as b
+    from test_hash_tb a  
+    where a.id=1;
+
+  plan: |
+    logicalview(tables="optest_000000_group.test_hash_tb", sql="select `id` as `b` from `test_hash_tb` as `test_hash_tb` where (`id` = 1)")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_DIRECT_PLAN=FALSE, ENABLE_POST_PLANNER=FALSE, BROADCAST_RANDOM_READ_IN_LOGICALVIEW=TRUE)*/
+    select a.id as b
+    from test_hash_tb a  
+    where a.name='a';
+
+  plan: |
+    logicalview(tables="optest_000000_group.test_hash_tb", sql="select `id` as `b` from `test_hash_tb` as `test_hash_tb` where (`name` = 'a')")

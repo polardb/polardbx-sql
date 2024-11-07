@@ -23,6 +23,8 @@ import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.util.List;
+
 public class DdlInterruptSyncAction implements IGmsSyncAction {
 
     private static final Logger logger = LoggerFactory.getLogger(DdlInterruptSyncAction.class);
@@ -48,14 +50,26 @@ public class DdlInterruptSyncAction implements IGmsSyncAction {
             if (ddlEngineDagExecutor == null) {
                 logger.warn(
                     String.format("The ddl job %s on schema %s does not exits", jobId, schemaName));
-                continue;
+            } else {
+                ddlEngineDagExecutor.interrupt();
+                logger.warn(
+                    String.format("The ddl job %s on schema %s has been interrupted by DdlInterruptSyncAction", jobId,
+                        schemaName));
             }
-            ddlEngineDagExecutor.interrupt();
-            logger.warn(
-                String.format("The ddl job %s on schema %s has been interrupted by DdlInterruptSyncAction", jobId,
-                    schemaName));
+            List<DdlEngineDagExecutor>
+                remoteDdlEngineDagExecutorList = DdlEngineDagExecutorMap.getRemoteJobExecutors(schemaName, jobId);
+            if (remoteDdlEngineDagExecutorList == null) {
+                logger.warn(
+                    String.format("The ddl job %s remote executor on schema %s does not exits", jobId, schemaName));
+            } else {
+                remoteDdlEngineDagExecutorList.stream().forEach(o -> o.interrupt());
+                logger.warn(
+                    String.format(
+                        "The ddl job %s remote executor on schema %s has been interrupted by DdlInterruptSyncAction",
+                        jobId,
+                        schemaName));
+            }
         }
-
         return null;
     }
 

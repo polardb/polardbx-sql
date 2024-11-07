@@ -123,6 +123,16 @@ public class PolarDBDDLAsyncOptiionTest extends MysqlTest {
         parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DRDSAsyncDDL);
         result = parser.parseStatementList().get(0);
         Assert.assertEquals(result.getAsync(), null);
+
+        sql = "resume rebalance 1234 async=false";
+        parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DRDSAsyncDDL);
+        result = parser.parseStatementList().get(0);
+        Assert.assertEquals(result.getAsync(), Boolean.FALSE);
+
+        sql = "resume rebalance 1234";
+        parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DRDSAsyncDDL);
+        result = parser.parseStatementList().get(0);
+        Assert.assertEquals(result.getAsync(), null);
     }
 
     public void testOptTable() {

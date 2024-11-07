@@ -1,0 +1,47 @@
+## DISABLE_FAST_SQL_PARSER
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = true;
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+create database ttl_test_drds_db2 mode = 'drds';
+create table my_bro_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+broadcast;
+create table my_sin_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+single;
+create table ttl_test_drds_db2.my_dbpart_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+dbpartition by hash(a);
+create table my_locpart_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a,b)
+)
+partition by key(a) partitions 8
+local partition by range(b)
+STARTWITH '2021-01-01'
+INTERVAL 6 MONTH
+EXPIRE AFTER 1
+PRE ALLOCATE 6;
+## error_msg: $# not allowed #$
+alter table my_locpart_t1 modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00';
+not allowed
+## error_msg: $# not allowed #$
+alter table my_bro_t1 modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00';
+not allowed
+## error_msg: $# not allowed #$
+alter table my_sin_t1 modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00';
+not allowed
+## error_msg: $# not allowed #$
+alter table ttl_test_drds_db2.my_dbpart_t1 modify ttl set ttl_expr = `b` expire after 2 month timezone '+08:00';
+not allowed
+drop database if exists ttl_test_drds_db2;
+drop table my_locpart_t1;

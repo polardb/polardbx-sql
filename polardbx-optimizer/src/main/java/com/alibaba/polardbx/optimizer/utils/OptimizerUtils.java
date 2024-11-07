@@ -26,11 +26,14 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
 import com.alibaba.polardbx.common.model.sqljep.DynamicComparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -39,18 +42,26 @@ import com.alibaba.polardbx.optimizer.core.rel.SimpleShardProcessor;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertManager;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertType;
 import com.alibaba.polardbx.optimizer.parse.bean.PreparedParamRef;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPrunedResult;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
+import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
@@ -73,6 +84,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
@@ -90,6 +104,29 @@ public class OptimizerUtils {
         } catch (ParseException e) {
             return parseDate(str, parsePatterns, Locale.getDefault());
         }
+    }
+
+    public static boolean hasDNHint(PlannerContext plannerContext) {
+        return plannerContext.getExtraCmds() != null &&
+            plannerContext.getExtraCmds().containsKey(ConnectionProperties.DN_HINT);
+    }
+
+    public static Map<Integer, ParameterContext> getParametersMapForOptimizer(RelNode rel) {
+        Parameters parameters = getParametersForOptimizer(rel);
+        Map<Integer, ParameterContext> params = parameters.getCurrentParameter();
+        return params;
+    }
+
+    public static Parameters getParametersForOptimizer(RelNode rel) {
+        return getParametersForOptimizer(PlannerContext.getPlannerContext(rel));
+    }
+
+    public static Parameters getParametersForOptimizer(PlannerContext context) {
+        Parameters parameters = RelMetadataQuery.THREAD_PARAMETERS.get();
+        if (parameters == null) {
+            parameters = context.getParams();
+        }
+        return parameters;
     }
 
     public static String buildInExprKey(Map<Integer, ParameterContext> currentParameter) {
@@ -396,6 +433,9 @@ public class OptimizerUtils {
 
     public static Map<Pair<String, List<String>>, Parameters> pruningInValue(LogicalView lv,
                                                                              ExecutionContext context) {
+        if (lv.hasTargetTableHint()) {
+            return null;
+        }
         if (!DynamicConfig.getInstance().isEnablePruningIn()) {
             return null;
         }
@@ -458,6 +498,79 @@ public class OptimizerUtils {
             }
             context.addPruningTime(pruningTime);
             return pruningResult;
+        }
+        return null;
+    }
+
+    public static SortedMap<Long, Set<String>> pruningInValueForColumnar(LogicalView lv,
+                                                                         ExecutionContext context,
+                                                                         SortedMap<Long, PartitionInfo> multiVersionPartitionInfo) {
+        if (!DynamicConfig.getInstance().isEnablePruningIn()) {
+            return null;
+        }
+        Set<Integer> shardIndexes = lv.getPushDownOpt().getShardRelatedInTypeParamIndexes();
+        if (shardIndexes != null) {
+            // TODO(siyun): refactor duplicated codes
+            Pair<Integer, RawString>[] rawStrings = findAllRawStrings(shardIndexes, context);
+            int maxPruneTime =
+                context.getParamManager().getInt(ConnectionParams.IN_PRUNE_MAX_TIME) / multiVersionPartitionInfo.size();
+            Parameters requestParams = context.getParams();
+            if (requestParams == null || rawStrings.length == 0) {
+                return null;
+            }
+
+            // final result
+            SortedMap<Long, Set<String>> allPruningResults = new ConcurrentSkipListMap<>();
+
+            // start pruning
+            long startTime = System.currentTimeMillis();
+
+            if (lv.isNewPartDbTbl()) {
+                // pruning
+                for (Map.Entry<Long, PartitionInfo> partitionInfoEntry : multiVersionPartitionInfo.entrySet()) {
+                    PruningRawStringStep iterator = OptimizerUtils.iterateRawStrings(rawStrings, maxPruneTime);
+                    if (iterator == null) {
+                        return null;
+                    }
+                    Pair<Integer, PruneRawString>[] pruningPairArr = iterator.getTargetPair();
+
+                    // reuse parameter and execution context for pruning
+                    Parameters parameters = copy(requestParams, pruningPairArr, false);
+                    Long tso = partitionInfoEntry.getKey();
+                    PartitionInfo partitionInfo = partitionInfoEntry.getValue();
+
+                    Pair<Map<List<BitSet>, Parameters>, List<PartPrunedResult>> pair =
+                        pruningPartTable(lv, iterator, parameters, context, partitionInfo);
+
+                    if (pair == null) {
+                        // meaning full scan
+                        // TODO(siyun): optimize: for full scan, return null and deal it with all partitions
+                        PartitionPruneStep fullScanStep = PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(
+                            partitionInfo,
+                            partitionInfo.getPartitionBy().getPartLevel(), true
+                        );
+                        PartPrunedResult tablePrunedResult =
+                            PartitionPruner.doPruningByStepInfo(fullScanStep, context);
+                        lv.filterBySelectedPartition(tablePrunedResult);
+
+                        allPruningResults.put(tso, tablePrunedResult.getPrunedParttions().stream().map(
+                            PhysicalPartitionInfo::getPartName
+                        ).collect(Collectors.toSet()));
+                    } else {
+                        // merge
+                        allPruningResults.put(tso, mergePartTablePruningResultIntoPartNames(pair));
+                    }
+                }
+            } else {
+                throw new RuntimeException("CCI must be a new partition table");
+            }
+            long endTime = System.currentTimeMillis();
+            long pruningTime = endTime - startTime;
+            if (pruningTime > DynamicConfig.getInstance().getPruningTimeWarningThreshold()) {
+                OptimizerAlertManager.getInstance().log(OptimizerAlertType.PRUNING_SLOW, context);
+            }
+            context.addPruningTime(pruningTime);
+            return allPruningResults;
         }
         return null;
     }
@@ -554,6 +667,26 @@ public class OptimizerUtils {
         return bitSetMap;
     }
 
+    private static Set<String> mergePartTablePruningResultIntoPartNames(
+        Pair<Map<List<BitSet>, Parameters>, List<PartPrunedResult>> pair) {
+        Set<String> partNames = Sets.newHashSet();
+        Map<List<BitSet>, Parameters> pruningMapForPartTable = pair.getKey();
+        List<PartPrunedResult> partPrunedResultsCache = pair.getValue();
+
+        // For CCI, each table scan has only one table
+        Preconditions.checkArgument(partPrunedResultsCache.size() == 1);
+
+        for (Map.Entry<List<BitSet>, Parameters> entry : pruningMapForPartTable.entrySet()) {
+            // transform bitset to PartPrunedResult
+            PartPrunedResult partPrunedResultTmp = partPrunedResultsCache.get(0).copy();
+            partPrunedResultTmp.setPartBitSet(entry.getKey().get(0));
+            for (PhysicalPartitionInfo physicalPartitionInfo : partPrunedResultTmp.getPrunedParttions()) {
+                partNames.add(physicalPartitionInfo.getPartName());
+            }
+        }
+        return partNames;
+    }
+
     /**
      * merge pruning result for part table
      */
@@ -615,6 +748,14 @@ public class OptimizerUtils {
                                                                                                 PruningRawStringStep iterator,
                                                                                                 Parameters parameters,
                                                                                                 ExecutionContext context) {
+        return pruningPartTable(lv, iterator, parameters, context, null);
+    }
+
+    public static Pair<Map<List<BitSet>, Parameters>, List<PartPrunedResult>> pruningPartTable(LogicalView lv,
+                                                                                               PruningRawStringStep iterator,
+                                                                                               Parameters parameters,
+                                                                                               ExecutionContext context,
+                                                                                               PartitionInfo cciPartInfo) {
         boolean checked = false;
         List<PartPrunedResult> partPrunedResultsCache = null;
         ExecutionContext contextForInPruning = new ExecutionContext(context.getSchemaName());
@@ -630,7 +771,9 @@ public class OptimizerUtils {
             iterator.next();
 
             // pruning part table
-            List<PartPrunedResult> partPrunedResults = lv.getPartPrunedResults(contextForInPruning);
+            List<PartPrunedResult> partPrunedResults = cciPartInfo == null ?
+                lv.getPartPrunedResults(contextForInPruning) :
+                lv.getCciPartPrunedResults(contextForInPruning, cciPartInfo);
 
             // transform PartPrunedResult to bitset list
             List<BitSet> physicalPartBitSet = Lists.newArrayList();
@@ -724,18 +867,23 @@ public class OptimizerUtils {
                                    boolean clonePruning) {
         // deep copy
         Parameters newParams = parameters.clone();
-        for (Pair<Integer, PruneRawString> p : pruningPairArr) {
-            PruneRawString pruneRawString = p.getValue();
-            ParameterContext pc = newParams.getCurrentParameter().get(p.getKey());
-            ParameterContext newContext = new ParameterContext();
-            newContext.setParameterMethod(pc.getParameterMethod());
-            newContext.setArgs(new Object[] {p.getKey(), clonePruning ? pruneRawString.clone() : pruneRawString});
-            newParams.getCurrentParameter().put(p.getKey(), newContext);
+        if (pruningPairArr != null) {
+            for (Pair<Integer, PruneRawString> p : pruningPairArr) {
+                PruneRawString pruneRawString = p.getValue();
+                ParameterContext pc = newParams.getCurrentParameter().get(p.getKey());
+                ParameterContext newContext = new ParameterContext();
+                newContext.setParameterMethod(pc.getParameterMethod());
+                newContext.setArgs(new Object[] {p.getKey(), clonePruning ? pruneRawString.clone() : pruneRawString});
+                newParams.getCurrentParameter().put(p.getKey(), newContext);
+            }
         }
         return newParams;
     }
 
     public static PruningRawStringStep iterateRawStrings(Pair<Integer, RawString>[] rawStrings, int maxPruneTime) {
+        if (rawStrings.length == 0) {
+            return null;
+        }
         if (rawStrings.length == 1) {
             Integer rawStringIndex = rawStrings[0].getKey();
             RawString rawString = rawStrings[0].getValue();
@@ -939,6 +1087,14 @@ public class OptimizerUtils {
         //Autocommit is true, but the GSI must be in transaction.
         boolean ret = context.getTransaction().getTransactionClass().isA(EXPLICIT_TRANSACTION);
         return ret && ConfigDataMode.isMasterMode() && !isMppMode(context);
+    }
+
+    public static boolean enableColumnarOptimizer(ParamManager paramManager) {
+        if (paramManager.getBoolean(ConnectionParams.ENABLE_COLUMNAR_OPTIMIZER)) {
+            return true;
+        }
+        return (paramManager.getBoolean(ConnectionParams.ENABLE_COLUMNAR_OPTIMIZER_WITH_COLUMNAR)
+            && DynamicConfig.getInstance().existColumnarNodes());
     }
 
     private static boolean isMppMode(ExecutionContext context) {

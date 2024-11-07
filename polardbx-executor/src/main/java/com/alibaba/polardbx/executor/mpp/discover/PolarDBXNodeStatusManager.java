@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.mpp.discover;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -37,7 +38,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -51,7 +51,6 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
 
     public PolarDBXNodeStatusManager(InternalNodeManager nodeManager, InternalNode localNode) {
         super(nodeManager, NODE_INFO, localNode);
-        init();
     }
 
     @Override
@@ -79,18 +78,6 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
         }
 
         ExecUtils.syncNodeStatus(SystemDbHelper.DEFAULT_DB_NAME);
-    }
-
-    @Override
-    protected void updateActiveNodes(String instId, InternalNode node, Set<InternalNode> activeNodes,
-                                     Set<InternalNode> otherActiveNodes, int role) {
-        if (localNode.getInstId().equalsIgnoreCase(instId)) {
-            //主实例或者当前节点是只读实例，取这个只读实例相同instId的节点
-            activeNodes.add(node);
-        } else if (ConfigDataMode.isMasterMode() && (role & ROLE_HTAP) == ROLE_HTAP) {
-            //当前处理是主实例，且获取的节点开启了HTAP节点
-            otherActiveNodes.add(node);
-        }
     }
 
     @Override
@@ -143,12 +130,23 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
             //polarx只读实例，需要处理节点类型的变化
             if (gmsNode != null && !ConfigDataMode.isMasterMode()) {
                 boolean changeHtapRole = false;
-                if (gmsNode.instType == ServerInfoRecord.INST_TYPE_HTAP_SLAVE && !localNode.isHtap()) {
-                    localNode.setHtap(true);
-                    changeHtapRole = true;
-                } else if (gmsNode.instType != ServerInfoRecord.INST_TYPE_HTAP_SLAVE && localNode.isHtap()) {
-                    localNode.setHtap(false);
-                    changeHtapRole = true;
+
+                if (ConfigDataMode.isRowSlaveMode()) {
+                    if (gmsNode.instType == ServerInfoRecord.INST_TYPE_HTAP_SLAVE && !localNode.isHtap()) {
+                        localNode.setHtap(true);
+                        changeHtapRole = true;
+                    } else if (gmsNode.instType != ServerInfoRecord.INST_TYPE_HTAP_SLAVE && localNode.isHtap()) {
+                        localNode.setHtap(false);
+                        changeHtapRole = true;
+                    }
+                } else {
+                    if (!localNode.isHtap() && DynamicConfig.getInstance().allowColumnarBindMaster()) {
+                        localNode.setHtap(true);
+                        changeHtapRole = true;
+                    } else if (localNode.isHtap() && !DynamicConfig.getInstance().allowColumnarBindMaster()) {
+                        localNode.setHtap(false);
+                        changeHtapRole = true;
+                    }
                 }
 
                 if (logger.isDebugEnabled()) {
@@ -245,7 +243,7 @@ public class PolarDBXNodeStatusManager extends NodeStatusManager {
 
     private void resetLeaderStatus() {
         localNode.setLeader(false);
-        List<Node> coordinators = nodeManager.getAllCoordinators();
+        List<Node> coordinators = nodeManager.getAllNodes().getAllCoordinators();
         if (coordinators != null && !coordinators.isEmpty()) {
             for (Node node : coordinators) {
                 if (node.isLeader() && node.getNodeIdentifier().equalsIgnoreCase(localNode.getNodeIdentifier())) {

@@ -30,9 +30,10 @@ public interface OptimizerAlertLogger {
      * log the alert when it's not too frequent
      *
      * @param ec ExecutionContext of the query
+     * @param object extra info to print
      * @return return if log success
      */
-    boolean logDetail(ExecutionContext ec);
+    boolean logDetail(ExecutionContext ec, Object object);
 
     /**
      * collect alert count since last schedule job

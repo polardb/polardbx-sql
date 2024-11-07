@@ -7,8 +7,7 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      LogicalView(tables="optest_0000.test_table_a_[00-06]", shardCount=7, sql="SELECT `test_table_a`.`pk` FROM `test_table_a` AS `test_table_a`")
+    PhyQuery(node="optest_0000", sql="select `pk` as `pk` from `test_table_a` as `test_table_a`")
 
 - sql: |
     select /*+TDDL: node("0,1,3")*/
@@ -16,8 +15,10 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      LogicalView(tables="[0000,0001,0003].test_table_a_[00-13,21-27]", shardCount=21, sql="SELECT `test_table_a`.`pk` FROM `test_table_a` AS `test_table_a`")
+    PhyViewUnion(concurrent=true)
+      PhyQuery(node="optest_0000", sql="select `pk` as `pk` from `test_table_a` as `test_table_a`")
+      PhyQuery(node="optest_0001", sql="select `pk` as `pk` from `test_table_a` as `test_table_a`")
+      PhyQuery(node="optest_0003", sql="select `pk` as `pk` from `test_table_a` as `test_table_a`")
 
 - sql: |
     /*+TDDL: node(0)*/
@@ -34,7 +35,8 @@
   plan: |
 
     PhyViewUnion(concurrent=true)
-      PhyQuery(node="[0000,0001]", sql="SHOW TABLES LIKE '%test%'")
+      PhyQuery(node="optest_0000", sql="show tables like '%test%'")
+      PhyQuery(node="optest_0001", sql="show tables like '%test%'")
 
 - sql: |
     /*+TDDL: node(0)*/
@@ -42,4 +44,4 @@
 
   plan: |
 
-    PhyQuery(node="optest_0000", sql="SHOW COLUMNS FROM `test_table_a` WHERE (`field` <> '_drds_implicit_id_')")
+    PhyQuery(node="optest_0000", sql="desc `test_table_a`")

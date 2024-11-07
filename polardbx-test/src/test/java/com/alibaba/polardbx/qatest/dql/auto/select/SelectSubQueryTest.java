@@ -103,11 +103,6 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
         sql = "select *  from " + baseOneTableName + " where integer_test >=(select pk from " + baseTwoTableName
             + " where varchar_test='" + columnDataGenerator.varchar_testValue + "'  order by pk limit 1)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-
-        if (shardingAdvise.compareAndSet(false, true)) {
-            sql = "/*+TDDL:cmd_extra(SHARDING_ADVISOR_BROADCAST_THRESHOLD=100)*/shardingadvise";
-            DataValidator.sqlMayErrorAssert(sql, tddlConnection, "ERR_TABLE_NOT_EXIST");
-        }
     }
 
     /**

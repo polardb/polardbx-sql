@@ -1,0 +1,102 @@
+## DISABLE_FAST_SQL_PARSER
+
+
+
+create table modify_ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_LEVEL = 'ROW'
+TTL_EXPR = '`b` | EXPIRE AFTER 5 MINUTE | TIMEZONE=+08:00'
+TTL_JOB = CRON '* */2 * * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+partition by key(a) partitions 2;
+
+alter table ttl_t1 modify ttl
+set
+TTL_ENABLE = 'OFF'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+00:00';
+
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'OFF'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+00:00'
+partition by key(a) partitions 2;
+
+alter table modify_ttl_t1
+modify ttl
+set
+TTL_EXPR = '`b` EXPIRE AFTER 5 MONTH TIMEZONE=+08:00'
+TTL_PRE_ALLOCATE = 12
+TTL_POST_ALLOCATE = 24;
+
+create table arc_t1 like ttl_t1 ENGINE='COLUMNAR' ARCHIVE_MODE='TTL';
+alter table ttl_t1 modify ttl set ARC_PRE_ALLOCATE = 3;
+select * from information_schema.ttl_info where table_schema='ttldb2' and table_name='ttl_t1';
+
+alter table ttl_t1 cleanup expired data;
+
+alter table ttl_t1
+modify ttl
+set
+TTL_ENABLE = 'OFF' 
+TTL_EXPR = `b` EXPIRE AFTER 5 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+00:00'
+ARCHIVE_TABLE_SCHEMA = ''
+ARCHIVE_TABLE_NAME = ''
+ARC_PRE_ALLOCATE = 1
+ARC_POST_ALLOCATE = 6;
+
+alter table ttl_t1
+modify ttl
+set
+TTL_ENABLE = 'OFF'
+TTL_EXPR = `b` EXPIRE AFTER 5 DAY TIMEZONE '+08:00'
+TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+00:00'
+ARCHIVE_TABLE_SCHEMA = ''
+ARCHIVE_TABLE_NAME = ''
+ARC_PRE_ALLOCATE = 1
+ARC_POST_ALLOCATE = 6;
+
+
+alter table ttl_t1 modify ttl set ARC_PRE_ALLOCATE = 3 ARC_POST_ALLOCATE = 5;
+
+alter table ttl_t1 modify ttl set TTL_EXPR = `b` EXPIRE AFTER 180 DAY TIMEZONE '+08:00';
+
+create table arc_t2 like ttl_t2 ENGINE='COLUMNAR' ARCHIVE_MODE='TTL';
+
+CREATE TABLE `ttl_t2` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` datetime DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL_ENABLE = 'OFF' TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00' TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+08:00'
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+
+
+create table ttl_ts_t1(
+a int not null auto_increment,
+b timestamp default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'OFF'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+10:00'
+TTL_JOB = CRON '* * */2 * * ?' TIMEZONE '+10:00'
+partition by key(a) partitions 2;
+
+alter table ttl_ts_t1 modify ttl set ARC_PRE_ALLOCATE = 1 ARC_POST_ALLOCATE = 3;
+create table arc_ts_t1 like ttl_ts_t1 ENGINE='COLUMNAR' ARCHIVE_MODE='TTL';

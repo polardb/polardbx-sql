@@ -25,6 +25,8 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
+import com.alibaba.polardbx.executor.backfill.GsiPartitionExtractor;
+import com.alibaba.polardbx.executor.backfill.GsiPkRangeExtractor;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.gsi.backfill.CdasLoader;
@@ -39,6 +41,7 @@ import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -62,7 +65,17 @@ public class BackfillExecutor {
 
     public int backfill(String schemaName, String primaryTable, String indexName, boolean useBinary,
                         boolean useChangeSet, boolean canUseReturning, List<String> modifyStringColumns,
-                        ExecutionContext baseEc) {
+                        boolean onlineModifyColumn, ExecutionContext baseEc) {
+        return backfill(schemaName, primaryTable, indexName, useBinary,
+            useChangeSet, canUseReturning, modifyStringColumns, null, null,
+            onlineModifyColumn, 1, baseEc);
+    }
+
+    public int backfill(String schemaName, String primaryTable, String indexName, boolean useBinary,
+                        boolean useChangeSet, boolean canUseReturning, List<String> modifyStringColumns,
+                        Pair<Map<Integer, ParameterContext>, Map<Integer, ParameterContext>> pkRange,
+                        List<String> partitionList,
+                        Boolean onlineModifyColumn, int totalThreadCount,  ExecutionContext baseEc) {
         final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_BATCH_SIZE);
         final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_LIMITATION);
         final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_MIN);
@@ -84,17 +97,34 @@ public class BackfillExecutor {
 
             extractor = ChangeSetExecutor
                 .create(schemaName, primaryTable, indexName, batchSize, speedMin, speedLimit, parallelism,
-                    useBinary, modifyStringColumns, sourcePhyTables, baseEc);
+                    useBinary, modifyStringColumns, sourcePhyTables, onlineModifyColumn, baseEc);
             loader =
                 GsiChangeSetLoader.create(schemaName, primaryTable, indexName, this.executeFunc, baseEc.isUseHint(),
                     baseEc, tableNameMapping);
+        } else if (pkRange != null) {
+            long pkRangeSpeedLimit = speedLimit / totalThreadCount;
+            extractor =
+                GsiPkRangeExtractor.create(schemaName, primaryTable, indexName, batchSize, speedMin, pkRangeSpeedLimit,
+                    parallelism,
+                    useBinary, modifyStringColumns, pkRange, baseEc);
+            loader =
+                GsiLoader.create(schemaName, primaryTable, indexName, this.executeFunc, baseEc.isUseHint(),
+                    canUseReturning, onlineModifyColumn, baseEc);
+        } else if (partitionList != null) {
+            extractor =
+                GsiPartitionExtractor.create(schemaName, primaryTable, indexName, batchSize, speedMin, speedLimit,
+                    parallelism,
+                    useBinary, modifyStringColumns, partitionList, baseEc);
+            loader =
+                GsiLoader.create(schemaName, primaryTable, indexName, this.executeFunc, baseEc.isUseHint(),
+                    canUseReturning, onlineModifyColumn, baseEc);
         } else {
             extractor =
                 GsiExtractor.create(schemaName, primaryTable, indexName, batchSize, speedMin, speedLimit, parallelism,
-                    useBinary, modifyStringColumns, baseEc);
+                    useBinary, modifyStringColumns, onlineModifyColumn, baseEc);
             loader =
                 GsiLoader.create(schemaName, primaryTable, indexName, this.executeFunc, baseEc.isUseHint(),
-                    canUseReturning, baseEc);
+                    canUseReturning, onlineModifyColumn, baseEc);
         }
 
         boolean finished;
@@ -127,6 +157,14 @@ public class BackfillExecutor {
                 if (e.getMessage().contains("need to be split into smaller batches")) {
                     finished = false;
                 } else {
+                    SQLRecorderLogger.ddlLogger.warn(
+                        MessageFormat.format(
+                            "[{0}] [{1}][{2}] execution get exception {3}",
+                            baseEc.getTraceId(),
+                            baseEc.getTaskId().toString(),
+                            baseEc.getBackfillId().toString(),
+                            e)
+                    );
                     throw e;
                 }
             }
@@ -136,7 +174,7 @@ public class BackfillExecutor {
     }
 
     public int mirrorCopyGsiBackfill(String schemaName, String primaryTable, String indexName, boolean useChangeSet,
-                                     boolean useBinary, ExecutionContext baseEc) {
+                                     boolean useBinary, boolean onlineModifyColumn, ExecutionContext baseEc) {
         final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_BATCH_SIZE);
         final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_LIMITATION);
         final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_MIN);
@@ -155,7 +193,7 @@ public class BackfillExecutor {
 
         OmcMirrorCopyExtractor extractor =
             OmcMirrorCopyExtractor.create(schemaName, primaryTable, indexName, batchSize, speedMin, speedLimit,
-                parallelism, tableNameMapping, sourcePhyTables, useChangeSet, useBinary, baseEc);
+                parallelism, tableNameMapping, sourcePhyTables, useChangeSet, useBinary, onlineModifyColumn, baseEc);
         extractor.loadBackfillMeta(executionContext);
 
         final AtomicInteger affectRows = new AtomicInteger();
@@ -199,7 +237,7 @@ public class BackfillExecutor {
         copiedEc.setSchemaName(dstSchemaName);
         final Extractor extractor =
             GsiExtractor.create(srcSchemaName, srcTableName, srcTableName, batchSize, speedMin, speedLimit, parallelism,
-                useBinary, null, baseEc);
+                useBinary, null, false, baseEc);
         final CdasLoader cdasLoader =
             CdasLoader.create(srcSchemaName, dstSchemaName, srcTableName, dstTableName, this.executeFunc,
                 copiedEc.isUseHint(), copiedEc, false);
@@ -285,7 +323,7 @@ public class BackfillExecutor {
         final Extractor extractor =
             GsiExtractor
                 .create(schemaName, primaryTable, indexNames.get(0), batchSize, speedMin, speedLimit, parallelism,
-                    useBinary, null, baseEc);
+                    useBinary, null, false, baseEc);
         final Updater updater = Updater.create(schemaName, primaryTable, indexNames, columns, this.executeFunc);
 
         boolean finished;

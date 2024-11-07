@@ -35,7 +35,10 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupDropPartition;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlNode;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -69,18 +72,15 @@ public class LogicalAlterTableGroupDropPartition extends LogicalAlterTableDropPa
         preparedData.setWithHint(targetTablesHintCache != null);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
 
-        List<String> oldPartitionNames =
-            getDroppingPartitionNames(sqlAlterTableDropPartition, partitionInfo, preparedData);
+        List<String> oldPartitionNames = new ArrayList<>();
+        for (SqlNode sqlNode : sqlAlterTableDropPartition.getPartitionNames()) {
+            final String origName = ((SqlIdentifier) sqlNode).getLastName().toLowerCase();
+            oldPartitionNames.add(origName);
+        }
 
         preparedData.setOldPartitionNames(oldPartitionNames);
 
-        preparedData.prepareInvisiblePartitionGroup(sqlAlterTableDropPartition.isSubPartition());
-
-        List<String> newPartitionNames =
-            preparedData.getInvisiblePartitionGroups().stream().map(o -> o.getPartition_name())
-                .collect(Collectors.toList());
-
-        preparedData.setNewPartitionNames(newPartitionNames);
+        preparedData.setOperateOnSubPartition(sqlAlterTableDropPartition.isSubPartition());
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION);
 

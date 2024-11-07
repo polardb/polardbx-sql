@@ -95,6 +95,11 @@ public class HintCmdCoronaDbJson extends BaseHintOperator implements HintCmdOper
             && TStringUtil.isBlank(realtabs);
     }
 
+    public boolean isDirectWithRealTableName() {
+        return null != type && TStringUtil.equalsIgnoreCase(type, SimpleHintParser.TYPE_DIRECT)
+            && !TStringUtil.isBlank(realtabs);
+    }
+
     public boolean isUseRouteCondition() {
         return null != type && !type.isEmpty();
     }

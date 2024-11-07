@@ -106,6 +106,7 @@ public class GmsNodeManager extends AbstractLifecycle {
 
     private int currentIndex = -1;
     private int readOnlyNodeCpuCore = -1;
+    private int readOnlyColumnarCpuCore = -1;
 
     private GmsNodeManager() {
     }
@@ -252,8 +253,8 @@ public class GmsNodeManager extends AbstractLifecycle {
             } else if (instType == ServerInfoRecord.INST_TYPE_COLUMNAR_SLAVE) {
                 readOnlyNodes.add(gmsNode);
                 columnarReadOnlyNodes.add(gmsNode);
+                this.readOnlyColumnarCpuCore = gmsNode.cpuCore;
             }
-
             if (instId.equalsIgnoreCase(InstIdUtil.getInstId())) {
                 if (TStringUtil.equalsIgnoreCase(gmsNode.host, AddressUtils.getHostIp())
                     && gmsNode.serverPort == localServerPort) {
@@ -573,8 +574,12 @@ public class GmsNodeManager extends AbstractLifecycle {
         LOGGER.info(nodeInfo.toString());
     }
 
-    //FIXME estimate
     public int getReadOnlyNodeCpuCore() {
         return readOnlyNodeCpuCore;
     }
+
+    public int getReadOnlyColumnarCpuCore() {
+        return readOnlyColumnarCpuCore;
+    }
+
 }

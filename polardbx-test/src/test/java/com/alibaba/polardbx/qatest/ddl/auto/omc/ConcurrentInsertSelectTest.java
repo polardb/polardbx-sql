@@ -356,4 +356,76 @@ public class ConcurrentInsertSelectTest extends ConcurrentDMLBaseTest {
             result.get();
         }
     }
+
+    @Test
+    public void singleBroadcastChangeMultiWithInsertSelect() throws Exception {
+        final ExecutorService threadPool = Executors.newFixedThreadPool(2);
+        final List<Callable<Void>> tasks = new ArrayList<>();
+
+        String selectTableName = "omc_sb_multi_with_is_src_tb";
+        buildSelectTable(selectTableName);
+
+        tasks.add(() -> {
+            String tableName = "omc_multi_with_insert_select_1";
+            String colDef = "int";
+            String createSql = String.format(
+                "create table %%s ("
+                    + "a int primary key, "
+                    + "b %s, "
+                    + "c varchar(10) default 'abc',"
+                    + "d varchar(10) default 'abc'"
+                    + ") single", colDef);
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+                + " alter table %s change column b e bigint, change column c f text, change d g char(10)";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator1 =
+                (count) -> String.format("insert into %%s(a,b,c,d) select %d,%d+1,%d,%d+1", count, count, count, count);
+            Function<Integer, String> generator2 =
+                (count) -> String.format("insert into %%s(a,e,f,g) select %d,%d+1,%d,%d+1", count, count, count, count);
+            QuadFunction<Integer, Integer, String, String, Boolean> checker =
+                (colA, colB, colC, colD) -> (colA == colB - 1)
+                    && (Float.parseFloat(colC) == Float.parseFloat(colD) - 1);
+            concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+                false, false, 1, createSql);
+            System.out.println("modifyMultiWithInsertSelect single");
+            return null;
+        });
+
+        tasks.add(() -> {
+            String tableName = "omc_multi_with_insert_select_2";
+            String colDef = "int";
+            String createSql = String.format(
+                "create table %%s ("
+                    + "a int primary key, "
+                    + "b %s, "
+                    + "c varchar(10) default 'abc',"
+                    + "d varchar(10) default 'abc'"
+                    + ") broadcast", colDef);
+            String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+                + " alter table %s change column b e bigint, change column c d char(10), change column d c char(10)";
+            String selectSql = "select * from %s";
+            Function<Integer, String> generator1 =
+                (count) -> String.format("insert into %%s(b,a,c,d) select c,d+1,e,f+1 from %s where c=%d",
+                    selectTableName, count);
+            Function<Integer, String> generator2 =
+                (count) -> String.format("insert into %%s(e,a,d,c) select c,d+1,e,f+1 from %s where c=%d",
+                    selectTableName, count);
+            QuadFunction<Integer, Integer, String, String, Boolean> checker =
+                (colA, colB, colC, colD) -> (colA == colB + 1)
+                    && (Float.parseFloat(colC) + 1 == Float.parseFloat(colD));
+            concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+                false, false, 1, createSql);
+            System.out.println("modifyMultiWithInsertSelect broadcast");
+            return null;
+        });
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+    }
 }

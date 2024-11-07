@@ -40,6 +40,7 @@ public abstract class BasePlugin implements IPlugin {
     }
 
     protected final String dsn;
+    protected final String props;
     protected final int rowCount;
     protected final long initBalance;
     private final AtomicLong ops = new AtomicLong(0);
@@ -51,11 +52,11 @@ public abstract class BasePlugin implements IPlugin {
     protected BasePlugin() {
         Toml config = TomlConfig.getConfig();
         dsn = config.getString("dsn");
+        props = config.getString("conn_properties");
         rowCount = Math.toIntExact(config.getLong("row_count"));
-        initBalance = config.getLong("initial_balance");
+        initBalance = config.getLong("initial_balance", 100L);
         assert dsn != null;
         assert rowCount > 0;
-        assert initBalance > 0;
     }
 
     public static void waitUtilTimeout(long timeout) throws InterruptedException {
@@ -161,7 +162,7 @@ public abstract class BasePlugin implements IPlugin {
     }
 
     protected MyConnection getConnection(String dsn) throws SQLException {
-        ConnectionPool pool = connPoolMap.computeIfAbsent(dsn, ConnectionPool::new);
+        ConnectionPool pool = connPoolMap.computeIfAbsent(dsn, k -> new ConnectionPool(dsn, props));
         return pool.get();
     }
 
@@ -170,6 +171,9 @@ public abstract class BasePlugin implements IPlugin {
     }
 
     protected void checkConsistency(List<Account> accounts, String hint) {
+        if (null == accounts) {
+            return;
+        }
         long expectTotal = rowCount * initBalance;
         long actualTotal = 0;
         for (Account account : accounts) {
@@ -181,6 +185,9 @@ public abstract class BasePlugin implements IPlugin {
     }
 
     protected void checkStrongConsistency(List<Account> masterAccounts, List<Account> slaveAccounts, String hint) {
+        if (null == masterAccounts || null == slaveAccounts) {
+            return;
+        }
         if (masterAccounts.size() != slaveAccounts.size()) {
             error2(masterAccounts, slaveAccounts, hint,
                 "Master and slave size not matches, master: " + masterAccounts.size() + ", slave: "
@@ -234,6 +241,23 @@ public abstract class BasePlugin implements IPlugin {
         logger.error(sb.toString());
     }
 
+    protected void errorAllTypesTest1(List<String> checkResults, String errorMsg) {
+        if (Thread.currentThread().isInterrupted()) {
+            // already interrupt
+            return;
+        }
+        StringBuilder sb = new StringBuilder("All types test failed: ").append("\n");
+        for (String checkResult : checkResults) {
+            sb.append(checkResult).append("\n");
+        }
+        fail();
+        throw new RuntimeException(errorMsg);
+    }
+
+    public static boolean success() {
+        return !FAIL.get();
+    }
+
     private static class Worker {
         private final ExecutorService executor;
         private final int threads;
@@ -274,10 +298,12 @@ public abstract class BasePlugin implements IPlugin {
 
     private static class ConnectionPool {
         private final String dsn;
+        private final String props;
         ConcurrentLinkedQueue<MyConnection> connections = new ConcurrentLinkedQueue<>();
 
-        public ConnectionPool(String dsn) {
+        public ConnectionPool(String dsn, String props) {
             this.dsn = dsn;
+            this.props = props;
         }
 
         public void add(MyConnection conn) {
@@ -288,7 +314,7 @@ public abstract class BasePlugin implements IPlugin {
             MyConnection conn;
             if (null == (conn = connections.poll())) {
                 // poll is empty, create new connection
-                conn = new MyConnection(this, dsn);
+                conn = new MyConnection(this, dsn, props);
             }
             return conn;
         }
@@ -312,10 +338,10 @@ public abstract class BasePlugin implements IPlugin {
         private final String dsn;
         private boolean discarded = false;
 
-        public MyConnection(ConnectionPool pool, String dsn) throws SQLException {
+        public MyConnection(ConnectionPool pool, String dsn, String props) throws SQLException {
             this.pool = pool;
             this.dsn = dsn;
-            this.conn = Utils.getConnection(dsn);
+            this.conn = Utils.getConnection(dsn, props);
         }
 
         @Override

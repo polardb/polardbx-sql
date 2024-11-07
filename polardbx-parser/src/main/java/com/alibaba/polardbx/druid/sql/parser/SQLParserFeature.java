@@ -56,7 +56,7 @@ public enum SQLParserFeature {
 
     Spark,
     Presto,
-    ;
+    UpperCaseAgg;
 
     private SQLParserFeature() {
         mask = (1 << ordinal());

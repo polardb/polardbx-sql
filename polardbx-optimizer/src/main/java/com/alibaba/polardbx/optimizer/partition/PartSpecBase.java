@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.gms.partition.ExtraFieldJSON;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.ttl.TtlPartArcState;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
@@ -210,6 +211,12 @@ public abstract class PartSpecBase {
      * Label if current partSpec is using a subpartition template definition
      */
     protected boolean useSpecTemplate = false;
+
+    /**
+     * Label if current partSpec (including its subparts if exists)
+     * of ttl-tmp table has been ready for oss data archiving, default is no_use
+     */
+    protected Integer arcState = TtlPartArcState.ARC_STATE_NO_USE.getArcState();
 
     public PartitionStrategy getStrategy() {
         return strategy;
@@ -410,5 +417,13 @@ public abstract class PartSpecBase {
 
     public void setParentPartPosi(Long parentPartPosi) {
         this.parentPartPosi = parentPartPosi;
+    }
+
+    public int getArcState() {
+        return arcState;
+    }
+
+    public void setArcState(Integer arcState) {
+        this.arcState = arcState;
     }
 }

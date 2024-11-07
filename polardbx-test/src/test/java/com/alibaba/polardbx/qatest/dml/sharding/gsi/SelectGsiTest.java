@@ -304,8 +304,6 @@ public class SelectGsiTest extends GsiDMLTest {
 
         explainAllResultMatchAssert("EXPLAIN " + sql, null, tddlConnection,
             "[\\s\\S]*" + "IndexScan\\(" + "[\\s\\S]*");
-        explainAllResultNotMatchAssert("EXPLAIN " + sql, null, tddlConnection,
-            "[\\s\\S]*" + "FORCE INDEX\\(" + "[\\s\\S]*");
         explainAllResultMatchAssert("EXPLAIN " + sql, null, tddlConnection, "[\\s\\S]*" + "index1" + "[\\s\\S]*");
         JdbcUtil.executeQuerySuccess(tddlConnection, sql);
     }

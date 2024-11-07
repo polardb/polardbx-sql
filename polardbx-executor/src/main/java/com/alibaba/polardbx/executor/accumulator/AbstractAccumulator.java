@@ -44,15 +44,15 @@ abstract class AbstractAccumulator implements Accumulator {
      * accumulate method with no arguments e.g. COUNT(*)
      */
     void accumulate(int groupId) {
-        throw new AssertionError("not implemented");
+        throw new UnsupportedOperationException("not implemented");
     }
 
     /**
-     * accumulate method with one arguments e.g. SUM(x)
+     * accumulate method with one argument e.g. SUM(x)
      *
      * @param position value position in block
      */
     void accumulate(int groupId, Block block, int position) {
-        throw new AssertionError("not implemented");
+        throw new UnsupportedOperationException("not implemented");
     }
 }

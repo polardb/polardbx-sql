@@ -47,7 +47,7 @@ public class OutputExecutorFactory implements ConsumeExecutorFactory {
     public ConsumerExecutor createExecutor(ExecutionContext context, int index) {
         PartitioningScheme partitioningScheme = fragment.getPartitioningScheme();
         List<DataType> inputType = fragment.getTypes();
-        List<DataType> outputType = SerializeDataType.convertToDataType(fragment.getOutputTypes());
+        List<DataType> outputType = SerializeDataType.convertToDataType(fragment.getOutputTypes(), context);
 
         if (partitioningScheme.getShuffleHandle().isSinglePartition() || partitioningScheme.getPartitionMode()
             .equals(PartitionShuffleHandle.PartitionShuffleMode.BROADCAST)

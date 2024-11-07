@@ -16,22 +16,38 @@
 
 package com.alibaba.polardbx.transaction.sync;
 
-import com.alibaba.polardbx.executor.sync.CreateProcedureSyncAction;
-import com.alibaba.polardbx.executor.sync.CreateStoredFunctionSyncAction;
-import com.alibaba.polardbx.executor.sync.DropProcedureSyncAction;
-import com.alibaba.polardbx.executor.sync.DropStoredFunctionSyncAction;
-import com.alibaba.polardbx.executor.sync.DropDbRelatedProcedureSyncAction;
-import com.alibaba.polardbx.gms.node.StorageStatus;
-import com.alibaba.polardbx.gms.sync.RefreshStorageStatusSyncAction;
-import org.junit.Assert;
-import org.junit.Test;
-
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.parser.Feature;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.sync.CreateProcedureSyncAction;
+import com.alibaba.polardbx.executor.sync.CreateStoredFunctionSyncAction;
+import com.alibaba.polardbx.executor.sync.DropDbRelatedProcedureSyncAction;
+import com.alibaba.polardbx.executor.sync.DropProcedureSyncAction;
+import com.alibaba.polardbx.executor.sync.DropStoredFunctionSyncAction;
+import com.alibaba.polardbx.gms.node.StorageStatus;
+import com.alibaba.polardbx.gms.sync.RefreshStorageStatusSyncAction;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
+import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.transaction.TransactionManager;
+import org.junit.Assert;
+import org.junit.Test;
+import org.mockito.MockedStatic;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.BiConsumer;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
 public class SyncActionTest {
 
@@ -157,5 +173,55 @@ public class SyncActionTest {
         FetchTimerTaskInfoSyncAction obj =
             (FetchTimerTaskInfoSyncAction) JSON.parse(data, Feature.SupportAutoType);
         Assert.assertEquals(obj.getSchemaName(), action.getSchemaName());
+    }
+
+    @Test
+    public void testFetchAllTransSyncAction() {
+        try (MockedStatic<TransactionManager> transactionManagerMockedStatic =
+            mockStatic(TransactionManager.class);) {
+            TransactionManager transactionManager = mock(TransactionManager.class);
+            transactionManagerMockedStatic.when((() -> TransactionManager.getInstance(any())))
+                .thenReturn(transactionManager);
+            ConcurrentMap<Long, ITransaction> transactions = new ConcurrentHashMap<>();
+            when(transactionManager.getTransactions()).thenReturn(transactions);
+            ITransaction tran = mock(ITransaction.class);
+            transactions.put(1024L, tran);
+            ExecutionContext ec = new ExecutionContext();
+            when(tran.getExecutionContext()).thenReturn(ec);
+            when(tran.getStartTimeInMs()).thenReturn(System.currentTimeMillis());
+            when(tran.getId()).thenReturn(1024L);
+            ec.setConnId(10001L);
+            ec.setOriginSql("SELECT * FROM TB1");
+            ec.setDdlContext(null);
+            IConnectionHolder connectionHolder = mock(IConnectionHolder.class);
+            when(tran.getConnectionHolder()).thenReturn(connectionHolder);
+            doAnswer((invocation) -> {
+                BiConsumer consumer = invocation.getArgument(0, BiConsumer.class);
+                consumer.accept("test_group", 10001L);
+                return null;
+            }).when(connectionHolder).handleConnIds(any());
+
+            FetchAllTransSyncAction action = new FetchAllTransSyncAction("test_schema", true);
+            ResultCursor cursor = action.sync();
+            Row row = cursor.next();
+            Assert.assertEquals(Long.valueOf(1024L), row.getLong(0));
+            Assert.assertEquals("test_group", row.getString(1));
+            Assert.assertEquals(Long.valueOf(10001L), row.getLong(2));
+            Assert.assertEquals(Long.valueOf(10001L), row.getLong(3));
+            Assert.assertFalse(row.getBoolean(6));
+            System.out.println(row);
+
+            ec.setDdlContext(new DdlContext());
+            action = new FetchAllTransSyncAction("test_schema", false);
+            cursor = action.sync();
+            row = cursor.next();
+            Assert.assertEquals(Long.valueOf(1024L), row.getLong(0));
+            Assert.assertEquals("test_group", row.getString(1));
+            Assert.assertEquals(Long.valueOf(10001L), row.getLong(2));
+            Assert.assertEquals(Long.valueOf(10001L), row.getLong(3));
+            Assert.assertTrue(row.getBoolean(5));
+            System.out.println(row);
+        }
+
     }
 }

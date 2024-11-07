@@ -74,12 +74,11 @@ public class BaselineInfoAccessor extends AbstractAccessor implements AutoClosea
             + "UNIX_TIMESTAMP(PLAN_INFO.GMT_CREATED) FROM " + BASELINE_INFO_TABLE + " AS BASELINE_INFO LEFT JOIN "
             + PLAN_INFO_TABLE + " AS PLAN_INFO ON "
             + "BASELINE_INFO.SCHEMA_NAME = PLAN_INFO.SCHEMA_NAME AND "
+            + "BASELINE_INFO.INST_ID = PLAN_INFO.INST_ID AND "
             + "BASELINE_INFO.ID = PLAN_INFO.BASELINE_ID "
             + "WHERE UNIX_TIMESTAMP(BASELINE_INFO.GMT_MODIFIED) > ? AND "
             + "(PLAN_INFO.GMT_MODIFIED IS NULL OR UNIX_TIMESTAMP(PLAN_INFO.GMT_MODIFIED) > ?)"
-            + " AND BASELINE_INFO.INST_ID=? AND"
-            + " PLAN_INFO.INST_ID=?";
-
+            + " AND BASELINE_INFO.INST_ID=? ";
     private static final String MOVE_BASELINE_INFO_TO_SPM_BASELINE =
         "INSERT INTO " + BASELINE_INFO_TABLE
             + "(`ID`, `INST_ID`, `SCHEMA_NAME`, `GMT_MODIFIED`, `GMT_CREATED`, `SQL`, `TABLE_SET`, `EXTEND_FIELD`) "
@@ -114,8 +113,9 @@ public class BaselineInfoAccessor extends AbstractAccessor implements AutoClosea
         "DELETE BASELINE_INFO, PLAN_INFO FROM " + BASELINE_INFO_TABLE + " AS BASELINE_INFO LEFT JOIN "
             + PLAN_INFO_TABLE + " AS PLAN_INFO ON "
             + "BASELINE_INFO.SCHEMA_NAME = PLAN_INFO.SCHEMA_NAME AND "
+            + "BASELINE_INFO.INST_ID = PLAN_INFO.INST_ID AND "
             + "BASELINE_INFO.ID = PLAN_INFO.BASELINE_ID "
-            + "WHERE BASELINE_INFO.SCHEMA_NAME  = ? AND BASELINE_INFO.ID = ? AND BASELINE_INFO.INST_ID=? AND PLAN_INFO.INST_ID=?";
+            + "WHERE BASELINE_INFO.SCHEMA_NAME  = ? AND BASELINE_INFO.ID = ? AND BASELINE_INFO.INST_ID=?";
 
     private static final String REPLACE_BASELINE =
         "REPLACE INTO " + BASELINE_INFO_TABLE
@@ -157,7 +157,6 @@ public class BaselineInfoAccessor extends AbstractAccessor implements AutoClosea
             MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, sinceTime);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, sinceTime);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, instId);
-            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, instId);
             ModuleLogInfo.getInstance()
                 .logRecord(Module.SPM, LogPattern.PROCESS_END,
                     new String[] {"spm load", "since time:" + sinceTime},
@@ -226,7 +225,6 @@ public class BaselineInfoAccessor extends AbstractAccessor implements AutoClosea
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, schemaName);
             MetaDbUtil.setParameter(2, params, ParameterMethod.setInt, baselineInfoId);
             MetaDbUtil.setParameter(3, params, ParameterMethod.setString, instId);
-            MetaDbUtil.setParameter(4, params, ParameterMethod.setString, instId);
 
             MetaDbUtil.delete(DELETE_BASELINE, params, connection);
             ModuleLogInfo.getInstance()

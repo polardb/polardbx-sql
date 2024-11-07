@@ -55,7 +55,7 @@ public class BalanceOptions {
     /**
      * Whether generate subjob unit by sizes. (MB)
      */
-    public Long maxTaskUnitSize = 1024 * 32L;
+    public Long maxTaskUnitSize = 1024 * 64L;
 
     /**
      * Whether shuffle data distribution randomly;

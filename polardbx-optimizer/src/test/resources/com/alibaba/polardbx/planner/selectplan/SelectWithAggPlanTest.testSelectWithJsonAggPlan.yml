@@ -1,0 +1,32 @@
+sql: |
+  select json_arrayagg(id) arr_agg, json_objectagg(name, create_time) obj_agg
+  from test_hash_tb a 
+  where a.name='xx';
+
+
+plan: | 
+  hashagg(arr_agg="json_array_globalagg(arr_agg)", obj_agg="json_object_globalagg(obj_agg)")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select (json_arrayagg(`id`)) as `arr_agg`, (json_objectagg(`name`, `create_time`)) as `obj_agg` from `test_hash_tb` as `test_hash_tb` where (`name` = 'xx')")
+
+sql: |
+  /*+TDDL:enable_push_agg=false*/select json_arrayagg(id) arr_agg, json_objectagg(name, create_time) obj_agg
+  from test_hash_tb a 
+  where a.name='xx';
+
+
+plan: |
+  hashagg(arr_agg="json_array_globalagg(arr_agg)", obj_agg="json_object_globalagg(obj_agg)")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select (json_arrayagg(`id`)) as `arr_agg`, (json_objectagg(`name`, `create_time`)) as `obj_agg` from `test_hash_tb` as `test_hash_tb` where (`name` = 'xx')")
+
+sql: |
+  /*+TDDL:enable_cbo_push_agg=false*/select json_arrayagg(id) arr_agg, json_objectagg(name, create_time) obj_agg
+  from test_hash_tb a 
+  where a.name='xx';
+
+
+plan: |
+  hashagg(arr_agg="json_array_globalagg(arr_agg)", obj_agg="json_object_globalagg(obj_agg)")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select (json_arrayagg(`id`)) as `arr_agg`, (json_objectagg(`name`, `create_time`)) as `obj_agg` from `test_hash_tb` as `test_hash_tb` where (`name` = 'xx')")

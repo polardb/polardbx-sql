@@ -1,7 +1,11 @@
 package com.alibaba.polardbx.executor.statistics;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.common.BasePlannerTest;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;

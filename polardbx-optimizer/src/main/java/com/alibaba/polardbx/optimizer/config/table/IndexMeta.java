@@ -19,7 +19,6 @@ package com.alibaba.polardbx.optimizer.config.table;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang.StringUtils;
-import org.eclipse.jetty.util.StringUtil;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -39,7 +38,7 @@ public class IndexMeta implements Serializable, Cloneable {
      */
     private final String name;
     /**
-     * 列名字
+     * 列名字，mysql 80 有可能为空list，函数索引没有列名。
      */
     private final List<ColumnMeta> keyColumns; // Keep this for legacy code.
     private final List<IndexColumnMeta> keyColumnsExt;

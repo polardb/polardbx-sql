@@ -145,6 +145,7 @@ public class GsiBackfillResumeTest extends DDLBaseNewDBTestCase {
 
                 return new BackfillObjectRecord(-1,
                     -1,
+                    -1,
                     tddlDatabase1,
                     PRIMARY_TABLE_NAME,
                     tddlDatabase1,

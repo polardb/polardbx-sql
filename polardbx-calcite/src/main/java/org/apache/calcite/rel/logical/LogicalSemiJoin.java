@@ -411,8 +411,12 @@ public class LogicalSemiJoin extends SemiJoin {
             return null;
         }
         if (relBuilder.peek().getRowType().getFieldCount() > this.getOperands().size()) {
-            if (operator.getKind() != EXISTS && operator.getKind() != NOT_EXISTS
-                && operator.getKind() != SCALAR_QUERY) {
+            if (operator.getKind() == EXISTS || operator.getKind() == NOT_EXISTS) {
+                if (!RelOptUtil.containsAgg(relBuilder.peek()) &&
+                    !(relBuilder.peek() instanceof LogicalProject)) {
+                    relBuilder.project(rexBuilder.makeInputRef(relBuilder.peek(), 0));
+                }
+            } else if (operator.getKind() != SCALAR_QUERY) {
                 List<RexNode> rexNodes = Lists.newArrayList();
                 for (int i = 0; i < this.getOperands().size(); i++) {
                     rexNodes.add(rexBuilder.makeInputRef(relBuilder.peek(), i));

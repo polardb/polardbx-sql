@@ -32,9 +32,12 @@ import javax.sql.DataSource;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class TablesAccessor extends AbstractAccessor {
 
@@ -111,7 +114,7 @@ public class TablesAccessor extends AbstractAccessor {
     private static final String UPDATE_TABLES_STATISTIC =
         UPDATE_TABLES
             + "`table_rows` = ?, `avg_row_length` = ?, `data_length` = ?, `max_data_length` = ?, `index_length` = ?, "
-            + "`data_free` = ?"
+            + "`data_free` = ?, `update_time` = now()"
             + WHERE_SCHEMA_TABLE;
 
     private static final String UPDATE_TABLES_FLAG = UPDATE_TABLES + "`flag` = ?" + WHERE_SCHEMA_TABLE;
@@ -125,6 +128,9 @@ public class TablesAccessor extends AbstractAccessor {
 
     public static final String SELECT_VERSION_FOR_UPDATE =
         "select version from " + TABLES_TABLE + " where table_schema=? and table_name=? for update";
+
+    private static final String QUERY_LONG_TIME_NOT_UPDATED_TABLES =
+        "select table_name from " + TABLES_TABLE + " where table_schema = ? and update_time < now() - interval 1 day";
 
     public int insert(TablesRecord record) {
         try {
@@ -315,6 +321,25 @@ public class TablesAccessor extends AbstractAccessor {
 
     public int delete(String tableSchema) {
         return delete(DELETE_TABLES_ALL, TABLES_TABLE, tableSchema);
+    }
+
+    public Set<String> getLongTimeNotUpdatedTables(String tableSchema) {
+        Set<String> tables = new HashSet<>();
+        try (PreparedStatement ps = connection.prepareStatement(QUERY_LONG_TIME_NOT_UPDATED_TABLES)) {
+            ps.setString(1, tableSchema);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                tables.add(rs.getString(1).toLowerCase());
+            }
+        } catch (SQLException e) {
+            LOGGER.error(
+                "Failed to query " + TABLES_TABLE + " for update time, schema " + tableSchema,
+                e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update",
+                TABLES_TABLE,
+                e.getMessage());
+        }
+        return tables;
     }
 
 }

@@ -19,10 +19,10 @@ package com.alibaba.polardbx.executor.operator.scan.impl;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.columnar.pruning.ColumnarPruneManager;
 import com.alibaba.polardbx.executor.columnar.pruning.data.PruneUtils;
 import com.alibaba.polardbx.executor.columnar.pruning.index.IndexPruneContext;
@@ -71,7 +71,7 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
 
     private static final String PREHEATED_CACHE_NAME = "PREHEATED_CACHE";
 
-    private static final int PREHEATED_CACHE_MAX_ENTRY = 4096;
+    private static final long PREHEATED_CACHE_MAX_ENTRY = DynamicConfig.getInstance().getPreheatedCacheMaxEntries();
 
     private static final Logger logger = LoggerFactory.getLogger(DefaultScanPreProcessor.class);
 
@@ -160,7 +160,7 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
     /**
      * Mapping from file path to deletion bitmap.
      */
-    private Map<Path, RoaringBitmap> deletions;
+    protected Map<Path, RoaringBitmap> deletions;
 
     /**
      * Store the throwable info generated during preparation.
@@ -268,7 +268,10 @@ public class DefaultScanPreProcessor implements ScanPreProcessor {
                                     ColumnarPruneManager.getIndexPruner(
                                         filePath, preheat, columns, sortKeys.get(0),
                                         columnFieldIdList.stream()
-                                            .map(field -> orcIndexesMap.get(field) + 1)
+                                            .map(field -> {
+                                                Integer orcIndex = orcIndexesMap.get(field);
+                                                return orcIndex == null ? null : orcIndex + 1;
+                                            })
                                             .collect(Collectors.toList()),
                                         enableOssCompatible
                                     );

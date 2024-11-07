@@ -1,0 +1,79 @@
+## DISABLE_FAST_SQL_PARSER
+
+set TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = false;
+set TTL_DEBUG_CCI_SKIP_DDL_TASKS = "WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set SKIP_DDL_TASKS="WaitColumnarTableAlterPartitionTask,WaitColumnarTableCreationTask";
+set TTL_DEBUG_CURRENT_DATETIME='2024-06-27 00:00:00';
+set sql_mode='';
+set TTL_ADD_MAXVAL_PART_ON_CCI_CREATING=true;
+set TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = false;
+
+CREATE TABLE `ttl_t1_d_empty` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` date DEFAULT NULl,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+
+CREATE TABLE `ttl_t2_d_null` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` date DEFAULT NULl,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+insert into ttl_t2_d_null values (1,  null);
+
+CREATE TABLE `ttl_t3_d_zero` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` date DEFAULT NULl,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+insert into ttl_t3_d_zero values (1,  '0000-00-00 00:00:00');
+
+CREATE TABLE `ttl_t4_d_both` (
+`a` int(11) NOT NULL AUTO_INCREMENT,
+`b` date DEFAULT NULl,
+PRIMARY KEY(a)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 TTL = TTL_DEFINITION( TTL_ENABLE = 'OFF', TTL_EXPR = `b` EXPIRE AFTER 2 DAY TIMEZONE '+08:00', TTL_JOB = CRON '0 0 1 * * ? *' TIMEZONE '+08:00', ARCHIVE_TYPE = '', ARCHIVE_TABLE_NAME = '', ARCHIVE_TABLE_PRE_ALLOCATE = 2, ARCHIVE_TABLE_POST_ALLOCATE = 2 )
+PARTITION BY KEY(`a`)
+PARTITIONS 2;
+insert into ttl_t4_d_both values (1,  null);
+insert into ttl_t4_d_both values (2,  '0000-00-00 00:00:00');
+insert into ttl_t4_d_both values (3,  '9999-00-00 00:00:00');
+insert into ttl_t4_d_both values (4,  '9999-01-01 00:00:00');
+insert into ttl_t4_d_both values (5,  '2024-05-05 00:00:00');
+
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t1_d_empty order by a;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t2_d_null order by a;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t3_d_zero order by a;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t4_d_both order by a;
+
+create table ttl_t1_d_empty_arc like ttl_t1_d_empty engine='columnar' archive_mode='ttl';
+create table ttl_t2_d_null_arc like ttl_t2_d_null engine='columnar' archive_mode='ttl';
+create table ttl_t3_d_zero_arc like ttl_t3_d_zero engine='columnar' archive_mode='ttl';
+create table ttl_t4_d_both_arc like ttl_t4_d_both engine='columnar' archive_mode='ttl';
+
+alter table ttl_t1_d_empty cleanup expired data;
+alter table ttl_t2_d_null cleanup expired data;
+alter table ttl_t3_d_zero cleanup expired data;
+alter table ttl_t4_d_both cleanup expired data;
+
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t1_d_empty order by a;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t2_d_null order by a;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t3_d_zero order by a;
+select a, date_format(b, '%Y-%m-%d %H:%i:%s') b_val from ttl_t4_d_both order by a;
+
+drop table ttl_t1_d_empty;
+drop table ttl_t2_d_null;
+drop table ttl_t3_d_zero;
+drop table ttl_t4_d_both;
+
+
+
+
+
+

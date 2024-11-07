@@ -369,6 +369,10 @@ public class SqlAlterTable extends SqlCreate {
         return alters != null && alters.size() == 1 && alters.get(0) instanceof SqlAlterTableExpireLocalPartition;
     }
 
+    public boolean isCleanupExpiredData() {
+        return alters != null && alters.size() == 1 && alters.get(0) instanceof SqlAlterTableCleanupExpiredData;
+    }
+
     public boolean isAlterIndexVisibility() {
         return alters != null
             && alters.size() == 1
@@ -478,6 +482,10 @@ public class SqlAlterTable extends SqlCreate {
 
     public boolean isModifyPartitionValues() {
         return alters.size() > 0 && alters.get(0) instanceof SqlAlterTableModifyPartitionValues;
+    }
+
+    public boolean isOptimizePartition() {
+        return alters.size() > 0 && alters.get(0) instanceof SqlAlterTableOptimizePartition;
     }
 
     public List<String> getLogicalReferencedTables() {

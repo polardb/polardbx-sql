@@ -51,9 +51,7 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -85,9 +83,11 @@ import static com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefi
 public class LocalPartitionScheduledJob extends SchedulerExecutor {
     private static final Logger logger = LoggerFactory.getLogger(LocalPartitionScheduledJob.class);
 
-    private static final String ALLOCATE_LOCAL_PARTITION = "ALTER TABLE %s ALLOCATE LOCAL PARTITION";
-    private static final String EXPIRE_LOCAL_PARTITION = "ALTER TABLE %s EXPIRE LOCAL PARTITION %s";
-    private static final String EXPIRE_LOCAL_PARTITION_PREFIX = "ALTER TABLE %s EXPIRE LOCAL PARTITION";
+    private static final String ALLOCATE_LOCAL_PARTITION =
+        "/*SCHEDULE_JOB_DDL*/ALTER TABLE %s ALLOCATE LOCAL PARTITION";
+    private static final String EXPIRE_LOCAL_PARTITION = "/*SCHEDULE_JOB_DDL*/ALTER TABLE %s EXPIRE LOCAL PARTITION %s";
+    private static final String EXPIRE_LOCAL_PARTITION_PREFIX =
+        "/*SCHEDULE_JOB_DDL*/ALTER TABLE %s EXPIRE LOCAL PARTITION";
 
     private final ExecutableScheduledJob executableScheduledJob;
 
@@ -128,6 +128,7 @@ public class LocalPartitionScheduledJob extends SchedulerExecutor {
 
             Pair<Boolean, String> needInterruption;
 
+            // Fetch all paused ddl-job
             List<Long> pausedDdlJobIdList =
                 getCurrentDdlSqlList(tableSchema, tableName, new DdlState[] {DdlState.PAUSED});
 
@@ -144,7 +145,9 @@ public class LocalPartitionScheduledJob extends SchedulerExecutor {
                 }
             }
 
+            // build new ddl sql list
             List<String> ddlSqlList = getDdlSqlList(repository, tableSchema, tableName, timeZone);
+            // exec new ddl sql list
             for (String ddlSql : ddlSqlList) {
                 needInterruption = needInterrupted();
                 if (needInterruption.getKey()) {

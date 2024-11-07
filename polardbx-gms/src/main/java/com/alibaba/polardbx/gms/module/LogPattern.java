@@ -29,6 +29,7 @@ public enum LogPattern {
     STATE_CHANGE_FAIL("job: %s, state change fail, from %s to %s"),
     NOT_ENABLED("%s not enabled, %s"),
     PROCESS_START("%s started: %s"),
+    PROCESS_SKIPPED("%s skipped: %s"),
     PROCESSING("%s processing: %s"),
     PROCESS_END("%s succeed ended,result: %s"),
     INTERRUPTED("%s job being interrupted by %s"),

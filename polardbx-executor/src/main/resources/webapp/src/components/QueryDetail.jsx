@@ -26,7 +26,7 @@ import {
     getFirstParameter, getFullSplitIdSuffix,
     getHostAndPort,
     getHostname,
-    getStageNumber,
+    getStageNumber, getStagePipelineFromDriverId,
     getStageStateColor,
     getTaskIdSuffix,
     getTaskNumber,
@@ -79,6 +79,14 @@ class TaskList extends React.Component {
         }
     }
 
+    openStageDetail(event, id: number) {
+        const queryId = this.props.queryId;
+        this.setState({ selectedStageId: id });
+        const url : string = "/ui/stage.html?" + queryId + "." + id;
+        event.preventDefault();
+        window.open(url, '_blank');
+    }
+
     render() {
         const tasks = this.props.tasks;
 
@@ -89,7 +97,7 @@ class TaskList extends React.Component {
                 </div>);
         }
 
-        const renderedTasks = tasks.map(task => {
+        const renderTasks = (taskList) => taskList.map(task => {
             if (typeof(task.detailedStats) === "undefined") {
                 return (
                     <Tr key={task.taskStatus.taskId}>
@@ -188,51 +196,88 @@ class TaskList extends React.Component {
             }
         });
 
-        return (
-            <Table id="tasks" className="table table-striped sortable" sortable=
-                {[
-                    {
-                        column: 'id',
-                        sortFunction: TaskList.compareTaskId
-                    },
-                    'host',
-                    'state',
-                    'splitsPending',
-                    'splitsRunning',
-                    'splitsDone',
-                    'outputRows',
-                    'inputRows',
-                    // 'inputBytes',
-                    'elapsedTime',
-                    'deliveryTime',
-                    'processTime',
-                    'dataFinishTime',
-                ]}
-                   defaultSort={{column: 'id', direction: 'asc'}}>
-                <Thead>
-                <Th column="id">ID</Th>
-                <Th column="host">Host</Th>
-                <Th column="state">State</Th>
-                <Th column="splitsPending"><span className="glyphicon glyphicon-pause" style={GLYPHICON_HIGHLIGHT}
-                                                 data-toggle="tooltip" data-placement="top"
-                                                 title="Pending splits"></span></Th>
-                <Th column="splitsRunning"><span className="glyphicon glyphicon-play" style={GLYPHICON_HIGHLIGHT}
-                                                 data-toggle="tooltip" data-placement="top"
-                                                 title="Running splits"></span></Th>
-                <Th column="splitsDone"><span className="glyphicon glyphicon-ok" style={GLYPHICON_HIGHLIGHT}
-                                              data-toggle="tooltip" data-placement="top"
-                                              title="Completed splits"></span></Th>
-                <Th column="outputRows">OutputRows</Th>
-                <Th column="inputRows">InputRows</Th>
-                {/*<Th column="inputBytes">inputBytes</Th>*/}
-                <Th column="elapsedTime">Elapsed</Th>
-                <Th column="deliveryTime">Delivery</Th>
-                <Th column="processTime">Process</Th>
-                <Th column="dataFinishTime">DataFinish</Th>
-                </Thead>
-                {renderedTasks}
-            </Table>
-        );
+        // separate each stage
+        let stageTaskMap = new Map();
+        tasks.forEach(task => {
+            let taskId = getTaskIdSuffix(task.taskStatus.taskId);
+            // find stageId, like: 0.0 and 0.1 => 0
+            let stageId = taskId.substring(0, taskId.indexOf('.'));
+
+            if (!stageTaskMap.has(stageId)) {
+                stageTaskMap.set(stageId, []);
+            }
+
+            stageTaskMap.get(stageId).push(task);
+        });
+
+        const stageKeys = Array.from(stageTaskMap.keys());
+        stageKeys.sort((a, b) => {
+            const numA = Number(a);
+            const numB = Number(b);
+            return numA - numB;
+        });
+        // console.debug("stages: " + stageKeys);
+
+        var renderedStages = [];
+        for (const stageId of stageKeys) {
+            const taskList = stageTaskMap.get(stageId);
+            if (!taskList) {
+                continue;
+            }
+            const tableId = "stage-" + stageId;
+            // console.debug("Rendering table:" + tableId);
+            renderedStages.push(
+                <div key={stageId}>
+                    <h4>
+                        <a href="javascript:void(0);" onClick={(event) => this.openStageDetail(event, Number(stageId))}>{tableId}</a>
+                    </h4>
+                    <Table id={tableId} className="table table-striped sortable" sortable=
+                        {[
+                            {
+                                column: 'id',
+                                sortFunction: TaskList.compareTaskId
+                            },
+                            'host',
+                            'state',
+                            'splitsPending',
+                            'splitsRunning',
+                            'splitsDone',
+                            'outputRows',
+                            'inputRows',
+                            // 'inputBytes',
+                            'elapsedTime',
+                            'deliveryTime',
+                            'processTime',
+                            'dataFinishTime',
+                        ]}
+                           defaultSort={{column: 'id', direction: 'asc'}}>
+                        <Thead>
+                            <Th column="id">ID</Th>
+                            <Th column="host">Host</Th>
+                            <Th column="state">State</Th>
+                            <Th column="splitsPending"><span key={"Pending"} className="glyphicon glyphicon-pause" style={GLYPHICON_HIGHLIGHT}
+                                                             data-toggle="tooltip" data-placement="top"
+                                                             title="Pending splits"></span></Th>
+                            <Th column="splitsRunning"><span key={"Running"} className="glyphicon glyphicon-play" style={GLYPHICON_HIGHLIGHT}
+                                                             data-toggle="tooltip" data-placement="top"
+                                                             title="Running splits"></span></Th>
+                            <Th column="splitsDone"><span key={"Completed"} className="glyphicon glyphicon-ok" style={GLYPHICON_HIGHLIGHT}
+                                                          data-toggle="tooltip" data-placement="top"
+                                                          title="Completed splits"></span></Th>
+                            <Th column="outputRows">OutputRows</Th>
+                            <Th column="inputRows">InputRows</Th>
+                            {/*<Th column="inputBytes">inputBytes</Th>*/}
+                            <Th column="elapsedTime">Elapsed</Th>
+                            <Th column="deliveryTime">Delivery</Th>
+                            <Th column="processTime">Process</Th>
+                            <Th column="dataFinishTime">DataFinish</Th>
+                        </Thead>
+                        {renderTasks(taskList)}
+                    </Table>
+                </div>);
+        }
+
+        return renderedStages;
     }
 }
 
@@ -272,6 +317,14 @@ class SplitList extends React.Component {
         }
     }
 
+    openStageDetail(event, id: number) {
+        const queryId = this.props.queryId;
+        this.setState({ selectedStageId: id });
+        const url : string = "/ui/stage.html?" + queryId + "." + id;
+        event.preventDefault();
+        window.open(url, '_blank');
+    }
+
     render() {
         const splits = this.props.splits;
 
@@ -282,7 +335,7 @@ class SplitList extends React.Component {
                 </div>);
         }
 
-        const renderedSplits = splits.map(split => {
+        const renderSplits = (splitList) => splitList.map(split => {
             return (
                 <Tr key={split.driverId}>
                     <Td column="id" value={split.driverId}>
@@ -310,35 +363,79 @@ class SplitList extends React.Component {
             );
         });
 
-        return (
-            <Table id="splits" className="table table-striped sortable" sortable=
-                {[
-                    {
-                        column: 'id',
-                        sortFunction: TaskList.compareTaskId
-                    },
-                    'host',
-                    'state',
-                    'outputRows',
-                    'inputRows',
-                    'elapsedTime',
-                    'blockTime',
-                    'processTime',
-                ]}
-                   defaultSort={{column: 'id', direction: 'asc'}}>
-                <Thead>
-                    <Th column="id">ID</Th>
-                    {/*<Th column="state">State</Th>*/}
-                    <Th column="outputRows">OutputRows</Th>
-                    <Th column="inputRows">InputRows</Th>
-                    {/*<Th column="inputBytes">inputBytes</Th>*/}
-                    <Th column="elapsedTime">Elapsed</Th>
-                    <Th column="blockTime">Blocked</Th>
-                    <Th column="processTime">Process</Th>
-                </Thead>
-                {renderedSplits}
-            </Table>
-        );
+        // separate each pipeline
+        let pipelineSplitMap = new Map();
+        splits.forEach(split => {
+            let driverId = getFullSplitIdSuffix(split.driverId)
+            let pipelineId = getStagePipelineFromDriverId(driverId);
+
+            if (!pipelineSplitMap.has(pipelineId)) {
+                pipelineSplitMap.set(pipelineId, []);
+            }
+
+            pipelineSplitMap.get(pipelineId).push(split);
+        });
+
+        const pipelineKeys = Array.from(pipelineSplitMap.keys());
+        pipelineKeys.sort((a, b) => {
+            const parts1 = a.split('.');
+            const parts2 = b.split('.');
+            const stageId1 = Number(parts1[0]);
+            const pId1 = Number(parts1[1]);
+            const stageId2 = Number(parts2[0]);
+            const pId2 = Number(parts2[1]);
+            if (stageId1 !== stageId2) {
+                return stageId1 - stageId2;
+            }
+
+            return pId1 - pId2;
+        });
+        // console.debug("pipelines: " + pipelineKeys);
+
+        var renderedSplits = [];
+        for (const pipelineId of pipelineKeys) {
+            const splitList = pipelineSplitMap.get(pipelineId);
+            const parts = pipelineId.split('.');
+            const stageId = parts[0];
+            const pId = parts[1];
+            const tableId = "stage-" + stageId + "-pipeline-" + pId;
+            renderedSplits.push(
+                <div key={pipelineId}>
+                    <h4>
+                        <a href="javascript:void(0);" onClick={(event) => this.openStageDetail(event, Number(stageId))}>{tableId}</a>
+                    </h4>
+                    <Table id={tableId} className="table table-striped sortable" sortable=
+                        {[
+                            {
+                                column: 'id',
+                                sortFunction: TaskList.compareTaskId
+                            },
+                            'host',
+                            'state',
+                            'outputRows',
+                            'inputRows',
+                            'elapsedTime',
+                            'blockTime',
+                            'processTime',
+                        ]}
+                           defaultSort={{column: 'id', direction: 'asc'}}>
+                        <Thead>
+                            <Th column="id">ID</Th>
+                            {/*<Th column="state">State</Th>*/}
+                            <Th column="outputRows">OutputRows</Th>
+                            <Th column="inputRows">InputRows</Th>
+                            {/*<Th column="inputBytes">inputBytes</Th>*/}
+                            <Th column="elapsedTime">Elapsed</Th>
+                            <Th column="blockTime">Blocked</Th>
+                            <Th column="processTime">Process</Th>
+                        </Thead>
+                        {renderSplits(splitList)}
+                    </Table>
+                </div>
+            );
+        }
+
+        return renderedSplits;
     }
 }
 
@@ -1107,7 +1204,7 @@ export class QueryDetail extends React.Component {
     }
 
     getSplitsFromStage(stage) {
-        console.log("getting splits from stage");
+        // console.debug("getting splits from stage" + stage);
         let tasks = this.getTasksFromStage(stage);
         let splits = []
         for (let i = 0; i < tasks.length; i++) {
@@ -1167,7 +1264,7 @@ export class QueryDetail extends React.Component {
             <div className="info-container-next">
                 <div className="row">
                     <div className="col-xs-6">
-                        <h3 class="container-title">Splits</h3>
+                        <h3 className="container-title">Splits</h3>
                     </div>
                     <div className="col-xs-6">
                         <table className="header-inline-links">
@@ -1196,7 +1293,7 @@ export class QueryDetail extends React.Component {
                 </div>
                 <div className="row">
                     <div className="col-xs-12">
-                        <SplitList key={this.state.query.queryId} splits={splits}/>
+                        <SplitList key={this.state.query.queryId} splits={splits}  queryId={this.state.query.queryId}/>
                     </div>
                 </div>
             </div>
@@ -1217,7 +1314,7 @@ export class QueryDetail extends React.Component {
             <div className="info-container-next">
                 <div className="row">
                     <div className="col-xs-6">
-                        <h3 class="container-title">Tasks</h3>
+                        <h3 className="container-title">Tasks</h3>
                     </div>
                     <div className="col-xs-6">
                         <table className="header-inline-links">
@@ -1249,7 +1346,7 @@ export class QueryDetail extends React.Component {
                 </div>
                 <div className="row">
                     <div className="col-xs-12">
-                        <TaskList key={this.state.query.queryId} tasks={tasks}/>
+                        <TaskList key={this.state.query.queryId} tasks={tasks} queryId={this.state.query.queryId}/>
                     </div>
                 </div>
             </div>
@@ -1265,7 +1362,7 @@ export class QueryDetail extends React.Component {
             <div className="info-container-next">
                 <div className="row">
                     <div className="col-xs-9">
-                        <h3 class="container-title">Stages</h3>
+                        <h3 className="container-title">Stages</h3>
                     </div>
                     <div className="col-xs-3">
                         <table className="header-inline-links">
@@ -1324,7 +1421,7 @@ export class QueryDetail extends React.Component {
         for (var property in query.session.userDefVariables) {
             if (query.session.userDefVariables.hasOwnProperty(property)) {
                 properties.push(
-                    <span>- {property + "=" + query.session.userDefVariables[property]} <br/></span>
+                    <span key={property}>- {property + "=" + query.session.userDefVariables[property]} <br/></span>
                 );
             }
         }
@@ -1339,7 +1436,7 @@ export class QueryDetail extends React.Component {
         for (var property in query.session.serverVariables) {
             if (query.session.serverVariables.hasOwnProperty(property)) {
                 properties.push(
-                    <span>- {property + "=" + query.session.serverVariables[property]} <br/></span>
+                    <span key={property}>- {property + "=" + query.session.serverVariables[property]} <br/></span>
                 );
             }
         }
@@ -1419,7 +1516,7 @@ export class QueryDetail extends React.Component {
                 <QueryHeader query={query}/>
                 <div className="row info-container-next">
                     <div className="col-xs-6">
-                        <h3 class="container-title">Session</h3>
+                        <h3 className="container-title">Session</h3>
                         <hr className="h3-hr"/>
                         <table className="table">
                             <tbody>
@@ -1475,7 +1572,7 @@ export class QueryDetail extends React.Component {
                         </table>
                     </div>
                     <div className="col-xs-6">
-                        <h3 class="container-title">Execution</h3>
+                        <h3 className="container-title">Execution</h3>
                         <hr className="h3-hr"/>
                         <table className="table">
                             <tbody>
@@ -1527,7 +1624,7 @@ export class QueryDetail extends React.Component {
                     <div className="col-xs-12">
                         <div className="row">
                             <div className="col-xs-6">
-                                <h3 class="container-title">Resource Utilization Summary</h3>
+                                <h3 className="container-title">Resource Utilization Summary</h3>
                                 <hr className="h3-hr"/>
                                 <table className="table">
                                     <tbody>
@@ -1685,7 +1782,7 @@ export class QueryDetail extends React.Component {
                 {this.renderFailureInfo()}
                 <div className="row info-container-next">
                     <div className="col-xs-12">
-                        <h3 class="container-title">
+                        <h3 className="container-title">
                             Query
                             <a className="btn copy-button" data-clipboard-target="#query-text" data-toggle="tooltip"
                                data-placement="right" title="Copy to clipboard">

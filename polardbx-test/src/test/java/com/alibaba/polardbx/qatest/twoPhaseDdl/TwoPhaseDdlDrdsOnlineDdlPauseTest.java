@@ -16,7 +16,7 @@ import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.alterTableViaTwoPhaseDdl;
+import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.alterTableViaJdbc;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfCompleteFully;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfExecuteTwoPhaseDdl;
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DdlStateCheckUtil.checkIfRollbackFully;
@@ -77,7 +77,7 @@ public class TwoPhaseDdlDrdsOnlineDdlPauseTest extends DDLBaseNewDBTestCase {
         String columName = randomTableName("column", 2);
         String ddl = String.format("alter table %s add column %s int, ALGORITHM=INPLACE", mytable, columName);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);
@@ -130,7 +130,7 @@ public class TwoPhaseDdlDrdsOnlineDdlPauseTest extends DDLBaseNewDBTestCase {
         String columName = randomTableName("column", 3);
         String ddl = String.format("alter table %s add column %s int, ALGORITHM=INPLACE", mytable, columName);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);
@@ -192,7 +192,7 @@ public class TwoPhaseDdlDrdsOnlineDdlPauseTest extends DDLBaseNewDBTestCase {
         String columName = randomTableName("column", 4);
         String ddl = String.format("alter table %s add column %s int, ALGORITHM=INPLACE", mytable, columName);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);
@@ -251,7 +251,7 @@ public class TwoPhaseDdlDrdsOnlineDdlPauseTest extends DDLBaseNewDBTestCase {
         String columName = randomTableName("column", 3);
         String ddl = String.format("alter table %s add column %s int, ALGORITHM=INPLACE", mytable, columName);
         String msg = String.format("table: %s, ddl: %s", mytable, ddl);
-        alterTableViaTwoPhaseDdl(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
+        alterTableViaJdbc(tddlConnection, schemaName, mytable, enableTwoPhaseDdlHint + ddl);
         Long jobId = getDdlJobIdFromPattern(tddlConnection, ddl);
         int sleepTime = 1;
         Thread.sleep(sleepTime * 1000);

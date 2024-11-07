@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
@@ -59,13 +60,20 @@ public class ConstantFoldRule extends RelOptRule {
         Filter filter = (Filter) call.rels[0];
         RelNode input = filter.getInput();
 
+        ExecutionContext ec = PlannerContext.getPlannerContext(filter).getExecutionContext();
+        // don't apply this rule if it will be cached
+        if (CBOUtil.useColPlanCache(ec)) {
+            return;
+        }
         RexBuilder rb = call.builder().getRexBuilder();
         RexConstantFoldShuttle rexConstantFoldShuttle =
-            new RexConstantFoldShuttle(rb, PlannerContext.getPlannerContext(filter).getExecutionContext());
+            new RexConstantFoldShuttle(rb, ec);
         RexNode condition = filter.getCondition().accept(rexConstantFoldShuttle);
         if (condition == filter.getCondition()) {
             return;
         }
+        // set constant fold flag to avoid cache this plan
+        PlannerContext.getPlannerContext(filter).setHasConstantFold(true);
         if (filter instanceof LogicalFilter) {
             call.transformTo(LogicalFilter.create(input,
                 condition,

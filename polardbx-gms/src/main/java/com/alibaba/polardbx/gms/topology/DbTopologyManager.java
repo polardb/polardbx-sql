@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -70,6 +69,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -81,6 +81,9 @@ import java.util.TreeSet;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+import static com.alibaba.polardbx.gms.topology.SystemDbHelper.SYS_SCHEMA_DB_NAME;
 
 /**
  * @author chenghui.lch
@@ -291,6 +294,14 @@ public class DbTopologyManager {
 
             // ---- check if logical db exists ----
             String dbName = createDbInfo.dbName;
+
+            // check db name
+            if (Arrays.stream(SYS_SCHEMA_DB_NAME).anyMatch(dbName::equalsIgnoreCase)) {
+                // throw exception
+                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                    String.format("Can't create database '%s', as it is a keyword", dbName));
+            }
+
             boolean createIfNotExist = createDbInfo.isCreateIfNotExists;
             DbInfoAccessor dbInfoAccessor = new DbInfoAccessor();
             dbInfoAccessor.setConnection(metaDbConn);
@@ -324,7 +335,7 @@ public class DbTopologyManager {
                     ts = System.currentTimeMillis() << BITS_LOGICAL_TIME;
 
                     dropLogicalDbWithConn(dbName, true, metaDbConn, metaDbLockConn, createDbInfo.socketTimeout, ts,
-                        false, false);
+                        false, false, DEFAULT_DDL_VERSION_ID);
                     hasDbConfig = false;
                 }
             }
@@ -369,6 +380,9 @@ public class DbTopologyManager {
             // sync other node to reload dbInfo quickly
             MetaDbConfigManager.getInstance().sync(MetaDbDataIdBuilder.getDbInfoDataId());
 
+            // process the hook func list for new created db(like cdc/locality e.g)
+            handleHookFuncList(createDbInfo, dbId);
+
             // release meta db lock
             LockUtil.releaseMetaDbLockByCommit(metaDbLockConn);
             return dbId;
@@ -377,9 +391,18 @@ public class DbTopologyManager {
         }
     }
 
+    private static void handleHookFuncList(CreateDbInfo createDbInfo, long dbId) {
+        List<CreateDbInfo.CreatedDbHookFunc> createdDbHookFuncList = createDbInfo.getCreatedDbHookFuncList();
+        for (int i = 0; i < createdDbHookFuncList.size(); i++) {
+            CreateDbInfo.CreatedDbHookFunc hookFunc = createdDbHookFuncList.get(i);
+            hookFunc.handle(dbId);
+        }
+    }
+
     protected static void dropLogicalDbWithConn(String dbName, boolean isDropIfExists, Connection metaDbConn,
                                                 Connection metaDbLockConn, long socketTimeout, long ts,
-                                                boolean allowDropForce, boolean reservePhyDb) throws SQLException {
+                                                boolean allowDropForce, boolean reservePhyDb, long versionId)
+        throws SQLException {
 
         // acquire MetaDb Lock by for update, to avoiding concurrent create & drop databases
         metaDbLockConn.setAutoCommit(false);
@@ -468,14 +491,14 @@ public class DbTopologyManager {
 
         // ----- cleanup all schema meta infos & configs
         if (DbTopologyManager.schemaMetaCleaner != null) {
-            schemaMetaCleaner.clearSchemaMeta(dbName, metaDbConn);
+            schemaMetaCleaner.clearSchemaMeta(dbName, metaDbConn, versionId);
         }
 
         // clear group_detail_info
         List<String> allGrpNames = getGroupNamesFromMetaDb(metaDbConn, instId, dbName);
 
         // ---- remove topology configs
-        removeDbTopologyConfig(dbName, metaDbConn);
+        removeDbTopologyConfig(dbName, metaDbConn, versionId);
         metaDbConn.commit();
 
         // refresh local group topology of db topology manager of memory
@@ -505,7 +528,7 @@ public class DbTopologyManager {
             Connection metaDbLockConn = MetaDbDataSource.getInstance().getConnection()) {
 
             dropLogicalDbWithConn(dbName, isDropIfExists, metaDbConn, metaDbLockConn, socketTimeout, dropDbInfo.getTs(),
-                dropDbInfo.isAllowDropForce(), dropDbInfo.isReservePhyDb());
+                dropDbInfo.isAllowDropForce(), dropDbInfo.isReservePhyDb(), dropDbInfo.getVersionId());
 
             // release meta db lock
             LockUtil.releaseMetaDbLockByCommit(metaDbLockConn);
@@ -1130,7 +1153,7 @@ public class DbTopologyManager {
      * remove all the topology config for db
      * Notice: this method must call after finishing ddl of drop all phy dbs
      */
-    public static void removeDbTopologyConfig(String dbName, Connection conn) {
+    public static void removeDbTopologyConfig(String dbName, Connection conn, long versionId) {
 
         try {
 

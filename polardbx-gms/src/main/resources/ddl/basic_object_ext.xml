@@ -123,4 +123,17 @@
             ) DEFAULT CHARSET=utf8;
         ]]></Create>
     </SystemTable>
+    <SystemTable name="cdc_sync_point_meta">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `cdc_sync_point_meta` (
+              `id` char(36) not null,
+              `participants` int(11) not null,
+              `tso` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+              `valid` int(11) not null comment '0: invalid, 1: valid',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              PRIMARY KEY (`id`)
+            ) DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

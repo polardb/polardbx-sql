@@ -155,6 +155,47 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
     }
 
     @Test
+    public void testAll() {
+        List<Throwable> allExceptions = new ArrayList<>();
+        try {
+            testFilter();
+        } catch (Throwable t) {
+            allExceptions.add(t);
+        }
+        try {
+            testProject();
+        } catch (Throwable t) {
+            allExceptions.add(t);
+        }
+        try {
+            testAgg();
+        } catch (Throwable t) {
+            allExceptions.add(t);
+        }
+        try {
+            testJoin();
+        } catch (Throwable t) {
+            allExceptions.add(t);
+        }
+        try {
+            testPairWiseJoin();
+        } catch (Throwable t) {
+            allExceptions.add(t);
+        }
+        try {
+            testSort();
+        } catch (Throwable t) {
+            allExceptions.add(t);
+        }
+
+        if (!allExceptions.isEmpty()) {
+            for (Throwable t : allExceptions) {
+                t.printStackTrace();
+            }
+            throw new RuntimeException(allExceptions.get(0));
+        }
+    }
+
     public void testFilter() {
         String sql = "select * from %s where c2 = 'nihaore'";
         DataValidator.selectContentSameAssert(String.format(sql, table1), null, mysqlConnection, tddlConnection);
@@ -162,7 +203,6 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
         DataValidator.selectContentSameAssert(String.format(sql, table3), null, mysqlConnection, tddlConnection);
     }
 
-    @Test
     public void testProject() {
         String sql = "select concat(c2, 'test') from %s where c2 = 'nihaore'";
         DataValidator.selectContentSameAssert(String.format(sql, table1), null, mysqlConnection, tddlConnection);
@@ -170,7 +210,6 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
         DataValidator.selectContentSameAssert(String.format(sql, table3), null, mysqlConnection, tddlConnection);
     }
 
-    @Test
     public void testAgg() {
         String sql = "select count(*) from %s group by c2";
         DataValidator.selectContentSameAssert(String.format(sql, table1), null, mysqlConnection, tddlConnection);
@@ -178,7 +217,6 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
         DataValidator.selectContentSameAssert(String.format(sql, table3), null, mysqlConnection, tddlConnection);
     }
 
-    @Test
     public void testJoin() {
         String sql = "select * from %s %s join %s on %s.c2 = %s.c2";
         DataValidator.selectContentSameAssert(String.format(sql, table1, "inner", table2, table1, table2), null,
@@ -189,7 +227,6 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
             mysqlConnection, tddlConnection);
     }
 
-    @Test
     public void testPairWiseJoin() {
         String sql = "/*+TDDL:cmd_extra(ENABLE_BROADCAST_JOIN=false)*/ select * from %s %s join %s on %s.c2 = %s.c2";
         checkPairWiseJoin(String.format(sql, table1, "inner", table3, table1, table3));
@@ -205,7 +242,6 @@ public class SimpleColumnarCollationTest extends ColumnarReadBaseTestCase {
             && StringUtils.countMatches(explain, "exchange") == 1, "but was " + explain);
     }
 
-    @Test
     public void testSort() throws SQLException {
         String sql = "select c2 from %s where c2 in ('a', 'b') order by c2 ";
         checkSortResult(tddlConnection, String.format(sql, table1));

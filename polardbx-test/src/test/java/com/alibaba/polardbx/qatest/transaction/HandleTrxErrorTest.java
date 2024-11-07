@@ -158,6 +158,7 @@ public class HandleTrxErrorTest extends CrudBasedLockTestCase {
         return threadPool.submit(() -> {
             final Connection conn2 = this.getPolardbxConnection();
             JdbcUtil.executeUpdateSuccess(conn2, "set enable_auto_savepoint = " + enableAutoSp);
+            JdbcUtil.executeUpdateSuccess(conn2, "set ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION = false");
             try {
                 conn2.setAutoCommit(false);
                 JdbcUtil.executeUpdate(conn2, "update " + tableName + " set a = 100");

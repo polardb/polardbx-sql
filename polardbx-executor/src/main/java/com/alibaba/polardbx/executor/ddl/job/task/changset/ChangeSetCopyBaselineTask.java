@@ -55,6 +55,7 @@ public class ChangeSetCopyBaselineTask extends BaseBackfillTask {
     public void executeImpl(ExecutionContext executionContext) {
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         executionContext.setSchemaName(schemaName);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);

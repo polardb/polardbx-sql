@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.vectorized;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
-import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.executor.chunk.DateBlock;
@@ -43,6 +42,7 @@ import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Var
     argumentKinds = {Const, Variable}
 )
 public class ExtractVectorizedExpression extends AbstractVectorizedExpression {
+
     private MySQLIntervalType intervalType;
     private boolean isConstOperandNull;
 
@@ -58,6 +58,57 @@ public class ExtractVectorizedExpression extends AbstractVectorizedExpression {
         }
 
         isConstOperandNull = intervalType == null;
+    }
+
+    static long doParseInterval(MysqlDateTime t, int sign, MySQLIntervalType intervalType) {
+        switch (intervalType) {
+        case INTERVAL_YEAR:
+            return t.getYear();
+        case INTERVAL_YEAR_MONTH:
+            return t.getYear() * 100L + t.getMonth();
+        case INTERVAL_QUARTER:
+            return (t.getMonth() + 2) / 3;
+        case INTERVAL_MONTH:
+            return t.getMonth();
+        case INTERVAL_WEEK: {
+            long[] weekAndYear = MySQLTimeConverter.datetimeToWeek(t, TimeParserFlags.FLAG_WEEK_FIRST_WEEKDAY);
+            return weekAndYear[0];
+        }
+        case INTERVAL_DAY:
+            return t.getDay();
+        case INTERVAL_DAY_HOUR:
+            return (t.getDay() * 100L + t.getHour()) * sign;
+        case INTERVAL_DAY_MINUTE:
+            return (t.getDay() * 10000L + t.getHour() * 100L + t.getMinute()) * sign;
+        case INTERVAL_DAY_SECOND:
+            return (t.getDay() * 1000000L + (t.getHour() * 10000L + t.getMinute() * 100 + t.getSecond())) * sign;
+        case INTERVAL_HOUR:
+            return t.getHour() * sign;
+        case INTERVAL_HOUR_MINUTE:
+            return (t.getHour() * 100 + t.getMinute()) * sign;
+        case INTERVAL_HOUR_SECOND:
+            return (t.getHour() * 10000 + t.getMinute() * 100 + t.getSecond()) * sign;
+        case INTERVAL_MINUTE:
+            return t.getMinute() * sign;
+        case INTERVAL_MINUTE_SECOND:
+            return (t.getMinute() * 100 + t.getSecond()) * sign;
+        case INTERVAL_SECOND:
+            return t.getSecond() * sign;
+        case INTERVAL_MICROSECOND:
+            return t.getSecondPart() / 1000L * sign;
+        case INTERVAL_DAY_MICROSECOND:
+            return ((t.getDay() * 1000000L + t.getHour() * 10000L + t.getMinute() * 100 + t.getSecond()) * 1000000L + t
+                .getSecondPart() / 1000L) * sign;
+        case INTERVAL_HOUR_MICROSECOND:
+            return ((t.getHour() * 10000L + t.getMinute() * 100 + t.getSecond()) * 1000000L + t.getSecondPart() / 1000L)
+                * sign;
+        case INTERVAL_MINUTE_MICROSECOND:
+            return (((t.getMinute() * 100 + t.getSecond())) * 1000000L + t.getSecondPart() / 1000L) * sign;
+        case INTERVAL_SECOND_MICROSECOND:
+            return (t.getSecond() * 1000000L + t.getSecondPart() / 1000L) * sign;
+        default:
+            return 0;
+        }
     }
 
     @Override
@@ -79,9 +130,15 @@ public class ExtractVectorizedExpression extends AbstractVectorizedExpression {
         // when the interval unit is null
         boolean[] outputNulls = outputVectorSlot.nulls();
         if (isConstOperandNull) {
-            outputVectorSlot.setHasNull(true);
-            for (int i = 0; i < batchSize; i++) {
-                outputNulls[i] = true;
+            if (isSelectionInUse) {
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    outputNulls[j] = true;
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    outputNulls[i] = true;
+                }
             }
             return;
         }
@@ -148,17 +205,30 @@ public class ExtractVectorizedExpression extends AbstractVectorizedExpression {
 
                 // normal processing for datetime value.
                 MysqlDateTime scratchValue = new MysqlDateTime();
-                for (int i = 0; i < batchSize; i++) {
-                    int j = isSelectionInUse ? sel[i] : i;
+                if (isSelectionInUse) {
+                    for (int i = 0; i < batchSize; i++) {
+                        int j = sel[i];
 
-                    // parse date value
-                    long packedLong = packedLongs[j];
-                    TimeStorage.readDate(packedLong, scratchValue);
+                        // parse date value
+                        long packedLong = packedLongs[j];
+                        TimeStorage.readDate(packedLong, scratchValue);
 
-                    // parse interval by sign and mysql datetime value.
-                    int sign = isDate ? 1 : (scratchValue.isNeg() ? -1 : 1);
-                    long result = doParseInterval(scratchValue, sign);
-                    output[j] = result;
+                        // parse interval by sign and mysql datetime value.
+                        int sign = isDate ? 1 : (scratchValue.isNeg() ? -1 : 1);
+                        long result = doParseInterval(scratchValue, sign, intervalType);
+                        output[j] = result;
+                    }
+                } else {
+                    for (int i = 0; i < batchSize; i++) {
+                        // parse date value
+                        long packedLong = packedLongs[i];
+                        TimeStorage.readDate(packedLong, scratchValue);
+
+                        // parse interval by sign and mysql datetime value.
+                        int sign = isDate ? 1 : (scratchValue.isNeg() ? -1 : 1);
+                        long result = doParseInterval(scratchValue, sign, intervalType);
+                        output[i] = result;
+                    }
                 }
             }
         } else if (inputVectorSlot instanceof ReferenceBlock) {
@@ -191,61 +261,13 @@ public class ExtractVectorizedExpression extends AbstractVectorizedExpression {
                 }
 
                 // parse interval by sign and mysql datetime value.
-                long result = doParseInterval(t, sign);
+                long result = doParseInterval(t, sign, intervalType);
                 output[j] = result;
             }
         }
-
     }
 
-    private long doParseInterval(MysqlDateTime t, int sign) {
-        switch (intervalType) {
-        case INTERVAL_YEAR:
-            return t.getYear();
-        case INTERVAL_YEAR_MONTH:
-            return t.getYear() * 100L + t.getMonth();
-        case INTERVAL_QUARTER:
-            return (t.getMonth() + 2) / 3;
-        case INTERVAL_MONTH:
-            return t.getMonth();
-        case INTERVAL_WEEK: {
-            long[] weekAndYear = MySQLTimeConverter.datetimeToWeek(t, TimeParserFlags.FLAG_WEEK_FIRST_WEEKDAY);
-            return weekAndYear[0];
-        }
-        case INTERVAL_DAY:
-            return t.getDay();
-        case INTERVAL_DAY_HOUR:
-            return (t.getDay() * 100L + t.getHour()) * sign;
-        case INTERVAL_DAY_MINUTE:
-            return (t.getDay() * 10000L + t.getHour() * 100L + t.getMinute()) * sign;
-        case INTERVAL_DAY_SECOND:
-            return (t.getDay() * 1000000L + (t.getHour() * 10000L + t.getMinute() * 100 + t.getSecond())) * sign;
-        case INTERVAL_HOUR:
-            return t.getHour() * sign;
-        case INTERVAL_HOUR_MINUTE:
-            return (t.getHour() * 100 + t.getMinute()) * sign;
-        case INTERVAL_HOUR_SECOND:
-            return (t.getHour() * 10000 + t.getMinute() * 100 + t.getSecond()) * sign;
-        case INTERVAL_MINUTE:
-            return t.getMinute() * sign;
-        case INTERVAL_MINUTE_SECOND:
-            return (t.getMinute() * 100 + t.getSecond()) * sign;
-        case INTERVAL_SECOND:
-            return t.getSecond() * sign;
-        case INTERVAL_MICROSECOND:
-            return t.getSecondPart() / 1000L * sign;
-        case INTERVAL_DAY_MICROSECOND:
-            return ((t.getDay() * 1000000L + t.getHour() * 10000L + t.getMinute() * 100 + t.getSecond()) * 1000000L + t
-                .getSecondPart() / 1000L) * sign;
-        case INTERVAL_HOUR_MICROSECOND:
-            return ((t.getHour() * 10000L + t.getMinute() * 100 + t.getSecond()) * 1000000L + t.getSecondPart() / 1000L)
-                * sign;
-        case INTERVAL_MINUTE_MICROSECOND:
-            return (((t.getMinute() * 100 + t.getSecond())) * 1000000L + t.getSecondPart() / 1000L) * sign;
-        case INTERVAL_SECOND_MICROSECOND:
-            return (t.getSecond() * 1000000L + t.getSecondPart() / 1000L) * sign;
-        default:
-            return 0;
-        }
+    public MySQLIntervalType getIntervalType() {
+        return intervalType;
     }
 }

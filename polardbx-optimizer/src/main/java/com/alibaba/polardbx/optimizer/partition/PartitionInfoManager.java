@@ -41,8 +41,10 @@ import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.util.TableMetaFetcher;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import lombok.Setter;
 import lombok.val;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.sql.Connection;
 import java.util.HashMap;
@@ -98,6 +100,7 @@ public class PartitionInfoManager extends AbstractLifecycle {
      */
     protected boolean isMock = false;
 
+    @Setter
     /**
      * The default phy db for broadcast tbl
      */
@@ -547,52 +550,15 @@ public class PartitionInfoManager extends AbstractLifecycle {
                                                List<TablePartitionRecord> tablePartitionRecordsFromDelta,
                                                boolean fromDeltaTable) {
             try {
-
-                TablePartitionConfig tbPartConf = null;
-
-                // Fetch logical config
-                TablePartitionRecord logTbRec = fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
-                    .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE).findFirst().get() :
-                    tablePartitionRecords.stream()
-                        .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE).findFirst()
-                        .get();
-
-                // Fetch partition configs
-                List<TablePartitionRecord> partitionRecList = fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
-                    .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_PARTITION)
-                    .collect(Collectors.toList()) :
-                    tablePartitionRecords.stream()
-                        .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_PARTITION)
-                        .collect(Collectors.toList());
-
-                // Fetch subpartition configs
-                List<TablePartitionRecord> subPartitionRecList =
-                    fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
-                        .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION)
-                        .collect(Collectors.toList()) :
-                        tablePartitionRecords.stream()
-                            .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION)
-                            .collect(Collectors.toList());
-
-                TablePartRecordInfoContext confCtx = new TablePartRecordInfoContext();
-                confCtx.setLogTbRec(logTbRec);
-                confCtx.setPartitionRecList(partitionRecList);
-                confCtx.setSubPartitionRecList(subPartitionRecList);
-                tbPartConf = TablePartitionAccessor.buildPartitionConfByPartitionRecords(confCtx);
-
-                if (tbPartConf.getTableConfig().partStatus
-                    != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC && !includeNonPublic) {
+                PartitionInfo partInfo =
+                    generatePartitionInfo(tableMeta.getPhysicalColumns(), tablePartitionRecords,
+                        tablePartitionRecordsFromDelta,
+                        fromDeltaTable, includeNonPublic);
+                if (partInfo == null) {
                     return;
                 }
-                List<ColumnMeta> allColumnMetas = tableMeta.getPhysicalColumns();
-                Map<Long, PartitionGroupRecord> partitionGroupRecordsMap =
-                    TableGroupUtils.getPartitionGroupsMapByGroupId(tbPartConf.getTableConfig().getGroupId());
-                PartitionInfo partInfo =
-                    PartitionInfoBuilder.buildPartitionInfoByMetaDbConfig(tbPartConf, allColumnMetas,
-                        partitionGroupRecordsMap);
                 this.partInfo = partInfo;
                 this.tableGroupId = partInfo.getTableGroupId();
-                return;
             } catch (Throwable ex) {
                 String msg =
                     String.format("Failed to load partitionInfo[%s.%s] from metadb", manager.schemaName, tbName);
@@ -601,6 +567,53 @@ public class PartitionInfoManager extends AbstractLifecycle {
             }
 
         }
+    }
+
+    @Nullable
+    public static PartitionInfo generatePartitionInfo(List<ColumnMeta> allColumnMetas,
+                                                      List<TablePartitionRecord> tablePartitionRecords,
+                                                      List<TablePartitionRecord> tablePartitionRecordsFromDelta,
+                                                      boolean fromDeltaTable, boolean includeNonPublic) {
+        TablePartitionConfig tbPartConf = null;
+
+        // Fetch logical config
+        TablePartitionRecord logTbRec = fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
+            .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE).findFirst().get() :
+            tablePartitionRecords.stream()
+                .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE).findFirst()
+                .get();
+
+        // Fetch partition configs
+        List<TablePartitionRecord> partitionRecList = fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
+            .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_PARTITION)
+            .collect(Collectors.toList()) :
+            tablePartitionRecords.stream()
+                .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_PARTITION)
+                .collect(Collectors.toList());
+
+        // Fetch subpartition configs
+        List<TablePartitionRecord> subPartitionRecList =
+            fromDeltaTable ? tablePartitionRecordsFromDelta.stream()
+                .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION)
+                .collect(Collectors.toList()) :
+                tablePartitionRecords.stream()
+                    .filter(o -> o.partLevel == TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION)
+                    .collect(Collectors.toList());
+
+        TablePartRecordInfoContext confCtx = new TablePartRecordInfoContext();
+        confCtx.setLogTbRec(logTbRec);
+        confCtx.setPartitionRecList(partitionRecList);
+        confCtx.setSubPartitionRecList(subPartitionRecList);
+        tbPartConf = TablePartitionAccessor.buildPartitionConfByPartitionRecords(confCtx);
+
+        if (tbPartConf.getTableConfig().partStatus
+            != TablePartitionRecord.PARTITION_STATUS_LOGICAL_TABLE_PUBLIC && !includeNonPublic) {
+            return null;
+        }
+        Map<Long, PartitionGroupRecord> partitionGroupRecordsMap =
+            TableGroupUtils.getPartitionGroupsMapByGroupId(tbPartConf.getTableConfig().getGroupId());
+        return PartitionInfoBuilder.buildPartitionInfoByMetaDbConfig(tbPartConf, allColumnMetas,
+            partitionGroupRecordsMap);
     }
 
     public String getAppName() {

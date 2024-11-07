@@ -21,7 +21,8 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 public enum ArchiveMode {
     EMPTY,
     TTL,
-    LOADING;
+    LOADING,
+    ;
 
     public static ArchiveMode of(String archiveMode) {
         if (TStringUtil.isEmpty(archiveMode)) {

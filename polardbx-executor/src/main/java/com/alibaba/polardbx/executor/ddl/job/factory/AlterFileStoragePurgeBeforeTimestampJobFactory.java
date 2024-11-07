@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DoNothingTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.DeleteOssFilesTask;
@@ -96,7 +97,7 @@ public class AlterFileStoragePurgeBeforeTimestampJobFactory extends DdlJobFactor
         }
 
         long ts =
-            OSSTaskUtils.getTsFromTimestampWithTimeZone(alterFileStoragePreparedData.getTimestamp(), fromTimeZone);
+            TimestampUtils.getTsFromTimestampWithTimeZone(alterFileStoragePreparedData.getTimestamp(), fromTimeZone);
 
         // ensure purge do not affect backup
         int backupOssPeriodInDay = executionContext.getParamManager().getInt(ConnectionParams.BACKUP_OSS_PERIOD);

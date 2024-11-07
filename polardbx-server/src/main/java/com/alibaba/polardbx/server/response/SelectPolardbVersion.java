@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.Version;
@@ -35,6 +36,7 @@ import com.alibaba.polardbx.net.packet.RowDataPacket;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
+import com.amazonaws.services.dynamodbv2.xspec.S;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -108,7 +110,21 @@ public class SelectPolardbVersion {
         final String productReleaseDate = "Distributed Edition";
 
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addToRow(row, type, productVersion, productReleaseDate, charset);
+
+        Pair<String, String> cnReleaseInfo = extractReleaseInfo(Version.getVersion(), "CN");
+
+        Pair<String, String> dnReleaseInfo = null;
+        try {
+            String dnVersion = ExecUtils.getDnPolardbVersion();
+            if (dnVersion != null) {
+                dnReleaseInfo = extractReleaseInfo(dnVersion, "DN");
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to get DN version", e);
+        }
+
+        String maxReleaseDate = getMaxVersion();
+        addToRow(row, type, productVersion, productReleaseDate, charset, cnReleaseInfo, dnReleaseInfo, maxReleaseDate);
         row.packetId = packetId;
         row.write(proxy);
 
@@ -199,11 +215,35 @@ public class SelectPolardbVersion {
         return ++packetId;
     }
 
-    /**
-     * @param version format: {Version}-{ReleaseDate}
-     */
-    static void addVersionWithReleaseDate(RowDataPacket row, String type,
-                                          String version, String charset) {
+    public static String getMaxVersion() {
+        String releaseDate = extractReleaseInfo(Version.getVersion(), "CN").getValue();
+        try {
+            releaseDate = replaceWhenGreaterThan(releaseDate, ExecUtils.getDnPolardbVersion(), "DN");
+            releaseDate = replaceWhenGreaterThan(releaseDate, CdcVersionUtil.getVersion(), "CDC");
+            releaseDate = replaceWhenGreaterThan(releaseDate, MetaDbUtil.getGmsPolardbVersion(), "GMS");
+            releaseDate = replaceWhenGreaterThan(releaseDate, ColumnarVersionUtil.getVersion(), "Columnar");
+        } catch (Exception e) {
+            logger.warn("Failed to get version", e);
+        }
+        return releaseDate;
+    }
+
+    public static String replaceWhenGreaterThan(String releaseDate, String replace, String type) {
+        if (replace == null) {
+            return releaseDate;
+        }
+        Pair<String, String> replaceInfo = extractReleaseInfo(replace, type);
+        if (replaceInfo.getValue() == null) {
+            return releaseDate;
+        }
+        String replaceDate = replaceInfo.getValue();
+        if (releaseDate == null || replaceDate.compareTo(releaseDate) > 0) {
+            return replaceDate;
+        }
+        return releaseDate;
+    }
+
+    static Pair<String, String> extractReleaseInfo(String version, String type) {
         String majorVersion = version;
         String releaseDate = null;
         boolean isLegalVersionFormat = false;
@@ -230,16 +270,64 @@ public class SelectPolardbVersion {
         if (!isLegalVersionFormat) {
             logger.warn("Failed to parse " + type + " version: " + version);
         }
-        addToRowWithProductVersion(row, type, majorVersion, releaseDate, charset);
+        return new Pair<>(majorVersion, releaseDate);
     }
 
-    private static void addToRow(RowDataPacket row, String type,
-                                 String version, String releaseDate,
-                                 String charset) {
-        row.add(StringUtil.encode(type, charset));
-        row.add(StringUtil.encode(version, charset));
-        row.add(StringUtil.encode(releaseDate, charset));
+    /**
+     * @param version format: {Version}-{ReleaseDate}
+     */
+    static void addVersionWithReleaseDate(RowDataPacket row, String type,
+                                          String version, String charset) {
+        Pair<String, String> ret = extractReleaseInfo(version, type);
+        addToRowWithProductVersion(row, type, ret.getKey(), ret.getValue(), charset);
     }
+
+    static void addToRow(RowDataPacket row, String type,
+                         String version, String releaseDate,
+                         String charset,
+                         Pair<String, String> cnReleaseInfo,
+                         Pair<String, String> dnReleaseInfo,
+                         String maxReleaseDate) {
+        row.add(StringUtil.encode(type, charset));
+
+        StringBuilder stringBuffer = new StringBuilder();
+        stringBuffer.append(version);
+        stringBuffer.append("_").append(Version.PRODUCT_VERSION);
+        if (cnReleaseInfo != null) {
+            String cnVersion = cnReleaseInfo.getKey();
+            String cnDate = cnReleaseInfo.getValue();
+            if (cnVersion != null) {
+                stringBuffer.append("_");
+                stringBuffer.append(cnVersion);
+            }
+            if (cnDate != null) {
+                stringBuffer.append("-");
+                stringBuffer.append(cnDate);
+            }
+        }
+
+        if (dnReleaseInfo != null) {
+            String dnVersion = dnReleaseInfo.getKey();
+            String dnDate = dnReleaseInfo.getValue();
+            if (dnVersion != null) {
+                stringBuffer.append("_");
+                stringBuffer.append(dnVersion);
+            }
+            if (dnDate != null) {
+                stringBuffer.append("-");
+                stringBuffer.append(dnDate);
+            }
+        }
+
+        if (releaseDate != null) {
+            stringBuffer.append(" (").append(releaseDate).append(")");
+        }
+
+        row.add(StringUtil.encode(stringBuffer.toString(), charset));
+        row.add(StringUtil.encode(maxReleaseDate, charset));
+    }
+
+
 
     private static void addToRowWithProductVersion(RowDataPacket row, String type,
                                                    String version, String releaseDate,

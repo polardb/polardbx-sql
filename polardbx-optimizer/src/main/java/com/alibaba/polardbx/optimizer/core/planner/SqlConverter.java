@@ -234,7 +234,7 @@ public class SqlConverter {
         RelOptCostFactory costFactory = DrdsRelOptCostImpl.FACTORY;
         VolcanoPlanner planner = new VolcanoPlanner(costFactory, plannerContext);
         if (plannerContext != null && plannerContext.getExecutionContext() != null &&
-            plannerContext.getExecutionContext().isEnableRuleCounter()) {
+            plannerContext.isEnableRuleCounter()) {
             planner.setRuleCounter();
         }
         planner.clearRelTraitDefs();

@@ -64,7 +64,10 @@ public interface ITransactionManager extends Lifecycle, ITransactionManagerUtil 
 
     long getColumnarMinSnapshotSeq();
 
-    default boolean support2pcOpt() {
+    void scheduleTimerTask();
+
+    default boolean supportXaTso() {
         return false;
     }
+
 }

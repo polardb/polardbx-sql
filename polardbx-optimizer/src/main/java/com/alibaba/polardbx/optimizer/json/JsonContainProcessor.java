@@ -42,12 +42,13 @@ public class JsonContainProcessor {
 
     private static boolean arrayContains(JSONArray target, Object candidate) {
         if (JsonUtil.isJsonArray(candidate)) {
+            //fix: target should contain all candElement
             for (Object candElement : (JSONArray) candidate) {
-                if (contains(target, candElement)) {
-                    return true;
+                if (!contains(target, candElement)) {
+                    return false;
                 }
             }
-            return false;
+            return true;
         }
         for (Object element : target) {
             if (contains(element, candidate)) {

@@ -277,12 +277,12 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             // ignore exception
         }
 
-        System.out.println("Start create GSI.");
+        logger.info("Start create GSI.");
 
         final String sqlCreateGsi = MessageFormat.format(CREATE_GSI_TMPL, INDEX_NAME, PRIMARY_TABLE_NAME);
         JdbcUtil.executeUpdateSuccess(tddlConnection, SLOW_HINT + sqlCreateGsi);
 
-        System.out.println("Create GSI done.");
+        logger.info("Create GSI done.");
 
         try {
             TimeUnit.SECONDS.sleep(1);
@@ -290,7 +290,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             // ignore exception
         }
 
-        System.out.println("Start drop GSI.");
+        logger.info("Start drop GSI.");
 
         final String sqlDropGsi = MessageFormat.format(DROP_GSI_TMPL, INDEX_NAME, PRIMARY_TABLE_NAME);
         JdbcUtil.executeUpdateSuccess(tddlConnection, SLOW_HINT + sqlDropGsi);
@@ -891,6 +891,8 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                                            Supplier<Integer> generateBatchSize) {
         return dmlPool.submit(new InsertRunner(stop, (conn) -> {
             // List<Pair< sql, error_message >>
+            logger.info(Thread.currentThread().getName() + " start to run DML and check.");
+
             List<Pair<String, Exception>> failedList = new ArrayList<>();
 
             final ParameterContext skPc = Optional.ofNullable(generateSk.get())
@@ -926,6 +928,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             } catch (Exception e) {
                 if (!e.getMessage().contains("Deadlock found when trying to get lock") &&
                     !e.getMessage().contains("Lock wait timeout exceeded")) {
+                    logger.info(Thread.currentThread().getName() + " find exception when insert " + e.getMessage());
                     throw GeneralUtil.nestedException(e);
                 }
                 try {
@@ -941,6 +944,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                 lock.writeLock().unlock();
             }
 
+
             try (Statement stmt = conn.createStatement()) {
                 try {
                     lock.readLock().lock();
@@ -951,6 +955,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             } catch (Exception e) {
                 if (!e.getMessage().contains("Deadlock found when trying to get lock") &&
                     !e.getMessage().contains("Lock wait timeout exceeded")) {
+                    logger.info(Thread.currentThread().getName() + " find exception when update " + e.getMessage());
                     throw GeneralUtil.nestedException(e);
                 }
                 try {
@@ -976,6 +981,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             } catch (Exception e) {
                 if (!e.getMessage().contains("Deadlock found when trying to get lock") &&
                     !e.getMessage().contains("Lock wait timeout exceeded")) {
+                    logger.info(Thread.currentThread().getName() + " find exception when delete " + e.getMessage());
                     throw GeneralUtil.nestedException(e);
                 }
                 try {
@@ -991,7 +997,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
                 lock.writeLock().unlock();
             }
 
-            System.out.println(Thread.currentThread().getName() + " run DML and check.");
+            logger.info(Thread.currentThread().getName() + " run DML and check.");
 
             return inserted;
         }, throwException, 100));

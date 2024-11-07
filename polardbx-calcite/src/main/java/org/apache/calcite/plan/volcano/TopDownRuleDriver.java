@@ -205,6 +205,7 @@ class TopDownRuleDriver implements RuleDriver {
       RelSubset optimizingGroup = null;
       boolean canPassThrough = node instanceof PhysicalNode
           && !passThroughCache.contains(node);
+      boolean passThroughSuccess = false;
       if (!canPassThrough && subset.taskState != null) {
         optimizingGroup = subset;
       } else {
@@ -229,8 +230,13 @@ class TopDownRuleDriver implements RuleDriver {
           Task task = getOptimizeInputTask(node, otherSubset);
           if (task != null) {
             tasks.push(task);
+            passThroughSuccess = true;
           }
         }
+      }
+      // if pass through failed, optimizingGroup current subset
+      if ((!passThroughSuccess) && subset.taskState == RelSubset.OptimizeState.OPTIMIZING && optimizingGroup == null) {
+        optimizingGroup = subset;
       }
       if (optimizingGroup == null) {
         // FIXME
@@ -281,7 +287,6 @@ class TopDownRuleDriver implements RuleDriver {
       if (!first) {
         builder.append(")");
       }
-
       LOGGER.debug(builder.toString());
     }
 

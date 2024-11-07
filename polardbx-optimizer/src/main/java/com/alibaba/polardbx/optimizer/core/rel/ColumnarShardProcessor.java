@@ -28,7 +28,7 @@ import java.util.List;
 
 public class ColumnarShardProcessor {
     /**
-     * 新版列存分区算法，增加兼容性
+     * 列存分区算法。保留该方法，兼容旧版本，该接口只能适配一级分区
      *
      * @param partInfo 分区信息
      * @param values 一行数据，可能包含多个列
@@ -36,6 +36,14 @@ public class ColumnarShardProcessor {
      * @return 分区名称
      */
     public static String shard(PartitionInfo partInfo, List<Object> values, ExecutionContext ec) {
+        return shard(partInfo, values, null, ec);
+    }
+
+    /**
+     * 支持二级分区
+     */
+    public static String shard(PartitionInfo partInfo, List<Object> values, List<Object> subPartValues,
+                               ExecutionContext ec) {
         PartTupleRouter router = new PartTupleRouter(partInfo, ec);
         router.init();
 
@@ -45,6 +53,11 @@ public class ColumnarShardProcessor {
          */
         List<List<Object>> valuesOfAllLevelPartCols = new ArrayList<>();
         valuesOfAllLevelPartCols.add(values);
+
+        if (subPartValues != null && !subPartValues.isEmpty()) {
+            valuesOfAllLevelPartCols.add(subPartValues);
+        }
+
         PhysicalPartitionInfo phyPartInfo = router.routeTuple(valuesOfAllLevelPartCols);
         return phyPartInfo.getPartName();
     }

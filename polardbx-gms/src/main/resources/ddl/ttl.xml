@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="ttl_info">
+        <Create><![CDATA[
+                CREATE TABLE if not exists `ttl_info` (
+                    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                    `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+                    `table_schema` varchar(64) NOT NULL COMMENT 'the schema name of ttl table',
+                    `table_name` varchar(64) NOT NULL COMMENT 'the table name of ttl table',
+
+                    `ttl_status` int NOT NULL COMMENT '0-enable ttl schedule,1-disable ttl schedule',
+                    `ttl_expr` text NOT NULL COMMENT 'the raw definition of ttl of tbl',
+                    `ttl_filter` text NOT NULL COMMENT 'the filter condition expr of ttl of tbl',
+                    `ttl_interval` int NOT NULl COMMENT 'the interval count of ttl expire after of data',
+                    `ttl_unit` int NOT NULL COMMENT 'the timeunit code of ttl_expr, like day/week/month/year',
+                    `ttl_col` varchar(128) NOT NULL COMMENT 'the ttl col of ttl_expr',
+                    `ttl_tz` varchar(64) NOT NULl COMMENT 'the ttl tz of all ttl job',
+                    `ttl_cron` text NOT NULL COMMENT 'the raw definition of cron of ttl job',
+                    `ttl_binlog` int NOT NULL COMMENT '0-disable gen binlog, 1-enable gen binlog',
+
+                    `arc_kind` int DEFAULT 0 COMMENT '0-undef,1-oss,2-columnar',
+                    `arc_status` int NOT NULL COMMENT '0-enable oss schedule,1-disable oss schedule',
+                    `arc_tmp_tbl_schema` varchar(64) DEFAULT NULL COMMENT 'the schema of tmp table for archive ',
+                    `arc_tmp_tbl_name` varchar(64) DEFAULT NULL COMMENT 'the table name of tmp table for archive',
+                    `arc_tbl_schema` varchar(64) DEFAULT NULL COMMENT 'the table of archive table schema',
+                    `arc_tbl_name` varchar(64) DEFAULT NULL COMMENT 'the table of archive table name',
+
+                    `arc_part_mode` int NOT NULl COMMENT 'the interval mode of gen range part for arc tbl',
+                    `arc_part_interval` int DEFAULT NULL COMMENT 'the interval of each range part of arc tbl',
+                    `arc_part_unit` int DEFAULT NULL COMMENT 'the timeunit code of interval of part of arc tbl',
+                    `arc_pre_part_cnt` int DEFAULT 0 COMMENT 'pre built new partition for arc tmp tbl',
+                    `arc_post_part_cnt` int DEFAULT 0 COMMENT 'post built new partition for arc tmp tbl',
+
+                    `extra` text DEFAULT NULL COMMENT 'for some extra properties, json format',
+
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `idx_db_tb`(`table_schema`,`table_name`),
+                    KEY `idx_adb_atb`(`arc_tbl_schema`,`arc_tbl_name`),
+                    KEY `idx_atdb_attb`(`arc_tmp_tbl_schema`,`arc_tmp_tbl_name`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+
+</SystemTables>

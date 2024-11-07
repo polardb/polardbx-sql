@@ -78,12 +78,12 @@ import org.jetbrains.annotations.NotNull;
 import java.math.BigDecimal;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -117,7 +117,7 @@ public class Extractor extends PhyOperationBuilderCommon {
 
     protected final String schemaName;
     protected final String sourceTableName;
-    private final String targetTableName;
+    protected final String targetTableName;
     protected final long batchSize;
     protected volatile RateLimiter rateLimiter;
     protected volatile long nowSpeedLimit;
@@ -159,6 +159,8 @@ public class Extractor extends PhyOperationBuilderCommon {
      * </pre>
      */
     protected final PhyTableOperation planSelectWithMinAndMax;
+
+    protected PhyTableOperation planSelectWithoutMinAndMax;
     /**
      * <pre>
      * SELECT IFNULL(MAX(pk0), 0), ... , IFNULL(MAX(pkn), 0)
@@ -239,6 +241,7 @@ public class Extractor extends PhyOperationBuilderCommon {
      */
     public Extractor loadBackfillMeta(ExecutionContext ec) {
         Long backfillId = ec.getBackfillId();
+        Long taskId = Optional.ofNullable(ec.getTaskId()).orElse(backfillId);
         throttle.setBackFillId(backfillId);
 
         final String positionMarkHint = ec.getParamManager().getString(ConnectionParams.GSI_BACKFILL_POSITION_MARK);
@@ -246,7 +249,8 @@ public class Extractor extends PhyOperationBuilderCommon {
         if (TStringUtil.isEmpty(positionMarkHint)) {
             if (!backfillManager.allReadyHasBackfillObject(backfillId, sourceTableName, targetTableName)) {
                 // Init position mark with upper bound
-                final List<GsiBackfillManager.BackfillObjectRecord> initBfoList = initAllUpperBound(ec, backfillId);
+                final List<GsiBackfillManager.BackfillObjectRecord> initBfoList =
+                    initAllUpperBound(ec, backfillId, taskId);
 
                 // Insert ignore
                 backfillManager.initBackfillMeta(ec, initBfoList);
@@ -259,7 +263,8 @@ public class Extractor extends PhyOperationBuilderCommon {
 
             // Insert ignore
             backfillManager
-                .initBackfillMeta(ec, backfillId, schemaName, sourceTableName, targetTableName, backfillObjects);
+                .initBackfillMeta(ec, backfillId, taskId, schemaName, sourceTableName, targetTableName,
+                    backfillObjects);
         }
 
         // Load from system table
@@ -276,14 +281,16 @@ public class Extractor extends PhyOperationBuilderCommon {
      * @param ddlJobId Ddl job id
      * @return BackfillObjectRecord with upper bound initialized, one for each physical table and primary key
      */
-    protected List<GsiBackfillManager.BackfillObjectRecord> initAllUpperBound(ExecutionContext ec, long ddlJobId) {
+    protected List<GsiBackfillManager.BackfillObjectRecord> initAllUpperBound(ExecutionContext ec, long ddlJobId,
+                                                                              long taskId) {
 
         return getSourcePhyTables().entrySet()
             .stream()
             .flatMap(e -> e.getValue()
                 .stream()
                 .flatMap(
-                    phyTable -> splitAndInitUpperBound(ec, ddlJobId, e.getKey(), phyTable, primaryKeysId).stream()))
+                    phyTable -> splitAndInitUpperBound(ec, ddlJobId, taskId, e.getKey(), phyTable,
+                        primaryKeysId).stream()))
             .collect(Collectors.toList());
     }
 
@@ -337,28 +344,29 @@ public class Extractor extends PhyOperationBuilderCommon {
 
     protected List<GsiBackfillManager.BackfillObjectRecord> splitAndInitUpperBound(final ExecutionContext baseEc,
                                                                                    final long ddlJobId,
+                                                                                   final long taskId,
                                                                                    final String dbIndex,
                                                                                    final String phyTable,
                                                                                    final List<Integer> primaryKeysId) {
         if (!baseEc.getParamManager().getBoolean(ConnectionParams.ENABLE_PHYSICAL_TABLE_PARALLEL_BACKFILL)) {
-            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+            return initUpperBound(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId);
         }
 
         // local partition table not support yet
         TableMeta tableMeta = baseEc.getSchemaManager(schemaName).getTable(sourceTableName);
         if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
-            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+            return initUpperBound(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId);
         }
 
         //tables with primary key absent not support (e.g. ugsi)
         if (!tableMeta.isHasPrimaryKey()) {
-            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+            return initUpperBound(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId);
         }
 
         boolean enableInnodbBtreeSampling = OptimizerContext.getContext(schemaName).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_INNODB_BTREE_SAMPLING);
         if (!enableInnodbBtreeSampling) {
-            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+            return initUpperBound(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId);
         }
 
         int splitCount =
@@ -366,14 +374,14 @@ public class Extractor extends PhyOperationBuilderCommon {
         long maxPhyTableRowCount =
             baseEc.getParamManager().getLong(ConnectionParams.PHYSICAL_TABLE_START_SPLIT_SIZE);
         long maxSampleSize =
-            baseEc.getParamManager().getLong(ConnectionParams.BACKFILL_MAX_SAMPLE_SIZE);
+            baseEc.getParamManager().getLong(ConnectionParams.BACKFILL_MAX_SAMPLE_ROWS);
         float samplePercentage =
             baseEc.getParamManager().getFloat(ConnectionParams.BACKFILL_MAX_SAMPLE_PERCENTAGE);
 
         long rowCount = getTableRowsCount(dbIndex, phyTable);
         // judge need split
         if (rowCount < maxPhyTableRowCount || splitCount <= 1) {
-            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+            return initUpperBound(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId);
         }
 
         float calSamplePercentage = maxSampleSize * 1.0f / rowCount * 100;
@@ -394,7 +402,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         // step must not less than zero
         int step = resultList.size() / splitCount;
         if (step <= 0) {
-            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+            return initUpperBound(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId);
         }
 
         int subStep = step / splitCount;
@@ -427,7 +435,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         upperBoundList.remove(upperBoundList.size() - 1);
         upperBoundList.addAll(upperBound);
 
-        return genBackfillObjectRecordByUpperBound(ddlJobId, dbIndex, phyTable, null, upperBoundList,
+        return genBackfillObjectRecordByUpperBound(ddlJobId, taskId, dbIndex, phyTable, null, upperBoundList,
             subUpperBoundList, rowCount / splitCount, 1);
     }
 
@@ -507,7 +515,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         int splitCount =
             ec.getParamManager().getInt(ConnectionParams.SLIDE_WINDOW_SPLIT_SIZE);
         long maxSampleSize =
-            ec.getParamManager().getLong(ConnectionParams.BACKFILL_MAX_SAMPLE_SIZE);
+            ec.getParamManager().getLong(ConnectionParams.BACKFILL_MAX_SAMPLE_ROWS);
         float samplePercentage =
             ec.getParamManager().getFloat(ConnectionParams.BACKFILL_MAX_SAMPLE_PERCENTAGE);
 
@@ -583,17 +591,21 @@ public class Extractor extends PhyOperationBuilderCommon {
         }
 
         long ddlJobId = backfillObjects.get(0).jobId;
+        long taskId = backfillObjects.get(0).taskId;
+
         // return new backfill object record
 
         int splitLevel = 1;
         if (backfillObjects.get(0).extra.getSplitLevel() != null) {
             splitLevel += Integer.parseInt(backfillObjects.get(0).extra.getSplitLevel());
         }
-        return genBackfillObjectRecordByUpperBound(ddlJobId, dbIndex, phyTable, convertBoundParamMap(lowerBoundParam),
+        return genBackfillObjectRecordByUpperBound(ddlJobId, taskId, dbIndex, phyTable,
+            convertBoundParamMap(lowerBoundParam),
             upperBoundList, subUpperBoundList, rows / splitCount, splitLevel);
     }
 
-    private List<GsiBackfillManager.BackfillObjectRecord> genBackfillObjectRecordByUpperBound(final long ddlJobId,
+    private List<GsiBackfillManager.BackfillObjectRecord> genBackfillObjectRecordByUpperBound(final long backfillId,
+                                                                                              final long taskId,
                                                                                               final String dbIndex,
                                                                                               final String physicalTableName,
                                                                                               Map<Integer, ParameterContext> lowerBound,
@@ -627,7 +639,8 @@ public class Extractor extends PhyOperationBuilderCommon {
                     extra.setApproximateRowCount(String.valueOf(approximateRowCount));
                     extra.setSplitLevel(String.valueOf(splitLevel));
 
-                    return GsiUtils.buildBackfillObjectRecord(ddlJobId,
+                    return GsiUtils.buildBackfillObjectRecord(backfillId,
+                        taskId,
                         schemaName,
                         sourceTableName,
                         targetTableName,
@@ -676,6 +689,7 @@ public class Extractor extends PhyOperationBuilderCommon {
      */
     private List<GsiBackfillManager.BackfillObjectRecord> initUpperBound(final ExecutionContext baseEc,
                                                                          final long ddlJobId,
+                                                                         final long taskId,
                                                                          final String dbIndex, final String phyTable,
                                                                          final List<Integer> primaryKeysId) {
         final List<Map<Integer, ParameterContext>> upperBound = getUpperBound(baseEc, dbIndex, phyTable);
@@ -683,14 +697,16 @@ public class Extractor extends PhyOperationBuilderCommon {
         long tableRows = getTableRowsCount(dbIndex, phyTable);
         BackfillExtraFieldJSON extra = new BackfillExtraFieldJSON();
         extra.setApproximateRowCount(String.valueOf(tableRows));
+        extra.setLogical(false);
 
-        return getBackfillObjectRecords(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId, upperBound,
+        return getBackfillObjectRecords(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId, upperBound,
             BackfillExtraFieldJSON.toJson(extra));
     }
 
     @NotNull
     protected List<GsiBackfillManager.BackfillObjectRecord> getBackfillObjectRecords(ExecutionContext baseEc,
-                                                                                     long ddlJobId, String dbIndex,
+                                                                                     long ddlJobId, long taskId,
+                                                                                     String dbIndex,
                                                                                      String phyTable,
                                                                                      List<Integer> primaryKeysId,
                                                                                      final List<Map<Integer, ParameterContext>> upperBound,
@@ -709,6 +725,7 @@ public class Extractor extends PhyOperationBuilderCommon {
             if (upperBound.isEmpty()) {
                 // Table is empty, no upper bound needed
                 return GsiUtils.buildBackfillObjectRecord(ddlJobId,
+                    taskId,
                     schemaName,
                     sourceTableName,
                     targetTableName,
@@ -719,6 +736,7 @@ public class Extractor extends PhyOperationBuilderCommon {
             } else {
                 final ParameterContext pc = upperBound.get(0).get(srcIndex.getAndIncrement() + 1);
                 return GsiUtils.buildBackfillObjectRecord(ddlJobId,
+                    taskId,
                     schemaName,
                     sourceTableName,
                     targetTableName,
@@ -753,11 +771,10 @@ public class Extractor extends PhyOperationBuilderCommon {
         List<Future> futures = new ArrayList<>(16);
 
         // Re-balance by physicalDb.
-        List<List<GsiBackfillManager.BackfillObjectBean>> tasks = reporter.getBackfillBean().backfillObjects.values()
-            .stream()
-            .filter(v -> v.get(0).status.is(UNFINISHED))
-            .collect(Collectors.toList());
-        Collections.shuffle(tasks);
+        List<List<GsiBackfillManager.BackfillObjectBean>> tasks = new ArrayList<>();
+        if (reporter.getBackfillBean().status.is(UNFINISHED)) {
+            tasks.addAll(reporter.getBackfillBean().backfillObjects.values());
+        }
 
         if (!tasks.isEmpty()) {
             SQLRecorderLogger.ddlLogger.warn(
@@ -838,7 +855,8 @@ public class Extractor extends PhyOperationBuilderCommon {
 
         throttle.stop();
 
-        // After all physical table finished
+        // After all pk range finished
+        // TODO(yijin): reporter need rebinding
         reporter.updateBackfillStatus(ec, GsiBackfillManager.BackfillStatus.SUCCESS);
     }
 
@@ -923,7 +941,7 @@ public class Extractor extends PhyOperationBuilderCommon {
                     throttle.feedback(new com.alibaba.polardbx.executor.backfill.Throttle.FeedbackStats(
                         System.currentTimeMillis() - start, start, lastBatch.size()));
                 }
-                DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
+//                DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
 
                 if (rateLimiter != null) {
                     // Limit rate.
@@ -957,7 +975,7 @@ public class Extractor extends PhyOperationBuilderCommon {
                 dbIndex, phyTable, successRowCount, ec, rangeBackfillStartTime, lastBatch, backfillObjects);
         } while (!finished);
 
-        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
+//        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
         reporter.addBackfillCount(successRowCount);
 
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Last backfill row for {1}[{2}][{3}]: {4}",
@@ -1244,7 +1262,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         PhyTableOperation phyTableOperation = planSelectSample;
         SqlSelect sqlSelect = (SqlSelect) phyTableOperation.getNativeSqlNode().clone();
         OptimizerHint optimizerHint = new OptimizerHint();
-        optimizerHint.addHint("+sample_percentage(" + calSamplePercentage + ")");
+        optimizerHint.addHint("+sample_percentage(" + GeneralUtil.formatSampleRate(calSamplePercentage) + ")");
         sqlSelect.setOptimizerHint(optimizerHint);
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
         buildParams.setGroupName(dbIndex);
@@ -1339,7 +1357,7 @@ public class Extractor extends PhyOperationBuilderCommon {
                                                    String sourceTableName,
                                                    String targetTableName,
                                                    boolean skipGeneratedColumn) {
-        return buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, skipGeneratedColumn, false);
+        return buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, skipGeneratedColumn, false, false);
     }
 
     public static ExtractorInfo buildExtractorInfo(ExecutionContext ec,
@@ -1347,7 +1365,8 @@ public class Extractor extends PhyOperationBuilderCommon {
                                                    String sourceTableName,
                                                    String targetTableName,
                                                    boolean skipGeneratedColumn,
-                                                   boolean onlyReadColumns) {
+                                                   boolean onlyReadColumns,
+                                                   boolean omcColumnMapping) {
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         final TableMeta sourceTableMeta = sm.getTable(sourceTableName);
         final TableMeta targetTableMeta = sm.getTable(targetTableName);
@@ -1389,7 +1408,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         List<String> targetTableColumnsAfterMapping = new ArrayList<>(targetTableColumns.size());
         for (String columnName : targetTableColumns) {
             ColumnMeta columnMeta = targetTableMeta.getColumn(columnName);
-            if (columnMeta.getMappingName() != null) {
+            if (omcColumnMapping && columnMeta.getMappingName() != null) {
                 if (!columnMeta.getMappingName().isEmpty()) {
                     sourceTableColumnsAfterMapping.add(columnMeta.getMappingName());
                     targetTableColumnsAfterMapping.add(columnName);

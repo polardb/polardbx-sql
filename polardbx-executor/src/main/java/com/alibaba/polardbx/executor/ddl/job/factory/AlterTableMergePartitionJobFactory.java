@@ -19,14 +19,11 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableMergePartitionBuilder;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupAddMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupsSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
@@ -242,7 +239,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
         ));
         List<DdlTask> bringUpAlterTableGroupTasks =
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
-                taskType, executionContext);
+                taskType, preparedData.getDdlVersionId(), executionContext);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
@@ -340,6 +337,7 @@ public class AlterTableMergePartitionJobFactory extends AlterTableGroupBaseJobFa
             DdlTask dropUselessTableTask = ComplexTaskFactory
                 .CreateDropUselessPhyTableTask(schemaName, preparedData.getTableName(),
                     sourceTablesTopology.get(preparedData.getTableName()),
+                    targetTablesTopology.get(preparedData.getTableName()),
                     executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
             executableDdlJob.labelAsTail(dropUselessTableTask);

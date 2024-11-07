@@ -1,3 +1,10 @@
+test_compound_key:
+  CREATE TABLE `test_compound_key` (
+  `id` bigint(20) NOT NULL,
+  `name` bigint(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(`ID`) subpartition by hash(`NAME`) subpartitions 2;
 t_order:
   CREATE TABLE `t_order` (
   `id` bigint(11) NOT NULL AUTO_INCREMENT,

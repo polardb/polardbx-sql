@@ -24,8 +24,8 @@ Table,Create Table
 ugsi_b_$,CREATE TABLE `ugsi_b_$` (
 	`b` int(11) NOT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_b` USING BTREE (`b`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_b` USING BTREE (`b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`b`)
 PARTITIONS #@#

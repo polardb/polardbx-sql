@@ -10,14 +10,17 @@ import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.ReferenceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
+import com.alibaba.polardbx.executor.operator.scan.impl.LocalBlockDictionary;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.InputRefVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
-import com.alibaba.polardbx.executor.vectorized.compare.LikeVarcharColCharConstVectorizedExpression;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
+import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.junit.Assert;
 import org.junit.Before;
@@ -28,20 +31,81 @@ import org.junit.runners.Parameterized;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 @RunWith(Parameterized.class)
 public class LikeVarcharColCharConstVectorizedExpressionTest {
 
+    private final boolean ossCompatible;
     private final int count = 10;
+    /**
+     * two types of strings arrays with different cardinality
+     */
     private final String[] strs = new String[] {
         "abc", "aabbcc", "acb", "bacdabc", "zxcvb",
         "aaabccccdd", "ccbbaacb", "a1b1c1", "a比c", null};
-    private ExecutionContext context;
+
+    private final String[] dictStrs = new String[] {
+        "abc", "aabbcc", "abc", "aabbcc", "abc",
+        "aabbcc", "ccbbaacb", "abc", "a比c", null};
+    private final ExecutionContext context;
+    private final LocalBlockDictionary dictionary1;
+    private final int[] dictIds1;
+    private final LocalBlockDictionary dictionary2;
+    private final int[] dictIds2;
+    private final boolean[] nulls;
 
     public LikeVarcharColCharConstVectorizedExpressionTest(boolean ossCompatible) {
+        this.ossCompatible = ossCompatible;
         this.context = new ExecutionContext();
         context.getParamManager().getProps().put("ENABLE_OSS_COMPATIBLE", Boolean.toString(ossCompatible));
+
+        this.dictIds1 = new int[count];
+        this.dictIds2 = new int[count];
+        this.nulls = new boolean[count];
+
+        BiMap<String, Integer> map1 = getDictMap(strs);
+        BiMap<String, Integer> map2 = getDictMap(dictStrs);
+        List<Slice> slices1 = new ArrayList<>();
+        List<Slice> slices2 = new ArrayList<>();
+        for (int i = 0; i < map1.size(); i++) {
+            slices1.add(Slices.utf8Slice(map1.inverse().get(i)));
+        }
+        for (int i = 0; i < map2.size(); i++) {
+            slices2.add(Slices.utf8Slice(map2.inverse().get(i)));
+        }
+        for (int i = 0; i < count; i++) {
+            if (strs[i] != null) {
+                dictIds1[i] = map1.get(strs[i]);
+                nulls[i] = false;
+            } else {
+                dictIds1[i] = -1;
+                nulls[i] = true;
+            }
+            if (dictStrs[i] != null) {
+                dictIds2[i] = map2.get(dictStrs[i]);
+                nulls[i] = false;
+            } else {
+                dictIds2[i] = -1;
+                nulls[i] = true;
+            }
+        }
+        this.dictionary1 = new LocalBlockDictionary(slices1.toArray(new Slice[0]));
+        this.dictionary2 = new LocalBlockDictionary(slices2.toArray(new Slice[0]));
+    }
+
+    private static BiMap<String, Integer> getDictMap(String[] strs) {
+        BiMap<String, Integer> dictMap = HashBiMap.create();
+        int id = 0;
+        for (String str : strs) {
+            if (str != null && !dictMap.containsKey(str)) {
+                dictMap.put(str, id++);
+            }
+        }
+        return dictMap;
     }
 
     @Parameterized.Parameters(name = "ossCompatible={0}")
@@ -74,6 +138,25 @@ public class LikeVarcharColCharConstVectorizedExpressionTest {
         LongBlock expectBlock = LongBlock.of(1L, 0L, 0L, 1L, 0L, 1L, 0L, 0L, 0L, null);
 
         doTest(inputChunk, expectBlock, "%abc%", null);
+    }
+
+    @Test
+    public void testDictWithLatin1Match() {
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(CollationName.LATIN1_BIN), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(1L, 0L, 0L, 1L, 0L, 1L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk1, expectBlock1, "%abc%", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(CollationName.LATIN1_BIN), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(1L, 0L, 1L, 0L, 1L, 0L, 0L, 1L, 0L, null);
+
+        doTest(inputChunk2, expectBlock2, "%abc%", null);
     }
 
     @Test
@@ -132,6 +215,25 @@ public class LikeVarcharColCharConstVectorizedExpressionTest {
     }
 
     @Test
+    public void testDictWithLatin1SubStrMatch3() {
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(CollationName.LATIN1_BIN), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(0L, 1L, 0L, 0L, 0L, 1L, 1L, 0L, 0L, null);
+
+        doTest(inputChunk1, expectBlock1, "%aa%", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(CollationName.LATIN1_BIN), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(0L, 1L, 0L, 1L, 0L, 1L, 1L, 0L, 0L, null);
+
+        doTest(inputChunk2, expectBlock2, "%aa%", null);
+    }
+
+    @Test
     public void testSliceWithSubStrMatch() {
         SliceBlockBuilder sliceBlockBuilder = new SliceBlockBuilder(new SliceType(), count, context, true);
         for (String s : strs) {
@@ -150,7 +252,7 @@ public class LikeVarcharColCharConstVectorizedExpressionTest {
     }
 
     @Test
-    public void testSliceWitWildcardMatch() {
+    public void testSliceWithWildcardMatch() {
         SliceBlockBuilder sliceBlockBuilder = new SliceBlockBuilder(new SliceType(), count, context, true);
         for (String s : strs) {
             if (s == null) {
@@ -165,6 +267,25 @@ public class LikeVarcharColCharConstVectorizedExpressionTest {
         LongBlock expectBlock = LongBlock.of(1L, 0L, 0L, 1L, 0L, 1L, 1L, 0L, 1L, null);
 
         doTest(inputChunk, expectBlock, "%a_c%", null);
+    }
+
+    @Test
+    public void testDictWithWildcardMatch() {
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(1L, 0L, 0L, 1L, 0L, 1L, 1L, 0L, 1L, null);
+
+        doTest(inputChunk1, expectBlock1, "%a_c%", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(1L, 0L, 1L, 0L, 1L, 0L, 1L, 1L, 1L, null);
+
+        doTest(inputChunk2, expectBlock2, "%a_c%", null);
     }
 
     @Test
@@ -186,6 +307,25 @@ public class LikeVarcharColCharConstVectorizedExpressionTest {
     }
 
     @Test
+    public void testDictWithSuffixMatch() {
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(1L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk1, expectBlock1, "%abc", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(1L, 0L, 1L, 0L, 1L, 0L, 0L, 1L, 0L, null);
+
+        doTest(inputChunk2, expectBlock2, "%abc", null);
+    }
+
+    @Test
     public void testSliceWithSuffixMatchAndSelection() {
         int[] sel = new int[] {0, 1, 2, 3, 4, 5, 8, 9};
         SliceBlockBuilder sliceBlockBuilder = new SliceBlockBuilder(new SliceType(), count, context, true);
@@ -202,6 +342,102 @@ public class LikeVarcharColCharConstVectorizedExpressionTest {
         LongBlock expectBlock = LongBlock.of(1L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, null);
 
         doTest(inputChunk, expectBlock, "%abc", sel);
+    }
+
+    @Test
+    public void testDictWithSuffixMatchAndSelection() {
+        int[] sel = new int[] {0, 1, 2, 3, 4, 5, 8, 9};
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(1L, 0L, 0L, 1L, 0L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk1, expectBlock1, "%abc", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(1L, 0L, 1L, 0L, 1L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk2, expectBlock2, "%abc", sel);
+    }
+
+    @Test
+    public void testSliceWithPrefixMatch() {
+        SliceBlockBuilder sliceBlockBuilder = new SliceBlockBuilder(new SliceType(), count, context, true);
+        for (String s : strs) {
+            if (s == null) {
+                sliceBlockBuilder.appendNull();
+            } else {
+                sliceBlockBuilder.writeString(s);
+            }
+        }
+        SliceBlock sliceBlock = (SliceBlock) sliceBlockBuilder.build();
+        Chunk inputChunk = new Chunk(sliceBlock.getPositionCount(), sliceBlock);
+
+        LongBlock expectBlock = LongBlock.of(1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk, expectBlock, "abc%", null);
+    }
+
+    @Test
+    public void testDictWithPrefixMatch() {
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk1, expectBlock1, "abc%", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(1L, 0L, 1L, 0L, 1L, 0L, 0L, 1L, 0L, null);
+
+        doTest(inputChunk2, expectBlock2, "abc%", null);
+    }
+
+    @Test
+    public void testSliceWithPrefixMatchAndSelection() {
+        int[] sel = new int[] {0, 1, 2, 3, 4, 5, 8, 9};
+        SliceBlockBuilder sliceBlockBuilder = new SliceBlockBuilder(new SliceType(), count, context, true);
+        for (String s : strs) {
+            if (s == null) {
+                sliceBlockBuilder.appendNull();
+            } else {
+                sliceBlockBuilder.writeString(s);
+            }
+        }
+        SliceBlock sliceBlock = (SliceBlock) sliceBlockBuilder.build();
+        Chunk inputChunk = new Chunk(sliceBlock.getPositionCount(), sliceBlock);
+
+        LongBlock expectBlock = LongBlock.of(1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk, expectBlock, "abc%", sel);
+    }
+
+    @Test
+    public void testDictWithPrefixMatchAndSelection() {
+        int[] sel = new int[] {0, 1, 2, 3, 4, 5, 8, 9};
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary1, dictIds1, ossCompatible);
+        Chunk inputChunk1 = new Chunk(sliceBlock1.getPositionCount(), sliceBlock1);
+
+        LongBlock expectBlock1 = LongBlock.of(1L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, null);
+
+        doTest(inputChunk1, expectBlock1, "abc%", null);
+
+        SliceBlock sliceBlock2 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary2, dictIds2, ossCompatible);
+        Chunk inputChunk2 = new Chunk(sliceBlock2.getPositionCount(), sliceBlock2);
+
+        LongBlock expectBlock2 = LongBlock.of(1L, 0L, 1L, 0L, 1L, 0L, 0L, 1L, 0L, null);
+
+        doTest(inputChunk2, expectBlock2, "abc%", sel);
     }
 
     @Test

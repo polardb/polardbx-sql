@@ -71,6 +71,8 @@ public class InformationSchemaTableDetail extends VirtualView {
             new RelDataTypeFieldImpl("DATA_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(
             new RelDataTypeFieldImpl("INDEX_LENGTH", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("DATA_FREE", i++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("BOUND_VALUE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("SUB_BOUND_VALUE", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PERCENT", i++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));

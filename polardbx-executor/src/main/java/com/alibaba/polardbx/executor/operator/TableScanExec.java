@@ -30,6 +30,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.alibaba.polardbx.executor.mpp.operator.RangeScanMode;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -136,11 +137,7 @@ public class TableScanExec extends SourceExec implements Closeable {
             }
 
             if (dataTypes == null) {
-                List<DataType> columns = getDataTypes();
-                dataTypes = new DataType[columns.size()];
-                for (int i = 0; i < columns.size(); i++) {
-                    dataTypes[i] = columns.get(i);
-                }
+                createDataTypes();
                 createBlockBuilders();
             }
             if (scanClient.getSplitNum() != 0) {
@@ -156,6 +153,19 @@ public class TableScanExec extends SourceExec implements Closeable {
             this.isFinish = true;
             scanClient.setException(exception);
             scanClient.throwIfFailed();
+        }
+    }
+
+    /**
+     * Creates an array of data types.
+     * This method first retrieves a list of data types and then constructs a data type array based on the list's size.
+     * It takes no parameters and returns no value.
+     */
+    void createDataTypes() {
+        List<DataType> columns = getDataTypes();
+        dataTypes = new DataType[columns.size()];
+        for (int i = 0; i < columns.size(); i++) {
+            dataTypes[i] = columns.get(i);
         }
     }
 
@@ -182,6 +192,10 @@ public class TableScanExec extends SourceExec implements Closeable {
                     isFinish = true;
                 }
             } else if (scanClient.connectionCount() > 0) {
+                // under range scan mode, try poll result
+                if (scanClient.getRangeScanMode() != null) {
+                    consumeResultSet = scanClient.popResultSet();
+                }
                 //当前client还有残余连接存在，继续等待吧！
             } else {
                 consumeResultSet = scanClient.popResultSet();
@@ -191,6 +205,11 @@ public class TableScanExec extends SourceExec implements Closeable {
                 }
             }
         } else {
+            // update prefetch num under adaptive range scan  mode
+            if (scanClient.getRangeScanMode() == RangeScanMode.ADAPTIVE) {
+                int nextPrefetch = ((AdaptiveRangeScanClient) scanClient).calcNextPrefetch();
+                scanClient.setPrefetchNum(nextPrefetch);
+            }
             if (scanClient.connectionCount() > 0) {
                 if (scanClient.beingConnectionCount() > 0) {
                     //存在正在建连的split，这时我们只需要根据prefetch值判断要不要继续下发split

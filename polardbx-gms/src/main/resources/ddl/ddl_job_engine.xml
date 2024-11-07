@@ -46,7 +46,8 @@
                key `job_id` (`job_id`),
               primary key `task_id_key` (`task_id`),
               key `schema_name` (`schema_name`),
-              key `root_job_id` (`root_job_id`)
+              key `root_job_id` (`root_job_id`),
+              key `job_id_state` (`job_id`, `state`)
             ) default charset=utf8
         ]]></Create>
         <Change><![CDATA[
@@ -66,6 +67,9 @@
         ]]></Change>
         <Change><![CDATA[
            alter table ddl_engine_task add index `root_job_id` (`root_job_id`);
+        ]]></Change>
+        <Change><![CDATA[
+           alter table ddl_engine_task add index `job_id_state` (`job_id`, `state`);
         ]]></Change>
     </SystemTable>
     <SystemTable name="ddl_engine_archive">

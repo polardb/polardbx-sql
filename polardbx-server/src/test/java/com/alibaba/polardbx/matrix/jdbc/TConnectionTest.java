@@ -18,9 +18,15 @@
 package com.alibaba.polardbx.matrix.jdbc;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.google.common.truth.Truth;
 import org.junit.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
 
 public class TConnectionTest {
     @Test
@@ -47,5 +53,70 @@ public class TConnectionTest {
                     .getParamManager()
                     .getBoolean(ConnectionParams.OUTPUT_MYSQL_ERROR_CODE))
             .isTrue();
+    }
+
+    /**
+     * Tests whether the method correctly sets the MASTER property when given a valid 'groupindex:0' hint.
+     */
+    @Test
+    public void testTransformGroupIndexHintToMasterSlaveForMaster() {
+        Map<String, Object> extraCmd = new HashMap<>();
+        String groupHint = "groupindex:0";
+
+        TConnection.transformGroupIndexHintToMasterSlave(groupHint, extraCmd);
+
+        assertEquals(Boolean.TRUE, extraCmd.get(ConnectionProperties.MASTER));
+    }
+
+    /**
+     * Tests whether the method correctly sets the SLAVE property when given a valid 'groupindex:1' hint.
+     */
+    @Test
+    public void testTransformGroupIndexHintToMasterSlaveForSlave() {
+        Map<String, Object> extraCmd = new HashMap<>();
+        String groupHint = "groupindex:1";
+
+        TConnection.transformGroupIndexHintToMasterSlave(groupHint, extraCmd);
+
+        assertEquals(Boolean.TRUE, extraCmd.get(ConnectionProperties.SLAVE));
+    }
+
+    /**
+     * Tests whether the method leaves the extraCmd unchanged when given an empty string as the groupHint.
+     */
+    @Test
+    public void testTransformGroupIndexHintToMasterSlaveWithEmptyString() {
+        Map<String, Object> extraCmd = new HashMap<>();
+        String groupHint = "";
+
+        TConnection.transformGroupIndexHintToMasterSlave(groupHint, extraCmd);
+
+        assertEquals(0, extraCmd.size());
+    }
+
+    /**
+     * Tests whether the method leaves the extraCmd unchanged when given null as the groupHint.
+     */
+    @Test
+    public void testTransformGroupIndexHintToMasterSlaveWithNull() {
+        Map<String, Object> extraCmd = new HashMap<>();
+        String groupHint = null;
+
+        TConnection.transformGroupIndexHintToMasterSlave(groupHint, extraCmd);
+
+        assertEquals(0, extraCmd.size());
+    }
+
+    /**
+     * Tests whether the method leaves the extraCmd unchanged when given an invalid input as the groupHint.
+     */
+    @Test
+    public void testTransformGroupIndexHintToMasterSlaveWithInvalidInput() {
+        Map<String, Object> extraCmd = new HashMap<>();
+        String groupHint = "invalid_input";
+
+        TConnection.transformGroupIndexHintToMasterSlave(groupHint, extraCmd);
+
+        assertEquals(0, extraCmd.size());
     }
 }

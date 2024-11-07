@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.common;
 
 import com.alibaba.polardbx.common.IInnerConnectionManager;
+import com.alibaba.polardbx.common.trx.ISyncPointExecutor;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.gsi.GsiManager;
@@ -47,8 +48,8 @@ public class ExecutorContext {
     private StorageInfoManager storageInfoManager = null;
     private GsiManager gsiManager = null;
     private NodeStatusManager nodeStatusManager;
-    private Consumer<ColumnarManager> reloadColumnarManager;
     private IInnerConnectionManager innerConnectionManager;
+    private ISyncPointExecutor syncPointExecutor = null;
 
     private static Map<String, ExecutorContext> executorContextMap = new ConcurrentHashMap<String, ExecutorContext>();
 
@@ -145,18 +146,16 @@ public class ExecutorContext {
         this.gsiManager = gsiManager;
     }
 
+    public ISyncPointExecutor getSyncPointExecutor() {
+        return syncPointExecutor;
+    }
+
+    public void setSyncPointExecutor(ISyncPointExecutor syncPointExecutor) {
+        this.syncPointExecutor = syncPointExecutor;
+    }
+
     public final static Map<String, ExecutorContext> getExecutorContextMap() {
         return executorContextMap;
-    }
-
-    public void reloadColumnarManager() {
-        if (null != reloadColumnarManager) {
-            reloadColumnarManager.accept(ColumnarManager.getInstance());
-        }
-    }
-
-    public void setReloadColumnarManager(Consumer<ColumnarManager> reloadColumnarManager) {
-        this.reloadColumnarManager = reloadColumnarManager;
     }
 
     public IInnerConnectionManager getInnerConnectionManager() {

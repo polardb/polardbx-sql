@@ -62,7 +62,7 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
     private final TableScan tableScan;
     private final Double tableRowCount;
     private final TableMeta tableMeta;
-    private final PlannerContext plannerContext;
+
     private final long rowSize;
     private List<Index> accessIndexList;
     private Set<String> canUseIndexSet;
@@ -70,10 +70,10 @@ public class TableScanIOEstimator extends AbstractIOEstimator {
     public TableScanIOEstimator(TableScan tableScan, RelMetadataQuery metadataQuery) {
         super(metadataQuery, tableScan.getCluster().getRexBuilder(),
             (Math.ceil((TUPLE_HEADER_SIZE + TableScanIOEstimator.estimateRowSize(tableScan.getRowType()))
-                * tableScan.getTable().getRowCount() / CostModelWeight.SEQ_IO_PAGE_SIZE)));
+                * tableScan.getTable().getRowCount() / CostModelWeight.SEQ_IO_PAGE_SIZE)),
+            PlannerContext.getPlannerContext(tableScan));
         this.tableScan = tableScan;
         this.tableMeta = CBOUtil.getTableMeta(tableScan.getTable());
-        this.plannerContext = PlannerContext.getPlannerContext(tableScan);
         this.tableRowCount = tableMeta.getRowCount(plannerContext);
         this.rowSize = TUPLE_HEADER_SIZE + TableScanIOEstimator.estimateRowSize(tableScan.getRowType());
         this.accessIndexList = new ArrayList<>();

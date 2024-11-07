@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -52,6 +53,7 @@ public class LogicalAlterTableDropPartitionHandler extends LogicalCommonDdlHandl
         LogicalAlterTableDropPartition logicalAlterTableDropPartition =
             (LogicalAlterTableDropPartition) logicalDdlPlan;
         logicalAlterTableDropPartition.preparedData(executionContext);
+        logicalAlterTableDropPartition.getPreparedData().setDdlVersionId(DdlUtils.generateVersionId(executionContext));
         return AlterTableDropPartitionJobFactory
             .create(logicalAlterTableDropPartition.relDdl,
                 (AlterTableDropPartitionPreparedData) logicalAlterTableDropPartition.getPreparedData(),

@@ -21,11 +21,13 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AsyncCacheCursor;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.client.DriverResultCursor;
+import com.alibaba.polardbx.executor.mpp.client.MppResultCursor;
 import com.alibaba.polardbx.executor.mpp.client.MppRunner;
 import com.alibaba.polardbx.executor.mpp.client.SmpResultCursor;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
@@ -33,6 +35,8 @@ import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.executor.mpp.execution.SqlQueryLocalExecution;
 import com.alibaba.polardbx.executor.mpp.operator.Driver;
 import com.alibaba.polardbx.executor.operator.CacheCursor;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.node.MPPQueryMonitor;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
@@ -62,13 +66,13 @@ import org.apache.calcite.rel.logical.LogicalValues;
 import org.apache.commons.lang3.StringUtils;
 
 import static com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner.isAssignableFrom;
-import static com.alibaba.polardbx.executor.utils.ExecUtils.existMppOnlyInstanceNode;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.genSubQueryTraceId;
 
 /**
  * Main entry-point of local executor
  */
 public class ExecutorHelper {
+    private static final MPPQueryMonitor MPP_QUERY_MONITOR = MPPQueryMonitor.getInstance();
 
     private static final Logger log = LoggerFactory.getLogger(ExecutorHelper.class);
 
@@ -140,7 +144,26 @@ public class ExecutorHelper {
     public static Cursor executeCluster(RelNode plan, ExecutionContext context) {
         context.setExecuteMode(ExecutorMode.MPP);
         initQueryContext(context);
-        return new MppRunner(plan, context).execute();
+
+        long maximumQPS = context.getParamManager().getLong(ConnectionParams.COLUMNAR_CLUSTER_MAXIMUM_QPS);
+        long maximumConcurrency =
+            context.getParamManager().getLong(ConnectionParams.COLUMNAR_CLUSTER_MAXIMUM_CONCURRENCY);
+        if (ConfigDataMode.isMasterMode() && (maximumQPS > 0 || maximumConcurrency > 0)) {
+            long windowPeriod = context.getParamManager().getLong(ConnectionParams.COLUMNAR_QPS_WINDOW_PERIOD);
+            // statistic when starting MPP query.
+            MPP_QUERY_MONITOR.recordStartingQuery();
+
+            Cursor result = MppRunner.create(plan, context).execute();
+
+            ((MppResultCursor) result).addCloseListenable(() -> {
+                // statistic after finished MPP query.
+                MPP_QUERY_MONITOR.recordFinishedQuery(windowPeriod);
+            });
+
+            return result;
+        } else {
+            return new MppRunner(plan, context).execute();
+        }
     }
 
     public static Cursor executeByCursor(RelNode plan, ExecutionContext context, boolean cacheOutput) {
@@ -223,11 +246,10 @@ public class ExecutorHelper {
                 targetMode = WorkloadUtil.isApWorkload(workloadType) ? ExecutorMode.MPP : ExecutorMode.TP_LOCAL;
             }
 
-            boolean existMppInstanceNode = existMppOnlyInstanceNode() ||
-                context.getParamManager().getBoolean(ConnectionParams.ENABLE_MASTER_MPP);
+            boolean allowMppMode = ExecUtils.allowMppMode(context);
 
-            if (existMppInstanceNode &&
-                MppPlanCheckers.supportsMppPlan(plan, plannerContext, input -> enableMpp,
+            if (allowMppMode &&
+                MppPlanCheckers.supportsMppPlan(plan, plannerContext, context, input -> enableMpp,
                     MppPlanCheckers.BASIC_CHECKERS,
                     MppPlanCheckers.TRANSACTION_CHECKER,
                     MppPlanCheckers.UPDATE_CHECKER,
@@ -240,7 +262,7 @@ public class ExecutorHelper {
             context.setExecuteMode(targetMode);
         } else if (executorMode == ExecutorMode.MPP) {
             PlannerContext plannerContext = PlannerContext.getPlannerContext(plan);
-            if (MppPlanCheckers.supportsMppPlan(plan, plannerContext, input -> enableMpp,
+            if (MppPlanCheckers.supportsMppPlan(plan, plannerContext, context, input -> enableMpp,
                 MppPlanCheckers.BASIC_CHECKERS, MppPlanCheckers.TRANSACTION_CHECKER, MppPlanCheckers.UPDATE_CHECKER)) {
                 context.setExecuteMode(ExecutorMode.MPP);
             } else {

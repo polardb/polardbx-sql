@@ -133,9 +133,9 @@ public class DataOperator {
     /**
      * mysql和tddl数据同时执行数据操作 isAssertCount 为是否校验返回条数是否一致
      */
-    public static void executeOnMysqlAndTddl(Connection mysqlConnection, Connection tddlConnection,
-                                             String mysqlSql, String tddlSql,
-                                             List<Object> param, boolean isAssertCount) {
+    public static int executeOnMysqlAndTddl(Connection mysqlConnection, Connection tddlConnection,
+                                            String mysqlSql, String tddlSql,
+                                            List<Object> param, boolean isAssertCount) {
         int mysqlEffectCount = JdbcUtil.updateData(mysqlConnection, mysqlSql, param);
         // int tddlEffectCount = JdbcUtil.updateDataTddl(tddlConnection, sql,
         int tddlEffectCount = JdbcUtil.updateData(tddlConnection, tddlSql, param);
@@ -143,6 +143,7 @@ public class DataOperator {
             Assert.assertEquals("sql 为 " + tddlSql + " 更新条数结果不一致", mysqlEffectCount, tddlEffectCount);
         }
 
+        return tddlEffectCount;
     }
 
     private static int updateDataGetEffectCount(Connection conn, String sql, List<Object> params) throws SQLException {
@@ -275,7 +276,8 @@ public class DataOperator {
         }
 
         if (isAssertCount) {
-            assertWithMessage(" 顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + sql).that(mysqlEffectCount)
+            assertWithMessage(" 顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + sql).that(
+                    mysqlEffectCount)
                 .isEqualTo(tddlEffectCount);
         }
 
@@ -331,7 +333,8 @@ public class DataOperator {
         }
 
         if (isAssertCount) {
-            assertWithMessage(" 顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + execSql).that(mysqlEffectCount)
+            assertWithMessage(" 顺序情况下：mysql 返回结果与tddl 返回结果不一致 \n sql 语句为：" + execSql).that(
+                    mysqlEffectCount)
                 .isEqualTo(tddlEffectCount);
         }
     }

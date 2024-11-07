@@ -17,9 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.ResetSequence4TruncateTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.TruncateColumnarTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -32,20 +34,23 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
-
 public class TruncateTableJobFactory extends DdlJobFactory {
 
     private final PhysicalPlanData physicalPlanData;
     private final String schemaName;
     private final String logicalTableName;
     private final long tableVersion;
+    private final long versionId;
+    private final boolean withCci;
 
-    public TruncateTableJobFactory(PhysicalPlanData physicalPlanData, long tableVersion) {
+    public TruncateTableJobFactory(PhysicalPlanData physicalPlanData, long tableVersion, long versionId,
+                                   boolean withCci) {
         this.physicalPlanData = physicalPlanData;
         this.schemaName = physicalPlanData.getSchemaName();
         this.logicalTableName = physicalPlanData.getLogicalTableName();
         this.tableVersion = tableVersion;
+        this.versionId = versionId;
+        this.withCci = withCci;
     }
 
     @Override
@@ -64,15 +69,29 @@ public class TruncateTableJobFactory extends DdlJobFactory {
 
         DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, tableGroupConfig);
         DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
+        DdlTask resetSequenceTask = new ResetSequence4TruncateTableTask(schemaName, logicalTableName);
+        DdlTask truncateColumnarTableTask = new TruncateColumnarTableTask(schemaName, logicalTableName, versionId);
+        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, versionId);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(
-            validateTableVersionTask,
-            validateTask,
-            phyDdlTask.onExceptionTryRecoveryThenRollback(),
-            cdcDdlMarkTask
-        ));
+        executableDdlJob.addSequentialTasks(
+            !withCci ?
+                Lists.newArrayList(
+                    validateTableVersionTask,
+                    validateTask,
+                    resetSequenceTask,
+                    phyDdlTask.onExceptionTryRecoveryThenRollback(),
+                    cdcDdlMarkTask
+                ) :
+                Lists.newArrayList(
+                    validateTableVersionTask,
+                    validateTask,
+                    resetSequenceTask,
+                    phyDdlTask.onExceptionTryRecoveryThenRollback(),
+                    truncateColumnarTableTask,
+                    cdcDdlMarkTask
+                )
+        );
 
         return executableDdlJob;
     }

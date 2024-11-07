@@ -74,7 +74,7 @@ public class ${className} extends AbstractVectorizedExpression {
             .map(m -> m.get(DIV_PRECISION_INCREMENT))
             .map(n -> ((Number) n).intValue())
             .map(i -> Math.min(i, MAX_DECIMAL_SCALE))
-            .orElse(DEFAULT_DIV_PRECISION_INCREMENT);
+            .orElse(DecimalTypeBase.getDefaultDivPrecisionIncrement());
 
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock rightInputVectorSlot =

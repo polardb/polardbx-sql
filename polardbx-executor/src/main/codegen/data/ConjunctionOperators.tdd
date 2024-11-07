@@ -1,5 +1,4 @@
 {    "operators": [
-        {operandCount: 2},
         {operandCount: 3},
         {operandCount: 4},
         {operandCount: 5},

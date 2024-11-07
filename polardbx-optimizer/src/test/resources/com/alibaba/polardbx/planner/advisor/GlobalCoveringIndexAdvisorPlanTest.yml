@@ -11,6 +11,7 @@
          WHERE l_partkey = p_partkey);
 
   plan: |
+
     project(avg_yearly="$f0 / 7.0")
       hashagg($f0="sum(l_extendedprice)")
         filter(condition="l_quantity < 0.2 * f16w0$o0")
@@ -49,12 +50,13 @@
       value desc;
 
   plan: |
+
     memsort(sort="value desc")
       project(ps_partkey="ps_partkey", value="value")
         nljoin(condition="value > $f0 * 0.0001", type="inner")
-          hashagg(group="ps_partkey", value="sum(__*__)")
+          hashagg(group="ps_partkey", value="sum(value)")
             gather(concurrent=true)
-              indexscan(tables="[0000-0003].supplier_[00-15],nation,partsupp__what_if_gsi_ps_suppkey_[00-15]", shardcount=16, sql="select `supplier`.`s_suppkey`, `partsupp__what_if_gsi_ps_suppkey`.`ps_partkey`, `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`, (`partsupp__what_if_gsi_ps_suppkey`.`ps_supplycost` * `partsupp__what_if_gsi_ps_suppkey`.`ps_availqty`) as `__*__` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany')) inner join `partsupp__what_if_gsi_ps_suppkey` as `partsupp__what_if_gsi_ps_suppkey` on (`supplier`.`s_suppkey` = `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`)")
+              indexscan(tables="[0000-0003].supplier_[00-15],nation,partsupp__what_if_gsi_ps_suppkey_[00-15]", shardcount=16, sql="select `partsupp__what_if_gsi_ps_suppkey`.`ps_partkey`, sum((`partsupp__what_if_gsi_ps_suppkey`.`ps_supplycost` * `partsupp__what_if_gsi_ps_suppkey`.`ps_availqty`)) as `value` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany')) inner join `partsupp__what_if_gsi_ps_suppkey` as `partsupp__what_if_gsi_ps_suppkey` on (`supplier`.`s_suppkey` = `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`) group by `partsupp__what_if_gsi_ps_suppkey`.`ps_partkey`")
           hashagg($f0="sum($f0)")
             gather(concurrent=true)
               indexscan(tables="[0000-0003].supplier_[00-15],nation,partsupp__what_if_gsi_ps_suppkey_[00-15]", shardcount=16, sql="select sum((`partsupp__what_if_gsi_ps_suppkey`.`ps_supplycost` * `partsupp__what_if_gsi_ps_suppkey`.`ps_availqty`)) as `$f0` from `supplier` as `supplier` inner join `nation` as `nation` on ((`supplier`.`s_nationkey` = `nation`.`n_nationkey`) and (`nation`.`n_name` = 'germany')) inner join `partsupp__what_if_gsi_ps_suppkey` as `partsupp__what_if_gsi_ps_suppkey` on (`supplier`.`s_suppkey` = `partsupp__what_if_gsi_ps_suppkey`.`ps_suppkey`)")
@@ -93,6 +95,7 @@
     );
 
   plan: |
+
     hashagg(revenue="sum(revenue)")
       gather(concurrent=true)
         indexscan(tables="[0000-0003].part_[00-15],lineitem__what_if_gsi_l_partkey_[00-15]", shardcount=16, sql="select sum((`lineitem__what_if_gsi_l_partkey`.`l_extendedprice` * (1 - `lineitem__what_if_gsi_l_partkey`.`l_discount`))) as `revenue` from `part` as `part` inner join `lineitem__what_if_gsi_l_partkey` as `lineitem__what_if_gsi_l_partkey` on ((`part`.`p_partkey` = `lineitem__what_if_gsi_l_partkey`.`l_partkey`) and (((`part`.`p_partkey` = `lineitem__what_if_gsi_l_partkey`.`l_partkey`) and (`part`.`p_brand` = 'brand#12') and (`part`.`p_container` in('sm case', 'sm box', 'sm pack', 'sm pkg')) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` >= 1) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` <= (1 + 10)) and (`part`.`p_size` between 1 and 5) and (`lineitem__what_if_gsi_l_partkey`.`l_shipmode` in('air', 'air reg')) and (`lineitem__what_if_gsi_l_partkey`.`l_shipinstruct` = 'deliver in person')) or ((`part`.`p_partkey` = `lineitem__what_if_gsi_l_partkey`.`l_partkey`) and (`part`.`p_brand` = 'brand#23') and (`part`.`p_container` in('med bag', 'med box', 'med pkg', 'med pack')) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` >= 10) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` <= (20 + 10)) and (`part`.`p_size` between 1 and 10) and (`lineitem__what_if_gsi_l_partkey`.`l_shipmode` in('air', 'air reg')) and (`lineitem__what_if_gsi_l_partkey`.`l_shipinstruct` = 'deliver in person')) or ((`part`.`p_partkey` = `lineitem__what_if_gsi_l_partkey`.`l_partkey`) and (`part`.`p_brand` = 'brand#34') and (`part`.`p_container` in('lg case', 'lg box', 'lg pack', 'lg pkg')) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` >= 20) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` <= (20 + 10)) and (`part`.`p_size` between 1 and 15) and (`lineitem__what_if_gsi_l_partkey`.`l_shipmode` in('air', 'air reg')) and (`lineitem__what_if_gsi_l_partkey`.`l_shipinstruct` = 'deliver in person')))) where ((((`part`.`p_brand` = 'brand#12') and (`part`.`p_container` in('sm case', 'sm box', 'sm pack', 'sm pkg')) and (`part`.`p_size` between 1 and 5)) or ((`part`.`p_brand` = 'brand#23') and (`part`.`p_container` in('med bag', 'med box', 'med pkg', 'med pack')) and (`part`.`p_size` between 1 and 10)) or ((`part`.`p_brand` = 'brand#34') and (`part`.`p_container` in('lg case', 'lg box', 'lg pack', 'lg pkg')) and (`part`.`p_size` between 1 and 15))) and (((`lineitem__what_if_gsi_l_partkey`.`l_quantity` >= 1) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` <= (1 + 10)) and (`lineitem__what_if_gsi_l_partkey`.`l_shipmode` in('air', 'air reg')) and (`lineitem__what_if_gsi_l_partkey`.`l_shipinstruct` = 'deliver in person')) or ((`lineitem__what_if_gsi_l_partkey`.`l_quantity` >= 10) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` <= (20 + 10)) and (`lineitem__what_if_gsi_l_partkey`.`l_shipmode` in('air', 'air reg')) and (`lineitem__what_if_gsi_l_partkey`.`l_shipinstruct` = 'deliver in person')) or ((`lineitem__what_if_gsi_l_partkey`.`l_quantity` >= 20) and (`lineitem__what_if_gsi_l_partkey`.`l_quantity` <= (20 + 10)) and (`lineitem__what_if_gsi_l_partkey`.`l_shipmode` in('air', 'air reg')) and (`lineitem__what_if_gsi_l_partkey`.`l_shipinstruct` = 'deliver in person'))))")
@@ -100,7 +103,8 @@
 - sql: |
     select * from orders where o_custkey = 1;
   plan: |
-    indexscan(tables="optest_0001.orders__what_if_gsi_o_custkey", sql="select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where (`o_custkey` = 1)")
+
+    indexscan(tables="optest_0001.orders__what_if_gsi_o_custkey", sql="select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` force index(`orders__what_if_o_custkey`) where (`o_custkey` = 1)")
 
 -
   sql: |
@@ -117,24 +121,27 @@
         bkajoin(condition="k1 = k1 and k = k1", type="inner")
           bkajoin(condition="k1 = k", type="inner")
             mergesort(sort="id asc")
-              logicalview(tables="[0000-0003].test_index_join", shardcount=4, sql="select `id`, `k` from `test_index_join` as `test_index_join` order by `id`")
+              logicalview(tables="[0000-0003].test_index_join", shardcount=4, sql="select `id`, `k` from `test_index_join` as `test_index_join` force index(`primary`) order by `id`")
             gather(concurrent=true)
-              indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` where (`k1` in (...))")
+              indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` force index(`test_index__what_if_k1`) where (`k1` in (...))")
           gather(concurrent=true)
-            indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` where (`k1` in (...))")
+            indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` force index(`test_index__what_if_k1`) where (`k1` in (...))")
 
 -
   sql: |
     select * from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq'  and o_custkey in (select c_custkey from customer where c_name = 'Customer#00000112')
 
   plan: |
+
     gather(concurrent=true)
       indexscan(tables="[0000-0003].orders__what_if_gsi_o_custkey_[00-15],customer_[00-15]", shardcount=16, sql="select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where ((`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq') and (`o_custkey` in (select `c_custkey` from `customer` as `customer` where (`c_name` = 'customer#00000112'))))")
+
 -
   sql: |
     SELECT * FROM customer left JOIN (select * from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') a ON o_custkey = c_custkey  WHERE c_name = 'Customer#00000112'
 
   plan: |
+
     gather(concurrent=true)
       indexscan(tables="[0000-0003].customer_[00-15],orders__what_if_gsi_o_custkey_[00-15]", shardcount=16, sql="select `customer`.`c_custkey`, `customer`.`c_name`, `customer`.`c_address`, `customer`.`c_nationkey`, `customer`.`c_phone`, `customer`.`c_acctbal`, `customer`.`c_mktsegment`, `customer`.`c_comment`, `t0`.`o_orderkey`, `t0`.`o_custkey`, `t0`.`o_orderstatus`, `t0`.`o_totalprice`, `t0`.`o_orderdate`, `t0`.`o_orderpriority`, `t0`.`o_clerk`, `t0`.`o_shippriority`, `t0`.`o_comment` from `customer` as `customer` left join (select `o_orderkey`, `o_custkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where (`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq')) as `t0` on (`customer`.`c_custkey` = `t0`.`o_custkey`) where (`customer`.`c_name` = 'customer#00000112')")
 
@@ -143,41 +150,26 @@
     SELECT * FROM customer where c_custkey in (select o_custkey from orders where o_comment != 'DEBkaZ9T2gdU00WQkYrvnvp3Rlrqrp32mIl2b4kq') and c_name = 'Customer#00000112'
 
   plan: |
+
     gather(concurrent=true)
       logicalview(tables="[0000-0003].customer_[00-15],orders__what_if_gsi_o_custkey_[00-15]", shardcount=16, sql="select `c_custkey`, `c_name`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` from `customer` as `customer` where ((`c_name` = 'customer#00000112') and (`c_custkey` in (select `o_custkey` from `orders__what_if_gsi_o_custkey` as `orders__what_if_gsi_o_custkey` where (`o_comment` <> 'debkaz9t2gdu00wqkyrvnvp3rlrqrp32mil2b4kq'))))")
 
-  # 3. order by 利用索引的顺序
 - sql: |
     select * from test_index order by k1 limit 10;
 
   plan: |
+
     mergesort(sort="k1 asc", offset=0, fetch=10)
-      indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` order by `k1` limit 10")
+      indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1` force index(`test_index__what_if_k1`) order by `k1` limit 10")
 
 - sql: |
     select * from test_index order by k2 limit 10;
 
   plan: |
+
     mergesort(sort="k2 asc", offset=0, fetch=10)
-      indexscan(tables="[0000-0003].test_index__what_if_gsi_k2", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k2` as `test_index__what_if_gsi_k2` order by `k2` limit 10")
+      indexscan(tables="[0000-0003].test_index__what_if_gsi_k2", shardcount=4, sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index__what_if_gsi_k2` as `test_index__what_if_gsi_k2` force index(`test_index__what_if_k2`) order by `k2` limit 10")
 
-  # 1.3. GSI DO NOT SUPPORT Index Merge recommendation
-#- sql: |
-#    select * from test_index where k2 = 10 or k1 = 10;
-#
-#  plan: |
-#    Project(id="id", k1="k1", k2="k2", value="value", d1="d1", d2="d2", d3="d3", d4="d4", d5="d5")
-#      BKAJoin(condition="id = id", type="inner")
-#        HashAgg(group="id")
-#          UnionAll(concurrent=true)
-#            Gather(concurrent=true)
-#              IndexScan(tables="optest_0000.test_index__what_if_gsi_k2", sql="SELECT `id` FROM `test_index__what_if_gsi_k2` AS `test_index__what_if_gsi_k2` WHERE (`k2` = 10)")
-#            Gather(concurrent=true)
-#              IndexScan(tables="optest_0000.test_index__what_if_gsi_k1", sql="SELECT `id` FROM `test_index__what_if_gsi_k1` AS `test_index__what_if_gsi_k1` WHERE (`k1` = 10)")
-#        Gather(concurrent=true)
-#          LogicalView(tables="[0000-0003].test_index", shardCount=4, sql="SELECT `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` FROM `test_index` AS `test_index` WHERE (((`k2` = 10) OR (`k1` = 10)) AND (`id` IN (...)))")
-
-  # 6. MIN/MAX 聚合函数利用索引
 - sql: |
     select min(k1), max(k1) from test_index;
 
@@ -185,13 +177,11 @@
     hashagg(min(k1)="min(min(k1))", max(k1)="max(max(k1))")
       gather(concurrent=true)
         indexscan(tables="[0000-0003].test_index__what_if_gsi_k1", shardcount=4, sql="select min(`k1`) as `min(k1)`, max(`k1`) as `max(k1)` from `test_index__what_if_gsi_k1` as `test_index__what_if_gsi_k1`")
-
-  # 7. GSI join index
 - sql: |
     /*+TDDL:cmd_extra(enable_post_planner=false)*/select a.*, b.k2,b.value from test_index a join test_index b on a.k1 = b.k2 where a.id = 1;
 
   plan: |
     bkajoin(condition="k2 = k1", type="inner")
-      logicalview(tables="optest_0001.test_index", sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index` as `test_index` where (`id` = 1)")
+      logicalview(tables="optest_0001.test_index", sql="select `id`, `k1`, `k2`, `value`, `d1`, `d2`, `d3`, `d4`, `d5` from `test_index` as `test_index` force index(`primary`) where (`id` = 1)")
       gather(concurrent=true)
-        indexscan(tables="[0000-0003].test_index__what_if_gsi_k2", shardcount=4, sql="select `k2`, `value` from `test_index__what_if_gsi_k2` as `test_index__what_if_gsi_k2` where (`k2` in (...))")
+        indexscan(tables="[0000-0003].test_index__what_if_gsi_k2", shardcount=4, sql="select `k2`, `value` from `test_index__what_if_gsi_k2` as `test_index__what_if_gsi_k2` force index(`test_index__what_if_k2`) where (`k2` in (...))")

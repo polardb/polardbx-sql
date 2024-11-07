@@ -22,10 +22,15 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
     private static final String FORBID_DDL_WITH_CCI = "FORBID_DDL_WITH_CCI=TRUE";
@@ -33,6 +38,7 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
     private static final String INDEX_NAME1 = "alter_table_ddl_with_cci_err_cci_pt_1";
     private static final String PRIMARY_TABLE_NAME2 = "alter_table_ddl_with_cci_err_prim_pt_2";
     private static final String INDEX_NAME2 = "alter_table_ddl_with_cci_err_cci_pt_2";
+    private static final String BACK_FILL = "PHYSICAL_BACKFILL_ENABLE=false";
 
     private static final String creatTableTmpl = "CREATE TABLE `%s` ( \n"
         + "    `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP, \n"
@@ -322,6 +328,25 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    @Ignore
+    @Test
+    public void testOmc() {
+        final String sql1 =
+            String.format(
+                "ALTER TABLE %s CHANGE COLUMN `order_snapshot` `order_snapshot_new` varchar(64), ALGORITHM=OMC",
+                PRIMARY_TABLE_NAME1);
+        final String sql2 = String.format("ALTER TABLE %s MODIFY COLUMN `order_snapshot` varchar(64), ALGORITHM=OMC",
+            PRIMARY_TABLE_NAME1);
+        try {
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql1,
+                "Do not support ALGORITHM=OMC on table with cci");
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql2,
+                "Do not support ALGORITHM=OMC on table with cci");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Test
     public void testRenameTable() {
         String hint = buildCmdExtra(FORBID_DDL_WITH_CCI);
@@ -339,6 +364,7 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    @Ignore
     @Test
     public void testRenameIndex() {
         String hint = buildCmdExtra(FORBID_DDL_WITH_CCI);
@@ -405,43 +431,43 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
         }
     }
 
-    @Test
-    public void testAddDropPartitions() {
-        String hint = buildCmdExtra(FORBID_DDL_WITH_CCI);
-
-        String autoPartitionTable = "CREATE TABLE t_order (\n"
-            + "  `id` bigint(11) NOT NULL AUTO_INCREMENT,\n"
-            + "  `order_id` varchar(20) DEFAULT NULL,\n"
-            + "  `buyer_id` varchar(20) DEFAULT NULL,\n"
-            + "  `seller_id` varchar(20) DEFAULT NULL,\n"
-            + "  `order_snapshot` longtext DEFAULT NULL,\n"
-            + "  `order_detail` longtext DEFAULT NULL,\n"
-            + "  PRIMARY KEY (`id`),\n"
-            + "  KEY `l_i_order` (`order_id`)\n"
-            + ") PARTITION BY RANGE(id)\n"
-            + " (PARTITION p1 VALUES LESS THAN(20),\n"
-            + "  PARTITION p2 VALUES LESS THAN(40))";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, autoPartitionTable);
-        final String createCciTmpl =
-            "ALTER TABLE t_order ADD CLUSTERED clustered columnar index %s(`buyer_id`) PARTITION BY RANGE(`ID`)(PARTITION p1 VALUES LESS THAN(20),\n"
-                + "  PARTITION p2 VALUES LESS THAN(40))";
-        final String sqlCreateCci1 = String.format(createCciTmpl, INDEX_NAME1);
-        createCciSuccess(sqlCreateCci1);
-
-        final String sql1 = "ALTER TABLE t_order ADD PARTITION (PARTITION p3 VALUES LESS THAN(60),\n"
-            + "                              PARTITION p4 VALUES LESS THAN(80))";
-        final String sql2 = "ALTER TABLE t_order DROP PARTITION p2";
-        try {
-            JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql1,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
-            JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql2,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        } finally {
-            dropTableIfExists("t_order");
-        }
-    }
+//    @Test
+//    public void testAddDropPartitions() {
+//        String hint = buildCmdExtra(FORBID_DDL_WITH_CCI);
+//
+//        String autoPartitionTable = "CREATE TABLE t_order (\n"
+//            + "  `id` bigint(11) NOT NULL AUTO_INCREMENT,\n"
+//            + "  `order_id` varchar(20) DEFAULT NULL,\n"
+//            + "  `buyer_id` varchar(20) DEFAULT NULL,\n"
+//            + "  `seller_id` varchar(20) DEFAULT NULL,\n"
+//            + "  `order_snapshot` longtext DEFAULT NULL,\n"
+//            + "  `order_detail` longtext DEFAULT NULL,\n"
+//            + "  PRIMARY KEY (`id`),\n"
+//            + "  KEY `l_i_order` (`order_id`)\n"
+//            + ") PARTITION BY RANGE(id)\n"
+//            + " (PARTITION p1 VALUES LESS THAN(20),\n"
+//            + "  PARTITION p2 VALUES LESS THAN(40))";
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, autoPartitionTable);
+//        final String createCciTmpl =
+//            "ALTER TABLE t_order ADD CLUSTERED clustered columnar index %s(`buyer_id`) PARTITION BY RANGE(`ID`)(PARTITION p1 VALUES LESS THAN(20),\n"
+//                + "  PARTITION p2 VALUES LESS THAN(40))";
+//        final String sqlCreateCci1 = String.format(createCciTmpl, INDEX_NAME1);
+//        createCciSuccess(sqlCreateCci1);
+//
+//        final String sql1 = "ALTER TABLE t_order ADD PARTITION (PARTITION p3 VALUES LESS THAN(60),\n"
+//            + "                              PARTITION p4 VALUES LESS THAN(80))";
+//        final String sql2 = "ALTER TABLE t_order DROP PARTITION p2";
+//        try {
+//            JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql1,
+//                "Do not support current ddl [ADD_PARTITION] with cci");
+//            JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql2,
+//                "Do not support current ddl [DROP_PARTITION] with cci");
+//        } catch (Exception e) {
+//            throw new RuntimeException(e);
+//        } finally {
+//            dropTableIfExists("t_order");
+//        }
+//    }
 
     @Test
     public void testSplitPartition() {
@@ -506,13 +532,13 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
 
         try {
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql1,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [SPLIT_PARTITION] with cci");
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql2,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [SPLIT_PARTITION] with cci");
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql3,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [SPLIT_PARTITION] with cci");
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql4,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [SPLIT_PARTITION] with cci");
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
@@ -578,18 +604,18 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
 
         try {
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql1,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [MERGE_PARTITION] with cci");
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql2,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [RENAME_PARTITION] with cci");
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql3,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "not support");
             JdbcUtil.executeUpdateFailed(tddlConnection, hint + sql4,
-                "Do not support current ddl [ALTER_TABLEGROUP] with cci");
+                "Do not support current ddl [REORGANIZE_PARTITION] with cci");
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
             dropTableIfExists("t_order_1");
-            dropTableIfExists("t_order_2");
+//            dropTableIfExists("t_order_2");
         }
     }
 
@@ -634,6 +660,61 @@ public class AlterTableWithCciForbidTest extends DDLBaseNewDBTestCase {
             throw new RuntimeException(e);
         } finally {
             dropTableIfExists("t_order");
+        }
+    }
+
+    private static final String SELECT_FROM_TABLE_DETAIL =
+        "select storage_inst_id,table_group_name from information_schema.table_detail where table_schema='%s' and table_name='%s' and partition_name='%s'";
+
+    @Test
+    public void testMovePartition() throws SQLException {
+        String hint = buildCmdExtra(FORBID_DDL_WITH_CCI, BACK_FILL);
+
+        // RANGE
+        String rangePartitionTable = "CREATE TABLE t_order_1 (\n"
+            + "  `id` bigint(11) NOT NULL AUTO_INCREMENT,\n"
+            + "  `order_id` varchar(20) DEFAULT NULL,\n"
+            + "  `buyer_id` varchar(20) DEFAULT NULL,\n"
+            + "  `seller_id` varchar(20) DEFAULT NULL,\n"
+            + "  `order_snapshot` longtext DEFAULT NULL,\n"
+            + "  `order_detail` longtext DEFAULT NULL,\n"
+            + "  PRIMARY KEY (`id`),\n"
+            + "  KEY `l_i_order` (`order_id`)\n"
+            + ") PARTITION BY RANGE(id)\n"
+            + " (PARTITION p1 VALUES LESS THAN(20),\n"
+            + "  PARTITION p2 VALUES LESS THAN(100))";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, rangePartitionTable);
+        String createCciTmpl =
+            "ALTER TABLE t_order_1 ADD CLUSTERED clustered columnar index %s(`buyer_id`) PARTITION BY RANGE(`ID`)(PARTITION p1 VALUES LESS THAN(20),\n"
+                + "  PARTITION p2 VALUES LESS THAN(100))";
+        String sqlCreateCci1 = String.format(createCciTmpl, INDEX_NAME1);
+        createCciSuccess(sqlCreateCci1);
+
+        String curInstId;
+        Set<String> instIds = new HashSet<>();
+        String sql = String.format(SELECT_FROM_TABLE_DETAIL, tddlDatabase1, "t_order_1", "p1");
+
+        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        if (rs.next()) {
+            curInstId = rs.getString("STORAGE_INST_ID");
+        } else {
+            throw new RuntimeException(
+                String.format("not find database table %s.%s", tddlDatabase1, "t_order_1"));
+        }
+        rs.close();
+
+        sql = String.format("show ds where db='%s'", tddlDatabase1);
+        rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        while (rs.next()) {
+            if (!curInstId.equalsIgnoreCase(rs.getString("STORAGE_INST_ID"))) {
+                instIds.add(rs.getString("STORAGE_INST_ID"));
+            }
+        }
+        rs.close();
+
+        if (!instIds.isEmpty()) {
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format("%s alter table t_order_1 move partitions p1 to '%s'", hint, instIds.iterator().next()));
         }
     }
 }

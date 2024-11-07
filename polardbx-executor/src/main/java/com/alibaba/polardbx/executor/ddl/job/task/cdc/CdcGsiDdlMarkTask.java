@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -41,7 +42,7 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 @TaskName(name = "CdcGsiDdlMarkTask")
 @Getter
 @Setter
-public class CdcGsiDdlMarkTask extends BaseDdlTask {
+public class CdcGsiDdlMarkTask extends BaseCdcTask {
 
     private final PhysicalPlanData physicalPlanData;
     private String originalDdl;

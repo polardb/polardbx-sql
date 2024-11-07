@@ -32,6 +32,7 @@ import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.CheckerManager.CheckerReport;
 import com.alibaba.polardbx.executor.gsi.CheckerManager.CheckerReportStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarColumnEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarPartitionEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
@@ -139,8 +140,8 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
         // 3. Check columnar index related meta
         reports.addAll(checkCciTableAndColumnEvolution(blackboard));
 
-        // 4. Check CDC mark
-        reports.addAll(checkCdcDdlMark(blackboard));
+        // 4. Check Create CCI CDC mark
+        reports.addAll(checkCreateCciCdcDdlMark(blackboard));
 
         // 5. Check CCI partitioning (table partition, table group)
         reports.addAll(checkCciPartitioning(blackboard));
@@ -341,11 +342,63 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
                 .report());
         }
 
+        final List<ColumnarTableMappingRecord> columnarTableMappingRecords =
+            blackboard.queryColumnarTableMapping(schemaName, tableName, indexName);
+
+        // Check table mapping status
+        final ColumnarTableMappingRecord columnarTableMapping = columnarTableMappingRecords.get(0);
+        final long indexTableId = columnarTableMapping.tableId;
+        final long latestVersionId = columnarTableMapping.latestVersionId;
+        final List<ColumnarTableEvolutionRecord> tableEvolutionRecords =
+            blackboard.queryColumnarTableEvolution(indexTableId, latestVersionId);
+
+        // Check columnar partition evolution records
+        final List<ColumnarPartitionEvolutionRecord> actualColumnarPartitionEvoRecords =
+            blackboard.queryColumnarPartitionEvolution(tableEvolutionRecords.get(0).partitions);
+        if (actualColumnarPartitionEvoRecords.isEmpty()) {
+            reports.add(
+                createReportRecord(
+                    ReportErrorType.MISSING_COLUMNAR_PARTITION_EVOLUTION_META,
+                    CheckerReportStatus.FOUND,
+                    String.format(
+                        "Missing columnar partition evolution meta of index %s.%s.%s",
+                        schemaName, tableName, indexName)));
+            return reports;
+        }
+
+        // Column meta of column store (actual)
+        // map<fieldId, list<id, columnsRecord>>
+        final Map<Long, List<Pair<Long, TablePartitionRecord>>> colEvoMap = new HashMap<>();
+        // map<columnName, fieldId>
+        final Map<String, Long> actualColumnNameFieldIdMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        actualColumnarPartitionEvoRecords.forEach(ccer -> {
+            actualColumnNameFieldIdMap.put(ccer.partitionRecord.partName, ccer.id);
+            colEvoMap
+                .computeIfAbsent(ccer.id, k -> new ArrayList<>())
+                .add(Pair.of(ccer.id, ccer.partitionRecord));
+        });
+        // map<fieldId, columnsRecord>
+        final Map<Long, Pair<Long, TablePartitionRecord>> actualColLatestMap = new HashMap<>();
+        colEvoMap.forEach((id, partitionRecordPair) ->
+            partitionRecordPair
+                .stream()
+                .max(Comparator.comparing(Pair::getKey))
+                .ifPresent(cr -> actualColLatestMap.put(id, cr)));
+        // map<columnName, columnsRecord>
+        final ImmutableConcatMap<String, Long, Pair<Long, TablePartitionRecord>> actualColumnRecordMap =
+            new ImmutableConcatMap<>(actualColumnNameFieldIdMap, actualColLatestMap);
+
+        // Check columnar column evolution records (reverseOrder)
+        reports.addAll(checkPartitionEvolutionRecords(partitionRecords, actualColumnRecordMap));
+
+        // Check columnar table evolution records
+        reports.addAll(checkTableEvolutionPartitionRecord(tableEvolutionRecords.get(0), actualColLatestMap));
+
         return reports;
     }
 
     @NotNull
-    private List<CheckerReport> checkCdcDdlMark(Blackboard blackboard) {
+    private List<CheckerReport> checkCreateCciCdcDdlMark(Blackboard blackboard) {
         final List<CheckerReport> reports = new ArrayList<>();
 
         final List<ColumnarTableMappingRecord> columnarTableMappingRecords =
@@ -354,10 +407,10 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
         // Table mapping has been checked in #checkCciTableAndColumnEvolution
         final ColumnarTableMappingRecord columnarTableMapping = columnarTableMappingRecords.get(0);
         final long indexTableId = columnarTableMapping.tableId;
-        final long latestVersionId = columnarTableMapping.latestVersionId;
 
         final ColumnarTableEvolutionRecord columnarTableEvolutionRecord =
-            blackboard.queryColumnarTableEvolution(indexTableId, latestVersionId).get(0);
+            blackboard.queryColumnarTableEvolution(indexTableId).get(0);
+        long versionId = columnarTableEvolutionRecord.versionId;
         final long ddlJobId = columnarTableEvolutionRecord.ddlJobId;
 
         final List<CdcDdlRecord> cdcDdlRecords = CdcManagerHelper.getInstance().queryDdlByJobId(ddlJobId);
@@ -408,7 +461,7 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
 
         // Check CREATE INDEX / CREATE TABLE statement
         final String ddlSql = ddlExtInfo.getOriginalDdl();
-        reports.addAll(checkCreateCciSql(ddlSql, latestVersionId, blackboard));
+        reports.addAll(checkCreateCciSql(ddlSql, versionId, blackboard));
 
         return reports;
     }
@@ -727,18 +780,18 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
         // map<columnName, fieldId>
         final Map<String, Long> actualColumnNameFieldIdMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         actualColumnarColumnEvoRecords.forEach(ccer -> {
-            actualColumnNameFieldIdMap.put(ccer.columnsRecord.columnName, ccer.fieldId);
+            actualColumnNameFieldIdMap.put(ccer.columnsRecord.columnName, ccer.id);
             colEvoMap
-                .computeIfAbsent(ccer.fieldId, k -> new ArrayList<>())
+                .computeIfAbsent(ccer.id, k -> new ArrayList<>())
                 .add(Pair.of(ccer.id, ccer.columnsRecord));
         });
         // map<fieldId, columnsRecord>
         final Map<Long, Pair<Long, ColumnsRecord>> actualColLatestMap = new HashMap<>();
-        colEvoMap.forEach((fieldId, columnarRecordPair) ->
+        colEvoMap.forEach((id, columnarRecordPair) ->
             columnarRecordPair
                 .stream()
                 .max(Comparator.comparing(Pair::getKey))
-                .ifPresent(cr -> actualColLatestMap.put(fieldId, cr)));
+                .ifPresent(cr -> actualColLatestMap.put(id, cr)));
         // map<columnName, columnsRecord>
         final ImmutableConcatMap<String, Long, Pair<Long, ColumnsRecord>> actualColumnRecordMap =
             new ImmutableConcatMap<>(actualColumnNameFieldIdMap, actualColLatestMap);
@@ -747,7 +800,7 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
         reports.addAll(checkColumnEvolutionRecords(expectedColumnRecords, actualColumnRecordMap));
 
         // Check columnar table evolution records
-        reports.addAll(checkTableEvolutionRecord(tableEvolutionRecords.get(0), actualColLatestMap));
+        reports.addAll(checkTableEvolutionColumnRecord(tableEvolutionRecords.get(0), actualColLatestMap));
 
         return reports;
     }
@@ -792,8 +845,47 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
     }
 
     @NotNull
-    private List<CheckerReport> checkTableEvolutionRecord(ColumnarTableEvolutionRecord tableEvolutionRecord,
-                                                          Map<Long, Pair<Long, ColumnsRecord>> colLatestMap) {
+    private List<CheckerReport> checkPartitionEvolutionRecords(List<TablePartitionRecord> partitions,
+                                                               Map<String, Pair<Long, TablePartitionRecord>> expectedMap) {
+        return CheckerBuilder
+            .stringKeyListChecker(partitions, expectedMap, true)
+            .withReverseOrderCheck()
+            .withActualKeyGenerator(a -> a.partName)
+            .withExpectedKeyGenerator(e -> e.getValue().partName)
+            .withDefValidator((a, e) -> equalsPartitionRecord(a, e.getValue()))
+            .withOrdValidator((a, e) -> a.partPosition == e.getValue().partPosition)
+            .withOrphanReporter(msgs -> createReportRecord(
+                ReportErrorType.ORPHAN_COLUMNAR_PARTITION_EVOLUTION_META,
+                CheckerReportStatus.FOUND,
+                String.format(
+                    "Orphan partition evolution meta found for partition: %s",
+                    String.join(",", msgs))))
+            .withMissingReporter(msgs -> createReportRecord(
+                ReportErrorType.MISSING_COLUMNAR_PARTITION_EVOLUTION_META,
+                CheckerReportStatus.FOUND,
+                String.format(
+                    "Missing partition evolution meta for partition: %s",
+                    String.join(",", msgs))))
+            .withInvalidateDefReporter(msgs -> createReportRecord(
+                ReportErrorType.UNMATCHED_COLUMNAR_PARTITION_EVOLUTION_DEFINITION,
+                CheckerReportStatus.FOUND,
+                String.format(
+                    "Unmatched partition evolution definition found for partition: %s",
+                    String.join(",", msgs))))
+            .withInvalidateOrdReporter(msgs -> createReportRecord(
+                ReportErrorType.UNMATCHED_COLUMNAR_PARTITION_EVOLUTION_ORDER,
+                CheckerReportStatus.FOUND,
+                String.format(
+                    "Unmatched partition evolution order found for partition: %s",
+                    String.join(",", msgs))))
+            .build()
+            .check()
+            .report();
+    }
+
+    @NotNull
+    private List<CheckerReport> checkTableEvolutionColumnRecord(ColumnarTableEvolutionRecord tableEvolutionRecord,
+                                                                Map<Long, Pair<Long, ColumnsRecord>> colLatestMap) {
         return CheckerBuilder
             .listChecker(tableEvolutionRecord.columns, colLatestMap)
             .withActualKeyGenerator(Ord::getValue)
@@ -823,6 +915,37 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
                 CheckerReportStatus.FOUND,
                 String.format(
                     "Unmatched table evolution column order found for column: %s",
+                    String.join(",", msgs))))
+            .build()
+            .check()
+            .report();
+    }
+
+    @NotNull
+    private List<CheckerReport> checkTableEvolutionPartitionRecord(ColumnarTableEvolutionRecord tableEvolutionRecord,
+                                                                   Map<Long, Pair<Long, TablePartitionRecord>> colLatestMap) {
+        return CheckerBuilder
+            .listChecker(tableEvolutionRecord.partitions, colLatestMap)
+            .withActualKeyGenerator(Ord::getValue)
+            .withExpectedKeyGenerator(Pair::getKey)
+            .withMissingMsgFromExpectedGenerator(
+                e -> String.format("%s[%s]", e.getValue().partName, e.getValue().partPosition))
+            .withInvalidateOrdMsgGenerator((a, e) -> String.format("%s[%s](%s -> %s)",
+                e.getValue().partName,
+                a.getValue(),
+                e.getValue().partPosition,
+                a.getKey() + 1))
+            .withOrphanReporter(msgs -> createReportRecord(
+                ReportErrorType.ORPHAN_COLUMNAR_TABLE_EVOLUTION_FIELD_ID,
+                CheckerReportStatus.FOUND,
+                String.format(
+                    "Orphan table evolution field id found for partition: %s",
+                    String.join(",", msgs))))
+            .withMissingReporter(msgs -> createReportRecord(
+                ReportErrorType.MISSING_COLUMNAR_TABLE_EVOLUTION_FIELD_ID,
+                CheckerReportStatus.FOUND,
+                String.format(
+                    "Missing table evolution field id for partition: %s",
                     String.join(",", msgs))))
             .build()
             .check()
@@ -978,7 +1101,7 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
             .report();
     }
 
-    private boolean equalsColumnRecord(ColumnsRecord left, ColumnsRecord right) {
+    public static boolean equalsColumnRecord(ColumnsRecord left, ColumnsRecord right) {
         if (null == left || null == right) {
             return false;
         }
@@ -992,6 +1115,14 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
             && TStringUtil.equals(left.characterSetName, right.characterSetName)
             && TStringUtil.equals(left.collationName, right.collationName)
             && TStringUtil.equals(left.extra, right.extra);
+    }
+
+    private boolean equalsPartitionRecord(TablePartitionRecord left, TablePartitionRecord right) {
+        if (null == left || null == right) {
+            return false;
+        }
+
+        return TablePartitionRecord.isPartitionRecordEqual(left, right);
     }
 
     private boolean validateIndexRecord(ColumnsRecord primaryColumnDef, IndexesRecord indexColumnDef) {
@@ -1036,8 +1167,12 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
 
         private final Map<Pair<Long, Long>, List<ColumnarTableEvolutionRecord>> queryColumnarTableEvolutionCache =
             new HashMap<>();
+        private final Map<Long, List<ColumnarTableEvolutionRecord>> queryColumnarTableEvolutionCache1 =
+            new HashMap<>();
         private final Map<List<Long>, List<ColumnarColumnEvolutionRecord>>
             queryColumnarColumnEvolutionCache = new HashMap<>();
+        private final Map<List<Long>, List<ColumnarPartitionEvolutionRecord>>
+            queryColumnarPartitionEvolutionCache = new HashMap<>();
         private final Map<Pair<String, String>, List<TablePartitionRecord>> queryTablePartitionCache = new HashMap<>();
         private final Map<Long, List<TableGroupRecord>> queryTableGroupCache = new HashMap<>();
         private final Map<Long, List<PartitionGroupRecord>> queryPartitionGroupCache = new HashMap<>();
@@ -1076,10 +1211,22 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
                 k -> tableInfoManager.queryColumnarTableMapping(k.getLeft(), k.getMiddle(), k.getRight()));
         }
 
+        public List<ColumnarPartitionEvolutionRecord> queryColumnarPartitionEvolution(List<Long> fieldIdList) {
+            return queryColumnarPartitionEvolutionCache.computeIfAbsent(
+                fieldIdList,
+                tableInfoManager::queryColumnarPartitionEvolution);
+        }
+
         public List<ColumnarColumnEvolutionRecord> queryColumnarColumnEvolution(List<Long> fieldIdList) {
             return queryColumnarColumnEvolutionCache.computeIfAbsent(
                 fieldIdList,
                 tableInfoManager::queryColumnarColumnEvolution);
+        }
+
+        public List<ColumnarTableEvolutionRecord> queryColumnarTableEvolution(long indexTableId) {
+            return queryColumnarTableEvolutionCache1.computeIfAbsent(
+                indexTableId,
+                p -> tableInfoManager.queryColumnarTableEvolutionFirst(indexTableId));
         }
 
         public List<ColumnarTableEvolutionRecord> queryColumnarTableEvolution(long indexTableId, long versionId) {
@@ -1131,6 +1278,10 @@ public class CheckCciMetaTask extends CheckCciBaseTask {
         ORPHAN_COLUMNAR_COLUMN_EVOLUTION_META,
         UNMATCHED_COLUMNAR_COLUMN_EVOLUTION_DEFINITION,
         UNMATCHED_COLUMNAR_COLUMN_EVOLUTION_ORDER,
+        MISSING_COLUMNAR_PARTITION_EVOLUTION_META,
+        ORPHAN_COLUMNAR_PARTITION_EVOLUTION_META,
+        UNMATCHED_COLUMNAR_PARTITION_EVOLUTION_DEFINITION,
+        UNMATCHED_COLUMNAR_PARTITION_EVOLUTION_ORDER,
         MISSING_COLUMNAR_TABLE_EVOLUTION_FIELD_ID,
         ORPHAN_COLUMNAR_TABLE_EVOLUTION_FIELD_ID,
         MISSING_CDC_MARK_CREATE_INDEX,

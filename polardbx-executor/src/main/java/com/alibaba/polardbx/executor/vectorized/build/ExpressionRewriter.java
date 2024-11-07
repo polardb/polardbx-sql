@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.vectorized.build;
 
+import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -29,6 +30,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.expression.calc.DynamicParamExpression;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
@@ -39,9 +41,11 @@ import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.SqlTypeName;
+import org.apache.calcite.sql.type.SqlTypeUtil;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -54,6 +58,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.apache.calcite.sql.type.SqlTypeName.BIGINT;
+import static org.apache.calcite.sql.type.SqlTypeName.CHAR;
+import static org.apache.calcite.sql.type.SqlTypeName.VARCHAR;
 
 /**
  * Rewrite the expression tree to fit the vectorized framework.
@@ -67,6 +73,7 @@ public class ExpressionRewriter {
     private final boolean fallback;
     private final boolean enableCSE;
     private ExprContextProvider contextProvider;
+    private RexConstantFoldShuttle constantFoldShuttle;
 
     public ExpressionRewriter(ExecutionContext executionContext) {
         this.executionContext = executionContext;
@@ -75,6 +82,16 @@ public class ExpressionRewriter {
         this.enableCSE =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_COMMON_SUB_EXPRESSION_TREE_ELIMINATE);
         this.contextProvider = new ExprContextProvider(executionContext);
+        this.constantFoldShuttle = new RexConstantFoldShuttle(REX_BUILDER, executionContext);
+    }
+
+    public RexCall rewriteConstFold(RexCall call) {
+        RexNode newNode = call.accept(constantFoldShuttle);
+        if (newNode instanceof RexCall) {
+            return (RexCall) newNode;
+        }
+        // fail to const fold.
+        return call;
     }
 
     public RexCall rewrite(RexCall call, boolean isScalar) {
@@ -88,7 +105,8 @@ public class ExpressionRewriter {
             || call.op == TddlOperatorTable.DATE_SUB
             || call.op == TddlOperatorTable.SUBDATE) {
             return rewriteTemporalCalc(call);
-        } else if (!isScalar && !fallback && call.op == TddlOperatorTable.IN) {
+        } else if (!isScalar && !fallback &&
+            (call.op == TddlOperatorTable.IN || call.op == TddlOperatorTable.NOT_IN)) {
             return rewriteIn(call);
         } else if (enableCSE && call.op == TddlOperatorTable.OR) {
             return rewriteOr(call);
@@ -492,33 +510,6 @@ public class ExpressionRewriter {
         return rexCall;
     }
 
-    /**
-     * rewrite CASE operator to IF operator.
-     * CASE WHEN cond1 THEN expr1
-     * WHEN cond2 THEN expr2
-     * ...
-     * ELSE exprN
-     * END
-     * =>
-     * IF = IF1
-     * IF1 = (cond1, expr1, IF2)
-     * IFI = (condI, exprI, IFI+1)
-     * I < N
-     */
-    private RexNode makeCaseOperator(final RelDataType type, final List<RexNode> exprList, int startIndex) {
-        RexNode elseNode = startIndex + 2 == exprList.size() - 1 ?
-            exprList.get(startIndex + 2) :
-            makeCaseOperator(type, exprList, startIndex + 2);
-
-        List<RexNode> newExprList = ImmutableList.of(
-            exprList.get(startIndex),
-            exprList.get(startIndex + 1),
-            elseNode
-        );
-        RexNode rexNode = REX_BUILDER.makeCall(type, TddlOperatorTable.IF, newExprList);
-        return rexNode;
-    }
-
     private Object extractDynamicValue(RexDynamicParam dynamicParam) {
         // pre-compute the dynamic value when binging expression.
         DynamicParamExpression dynamicParamExpression =
@@ -526,6 +517,78 @@ public class ExpressionRewriter {
                 dynamicParam.getSubIndex(), dynamicParam.getSkIndex());
 
         return dynamicParamExpression.eval(null, executionContext);
+    }
+
+    private static class RexConstantFoldShuttle extends RexShuttle {
+        RexBuilder rexBuilder;
+
+        ExecutionContext ec;
+
+        RexConstantFoldShuttle(RexBuilder rexBuilder, ExecutionContext ec) {
+            this.rexBuilder = rexBuilder;
+            this.ec = ec;
+        }
+
+        private boolean isTypeAllowed(RelDataType relDataType) {
+            if (relDataType == null) {
+                return false;
+            }
+
+            // Unable to guarantee the correctness of the return value for scalar functions of the time type.
+            if (SqlTypeUtil.isTime(relDataType)) {
+                return false;
+            }
+
+            // Do not accept certain data types, such as Binary, Varbinary, Interval.
+            return SqlTypeUtil.isNumeric(relDataType)
+                || SqlTypeUtil.isDatetime(relDataType)
+                || SqlTypeUtil.isCharTypes(relDataType);
+        }
+
+        @Override
+        public RexNode visitCall(final RexCall call) {
+            if (!isTypeAllowed(call.getType())) {
+                return call;
+            }
+            if (RexUtil.isConstant(call)) {
+                Object obj = RexUtils.getEvalFuncExec(call, new ExprContextProvider(ec)).eval(null);
+                if (obj instanceof RowValue) {
+                    return super.visitCall(call);
+                }
+
+                try {
+                    RelDataType relDataType = call.getType();
+                    SqlTypeName sqlTypeName = relDataType.getSqlTypeName();
+                    switch (sqlTypeName) {
+                    case DATE:
+                    case TIMESTAMP:
+                    case DATETIME:
+                    case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                        // String constants should be accepted as char type,
+                        // and many vectorized expressions only accept char type constants as well.
+                    case VARCHAR:
+                    case CHAR:
+                        String str = DataTypes.StringType.convertFrom(obj);
+                        if (str == null) {
+                            return rexBuilder.makeCharNullLiteral();
+                        }
+                        return rexBuilder.makeLiteral(str);
+
+                    default:
+                        if (obj == null) {
+                            // sqlTypeName cannot be Char.
+                            return rexBuilder.makeLiteral(
+                                null, relDataType, sqlTypeName
+                            );
+                        }
+                        return rexBuilder.makeLiteral(obj, relDataType, true);
+                    }
+                } catch (AssertionError e) {
+                    return super.visitCall(call);
+                }
+            }
+            return super.visitCall(call);
+        }
     }
 
 }

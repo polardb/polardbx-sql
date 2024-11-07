@@ -1,4 +1,4 @@
-FROM polardbx/polardbxbasejava:20221129
+FROM polardbx-opensource-registry.cn-beijing.cr.aliyuncs.com/polardbx/polardbxbasejava:20221129
 
 WORKDIR /home/admin
 

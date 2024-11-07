@@ -20,7 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
-import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -41,20 +41,22 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 @TaskName(name = "CdcModifyPartitionKeyMarkTask")
 @Getter
 @Setter
-public class CdcModifyPartitionKeyMarkTask extends BaseDdlTask {
+public class CdcModifyPartitionKeyMarkTask extends BaseCdcTask {
     private String logicalTableName;
     private String indexName;
     private SqlKind sqlKind;
     private Map<String, String> exchangeNamesMapping;
+    private long versionId;
 
     @JSONCreator
     public CdcModifyPartitionKeyMarkTask(String schemaName, String logicalTableName, String indexName,
-                                         SqlKind sqlKind, Map<String, String> exchangeNamesMapping) {
+                                         SqlKind sqlKind, Map<String, String> exchangeNamesMapping, long versionId) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.indexName = indexName;
         this.sqlKind = sqlKind;
         this.exchangeNamesMapping = exchangeNamesMapping;
+        this.versionId = versionId;
     }
 
     @Override
@@ -76,8 +78,15 @@ public class CdcModifyPartitionKeyMarkTask extends BaseDdlTask {
 
         TableMeta indexTableMeta = executionContext.getSchemaManager().getTable(indexName);
         CdcManagerHelper.getInstance()
-            .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlContext.getDdlStmt(),
+            .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), getDdlStmt(ddlContext.getDdlStmt(), versionId),
                 ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public, param,
                 true, indexTableMeta.getLatestTopology());
+    }
+
+    private String getDdlStmt(String ddl, Long versionId) {
+        if (CdcMarkUtil.isVersionIdInitialized(versionId)) {
+            return CdcMarkUtil.buildVersionIdHint(versionId) + ddl;
+        }
+        return ddl;
     }
 }

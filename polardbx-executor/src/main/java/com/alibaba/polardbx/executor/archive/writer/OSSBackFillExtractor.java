@@ -30,6 +30,8 @@ import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.partition.BackfillExtraFieldJSON;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
@@ -47,6 +49,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_RANDOM_BACKFILL_EXCEPTION;
@@ -224,6 +227,7 @@ public class OSSBackFillExtractor extends Extractor {
     @Override
     protected List<GsiBackfillManager.BackfillObjectRecord> splitAndInitUpperBound(final ExecutionContext baseEc,
                                                                                    final long ddlJobId,
+                                                                                   final long taskId,
                                                                                    final String dbIndex,
                                                                                    final String phyTable,
                                                                                    final List<Integer> primaryKeysId) {
@@ -255,7 +259,7 @@ public class OSSBackFillExtractor extends Extractor {
 
         final List<Map<Integer, ParameterContext>> upperBound = executePhysicalPlan(baseEc, plan);
 
-        return getBackfillObjectRecords(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId, upperBound, "");
+        return getBackfillObjectRecords(baseEc, ddlJobId, taskId, dbIndex, phyTable, primaryKeysId, upperBound, "");
     }
 
     /**
@@ -266,9 +270,10 @@ public class OSSBackFillExtractor extends Extractor {
      */
     public Extractor loadBackfillMetaRestart(ExecutionContext ec) {
         Long backfillId = ec.getBackfillId();
+        Long taskId = Optional.ofNullable(ec.getTaskId()).orElse(backfillId);
 
         // Init position mark with upper bound
-        final List<GsiBackfillManager.BackfillObjectRecord> initBfoList = initAllUpperBound(ec, backfillId);
+        final List<GsiBackfillManager.BackfillObjectRecord> initBfoList = initAllUpperBound(ec, backfillId, taskId);
 
         doRestartWithRetry(5, backfillId, initBfoList);
 
@@ -318,6 +323,9 @@ public class OSSBackFillExtractor extends Extractor {
                     final GsiBackfillManager.BackfillObjectRecord logicalBfo = bfo.copy();
                     logicalBfo.setPhysicalDb(null);
                     logicalBfo.setPhysicalTable(null);
+                    BackfillExtraFieldJSON extraJson = BackfillExtraFieldJSON.fromJson(bfo.getExtra());
+                    extraJson.setLogical(true);
+                    logicalBfo.setExtra(BackfillExtraFieldJSON.toJson(extraJson));
                     initBackfillObjects.add(0, logicalBfo);
                 }
 

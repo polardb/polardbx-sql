@@ -108,8 +108,8 @@ idx_order_$,CREATE TABLE `idx_order_$` (
 	`x` int(11) NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`, `gmt_modified`)
+	PRIMARY KEY (`x`, `gmt_modified`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS #@#
@@ -146,8 +146,8 @@ Table,Create Table
 idx_order2_$,CREATE TABLE `idx_order2_$` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS #@#
@@ -191,8 +191,8 @@ Table,Create Table
 idx_order2_$,CREATE TABLE `idx_order2_$` (
 	`order_id` varchar(20) DEFAULT NULL,
 	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS #@#

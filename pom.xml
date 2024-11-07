@@ -60,23 +60,23 @@
         <revision>${polardbx.version}-SNAPSHOT</revision>
         <!-- Log libs -->
         <slf4j_version>1.7.21</slf4j_version>
-        <jcl_version>1.1</jcl_version>
-        <log4j_version>1.2.16</log4j_version>
-        <logback_version>1.2.8</logback_version>
-        <groovy_version>2.4.21</groovy_version>
+        <logback_version>1.2.3</logback_version>
+        <groovy_version>2.1.9</groovy_version>
+        <spring_version>2.5.6.SEC03</spring_version>
         <mysql_connector_version>5.1.49</mysql_connector_version>
         <!-- Test libs -->
+        <junit_version>4.12</junit_version>
         <lombok.version>1.18.10</lombok.version>
-        <jackson.version>2.13.3</jackson.version>
+        <jackson.version>2.13.1</jackson.version>
 
         <open.jdk.version>0.2</open.jdk.version>
         <sigar.version>1.6.4</sigar.version>
-        <jul-to.version>1.7.26</jul-to.version>
+        <jul-to.version>1.7.9</jul-to.version>
 
         <javax.servlet-api.version>3.1.0</javax.servlet-api.version>
         <stream.version>2.9.5</stream.version>
         <sum.tools.version>1.8</sum.tools.version>
-        <snakeyaml.version>1.31</snakeyaml.version>
+        <snakeyaml.version>1.21</snakeyaml.version>
         <unitrouter.version>1.0.11-SNAPSHOT</unitrouter.version>
         <java-ipv6.version>0.17</java-ipv6.version>
 
@@ -87,15 +87,14 @@
         <google.guice.version>5.1.0</google.guice.version>
         <javax.inject.version>1</javax.inject.version>
         <joda-to-java-time-bridge.version>3</joda-to-java-time-bridge.version>
-        <aircompressor.version>0.16</aircompressor.version>
-        <resolver.version>1.6</resolver.version>
+        <aircompressor.version>0.21</aircompressor.version>
         <airline.version>0.7</airline.version>
         <discovery.version>1.30</discovery.version>
         <drill.freemarker.maven.plugin.version>1.17.0</drill.freemarker.maven.plugin.version>
         <codegen.compile.skip>false</codegen.compile.skip>
         <codegen.clean.skip>false</codegen.clean.skip>
         <codegen.phase>generate-sources</codegen.phase>
-        <org.roaringbitmap.version>0.9.31</org.roaringbitmap.version>
+        <org.roaringbitmap.version>1.2.1</org.roaringbitmap.version>
 
         <!-- calcite -->
         <calcite.version>1.11.0-SNAPSHOT</calcite.version>
@@ -105,7 +104,7 @@
         <commons-dbcp.version>1.4</commons-dbcp.version>
         <commons-lang3.version>3.8.1</commons-lang3.version>
         <commons-codec.version>1.11</commons-codec.version>
-        <cronutils.version>9.1.6</cronutils.version>
+        <cronutils.version>9.1.3</cronutils.version>
         <jsr305.version>1.3.9</jsr305.version>
         <h2.version>1.4.185</h2.version>
         <sketches-core.version>0.9.0</sketches-core.version>
@@ -115,7 +114,7 @@
         <foodmart-queries.version>0.4.1</foodmart-queries.version>
         <quidem.version>0.8</quidem.version>
         <scott-data-hsqldb.version>0.1</scott-data-hsqldb.version>
-        <janino.version>3.0.8</janino.version>
+        <janino.version>3.1.6</janino.version>
         <java-diff.version>1.1</java-diff.version>
         <hamcrest-core.version>1.3</hamcrest-core.version>
         <sqlline.version>1.1.9</sqlline.version>
@@ -143,33 +142,33 @@
         <jackson-mapper-asl.version>1.9.13</jackson-mapper-asl.version>
         <dtafEx.version>0.0.2-SNAPSHOT</dtafEx.version>
         <ddl-parser.version>1.0.2</ddl-parser.version>
-        <hamcrest.version>2.2</hamcrest.version>
+        <test.junit.hamcrest.version>1.1</test.junit.hamcrest.version>
         <sshtester.version>0.2.8</sshtester.version>
         <xml-apis.version>1.4.01</xml-apis.version>
+        <jetty.version>9.4.20.v20190813</jetty.version>
 
         <mockito.verison>3.12.4</mockito.verison>
         <spring_version>2.5.6.SEC03</spring_version>
         <powermock.version>2.0.2</powermock.version>
         <equalsverifier.version>3.16</equalsverifier.version>
         <byte-buddy.version>1.9.3</byte-buddy.version>
+        <jacoco.version>0.8.7</jacoco.version>
 
         <!-- for common -->
-        <commons-beanutils.version>1.9.4</commons-beanutils.version>
+        <commons-beanutils.version>1.9.2</commons-beanutils.version>
         <commons-lang.version>2.6</commons-lang.version>
-        <commons-io.version>2.7</commons-io.version>
-        <commons-pool.version>1.6</commons-pool.version>
-        <guava.version>30.1.1-jre</guava.version>
+        <commons-io.version>2.4</commons-io.version>
+        <fileupload.version>1.3.1</fileupload.version>
+        <guava.version>27.0.1-jre</guava.version>
         <fastjson.version>1.2.83</fastjson.version>
         <druid.version>1.2.8</druid.version>
         <cglib-nodep.version>3.1</cglib-nodep.version>
-        <jdom.version>2.0.2</jdom.version>
         <ibatis-sqlmap.version>2.3.4.726</ibatis-sqlmap.version>
         <ajdk-api.version>8.8.13-0-0</ajdk-api.version>
         <netty.version>4.1.44.Final</netty.version>
         <protobuf.version>3.11.1</protobuf.version>
         <protobuf-java-format.version>1.4</protobuf-java-format.version>
         <grpc.version>1.30.0</grpc.version>
-        <hadoop-client.version>3.2.4</hadoop-client.version>
 
         <!-- for common -->
         <log4j-api.version>2.5</log4j-api.version>
@@ -177,9 +176,8 @@
         <commons-dbutils.version>1.6</commons-dbutils.version>
         <joda-time.version>2.9.9</joda-time.version>
         <jmh-core.version>1.21</jmh-core.version>
-        <hive-serde.version>3.0.0</hive-serde.version>
         <trove4j.version>3.0.3</trove4j.version>
-        <aliyun-sdk-oss.version>2.8.2</aliyun-sdk-oss.version>
+        <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
         <odps-sdk-udf.version>0.17.3</odps-sdk-udf.version>
         <nfs-client.version>1.1.0</nfs-client.version>
         <caffeine.version>2.9.3</caffeine.version>
@@ -209,7 +207,52 @@
 
     <dependencyManagement>
         <dependencies>
+
+            <dependency>
+                <groupId>com.aliyun.oss</groupId>
+                <artifactId>aliyun-sdk-oss</artifactId>
+                <version>${aliyun-sdk-oss.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <artifactId>commons-logging</artifactId>
+                        <groupId>commons-logging</groupId>
+                    </exclusion>
+
+                    <exclusion>
+                        <artifactId>org.jdom</artifactId>
+                        <groupId>jdom2</groupId>
+                    </exclusion>
+
+                    <exclusion>
+                        <groupId>org.codehaus.jettison</groupId>
+                        <artifactId>jettison</artifactId>
+                    </exclusion>
+
+                    <exclusion>
+                        <groupId>com.aliyun</groupId>
+                        <artifactId>aliyun-java-sdk-ram</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.aliyun</groupId>
+                        <artifactId>aliyun-java-sdk-sts</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.aliyun</groupId>
+                        <artifactId>aliyun-java-sdk-ecs</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.aliyun</groupId>
+                        <artifactId>aliyun-java-sdk-kms</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents</groupId>
+                        <artifactId>httpclient</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
             <!-- Common libs -->
+
             <dependency>
                 <groupId>com.alibaba.wisp</groupId>
                 <artifactId>wisp-api</artifactId>
@@ -219,6 +262,12 @@
                 <groupId>commons-beanutils</groupId>
                 <artifactId>commons-beanutils</artifactId>
                 <version>${commons-beanutils.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <dependency>
@@ -232,10 +281,9 @@
                 <version>${commons-io.version}</version>
             </dependency>
             <dependency>
-                <groupId>commons-pool</groupId>
-                <artifactId>commons-pool</artifactId>
-                <version>${commons-pool.version}</version>
-                <scope>provided</scope>
+                <groupId>commons-fileupload</groupId>
+                <artifactId>commons-fileupload</artifactId>
+                <version>${fileupload.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.google.guava</groupId>
@@ -246,6 +294,16 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>fastjson</artifactId>
                 <version>${fastjson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.taobao.diamond</groupId>
+                <artifactId>diamond-client</artifactId>
+                <version>${diamond_version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid</artifactId>
+                <version>${druid.version}</version>
             </dependency>
             <!-- Private X protocol client -->
             <dependency>
@@ -287,6 +345,45 @@
                 <classifier>tests</classifier>
                 <scope>test</scope>
             </dependency>
+            <!-- spring libs -->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-core</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-aop</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-context</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-jdbc</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-web</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-orm</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--                <scope>test</scope>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.springframework</groupId>-->
+            <!--                <artifactId>spring-test</artifactId>-->
+            <!--                <version>${spring_version}</version>-->
+            <!--                <scope>test</scope>-->
+            <!--            </dependency>-->
+
             <!-- driver -->
             <dependency>
                 <groupId>mysql</groupId>
@@ -295,40 +392,24 @@
             </dependency>
             <!-- Log libs -->
             <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j_version}</version>
-                <scope>provided</scope>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback_version}</version>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>jcl-over-slf4j</artifactId>
                 <version>${slf4j_version}</version>
-                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-log4j12</artifactId>
+                <artifactId>slf4j-api</artifactId>
                 <version>${slf4j_version}</version>
-                <scope>provided</scope>
             </dependency>
             <dependency>
-                <groupId>commons-logging</groupId>
-                <artifactId>commons-logging-api</artifactId>
-                <version>${jcl_version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>log4j</groupId>
-                <artifactId>log4j</artifactId>
-                <version>${log4j_version}</version>
-                <scope>provided</scope>
-            </dependency>
-            <dependency>
-                <groupId>ch.qos.logback</groupId>
-                <artifactId>logback-classic</artifactId>
-                <version>${logback_version}</version>
-                <scope>provided</scope>
+                <groupId>org.slf4j</groupId>
+                <artifactId>log4j-over-slf4j</artifactId>
+                <version>${slf4j_version}</version>
             </dependency>
 
             <!-- Test libs -->
@@ -336,6 +417,12 @@
                 <groupId>junit</groupId>
                 <artifactId>junit</artifactId>
                 <version>${junit_version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.ibatis</groupId>
+                <artifactId>ibatis-sqlmap</artifactId>
+                <version>${ibatis-sqlmap.version}</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
@@ -396,29 +483,16 @@
                 <version>${mockito.verison}</version>
                 <scope>test</scope>
             </dependency>
-            <dependency>
-                <groupId>net.bytebuddy</groupId>
-                <artifactId>byte-buddy-agent</artifactId>
-                <version>${byte-buddy.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.hamcrest</groupId>
-                <artifactId>hamcrest</artifactId>
-                <version>${hamcrest.version}</version>
-                <scope>test</scope>
-            </dependency>
-
-            <dependency>
-                <groupId>org.apache.arrow</groupId>
-                <artifactId>arrow-vector</artifactId>
-                <version>${arrow.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.arrow</groupId>
-                <artifactId>arrow-memory-netty</artifactId>
-                <version>${arrow.version}</version>
-                <scope>runtime</scope>
-            </dependency>
+            <!--            <dependency>-->
+            <!--                <groupId>org.apache.arrow</groupId>-->
+            <!--                <artifactId>arrow-vector</artifactId>-->
+            <!--                <version>${arrow.version}</version>-->
+            <!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>org.apache.arrow</groupId>-->
+            <!--                <artifactId>arrow-memory-netty</artifactId>-->
+            <!--                <version>${arrow.version}</version>-->
+            <!--            </dependency>-->
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
@@ -438,10 +512,130 @@
             </dependency>
 
             <dependency>
-                <groupId>net.bytebuddy</groupId>
-                <artifactId>byte-buddy-agent</artifactId>
-                <version>${byte-buddy.version}</version>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-common</artifactId>
+                <version>${hadoop.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>javax.servlet</groupId>
+                        <artifactId>javax.servlet-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.eclipse.jetty</groupId>
+                        <artifactId>jetty-webapp</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.sun.jersey</groupId>
+                        <artifactId>jersey-servlet</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.curator</groupId>
+                        <artifactId>curator-client</artifactId>
+                    </exclusion>
+                    <!--                    <exclusion>-->
+                    <!--                        <groupId>org.apache.hadoop</groupId>-->
+                    <!--                        <artifactId>hadoop-auth</artifactId>-->
+                    <!--                    </exclusion>-->
+                    <!--                    <exclusion>-->
+                    <!--                        <groupId>org.codehaus.woodstox</groupId>-->
+                    <!--                        <artifactId>stax2-api</artifactId>-->
+                    <!--                    </exclusion>-->
+                    <!--                    <exclusion>-->
+                    <!--                        <groupId>com.fasterxml.woodstox</groupId>-->
+                    <!--                        <artifactId>woodstox-core</artifactId>-->
+                    <!--                    </exclusion>-->
+                    <exclusion>
+                        <groupId>org.eclipse.jetty</groupId>
+                        <artifactId>jetty-util</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.eclipse.jetty</groupId>
+                        <artifactId>jetty-servlet</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>javax.servlet.jsp</groupId>
+                        <artifactId>jsp-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.curator</groupId>
+                        <artifactId>curator-recipes</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.kerby</groupId>
+                        <artifactId>kerb-simplekdc</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>jetty</groupId>
+                        <artifactId>org.eclipse.jetty</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.eclipse.jetty</groupId>
+                        <artifactId>jetty-server</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.eclipse.jetty</groupId>
+                        <artifactId>servlet-api-2.5</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.sun.jersey</groupId>
+                        <artifactId>jersey-core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.sun.jersey</groupId>
+                        <artifactId>jersey-json</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.sun.jersey</groupId>
+                        <artifactId>jersey-server</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.avro</groupId>
+                        <artifactId>avro</artifactId>
+                    </exclusion>
+                    <!--                    <exclusion>-->
+                    <!--                        <groupId>org.apache.htrace</groupId>-->
+                    <!--                        <artifactId>htrace-core4</artifactId>-->
+                    <!--                    </exclusion>-->
+                    <exclusion>
+                        <groupId>dnsjava</groupId>
+                        <artifactId>dnsjava</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.eclipse.jdt</groupId>
+                        <artifactId>core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.avro</groupId>
+                        <artifactId>avro-ipc</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>net.sf.kosmosfs</groupId>
+                        <artifactId>kfs</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.jcraft</groupId>
+                        <artifactId>jsch</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.zookeeper</groupId>
+                        <artifactId>zookeeper</artifactId>
+                    </exclusion>
+                    <!-- No slf4j backends for downstream clients -->
+                    <exclusion>
+                        <groupId>org.slf4j</groupId>
+                        <artifactId>slf4j-log4j12</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
+
         </dependencies>
     </dependencyManagement>
 
@@ -512,7 +706,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0-M4</version>
                 <configuration>
-                    <argLine>-javaagent:${project.basedir}/target/byte-buddy-agent-${byte-buddy.version}.jar</argLine>
+                    <argLine>-javaagent:${project.basedir}/../script/byte-buddy-agent-${byte-buddy.version}.jar
+                    </argLine>
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
@@ -582,28 +777,6 @@
                     <updatePomFile>true</updatePomFile>
                     <flattenMode>resolveCiFriendliesOnly</flattenMode>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>copy</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>copy</goal>
-                        </goals>
-                        <configuration>
-                            <artifactItems>
-                                <artifactItem>
-                                    <groupId>net.bytebuddy</groupId>
-                                    <artifactId>byte-buddy-agent</artifactId>
-                                    <outputDirectory>${project.build.directory}</outputDirectory>
-                                </artifactItem>
-                            </artifactItems>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
         <sourceDirectory>src/main/java</sourceDirectory>

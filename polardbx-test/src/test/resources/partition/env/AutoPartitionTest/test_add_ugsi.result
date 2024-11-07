@@ -1,0 +1,239 @@
+DROP TABLE IF EXISTS `tb1`;
+DROP TABLE IF EXISTS `tb2`;
+CREATE TABLE `tb1` (
+	a int,
+	b int,
+	c int
+);
+CREATE TABLE `tb2` (
+	a int,
+	b int,
+	c int,
+	d int,
+	PRIMARY KEY (a, b)
+);
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=false)*/ALTER TABLE tb1
+	ADD UNIQUE KEY u1 (a, b);
+SHOW CREATE TABLE u1;
+Table,Create Table
+u1_$,CREATE TABLE `u1_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE u1;
+Table,Create Table
+u1_$,CREATE TABLE `u1_$` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=true)*/ALTER TABLE tb1
+	ADD UNIQUE KEY u2 (b, c);
+SHOW CREATE TABLE u2;
+Table,Create Table
+u2_$,CREATE TABLE `u2_$` (
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	UNIQUE KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE u2;
+Table,Create Table
+u2_$,CREATE TABLE `u2_$` (
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE PARTITION TABLE `tb1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE GLOBAL INDEX /* u1_$ */ `u1` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* u2_$ */ `u2` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_u1` (`a`, `b`),
+	UNIQUE LOCAL KEY `_local_u2` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE tb1
+	MODIFY COLUMN a bigint;
+SHOW FULL CREATE TABLE u1;
+Table,Create Table
+u1_$,CREATE TABLE `u1_$` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE u2;
+Table,Create Table
+u2_$,CREATE TABLE `u2_$` (
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE PARTITION TABLE `tb1` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE GLOBAL INDEX /* u1_$ */ `u1` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* u2_$ */ `u2` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_u1` (`a`, `b`),
+	UNIQUE LOCAL KEY `_local_u2` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=false)*/ALTER TABLE tb2
+	ADD UNIQUE KEY u3 (a, b);
+SHOW CREATE TABLE u3;
+Table,Create Table
+u3_$,CREATE TABLE `u3_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE u3;
+Table,Create Table
+u3_$,CREATE TABLE `u3_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	UNIQUE LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=true)*/ALTER TABLE tb2
+	ADD UNIQUE KEY u4 (b, c);
+SHOW CREATE TABLE u4;
+Table,Create Table
+u4_$,CREATE TABLE `u4_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`, `b`),
+	UNIQUE KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE u4;
+Table,Create Table
+u4_$,CREATE TABLE `u4_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`, `b`),
+	UNIQUE LOCAL KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE tb2;
+Table,Create Table
+tb2,CREATE PARTITION TABLE `tb2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`, `b`),
+	UNIQUE GLOBAL INDEX /* u3_$ */ `u3` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* u4_$ */ `u4` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_u3` (`a`, `b`),
+	UNIQUE LOCAL KEY `_local_u4` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE tb2
+	MODIFY COLUMN a bigint;
+SHOW FULL CREATE TABLE u3;
+Table,Create Table
+u3_$,CREATE TABLE `u3_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE u4;
+Table,Create Table
+u4_$,CREATE TABLE `u4_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`, `b`),
+	UNIQUE LOCAL KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`c`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE tb2;
+Table,Create Table
+tb2,CREATE PARTITION TABLE `tb2` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) DEFAULT NULL,
+	`d` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a`, `b`),
+	UNIQUE GLOBAL INDEX /* u3_$ */ `u3` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	UNIQUE GLOBAL INDEX /* u4_$ */ `u4` (`b`, `c`)
+		PARTITION BY KEY(`b`,`c`)
+		PARTITIONS 3,
+	UNIQUE LOCAL KEY `_local_u3` (`a`, `b`),
+	UNIQUE LOCAL KEY `_local_u4` (`b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+/* tablegroup = `tg` */

@@ -65,6 +65,7 @@ public class ColumnBackFillTask extends BaseBackfillTask {
     protected void executeImpl(ExecutionContext executionContext) {
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
 
         List<SqlCall> sourceNodes = new ArrayList<>();
         List<String> newTargetColumns;

@@ -44,6 +44,39 @@ public class ScheduleJobStarter {
         initCleanLogTableJob();
         initPersistGsiStatisticJob();
         initOptimizerAlertJob();
+        initStatisticInfoSchemaTablesJob();
+        initLogMetricJob();
+        initGenerateColumnarSnapshotJob();
+        initCheckCciJob();
+    }
+
+    private static void initLogMetricJob() {
+        String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
+        String tableName = VisualConstants.DUAL_TABLE_NAME;
+        String cronExpr = "0 0 0 * * ?";
+        String timeZone = "+08:00";
+        ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
+            tableSchema,
+            null,
+            tableName,
+            ScheduledJobExecutorType.LOG_SYSTEM_METRICS,
+            cronExpr,
+            timeZone,
+            SchedulePolicy.SKIP
+        );
+        int count = new ScheduledJobsAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                List<ScheduledJobsRecord> list =
+                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
+                if (list.size() > 0) {
+                    logger.warn("Scheduled Job For LOG_SYSTEM_METRICS Has Exist");
+                    return 0;
+                }
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
+            }
+        }.execute();
+        logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
     }
 
     private static void initBaselineSyncJob() {
@@ -276,6 +309,95 @@ public class ScheduleJobStarter {
                     return 0;
                 }
                 return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecordV2);
+            }
+        }.execute();
+        logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
+    }
+
+    private static void initCheckCciJob() {
+        // Init new clean job.
+        String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
+        String tableName = VisualConstants.DUAL_TABLE_NAME;
+        String cronExpr = "0 0/1 * * * ? ";
+        String timeZone = "+08:00";
+        ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
+            tableSchema,
+            null,
+            tableName,
+            ScheduledJobExecutorType.CHECK_CCI,
+            cronExpr,
+            timeZone,
+            SchedulePolicy.SKIP
+        );
+        int count = new ScheduledJobsAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                List<ScheduledJobsRecord> list =
+                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
+                if (list.size() > 0) {
+                    logger.warn("Scheduled Job For CHECK_CCI Has Exist");
+                    return 0;
+                }
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
+            }
+        }.execute();
+        logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
+    }
+
+    private static void initGenerateColumnarSnapshotJob() {
+        // Init new clean job.
+        String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
+        String tableName = VisualConstants.DUAL_TABLE_NAME;
+        String cronExpr = "0 0/1 * * * ? ";
+        String timeZone = "+08:00";
+        ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
+            tableSchema,
+            null,
+            tableName,
+            ScheduledJobExecutorType.GENERATE_COLUMNAR_SNAPSHOT,
+            cronExpr,
+            timeZone,
+            SchedulePolicy.SKIP
+        );
+        int count = new ScheduledJobsAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                List<ScheduledJobsRecord> list =
+                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
+                if (list.size() > 0) {
+                    logger.warn("Scheduled Job For GENERATE_COLUMNAR_SNAPSHOT Has Exist");
+                    return 0;
+                }
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
+            }
+        }.execute();
+        logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));
+    }
+
+    private static void initStatisticInfoSchemaTablesJob() {
+        String tableSchema = VisualConstants.VISUAL_SCHEMA_NAME;
+        String tableName = VisualConstants.DUAL_TABLE_NAME;
+        String cronExpr = "0 15 * * * ?";
+        String timeZone = "+08:00";
+        ScheduledJobsRecord scheduledJobsRecord = ScheduledJobsManager.createQuartzCronJob(
+            tableSchema,
+            null,
+            tableName,
+            ScheduledJobExecutorType.STATISTIC_INFO_SCHEMA_TABLES,
+            cronExpr,
+            timeZone,
+            SchedulePolicy.SKIP
+        );
+        int count = new ScheduledJobsAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                List<ScheduledJobsRecord> list =
+                    scheduledJobsAccessor.queryByExecutorType(scheduledJobsRecord.getExecutorType());
+                if (list.size() > 0) {
+                    logger.warn("Scheduled Job For STATISTIC_INFO_SCHEMA_TABLES Has Exist");
+                    return 0;
+                }
+                return scheduledJobsAccessor.insertIgnoreFail(scheduledJobsRecord);
             }
         }.execute();
         logger.info(String.format("Init %s Success %s", scheduledJobsRecord.getExecutorType(), count));

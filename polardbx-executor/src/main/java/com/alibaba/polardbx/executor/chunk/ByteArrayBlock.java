@@ -52,6 +52,9 @@ public class ByteArrayBlock extends AbstractCommonBlock {
             if (selection == null) {
                 offsets = Arrays.copyOf(other.offsets, selSize);
                 data = Arrays.copyOf(other.data, other.endOffset(selSize));
+            } else if (selSize == 0 || selection.length == 0) {
+                offsets = new int[0];
+                data = new byte[0];
             } else {
                 offsets = new int[selSize];
                 for (int i = 0; i < selSize; i++) {

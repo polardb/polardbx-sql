@@ -155,7 +155,7 @@ public abstract class AbstractHashJoinExec extends AbstractBufferedJoinExec impl
             return Math.min(idx1, idx2);
         } else {
             int buildIndex = Math.max(idx1, idx2);
-            // since this is inner build, build chunk is on the left side
+            // since this is inner build, build chunk is on the right side
             return buildIndex - outerInput.getDataTypes().size();
         }
     }
@@ -1124,7 +1124,8 @@ public abstract class AbstractHashJoinExec extends AbstractBufferedJoinExec impl
     }
 
     /**
-     * 仅使用于 semi/anti join 且 long = long and int <> int
+     * 1. semi/anti join
+     * 2. long = long and int <> int
      */
     class SemiLongNotEqIntegerProbeOperator implements ProbeOperator {
 
@@ -1268,6 +1269,160 @@ public abstract class AbstractHashJoinExec extends AbstractBufferedJoinExec impl
         public void close() {
             longValueArray = null;
             intValueArray = null;
+        }
+
+        @Override
+        public int estimateSize() {
+            return Integer.BYTES * chunkLimit * 4 + Long.BYTES * chunkLimit;
+        }
+    }
+
+    /**
+     * 1. semi/anti join
+     * 2. long = long and long <> long
+     */
+    class SemiLongNotEqLongProbeOperator implements ProbeOperator {
+
+        protected final boolean enableVecBuildJoinRow;
+        protected final boolean isAnti;
+        // for hash code.
+        protected final int[] probeKeyHashCode = new int[chunkLimit];
+        protected final int[] intermediates = new int[chunkLimit];
+        protected final int[] blockHashCodes = new int[chunkLimit];
+        protected long[] longValueArray;
+        protected long[] longValueArray2;
+        protected int startProbePosition;
+        protected int conditionProbeColIndex = -1;
+        // for null values of probe keys.
+        protected boolean hasNull = false;
+        protected BitSet nullBitmap = new BitSet(chunkLimit);
+
+        protected SemiLongNotEqLongProbeOperator(boolean enableVecBuildJoinRow) {
+            if (joinType == JoinRelType.SEMI) {
+                this.isAnti = false;
+            } else if (joinType == JoinRelType.ANTI) {
+                this.isAnti = true;
+            } else {
+                throw new UnsupportedOperationException("JoinType not supported: " + joinType);
+            }
+            Preconditions.checkArgument(antiJoinOperands == null);
+            this.enableVecBuildJoinRow = enableVecBuildJoinRow;
+
+            this.longValueArray = new long[chunkLimit];
+            this.longValueArray2 = new long[chunkLimit];
+
+            conditionProbeColIndex = getProbeChunkConditionIndex();
+            Preconditions.checkArgument(
+                conditionProbeColIndex >= 0 && conditionProbeColIndex < outerInput.getDataTypes().size(),
+                "Illegal Join condition probe index : " + conditionProbeColIndex);
+        }
+
+        @Override
+        public void nextRows() {
+            Preconditions.checkArgument(probeJoinKeyChunk.getBlockCount() == 1
+                && probeJoinKeyChunk.getBlock(0).cast(Block.class) instanceof LongBlock);
+            Preconditions.checkArgument(
+                probeChunk.getBlock(conditionProbeColIndex).cast(Block.class) instanceof LongBlock,
+                "Probe condition block should be LongBlock");
+            final int positionCount = probeChunk.getPositionCount();
+
+            // build hash code vector
+            probeJoinKeyChunk.hashCodeVector(probeKeyHashCode, intermediates, blockHashCodes, positionCount);
+
+            startProbePosition = probePosition;
+            // copy array from long block
+            Block keyBlock = probeJoinKeyChunk.getBlock(0).cast(Block.class);
+            keyBlock.copyToLongArray(startProbePosition, positionCount - startProbePosition, longValueArray, 0);
+
+            // handle nulls
+            hasNull = keyBlock.mayHaveNull();
+            nullBitmap.clear();
+            if (hasNull) {
+                keyBlock.collectNulls(startProbePosition, positionCount - startProbePosition, nullBitmap, 0);
+            }
+
+            probeChunk.getBlock(conditionProbeColIndex).cast(Block.class)
+                .copyToLongArray(startProbePosition, positionCount - startProbePosition, longValueArray2, 0);
+            for (; probePosition < positionCount; probePosition++) {
+
+                // reset matched flag unless it's still during matching
+                if (!isMatching) {
+                    matched = false;
+                    matchedPosition = matchInit(probeKeyHashCode, probePosition);
+                } else {
+                    // continue from the last processed match
+                    matchedPosition = matchNext(matchedPosition, probePosition);
+                    isMatching = false;
+                }
+
+                for (; matchValid(matchedPosition);
+                     matchedPosition = matchNext(matchedPosition, probePosition)) {
+                    if (!matchJoinCondition(probePosition, matchedPosition)) {
+                        continue;
+                    }
+
+                    // set matched flag
+                    matched = true;
+
+                    // semi join does not care multiple matches
+                    break;
+                }
+
+                // (!isAnti && matched) || (isAnti && !matched)
+                if (isAnti ^ matched) {
+                    buildSemiJoinRow(probeChunk, probePosition);
+                }
+
+                // check buffered data is full
+                if (currentPosition() >= chunkLimit) {
+                    probePosition++;
+                    return;
+                }
+            }
+        }
+
+        private boolean matchJoinCondition(int probePosition, int matchedPosition) {
+            // NotEqual
+            return buildChunks.getLong(0, matchedPosition) != longValueArray2[probePosition - startProbePosition];
+        }
+
+        private int matchInit(int[] hashCodes, int position) {
+            // check null
+            if (hasNull && nullBitmap.get(position - startProbePosition)) {
+                return LIST_END;
+            }
+
+            // find matched positions for each row.
+            int matchedPosition = hashTable.get(hashCodes[position]);
+            while (matchedPosition != LIST_END) {
+                if (buildKeyChunks.getLong(0, matchedPosition) == longValueArray[position - startProbePosition]) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        private int matchNext(int current, int position) {
+            // check null
+            if (hasNull && nullBitmap.get(position - startProbePosition)) {
+                return LIST_END;
+            }
+
+            int matchedPosition = positionLinks[current];
+            while (matchedPosition != LIST_END) {
+                if (buildKeyChunks.getLong(0, matchedPosition) == longValueArray[position - startProbePosition]) {
+                    break;
+                }
+                matchedPosition = positionLinks[matchedPosition];
+            }
+            return matchedPosition;
+        }
+
+        @Override
+        public void close() {
+            longValueArray = null;
+            longValueArray2 = null;
         }
 
         @Override

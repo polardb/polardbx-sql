@@ -17,14 +17,15 @@
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.execution.NodeTaskMap;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
-import com.alibaba.polardbx.gms.node.NodeState;
+import com.alibaba.polardbx.gms.node.MppScope;
 
 import javax.inject.Inject;
+import java.util.HashSet;
 import java.util.Set;
 
 public class NodeScheduler {
@@ -41,17 +42,17 @@ public class NodeScheduler {
     public NodeSelector createNodeSelector(Session session, int limit, boolean randomNode) {
         int maxSplitsPerNode =
             session.getClientContext().getParamManager().getInt(ConnectionParams.MPP_SCHEDULE_MAX_SPLITS_PER_NODE);
-        boolean slaveFirst =
-            session.getClientContext().getParamManager().getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST);
 
         boolean enableOSSRoundRobin =
             session.getClientContext().getParamManager()
                 .getBoolean(ConnectionParams.ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN);
 
-        Set<InternalNode> nodes = nodeManager.getNodes(NodeState.ACTIVE, ConfigDataMode.isMasterMode() && slaveFirst);
-
         boolean columnarMode = session.getClientContext().getParamManager()
             .getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCHEDULE);
+
+        MppScope mppScope = ExecUtils.getMppSchedulerScope(!columnarMode);
+
+        Set<InternalNode> nodes = new HashSet<>(nodeManager.getAllNodes().getAllWorkers(mppScope));
 
         boolean preferLocal =
             session.getClientContext().getParamManager().getBoolean(ConnectionParams.MPP_PREFER_LOCAL_NODE);

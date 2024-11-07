@@ -108,11 +108,6 @@ public class TableColumnUtils {
         return false;
     }
 
-    public static boolean isModifying(RelOptTable primary, ExecutionContext ec) {
-        final Pair<String, String> schemaTable = RelUtils.getQualifiedTableName(primary);
-        return isModifying(schemaTable.left, schemaTable.right, ec);
-    }
-
     public static boolean isModifying(String schemaName, String tableName, ExecutionContext ec) {
         // In OMC execution, may not be doing column multi-write
         SchemaManager sm;

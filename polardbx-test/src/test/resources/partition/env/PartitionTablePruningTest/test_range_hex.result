@@ -13,7 +13,8 @@ EXPLAIN SELECT *
 FROM rc_char16_gbk_utf8
 WHERE c1 = 0xE4B896E7958C;
 Logical ExecutionPlan
-PhyTableOperation(tables="rc_char16_gbk_utf8[p0]", sql="SELECT `rc_char16_gbk_utf8`.`c1`, `rc_char16_gbk_utf8`.`c2` FROM ? AS `rc_char16_gbk_utf8` WHERE (`rc_char16_gbk_utf8`.`c1` = CONVERT(? USING 'GBK'))", params="0xE4B896E7958C")
+Gather(concurrent=true)
+  LogicalView(tables="rc_char16_gbk_utf8[p0]", sql="SELECT `c1`, `c2` FROM `rc_char16_gbk_utf8` AS `rc_char16_gbk_utf8` WHERE (`c1` = CONVERT(? USING 'GBK'))")
 DROP TABLE IF EXISTS rc_varchar16_gbk_utf8;
 CREATE TABLE IF NOT EXISTS rc_varchar16_gbk_utf8 (
 	c1 varchar(16) CHARACTER SET gbk DEFAULT NULL,
@@ -29,4 +30,5 @@ EXPLAIN SELECT *
 FROM rc_varchar16_gbk_utf8
 WHERE c1 = 0xE4B896E7958C;
 Logical ExecutionPlan
-PhyTableOperation(tables="rc_varchar16_gbk_utf8[p0]", sql="SELECT `rc_varchar16_gbk_utf8`.`c1`, `rc_varchar16_gbk_utf8`.`c2` FROM ? AS `rc_varchar16_gbk_utf8` WHERE (`rc_varchar16_gbk_utf8`.`c1` = CONVERT(? USING 'GBK'))", params="0xE4B896E7958C")
+Gather(concurrent=true)
+  LogicalView(tables="rc_varchar16_gbk_utf8[p0]", sql="SELECT `c1`, `c2` FROM `rc_varchar16_gbk_utf8` AS `rc_varchar16_gbk_utf8` WHERE (`c1` = CONVERT(? USING 'GBK'))")
