@@ -152,7 +152,8 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
                 try {
                     String tableName = row.getString(2);
                     Long dataLength = row.getLong(9);
-                    Long indexLength = row.getLong(11);
+                    // index length of gsi will be added into that of primary table
+                    Long indexLength = 0L;
                     // convert total size from Byte to MB
                     Double totalSize = null;
                     if (dataLength != null && indexLength != null) {

@@ -22,11 +22,16 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class DrdsCheckColumnarIndex extends MySqlStatementImpl implements SQLShowStatement {
 
     private SQLName indexName = null;
     private SQLName tableName = null;
     private String extraCmd = null;
+
+    private List<Long> extras = null;
 
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
@@ -56,5 +61,16 @@ public class DrdsCheckColumnarIndex extends MySqlStatementImpl implements SQLSho
 
     public void setExtraCmd(String extraCmd) {
         this.extraCmd = extraCmd;
+    }
+
+    public List<Long> getExtras() {
+        return extras;
+    }
+
+    public void setExtra(long extra) {
+        if (null == extras) {
+            extras = new ArrayList<>();
+        }
+        extras.add(extra);
     }
 }

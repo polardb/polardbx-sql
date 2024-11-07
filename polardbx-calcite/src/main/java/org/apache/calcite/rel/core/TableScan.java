@@ -137,6 +137,7 @@ public abstract class TableScan extends AbstractRelNode {
     this(input.getCluster(), input.getTraitSet(), input.getTable("table"));
     this.flashback = input.getExpression("flashback");
     this.indexNode = RexUtil.deSeriIndexHint(input.getStringList("index"));
+    this.flashbackOperator = input.getSqlOperator("flashbackOperator");
   }
 
   //~ Methods ----------------------------------------------------------------
@@ -176,8 +177,9 @@ public abstract class TableScan extends AbstractRelNode {
   @Override public RelWriter explainTerms(RelWriter pw) {
     return super.explainTerms(pw)
         .item("table", table.getQualifiedName())
-        .itemIf("index", RexUtil.seriIndexHint(indexNode), indexNode!=null)
+        .itemIf("index", RexUtil.seriIndexHint(indexNode), indexNode != null)
         .item("flashback", flashback)
+        .itemIf("flashbackOperator", flashbackOperator, flashbackOperator != null)
         ;
   }
 

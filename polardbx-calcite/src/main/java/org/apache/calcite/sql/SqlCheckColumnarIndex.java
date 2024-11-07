@@ -39,12 +39,16 @@ public class SqlCheckColumnarIndex extends SqlDdl { // Use DDL here to utilize a
     private SqlIdentifier tableName;
     private String extraCmd;
 
-    public SqlCheckColumnarIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier tableName, String extraCmd) {
+    private List<Long> extras;
+
+    public SqlCheckColumnarIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier tableName, String extraCmd,
+                                 List<Long> extras) {
         super(OPERATOR, pos);
         this.name = indexName;
         this.indexName = indexName;
         this.tableName = tableName;
         this.extraCmd = extraCmd;
+        this.extras = extras;
     }
 
     public SqlIdentifier getIndexName() {
@@ -136,19 +140,23 @@ public class SqlCheckColumnarIndex extends SqlDdl { // Use DDL here to utilize a
 
     @Override
     public SqlNode clone(SqlParserPos pos) {
-        return new SqlCheckColumnarIndex(this.pos, indexName, tableName, extraCmd);
+        return new SqlCheckColumnarIndex(this.pos, indexName, tableName, extraCmd, extras);
     }
 
     public SqlCheckColumnarIndex replaceIndexName(SqlIdentifier newIndexName) {
-        return new SqlCheckColumnarIndex(pos, newIndexName, tableName, extraCmd);
+        return new SqlCheckColumnarIndex(pos, newIndexName, tableName, extraCmd, extras);
     }
 
     public boolean withTableName() {
         return null != tableName;
     }
 
+    public List<Long> getExtras() {
+        return extras;
+    }
+
     public enum CheckCciExtraCmd {
-        UNKNOWN, DEFAULT, CHECK, LOCK, CLEAR, SHOW, META;
+        UNKNOWN, DEFAULT, CHECK, LOCK, CLEAR, SHOW, META, INCREMENT, SNAPSHOT;
         private static final Map<String, CheckCciExtraCmd> VALUE_MAP = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         static {
@@ -157,6 +165,8 @@ public class SqlCheckColumnarIndex extends SqlDdl { // Use DDL here to utilize a
             VALUE_MAP.put("CLEAR", CLEAR);
             VALUE_MAP.put("SHOW", SHOW);
             VALUE_MAP.put("META", META);
+            VALUE_MAP.put("INCREMENT", INCREMENT);
+            VALUE_MAP.put("SNAPSHOT", SNAPSHOT);
         }
 
         public static CheckCciExtraCmd of(String stringVal) {

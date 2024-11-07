@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
+import com.alibaba.polardbx.optimizer.exception.FunctionException;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
 import java.util.List;
@@ -39,6 +40,10 @@ public class AesDecrypt extends AbstractScalarFunction {
         super(operandTypes, resultType);
     }
 
+    public AesDecrypt() {
+        super(null, null);
+    }
+
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
         if (FunctionUtils.isNull(args[0]) || FunctionUtils.isNull(args[1])) {
@@ -50,6 +55,9 @@ public class AesDecrypt extends AbstractScalarFunction {
 
         byte[] initVector = null;
         if (encryptionMode.isInitVectorRequired()) {
+            if (args.length != 3) {
+                throw FunctionException.invalidParamCount(getFunctionNames()[0]);
+            }
             initVector = FunctionUtils.parseInitVector(args[2], operandTypes.get(2),
                 getFunctionNames()[0]);
         }

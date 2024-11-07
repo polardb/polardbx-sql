@@ -17,11 +17,13 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.twoPhaseDdl.TwoPhaseDdlTestUtils.DataCheckUtil.checkData;
+import static com.alibaba.polardbx.qatest.util.JdbcUtil.dropTable;
 import static com.alibaba.polardbx.qatest.util.JdbcUtil.useDb;
 
 public class DataManipulateUtil {
@@ -32,7 +34,8 @@ public class DataManipulateUtil {
         SECONDARY_PARTITION_TABLE,
         PARTITION_TABLE,
         SINGLE_TABLE,
-        BROADCAST_TABLE
+        BROADCAST_TABLE,
+        SELF_DEF_TABLE
     }
 
     public static synchronized Connection getPolardbxConnection(String db) {
@@ -49,18 +52,23 @@ public class DataManipulateUtil {
     }
 
     public static void batchInsert(String dbName, String tableName, int tableRows, int threadNum)
-        throws InterruptedException, SQLException {
+        throws Exception {
         Long start = new Date().getTime();
         List<Thread> threads = new ArrayList<>();
         List<Connection> connections = new ArrayList<>();
         Boolean fastMode = true;
+        ConcurrentLinkedDeque<Exception> exceptions = new ConcurrentLinkedDeque<>();
         for (int i = 0; i < threadNum; i++) {
             Connection tddlConnection = getPolardbxConnection(dbName);
             connections.add(tddlConnection);
             Thread thread = new Thread(() -> {
-                DataLoader dataLoader =
-                    DataLoader.create(tddlConnection, tableName, new UniformDistributionDataGenerator());
-                dataLoader.batchInsert(tableRows, fastMode);
+                try {
+                    DataLoader dataLoader =
+                        DataLoader.create(tddlConnection, tableName, new UniformDistributionDataGenerator());
+                    dataLoader.batchInsert(tableRows, fastMode);
+                }catch (Exception e){
+                    exceptions.add(e);
+                }
             });
             threads.add(thread);
             thread.start();
@@ -73,32 +81,44 @@ public class DataManipulateUtil {
         for (Connection connection : connections) {
             connection.close();
         }
+        if(exceptions.size() > 0) {
+            throw exceptions.poll();
+        }
         Long end = new Date().getTime();
         log.info("data loader cost " + (end - start) + " ms");
     }
 
-    public static void prepareData(Connection tddlConnection, String schemaName, String mytable) throws SQLException {
+    public static void prepareData(Connection tddlConnection, String schemaName, String mytable) throws Exception {
         prepareData(tddlConnection, schemaName, mytable, 2_000_000, TABLE_TYPE.PARTITION_TABLE);
     }
 
     public static void prepareData(Connection tddlConnection, String schemaName, String mytable, int eachPartRows)
-        throws SQLException {
+        throws Exception {
         prepareData(tddlConnection, schemaName, mytable, eachPartRows, TABLE_TYPE.PARTITION_TABLE);
     }
 
     public static void prepareData(Connection tddlConnection, String schemaName, String mytable, int eachPartRows,
-                                   TABLE_TYPE tableType)
-        throws SQLException {
-        int partNum = 16;
+                                   TABLE_TYPE tableType) throws Exception {
+        prepareData(tddlConnection, schemaName, mytable, eachPartRows, null, 0, TABLE_TYPE.PARTITION_TABLE);
+    }
+
+    public static void prepareData(Connection tddlConnection, String schemaName, String mytable, int eachPartRows,
+                                   String createTableStmt, int partNum, TABLE_TYPE tableType)
+        throws Exception {
+        if (partNum == 0) {
+            partNum = 16;
+        }
         log.info("start to prepare data...");
         Long now = System.currentTimeMillis();
         String sql = String.format("create database if not exists %s mode = auto", schemaName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         sql = String.format("use %s", schemaName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        String createTableStmt =
-            "create table if not exists " + " %s(a int NOT NULL AUTO_INCREMENT,b int, c varchar(32), PRIMARY KEY(a)"
-                + ") PARTITION BY HASH(a) PARTITIONS %d";
+        if (createTableStmt == null) {
+            createTableStmt =
+                "create table if not exists " + " %s(a int NOT NULL AUTO_INCREMENT,b int, c varchar(32), PRIMARY KEY(a)"
+                    + ") PARTITION BY HASH(a) PARTITIONS %d";
+        }
         sql = String.format(createTableStmt, mytable, partNum);
         if (tableType == TABLE_TYPE.SECONDARY_PARTITION_TABLE) {
             int subPartNum = 4;
@@ -130,12 +150,14 @@ public class DataManipulateUtil {
         int residueRows = totalRows - currRows;
         int threadNum = 8;
         int tableRows = residueRows / threadNum;
-        if (residueRows > 0) {
-            try {
-                batchInsert(schemaName, mytable, tableRows, threadNum);
-            } catch (Exception e) {
-                log.info(e.getMessage());
-                throw new RuntimeException("fail to insert data into logical table");
+        if (tableType != TABLE_TYPE.SELF_DEF_TABLE) {
+            if (residueRows > 0) {
+                try {
+                    batchInsert(schemaName, mytable, tableRows, threadNum);
+                } catch (Exception e) {
+                    log.info(e.getMessage());
+                    throw e;
+                }
             }
         }
         Long cost = System.currentTimeMillis() - now;

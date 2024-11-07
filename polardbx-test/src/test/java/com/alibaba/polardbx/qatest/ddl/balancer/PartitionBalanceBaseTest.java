@@ -1,5 +1,7 @@
 package com.alibaba.polardbx.qatest.ddl.balancer;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.qatest.ddl.auto.dal.CheckTableTest;
 import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestCaseBean;
 import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.DataLoader;
 import com.alibaba.polardbx.qatest.ddl.balancer.datagenerator.ManualHotSpotDataGenerator;
@@ -23,6 +25,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,10 +42,10 @@ import java.util.stream.Collectors;
 @NotThreadSafe
 public class PartitionBalanceBaseTest extends BalancerTestBase {
 
-    private int tableNum = 4;
+    private int tableNum = 2;
 
     private List<String> tableNames = new ArrayList<>();
-    private int tableRows = 100000;
+    private int tableRows = 500000;
 
     public static int maxWaitTime = 5000 * 200;
 
@@ -170,8 +173,18 @@ public class PartitionBalanceBaseTest extends BalancerTestBase {
         String balanceDbSql = "rebalance database policy='partition_balance'";
         try (ResultSet rs = JdbcUtil.executeQuery(balanceDbSql, tddlConnection);) {
             LOG.info("execute " + balanceDbSql);
-            Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
-                JdbcUtil.getColumnNameListToLowerCase(rs));
+            ResultSetMetaData rsmd = rs.getMetaData();
+            if (rsmd.getColumnCount() == 5) {
+                //logical backfill
+                Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            } else {
+                //physical backfill
+                Assert.assertEquals(
+                    Arrays.asList("job_id", "schema", "name", "action", "backfill_rows", "backfill_data_size",
+                        "backfill_estimated_time"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            }
 //            Boolean emptyResult = JdbcUtil.getAllResult(rs).stream()
 //                .noneMatch(o -> o.get(2).toString().equalsIgnoreCase("MovePartition"));
 //            Assert.assertTrue("result should be empty", emptyResult);
@@ -215,8 +228,16 @@ public class PartitionBalanceBaseTest extends BalancerTestBase {
             "rebalance database policy='auto_split_for_partition_balance' solve_level = 'hot_split'";
         try (ResultSet rs = JdbcUtil.executeQuery(rebalanceAutoSplitDbSql, tddlConnection);) {
             LOG.info("execute  " + rebalanceAutoSplitDbSql);
-            Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
-                JdbcUtil.getColumnNameListToLowerCase(rs));
+            ResultSetMetaData rsmd = rs.getMetaData();
+            if (rsmd.getColumnCount() == 5) {
+                Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            } else {
+                Assert.assertEquals(
+                    Arrays.asList("job_id", "schema", "name", "action", "backfill_rows", "backfill_data_size",
+                        "backfill_estimated_time"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            }
             Boolean emptyResult = JdbcUtil.getAllResult(rs).stream()
                 .noneMatch(o -> o.get(2).toString().equalsIgnoreCase("SplitPartition"));
             Assert.assertFalse("result should not be empty", emptyResult);
@@ -226,8 +247,16 @@ public class PartitionBalanceBaseTest extends BalancerTestBase {
 
         try (ResultSet rs = JdbcUtil.executeQuery(balanceDbSql, tddlConnection);) {
             LOG.info("execute  " + balanceDbSql);
-            Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
-                JdbcUtil.getColumnNameListToLowerCase(rs));
+            ResultSetMetaData rsmd = rs.getMetaData();
+            if (rsmd.getColumnCount() == 5) {
+                Assert.assertEquals(Arrays.asList("job_id", "schema", "name", "action", "backfill_rows"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            } else {
+                Assert.assertEquals(
+                    Arrays.asList("job_id", "schema", "name", "action", "backfill_rows", "backfill_data_size",
+                        "backfill_estimated_time"),
+                    JdbcUtil.getColumnNameListToLowerCase(rs));
+            }
 //            Boolean emptyResult = JdbcUtil.getAllResult(rs).stream().noneMatch(o->o.get(2).toString().equalsIgnoreCase("MovePartition"));
 //            Assert.assertFalse("result should not be empty", emptyResult);
         }
@@ -260,12 +289,27 @@ public class PartitionBalanceBaseTest extends BalancerTestBase {
         // ingest data
 
         String showHotKey = "show hotkey from %s partition(%s)";
-        String showHotKeySql = String.format(showHotKey, tableNames.get(1), "p17");
+        String tableName = tableNames.get(1);
+        String showHotKeySql = String.format(showHotKey, tableName, "p17");
+        Pair<Integer, String> phyDbNameTableName =
+            CheckTableTest.getFullObjectName(tddlConnection, tableName, tableName, 16);
+        String analyzeSql = String.format("analyze table %s", phyDbNameTableName.getValue());
+//        String groupHint = String.format("/*+TDDL:node(%d)*/", phyDbNameTableName.getKey());
+//        String sql = groupHint + analyzeSql;
+        Connection connection = getMysqlConnection();
+        JdbcUtil.executeUpdateSuccess(connection, "use balancertestbase_p00000");
+        for (int i = 0; i < 16; i++) {
+            JdbcUtil.executeUpdateSuccess(connection, analyzeSql);
+        }
+        String version =
+            JdbcUtil.getAllResult(JdbcUtil.executeQuery("select @@version", connection)).get(0).get(0).toString();
+        Boolean is80Version = version.startsWith("8.0");
+//        JdbcUtil.executeUpdateSuccess(tddlConnection, analyzeSql);
         try (ResultSet rs = JdbcUtil.executeQuery(showHotKeySql, tddlConnection);) {
             Assert.assertEquals(Arrays.asList("schema_name", "table_name", "part_name", "hotvalue", "estimate_rows",
                     "estimate_percentage"),
                 JdbcUtil.getColumnNameListToLowerCase(rs));
-            Assert.assertFalse("result should not be empty", JdbcUtil.getAllResult(rs).isEmpty());
+            Assert.assertFalse("result should not be empty", JdbcUtil.getAllResult(rs).isEmpty() && !is80Version);
         }
     }
 

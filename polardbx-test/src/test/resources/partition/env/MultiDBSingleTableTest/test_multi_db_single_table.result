@@ -96,13 +96,22 @@ Logical ExecutionPlan
 LogicalView(tables=[single_t1.single_t1_s1, single_t2.single_t2_s1], sql="")
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
 Logical ExecutionPlan
-LogicalView(tables=[single_t3.single_t3_s1, single_t1.single_t1_s1], sql="")
+LogicalInsert(table="single_t3_s1", columns=RecordType(BIGINT_UNSIGNED a3, BIGINT_UNSIGNED b3, BIGINT _drds_implicit_id_), mode=MULTI)
+  LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1` AS `a3`, `b1` AS `b3`, NULL AS `_drds_implicit_id_` FROM `single_t1_s1` AS `single_t1_s1`")
 begin;
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
 Logical ExecutionPlan
 LogicalInsert(table="single_t3_s1", columns=RecordType(BIGINT_UNSIGNED a3, BIGINT_UNSIGNED b3, BIGINT _drds_implicit_id_), mode=MULTI)
   LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1` AS `a3`, `b1` AS `b3`, NULL AS `_drds_implicit_id_` FROM `single_t1_s1` AS `single_t1_s1`")
 commit;
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert drds_single_t4.single_t4_s1(a3, b3) select * from single_t1.single_t1_s1;
+Logical ExecutionPlan
+LogicalInsert(table="single_t4_s1", columns=RecordType(BIGINT_UNSIGNED a3, BIGINT_UNSIGNED b3, BIGINT _drds_implicit_id_), mode=MULTI)
+  LogicalView(tables="single_t1_s1[p1]", sql="SELECT `a1` AS `a3`, `b1` AS `b3`, NULL AS `_drds_implicit_id_` FROM `single_t1_s1` AS `single_t1_s1`")
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t1.single_t1_s1(a1, b1) select * from drds_single_t4.single_t4_s1;
+Logical ExecutionPlan
+LogicalInsert(table="single_t1_s1", columns=RecordType(BIGINT_UNSIGNED a1, BIGINT_UNSIGNED b1, BIGINT _drds_implicit_id_), mode=MULTI)
+  LogicalView(tables="DRDS_SINGLE_T4_000000_GROUP.single_t4_s1", sql="SELECT `a3` AS `a1`, `b3` AS `b1`, NULL AS `_drds_implicit_id_` FROM `single_t4_s1` AS `single_t4_s1`")
 insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
 select * from single_t3.single_t3_s1;
 a3,b3
@@ -127,5 +136,4 @@ explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t2.s
 Logical ExecutionPlan
 HashJoin(condition="a2 = a3", type="inner")
   LogicalView(tables="single_t2_s1[p1]", sql="SELECT `a2`, `b2` FROM `single_t2_s1` AS `single_t2_s1`")
-  Gather(concurrent=true)
-    LogicalView(tables="single_t3_s2", shardCount=0, sql="SELECT `a3`, `b3` FROM `single_t3_s2` AS `single_t3_s2`")
+  LogicalView(tables="single_t3_s2", shardCount=0, sql="SELECT `a3`, `b3` FROM `single_t3_s2` AS `single_t3_s2`")

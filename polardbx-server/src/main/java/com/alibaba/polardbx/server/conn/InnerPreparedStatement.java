@@ -115,42 +115,62 @@ public class InnerPreparedStatement extends InnerStatement implements PreparedSt
 
     @Override
     public void setInt(int parameterIndex, int x) throws SQLException {
+        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+            new ParameterContext(ParameterMethod.setInt, new Object[] {parameterIndex, x}));
+        params.add(pair);
 
     }
 
     @Override
     public void setFloat(int parameterIndex, float x) throws SQLException {
-
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setFloat, new Object[] {parameterIndex, x}));
+//        params.add(pair);
     }
 
     @Override
     public void setDouble(int parameterIndex, double x) throws SQLException {
+        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+            new ParameterContext(ParameterMethod.setDouble, new Object[] {parameterIndex, x}));
+        params.add(pair);
 
     }
 
     @Override
     public void setBigDecimal(int parameterIndex, BigDecimal x) throws SQLException {
-
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setBigDecimal, new Object[] {parameterIndex, x}));
+//        params.add(pair);
     }
 
     @Override
     public void setBytes(int parameterIndex, byte[] x) throws SQLException {
-
+        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+            new ParameterContext(ParameterMethod.setBytes, new Object[] {parameterIndex, x}));
+        params.add(pair);
     }
 
     @Override
     public void setDate(int parameterIndex, Date x) throws SQLException {
+        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+            new ParameterContext(ParameterMethod.setDate1, new Object[] {parameterIndex, x}));
+        params.add(pair);
 
     }
 
     @Override
     public void setTime(int parameterIndex, Time x) throws SQLException {
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setTime1, new Object[] {parameterIndex, x}));
+//        params.add(pair);
 
     }
 
     @Override
     public void setTimestamp(int parameterIndex, Timestamp x) throws SQLException {
-
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setTimestamp1, new Object[] {parameterIndex, x}));
+//        params.add(pair);
     }
 
     @Override
@@ -220,17 +240,24 @@ public class InnerPreparedStatement extends InnerStatement implements PreparedSt
 
     @Override
     public void setDate(int parameterIndex, Date x, Calendar cal) throws SQLException {
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setDate1, new Object[] {parameterIndex, x}));
+//        params.add(pair);
 
     }
 
     @Override
     public void setTime(int parameterIndex, Time x, Calendar cal) throws SQLException {
-
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setTime2, new Object[] {parameterIndex, x, cal}));
+//        params.add(pair);
     }
 
     @Override
     public void setTimestamp(int parameterIndex, Timestamp x, Calendar cal) throws SQLException {
-
+//        Pair<Integer, ParameterContext> pair = new Pair<>(parameterIndex,
+//            new ParameterContext(ParameterMethod.setTimestamp2, new Object[] {parameterIndex, x, cal}));
+//        params.add(pair);
     }
 
     @Override

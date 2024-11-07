@@ -49,8 +49,8 @@ Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
 	`a` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -88,8 +88,8 @@ Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
 	`a` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -99,7 +99,7 @@ g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
 	`a` int(11) NOT NULL,
 	`b` int(11) NOT NULL,
 	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
-	KEY `i_a_b` USING BTREE (`a`, `b`)
+	KEY `i_a_b` USING BTREE (`a`, `b`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 3
@@ -139,8 +139,8 @@ gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
 	`a` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`b` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -150,7 +150,7 @@ g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
 	`a` int(11) NOT NULL,
 	`b` int(11) NOT NULL,
 	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
-	KEY `i_a_b` USING BTREE (`a`, `b`)
+	KEY `i_a_b` USING BTREE (`a`, `b`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 3
@@ -180,7 +180,7 @@ t1,CREATE TABLE `t1` (
 	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
 		PARTITION BY KEY(`a`,`b`)
 		PARTITIONS 3,
-	KEY `auto_shard_key_b` USING BTREE (`b`)
+	KEY `auto_shard_key_b` USING BTREE (`b`) KEY_BLOCK_SIZE = 16
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
 PARTITION BY KEY(`b`)
 PARTITIONS 3
@@ -190,8 +190,8 @@ gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
 	`a` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
 	`b` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -239,11 +239,11 @@ PARTITIONS 3
 SHOW CREATE TABLE gu_compressed_c;
 Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
-	`a` bigint(20) DEFAULT NULL,
+	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -290,11 +290,11 @@ PARTITIONS 2
 SHOW CREATE TABLE gu_compressed_c;
 Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
-	`a` bigint(20) DEFAULT NULL,
+	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -334,18 +334,18 @@ t1,CREATE TABLE `t1` (
 	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
 		PARTITION BY KEY(`a`,`b`)
 		PARTITIONS 3,
-	KEY `auto_shard_key_b` USING BTREE (`b`)
+	KEY `auto_shard_key_b` USING BTREE (`b`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED
 PARTITION BY KEY(`b`)
 PARTITIONS 2
 SHOW CREATE TABLE gu_compressed_c;
 Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
-	`a` bigint(20) DEFAULT NULL,
+	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -355,7 +355,7 @@ g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
 	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
-	KEY `i_a_b` USING BTREE (`a`, `b`)
+	KEY `i_a_b` USING BTREE (`a`, `b`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 3
@@ -385,18 +385,18 @@ t1,CREATE TABLE `t1` (
 	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
 		PARTITION BY KEY(`a`,`b`)
 		PARTITIONS 3,
-	KEY `auto_shard_key_b` USING BTREE (`b`)
+	KEY `auto_shard_key_b` USING BTREE (`b`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC
 PARTITION BY KEY(`b`)
 PARTITIONS 2
 SHOW CREATE TABLE gu_compressed_c;
 Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
-	`a` bigint(20) DEFAULT NULL,
+	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC
 PARTITION BY KEY(`c`)
 PARTITIONS 3
@@ -406,7 +406,7 @@ g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
 	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
-	KEY `i_a_b` USING BTREE (`a`, `b`)
+	KEY `i_a_b` USING BTREE (`a`, `b`) KEY_BLOCK_SIZE = 8
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 3
@@ -443,11 +443,11 @@ PARTITIONS 2
 SHOW CREATE TABLE gu_compressed_c;
 Table,Create Table
 gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
-	`a` bigint(20) DEFAULT NULL,
+	`a` bigint(20) NOT NULL,
 	`b` int(11) NOT NULL,
 	`c` int(11) NOT NULL,
-	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
-	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+	PRIMARY KEY (`a`),
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
 PARTITION BY KEY(`c`)
 PARTITIONS 3

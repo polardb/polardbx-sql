@@ -49,4 +49,11 @@ public final class Assert {
         throw new TddlRuntimeException(ErrorCode.ERR_ASSERT_FAIL, message);
     }
 
+    public static void check(boolean expression) {
+        if (!expression) {
+            throw new TddlRuntimeException(ErrorCode.ERR_ASSERT_TRUE);
+        }
+    }
+
+
 }

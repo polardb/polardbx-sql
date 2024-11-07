@@ -12,12 +12,11 @@
     with cte as (select * from t1), cte2 as (select * from t2) select * from cte join cte2 on cte.id = cte2.id
 
   plan: |
-    BKAJoin(condition="id = id", type="inner")
-      Gather(concurrent=true)
-        LogicalView(tables="[0000-0003].t1", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `t1` AS `t1`")
-      Gather(concurrent=true)
-        LogicalView(tables="[0000-0003].t2_[0-7]", shardCount=8, sql="SELECT `id`, `name`, `create_time` FROM `t2` AS `t2` WHERE (`id` IN (...))")
-
+    bkajoin(condition="id = id", type="inner")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t1", shardcount=4, sql="select `id`, `name`, `create_time` from `t1` as `t1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t2_[0-7]", shardcount=8, sql="select `id`, `name`, `create_time` from `t2` as `t2` force index(`primary`) where (`id` in (...))")
 -
   sql: |
     with cte as (select * from t1), cte2 as (select count(*) from cte) select * from cte2

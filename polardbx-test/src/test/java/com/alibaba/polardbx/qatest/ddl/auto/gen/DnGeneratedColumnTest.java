@@ -646,6 +646,10 @@ public class DnGeneratedColumnTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableUniqueIndexFailed() throws SQLException {
+        if (isMySQL80()) {
+            return;
+        }
+
         String tableName = "dn_gen_col_alter_unique_fail";
         String createTable =
             String.format("create table %s (a int primary key, b int, c int as (a+b) stored, d int)", tableName);

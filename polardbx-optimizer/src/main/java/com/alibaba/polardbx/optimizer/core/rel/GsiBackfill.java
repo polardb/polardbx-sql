@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
@@ -39,11 +41,11 @@ public class GsiBackfill extends AbstractRelNode {
     private List<String> indexNames; // Add one column and backfill one multi clustered index.
     private List<String> columns;
     private boolean useChangeSet = false;
-    private boolean modifyColumn = false;
+    private boolean onlineModifyColumn = false;
     private boolean mirrorCopy = false;
     private List<String> modifyStringColumns;
-    private Map<String, String> virtualColumnMap;
-    private Map<String, String> backfillColumnMap;
+    private Map<String, String> srcCheckColumnMap;
+    private Map<String, String> dstCheckColumnMap;
 
     public static GsiBackfill createGsiBackfill(String schemaName, String baseTableName, String indexName,
                                                 ExecutionContext ec) {
@@ -115,23 +117,23 @@ public class GsiBackfill extends AbstractRelNode {
     }
 
     public boolean isModifyPartitionKeyCheck() {
-        return MapUtils.isNotEmpty(virtualColumnMap);
+        return MapUtils.isNotEmpty(srcCheckColumnMap);
     }
 
-    public Map<String, String> getVirtualColumnMap() {
-        return virtualColumnMap;
+    public Map<String, String> getSrcCheckColumnMap() {
+        return srcCheckColumnMap;
     }
 
-    public void setVirtualColumnMap(Map<String, String> virtualColumnMap) {
-        this.virtualColumnMap = virtualColumnMap;
+    public void setSrcCheckColumnMap(Map<String, String> srcCheckColumnMap) {
+        this.srcCheckColumnMap = srcCheckColumnMap;
     }
 
-    public Map<String, String> getBackfillColumnMap() {
-        return backfillColumnMap;
+    public Map<String, String> getDstCheckColumnMap() {
+        return dstCheckColumnMap;
     }
 
-    public void setBackfillColumnMap(Map<String, String> backfillColumnMap) {
-        this.backfillColumnMap = backfillColumnMap;
+    public void setDstCheckColumnMap(Map<String, String> dstCheckColumnMap) {
+        this.dstCheckColumnMap = dstCheckColumnMap;
     }
 
     public boolean isUseChangeSet() {
@@ -158,11 +160,12 @@ public class GsiBackfill extends AbstractRelNode {
         this.modifyStringColumns = modifyStringColumns;
     }
 
-    public void setModifyColumn(boolean modifyColumn) {
-        this.modifyColumn = modifyColumn;
+    public void setOnlineModifyColumn(boolean onlineModifyColumn) {
+        this.onlineModifyColumn = onlineModifyColumn;
     }
 
-    public boolean isModifyColumn() {
-        return modifyColumn;
+    public boolean isOnlineModifyColumn() {
+        return onlineModifyColumn;
     }
+
 }

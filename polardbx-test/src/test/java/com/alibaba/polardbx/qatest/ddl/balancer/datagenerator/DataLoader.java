@@ -13,6 +13,7 @@ import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 
 public class DataLoader {
@@ -27,6 +28,7 @@ public class DataLoader {
     private List<String> keys = new ArrayList<>();
     private List<String> defaults = new ArrayList<>();
     private List<String> extras = new ArrayList<>();
+    public List<Map<String, Object>> rows = new ArrayList<>();
 
     private boolean autoPrimaryKey = true;
 
@@ -46,6 +48,15 @@ public class DataLoader {
         return dataLoader;
     }
 
+    public static DataLoader create(Connection connection, String tableName, List<Map<String, Object>> rows) {
+        DataLoader dataLoader = new DataLoader();
+        dataLoader.connection = connection;
+        dataLoader.tableName = tableName;
+        dataLoader.rows = rows;
+        dataLoader.descTable();
+        return dataLoader;
+    }
+
     public void batchInsert(long count, Boolean fastMode) {
         String sql = batchInsertSql(fieldNames.size(), "?", fastMode);
         int batchSize = fastMode ? 4096 : 512;
@@ -60,11 +71,42 @@ public class DataLoader {
                         preparedStatement.setNull(i, Types.INTEGER);
                     } else if (fieldType.startsWith("int") || fieldType.startsWith("bigint")) {
                         preparedStatement.setInt(i, (Integer) columnValue);
-                    } else if (fieldType.startsWith("varchar")) {
+                    } else if (fieldType.startsWith("varchar") || fieldType.startsWith("binary")) {
                         preparedStatement.setString(i, (String) columnValue);
                     } else {
                         preparedStatement.setObject(i, columnValue);
                     }
+//                    rowData.add(columnValue);
+                }
+//                allData.add(rowData);
+
+                preparedStatement.addBatch();
+                if (c % batchSize == 0) {
+                    preparedStatement.executeBatch();
+                }
+            }
+            preparedStatement.executeBatch();
+//            connection.commit();
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void batchInsertFromRow(long count, Boolean fastMode) {
+        String sql = batchInsertSql(fieldNames.size(), "?", fastMode);
+        int batchSize = fastMode ? 4096 : 512;
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+
+            for (long c = 0; c < count; c++) {
+//                List<Object> rowData = new ArrayList<>();
+                int rowNum = (int) c;
+                for (int i = 1; i <= fieldTypes.size(); i++) {
+                    String fieldType = fieldTypes.get(i - 1);
+                    String columnName = fieldNames.get(i - 1);
+                    Object columnValue = rows.get(rowNum).get(columnName);
+                    preparedStatement.setObject(i, columnValue);
 //                    rowData.add(columnValue);
                 }
 //                allData.add(rowData);

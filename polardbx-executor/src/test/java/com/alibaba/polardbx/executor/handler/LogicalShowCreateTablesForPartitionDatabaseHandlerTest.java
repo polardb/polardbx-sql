@@ -47,7 +47,6 @@ import java.sql.Connection;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.OUTPUT_MYSQL_INDENT;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
@@ -127,31 +126,5 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandlerTest extends Logi
         }
     }
 
-    @Test
-    public void testGetColumnarIndexEngineReturnsExternalDisk() {
-        try (MockedStatic<MetaDbDataSource> mockedDataSource = mockStatic(MetaDbDataSource.class)) {
-            MetaDbDataSource mockDataSource = mock(MetaDbDataSource.class);
-            Connection mockConnection = mock(Connection.class);
-            TablesAccessor mockAccessor = mock(TablesAccessor.class);
-
-            mockedDataSource.when(MetaDbDataSource::getInstance).thenReturn(mockDataSource);
-            when(mockDataSource.getConnection()).thenReturn(mockConnection);
-
-            TablesRecord expectedRecord = new TablesRecord();
-            expectedRecord.engine = "EXTERNAL_DISK";
-            when(mockAccessor.query(anyString(), anyString(), eq(false))).thenReturn(expectedRecord);
-
-            LogicalShowCreateTablesForPartitionDatabaseHandler service = mock(
-                LogicalShowCreateTablesForPartitionDatabaseHandler.class);
-            doCallRealMethod().when(service).getColumnarIndexEngine(anyString(), anyString(), any());
-            String engine = service.getColumnarIndexEngine("schemaName", "indexName", mockAccessor);
-
-            Assert.assertEquals("EXTERNAL_DISK", engine);
-
-            when(mockAccessor.query(anyString(), anyString(), eq(false))).thenReturn(null);
-            engine = service.getColumnarIndexEngine("schemaName", "indexName", mockAccessor);
-            Assert.assertNull(engine);
-        }
-    }
 
 }

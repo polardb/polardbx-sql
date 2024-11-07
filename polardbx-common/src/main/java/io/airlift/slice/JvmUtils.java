@@ -41,6 +41,7 @@ import java.lang.reflect.Field;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 
+import static java.lang.invoke.MethodType.methodType;
 import static sun.misc.Unsafe.ARRAY_BOOLEAN_INDEX_SCALE;
 import static sun.misc.Unsafe.ARRAY_BYTE_INDEX_SCALE;
 import static sun.misc.Unsafe.ARRAY_DOUBLE_INDEX_SCALE;
@@ -49,11 +50,15 @@ import static sun.misc.Unsafe.ARRAY_INT_INDEX_SCALE;
 import static sun.misc.Unsafe.ARRAY_LONG_INDEX_SCALE;
 import static sun.misc.Unsafe.ARRAY_SHORT_INDEX_SCALE;
 
-final class JvmUtils {
+public final class JvmUtils {
     static final Unsafe unsafe;
     static final MethodHandle newByteBuffer;
 
-    private static final Field ADDRESS_ACCESSOR;
+    static final Field ADDRESS_ACCESSOR;
+    static final MethodHandles.Lookup IMPL_LOOKUP;
+
+    static volatile boolean CONSTRUCTOR_LOOKUP_ERROR;
+    static volatile MethodHandle CONSTRUCTOR_LOOKUP;
 
     static {
         try {
@@ -78,13 +83,26 @@ final class JvmUtils {
                 directByteBufferClass.getDeclaredConstructor(long.class, int.class, Object.class);
             constructor.setAccessible(true);
             newByteBuffer = MethodHandles.lookup().unreflectConstructor(constructor)
-                .asType(MethodType.methodType(ByteBuffer.class, long.class, int.class, Object.class));
+                .asType(methodType(ByteBuffer.class, long.class, int.class, Object.class));
 
             ADDRESS_ACCESSOR = Buffer.class.getDeclaredField("address");
             ADDRESS_ACCESSOR.setAccessible(true);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        MethodHandles.Lookup trustedLookup = null;
+        try {
+            Class lookupClass = MethodHandles.Lookup.class;
+            Field implLookup = lookupClass.getDeclaredField("IMPL_LOOKUP");
+            long fieldOffset = unsafe.staticFieldOffset(implLookup);
+            trustedLookup = (MethodHandles.Lookup) unsafe.getObject(lookupClass, fieldOffset);
+        } catch (Throwable ignored) {
+            // ignored
+        }
+        if (trustedLookup == null) {
+            trustedLookup = MethodHandles.lookup();
+        }
+        IMPL_LOOKUP = trustedLookup;
     }
 
     private static void assertArrayIndexScale(final String name, int actualIndexScale, int expectedIndexScale) {
@@ -100,6 +118,28 @@ final class JvmUtils {
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static MethodHandles.Lookup trustedLookup(Class objectClass) {
+        if (!CONSTRUCTOR_LOOKUP_ERROR) {
+            try {
+                int TRUSTED = -1;
+
+                MethodHandle constructor = CONSTRUCTOR_LOOKUP;
+                if (constructor == null) {
+                    constructor = IMPL_LOOKUP.findConstructor(
+                        MethodHandles.Lookup.class,
+                        methodType(void.class, Class.class, int.class)
+                    );
+                    CONSTRUCTOR_LOOKUP = constructor;
+                }
+                return (MethodHandles.Lookup) constructor.invoke(objectClass, TRUSTED);
+            } catch (Throwable ignored) {
+                CONSTRUCTOR_LOOKUP_ERROR = true;
+            }
+        }
+
+        return IMPL_LOOKUP.in(objectClass);
     }
 
     private JvmUtils() {

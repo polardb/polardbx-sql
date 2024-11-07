@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
@@ -31,9 +31,11 @@ public class ReplaceTableNameWithTestTableVisitor extends ReplaceTableNameWithSo
 
     private final boolean testMode;
 
-    public ReplaceTableNameWithTestTableVisitor(String defaultSchemaName, boolean testMode, ExecutionContext ec) {
+    public ReplaceTableNameWithTestTableVisitor(String defaultSchemaName, boolean testMode, boolean isExplain,
+                                                ExecutionContext ec) {
         super(defaultSchemaName, ec);
         this.testMode = testMode;
+        this.isExplain = isExplain;
     }
 
     @Override

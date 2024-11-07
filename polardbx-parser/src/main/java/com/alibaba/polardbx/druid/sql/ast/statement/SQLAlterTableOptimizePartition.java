@@ -26,6 +26,8 @@ public class SQLAlterTableOptimizePartition extends SQLObjectImpl implements SQL
 
     private final List<SQLName> partitions = new ArrayList<SQLName>(4);
 
+    private boolean isSubPartition = false;
+
     public List<SQLName> getPartitions() {
         return partitions;
     }
@@ -44,4 +46,13 @@ public class SQLAlterTableOptimizePartition extends SQLObjectImpl implements SQL
         }
         visitor.endVisit(this);
     }
+
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public void setSubPartition(boolean subPartition) {
+        isSubPartition = subPartition;
+    }
+
 }

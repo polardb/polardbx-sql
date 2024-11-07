@@ -130,3 +130,16 @@
 
     Gather(concurrent=true)
       LogicalView(tables="[0000-0003].test_table_a_[00-27]", shardCount=28, sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, COUNT(`bigint_test`) AS `count(bigint_test)`, SUM(`bigint_test`) AS `sum(bigint_test)`, MAX(`bigint_test`) AS `max(bigint_test)` FROM `test_table_a` AS `test_table_a` GROUP BY `pk`")
+
+- sql: |
+    select /* +TDDL: construct()
+    push_agg(
+      agg      = 'pk, json_objectagg(varchar_test_p255, bigint_test), json_arrayagg(datetime_test)',
+      group_by = pk)
+    add_un()*/ * from test_table_a;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_table_a_[00-27]", shardcount=28, sql="select `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test`, `pk`, (json_objectagg(`varchar_test_p255`, `bigint_test`)) as `json_objectagg(varchar_test_p255, bigint_test)`, (json_arrayagg(`datetime_test`)) as `json_arrayagg(datetime_test)` from `test_table_a` as `test_table_a` group by `pk`")
+ 
+ 

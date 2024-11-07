@@ -17,25 +17,38 @@
  */
 package com.alibaba.polardbx.server;
 
+import com.alibaba.polardbx.CobarConfig;
+import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
+import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
+import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
+import com.alibaba.polardbx.net.packet.ErrorPacket;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.server.util.PacketUtil;
 import com.mysql.jdbc.exceptions.jdbc4.MySQLIntegrityConstraintViolationException;
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockedConstruction;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import java.io.EOFException;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.channels.ClosedChannelException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -44,8 +57,10 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.times;
@@ -232,6 +247,61 @@ public class ServerConnectionTest {
 
             verify(serverConnection, atMost(5)).writeErrMessage(eq(4006), isNull(), anyString());
             verify(serverConnection).writeErrMessage(eq(1146), isNull(), anyString());
+        }
+    }
+
+    @Test
+    public void testSet() {
+        serverConnection.setUser("polardbx_root");
+        Assert.assertTrue(serverConnection.isPolardbxRoot());
+    }
+
+    @Test
+    public void testLock() {
+        ConfigDataMode.Mode mode = ConfigDataMode.getMode();
+        ConfigDataMode.setMode(ConfigDataMode.Mode.MOCK);
+        try (MockedStatic<CobarServer> mockedStaticServer = Mockito.mockStatic(CobarServer.class);
+            MockedStatic<PacketUtil> mockedUtil = Mockito.mockStatic(PacketUtil.class);
+            MockedStatic<PacketOutputProxyFactory> mockedStaticPacketFactory = Mockito.mockStatic(
+                PacketOutputProxyFactory.class)) {
+
+            CobarServer mockedServer = mock(CobarServer.class);
+            PacketOutputProxyFactory mockedPacketFactory = mock(PacketOutputProxyFactory.class);
+            CobarConfig mockedConfig = mock(CobarConfig.class);
+
+            mockedStaticServer.when(CobarServer::getInstance).thenReturn(mockedServer);
+            mockedStaticPacketFactory.when(PacketOutputProxyFactory::getInstance).thenReturn(mockedPacketFactory);
+            when(mockedServer.getConfig()).thenReturn(mockedConfig);
+            IPacketOutputProxy proxy = mock(IPacketOutputProxy.class);
+            when(mockedConfig.isLock()).thenReturn(true);
+
+            ErrorPacket mockedPacket = mock(ErrorPacket.class);
+            final AtomicInteger errCount = new AtomicInteger(0);
+
+            doAnswer((invocation) -> {
+                errCount.incrementAndGet();
+                return proxy;
+            }).when(mockedPacket).write(proxy);
+            mockedUtil.when(PacketUtil::getLock).thenReturn(mockedPacket);
+
+            doReturn(true).when(serverConnection).isClosed();
+
+            serverConnection.setUser("testUser");
+            Assert.assertFalse(serverConnection.isPolardbxRoot());
+
+            ServerQueryHandler queryHandler = new ServerQueryHandler(serverConnection);
+            serverConnection.setConnectionCharset("utf8");
+            serverConnection.setQueryHandler(queryHandler);
+
+            try {
+                serverConnection.query(new byte[] {
+                    33, 0, 0, 0, 3, 115, 101, 108, 101, 99, 116, 32, 64, 64, 118, 101, 114, 115, 105,
+                    111, 110, 95, 99, 111, 109, 109, 101, 110, 116, 32, 108, 105, 109, 105, 116, 32, 49});
+            } catch (Exception e) {
+                Assert.fail(e.getMessage());
+            }
+        } finally {
+            ConfigDataMode.setMode(mode);
         }
     }
 }

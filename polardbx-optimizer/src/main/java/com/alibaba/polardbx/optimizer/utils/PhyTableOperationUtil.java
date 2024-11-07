@@ -48,6 +48,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_PARALLEL_GET_CONNECTION_TRANSACTION;
@@ -404,13 +406,15 @@ public class PhyTableOperationUtil {
                                                               PartitionInfo partInfo) {
         PartSpecSearcher specSearcher = partInfo.getPartSpecSearcher();
         Long connKey = specSearcher.getPartIntraGroupConnKey(grpIdx, phyTb);
+
+        if (connKey == null || connKey == PartSpecSearcher.FOUND_NON_PARTITIONED_TBL) {
+            return null;
+        }
         if (connKey == PartSpecSearcher.NO_FOUND_PART_SPEC) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_FETCH_INTRA_GROUP_CONN_ID_FAIL,
                 "invalid group or physical table names");
         }
-        if (connKey == PartSpecSearcher.FOUND_NON_PARTITIONED_TBL) {
-            return null;
-        }
+
         return connKey;
     }
 
@@ -516,6 +520,26 @@ public class PhyTableOperationUtil {
             }
         }
         return allGrpConnStrSet;
+    }
+
+    /**
+     * Get physical parameter index in {@link PhyTableOperation#param}
+     *
+     * @param phyPlan physical plan for modify
+     * @param parameterizedParamIndex index in RexDynamicParam
+     * @return index in {@link PhyTableOperation#param}
+     */
+    public static int getPhysicalParamIndex(PhyTableOperation phyPlan, int parameterizedParamIndex) {
+        final List<Integer> paramIndex = phyPlan.getParamIndex();
+
+        assert paramIndex.size() == phyPlan.getParam().size();
+        final int physicalParamIndex = IntStream
+            .range(0, phyPlan.getParam().size())
+            .filter(i -> paramIndex.get(i) == parameterizedParamIndex)
+            .map(i -> i + 1)
+            .findFirst()
+            .getAsInt();
+        return physicalParamIndex;
     }
 
     //public static int calc

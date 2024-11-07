@@ -22,6 +22,10 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonArrayGlobalAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectAggFunction;
+import com.alibaba.polardbx.optimizer.core.function.SqlJsonObjectGlobalAggFunction;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
@@ -89,31 +93,35 @@ public abstract class PushAggRule extends RelOptRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        LogicalAggregate aggregate = (LogicalAggregate) call.rels[0];
+        if (aggregate.getGroupSets().size() > 1) {
+            return false;
+        }
+        LogicalView tableScan = (LogicalView) call.rels[1];
+
+        if (tableScan instanceof OSSTableScan) {
+            return false;
+        }
+
+        if (CBOUtil.isCheckSum(aggregate) || CBOUtil.isSingleValue(aggregate) || CBOUtil.isGroupSets(aggregate)) {
+            return false;
+        }
+
+        if (CBOUtil.containUnpushableAgg(aggregate)) {
+            return false;
+        }
+
+        if (!shouldPushAgg(tableScan)) {
+            return false;
+        }
+
         PlannerContext plannerContext = PlannerContext.getPlannerContext(call);
         return plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PUSH_AGG);
     }
 
-    protected boolean containChecksum(LogicalAggregate agg) {
-        for (AggregateCall call : agg.getAggCallList()) {
-            if (call.getAggregation().getKind() == SqlKind.CHECK_SUM) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    protected boolean containChecksumV2(LogicalAggregate agg) {
-        for (AggregateCall call : agg.getAggCallList()) {
-            if (call.getAggregation().getKind() == SqlKind.CHECK_SUM_V2) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     protected boolean shouldPushAgg(LogicalView logicalView) {
-        int pushAggInputRowCountThreshold = PlannerContext.getPlannerContext(logicalView).getParamManager()
-            .getInt(ConnectionParams.PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD);
+        long pushAggInputRowCountThreshold = PlannerContext.getPlannerContext(logicalView).getParamManager()
+            .getLong(ConnectionParams.PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD);
         if (logicalView.getCluster().getMetadataQuery().getRowCount(logicalView) > pushAggInputRowCountThreshold) {
             return false;
         }
@@ -134,41 +142,6 @@ public abstract class PushAggRule extends RelOptRule {
      */
     public static class PushAggViewRule extends PushAggRule {
 
-        @Override
-        public boolean matches(RelOptRuleCall call) {
-            LogicalAggregate aggregate = (LogicalAggregate) call.rels[0];
-            if (aggregate.getGroupSets().size() > 1) {
-                return false;
-            }
-            LogicalView tableScan = (LogicalView) call.rels[1];
-
-            if (tableScan instanceof OSSTableScan) {
-                return false;
-            }
-
-            if (containChecksum(aggregate)) {
-                return false;
-            }
-
-            if (CBOUtil.containUnpushableAgg(aggregate)) {
-                return false;
-            }
-
-            if (containChecksumV2(aggregate)) {
-                return false;
-            }
-
-            if (!shouldPushAgg(tableScan)) {
-                return false;
-            }
-
-            if (isGroupSets(aggregate)) {
-                return false;
-            }
-
-            return super.matches(call);
-        }
-
         public PushAggViewRule() {
             super(
                 operand(LogicalAggregate.class, operand(LogicalView.class, null, LogicalView.IS_SINGLE_GROUP, none())),
@@ -180,12 +153,6 @@ public abstract class PushAggRule extends RelOptRule {
          */
         @Override
         public void onMatch(RelOptRuleCall call) {
-            LogicalAggregate aggregate = (LogicalAggregate) call.rels[0];
-            for (AggregateCall aggCall : aggregate.getAggCallList()) {
-                if (aggCall.getAggregation().getKind() == SqlKind.SINGLE_VALUE) {
-                    return;
-                }
-            }
             pushAggToView(call);
         }
     }
@@ -213,66 +180,15 @@ public abstract class PushAggRule extends RelOptRule {
         }
 
         @Override
-        public boolean matches(RelOptRuleCall call) {
-            LogicalAggregate aggregate = (LogicalAggregate) call.rels[0];
-            if (aggregate.getGroupSets().size() > 1) {
-                return false;
-            }
-
-            LogicalView tableScan = (LogicalView) call.rels[1];
-
-            if (tableScan instanceof OSSTableScan) {
-                return false;
-            }
-
-            if (containChecksum(aggregate)) {
-                return false;
-            }
-
-            if (CBOUtil.containUnpushableAgg(aggregate)) {
-                return false;
-            }
-
-            if (containChecksumV2(aggregate)) {
-                return false;
-            }
-
-            if (!shouldPushAgg(tableScan)) {
-                return false;
-            }
-
-            if (isGroupSets(aggregate)) {
-                return false;
-            }
-
-            return super.matches(call);
-        }
-
-        @Override
         public void onMatch(RelOptRuleCall call) {
-            LogicalAggregate aggregate = (LogicalAggregate) call.rels[0];
-            LogicalView lv = (LogicalView) call.rels[1];
-
-            for (AggregateCall aggCall : aggregate.getAggCallList()) {
-                if (aggCall.getAggregation().getKind() == SqlKind.SINGLE_VALUE) {
-                    return;
-                }
-            }
-
-            pushDownAggregate(call, aggregate, lv);
+            pushDownAggregate(call);
         }
     }
 
-    protected void pushDownAggregate(RelOptRuleCall call, LogicalAggregate aggregate, LogicalView tableScan) {
-        // single_value 不下推
-        if (aggregate.getAggCallList() != null) {
-            for (AggregateCall aggCall : aggregate.getAggCallList()) {
-                if (aggCall != null && aggCall.getAggregation() != null
-                    && aggCall.getAggregation().getKind() == SqlKind.SINGLE_VALUE) {
-                    return;
-                }
-            }
-        }
+    protected void pushDownAggregate(RelOptRuleCall call) {
+        LogicalAggregate aggregate = (LogicalAggregate) call.rels[0];
+        LogicalView tableScan = (LogicalView) call.rels[1];
+
         // 1. check if need push down
         // 2. init push down context
         // DSqlTableScan
@@ -540,6 +456,20 @@ public abstract class PushAggRule extends RelOptRule {
             ctx.addNewAggCalls(i, newGroupConcatAggregateCall);
             ctx.addPushedAggCalls(i, groupConcatAggregateCall);
             ctx.addPushedToPartitionAggCalls(i, groupConcatAggregateCall);
+            break;
+        case JSON_OBJECTAGG:
+            SqlJsonObjectGlobalAggFunction sqlJsonObjectGlobalAggFunction = new SqlJsonObjectGlobalAggFunction();
+            AggregateCall newJsonObjectAggCall = ctx.create(sqlJsonObjectGlobalAggFunction);
+            ctx.addNewAggCalls(i, newJsonObjectAggCall);
+            ctx.addPushedAggCalls(i, aggCall);
+            ctx.addPushedToPartitionAggCalls(i, aggCall);
+            break;
+        case JSON_ARRAYAGG:
+            SqlJsonArrayGlobalAggFunction sqlJsonArrayGlobalAggFunction = new SqlJsonArrayGlobalAggFunction();
+            AggregateCall newJsonArrayAggCall = ctx.create(sqlJsonArrayGlobalAggFunction);
+            ctx.addNewAggCalls(i, newJsonArrayAggCall);
+            ctx.addPushedAggCalls(i, aggCall);
+            ctx.addPushedToPartitionAggCalls(i, aggCall);
             break;
         default:
             throw new UnsupportedOperationException(

@@ -18,8 +18,7 @@ package com.alibaba.polardbx.executor.mpp.web;
 
 import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
-import com.alibaba.polardbx.gms.node.Node;
-import com.alibaba.polardbx.gms.node.NodeState;
+import com.alibaba.polardbx.gms.node.MppScope;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 
@@ -30,7 +29,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.Response;
 import java.io.InputStream;
-import java.util.Set;
+import java.util.List;
 
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.airlift.http.client.Request.Builder.prepareGet;
@@ -62,8 +61,8 @@ public class WorkerResource {
     }
 
     private Response proxyJsonResponse(String nodeId, String workerPath) {
-        Set<InternalNode> nodes = nodeManager.getNodes(NodeState.ACTIVE, true);
-        Node node = nodes.stream()
+        List<InternalNode> nodes = nodeManager.getAllNodes().getAllWorkers(MppScope.ALL);
+        InternalNode node = nodes.stream()
             .filter(n -> n.getNodeIdentifier().equals(nodeId))
             .findFirst()
             .orElseThrow(() -> new WebApplicationException(NOT_FOUND));

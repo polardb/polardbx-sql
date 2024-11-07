@@ -38,9 +38,7 @@ import com.alibaba.polardbx.executor.operator.scan.ScanWork;
 import com.alibaba.polardbx.executor.operator.scan.metrics.ProfileAccumulatorType;
 import com.alibaba.polardbx.executor.operator.scan.metrics.ProfileUnit;
 import com.alibaba.polardbx.executor.operator.scan.metrics.RuntimeMetrics;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import com.google.common.base.Preconditions;
@@ -75,12 +73,12 @@ import java.util.stream.Collectors;
  * A columnar split responsible for morsel-driven scheduling.
  */
 public class MorselColumnarSplit implements ColumnarSplit {
-    private final ExecutionContext executionContext;
+    protected final ExecutionContext executionContext;
 
     /**
      * Executor service for IO tasks.
      */
-    private final ExecutorService ioExecutor;
+    protected final ExecutorService ioExecutor;
 
     /**
      * Engine of filesystem.
@@ -90,12 +88,12 @@ public class MorselColumnarSplit implements ColumnarSplit {
     /**
      * Filesystem for storing columnar files.
      */
-    private final FileSystem fileSystem;
+    protected final FileSystem fileSystem;
 
     /**
      * Hadoop-style configuration.
      */
-    private final Configuration configuration;
+    protected final Configuration configuration;
 
     /**
      * Unique sequence id for Driver-level identification.
@@ -110,51 +108,51 @@ public class MorselColumnarSplit implements ColumnarSplit {
     /**
      * File path with uri about filesystem.
      */
-    private final Path filePath;
+    protected final Path filePath;
 
-    private final OSSColumnTransformer ossColumnTransformer;
+    protected final OSSColumnTransformer ossColumnTransformer;
 
     /**
      * The column ids of primary keys in the file.
      * It may be null.
      */
-    private final int[] primaryKeyColIds;
+    protected final int[] primaryKeyColIds;
 
     /**
      * Subset of columns in this file.
      */
-    private List<Integer> inputRefsForFilter;
-    private List<Integer> inputRefsForProject;
+    protected List<Integer> inputRefsForFilter;
+    protected List<Integer> inputRefsForProject;
 
     /**
      * The limit of chunk rows fetched from columnar files.
      */
-    private final int chunkLimit;
+    protected final int chunkLimit;
 
     /**
      * Global block cache manager.
      */
-    private final BlockCacheManager<Block> blockCacheManager;
+    protected final BlockCacheManager<Block> blockCacheManager;
 
     /**
      * The threshold of row-group count in one morsel-unit.
      */
     private final int rgThreshold;
 
-    private final LazyEvaluator<Chunk, BitSet> lazyEvaluator;
+    protected final LazyEvaluator<Chunk, BitSet> lazyEvaluator;
 
-    private final ScanPreProcessor preProcessor;
+    protected final ScanPreProcessor preProcessor;
 
     /**
      * Inner iterator to get the next scan work.
      */
-    private ScanWorkIterator scanWorkIterator;
+    protected ScanWorkIterator scanWorkIterator;
 
-    private int partNum;
+    protected int partNum;
 
-    private int nodePartCount;
+    protected int nodePartCount;
 
-    private final MemoryAllocatorCtx memoryAllocatorCtx;
+    protected final MemoryAllocatorCtx memoryAllocatorCtx;
 
     private final FragmentRFManager fragmentRFManager;
     private final Map<FragmentRFItemKey, Integer> rfFilterRefInFileMap;
@@ -285,16 +283,16 @@ public class MorselColumnarSplit implements ColumnarSplit {
         // start from 0
         private int rowGroupIndex;
 
-        private ScanRange currentRange;
+        protected ScanRange currentRange;
 
-        private int scanWorkIndex;
+        protected int scanWorkIndex;
 
         /*================== Come from pre-processor ====================*/
 
         /**
          * Preheated file meta from columnar file.
          */
-        private PreheatFileMeta preheatFileMeta;
+        protected PreheatFileMeta preheatFileMeta;
 
         /**
          * Selected stripe ids.
@@ -304,7 +302,7 @@ public class MorselColumnarSplit implements ColumnarSplit {
         /**
          * The start row id of each stripe.
          */
-        private Map<Integer, Long> startRowInStripeMap;
+        protected Map<Integer, Long> startRowInStripeMap;
 
         /**
          * Filtered row-group bitmaps for each stripe.
@@ -314,29 +312,29 @@ public class MorselColumnarSplit implements ColumnarSplit {
         /**
          * File-level deletion bitmap.
          */
-        private final RoaringBitmap deletion;
+        protected final RoaringBitmap deletion;
 
         /*================== Come from parameter collection ====================*/
 
         // parsed from file meta and reused by all scan work.
-        private SortedMap<Integer, StripeInformation> stripeInformationMap;
-        private int compressionSize;
-        private CompressionKind compressionKind;
-        private TypeDescription fileSchema;
-        private boolean[] columnIncluded;
-        private OrcFile.WriterVersion version;
-        private ReaderEncryption encryption;
+        protected SortedMap<Integer, StripeInformation> stripeInformationMap;
+        protected int compressionSize;
+        protected CompressionKind compressionKind;
+        protected TypeDescription fileSchema;
+        protected boolean[] columnIncluded;
+        protected OrcFile.WriterVersion version;
+        protected ReaderEncryption encryption;
 
         /**
          * Mapping from stripeId to column-encoding info.
          */
-        private SortedMap<Integer, OrcProto.ColumnEncoding[]> encodingMap;
-        private boolean ignoreNonUtf8BloomFilter;
-        private long maxBufferSize;
-        private int indexStride;
-        private boolean enableDecimal64;
-        private int maxDiskRangeChunkLimit;
-        private long maxMergeDistance;
+        protected SortedMap<Integer, OrcProto.ColumnEncoding[]> encodingMap;
+        protected boolean ignoreNonUtf8BloomFilter;
+        protected long maxBufferSize;
+        protected int indexStride;
+        protected boolean enableDecimal64;
+        protected int maxDiskRangeChunkLimit;
+        protected long maxMergeDistance;
 
         ScanWorkIterator() throws IOException {
             // load from pre-processor.
@@ -445,7 +443,7 @@ public class MorselColumnarSplit implements ColumnarSplit {
             }
 
             // Try to get the next stripe when row-group index is out of bound.
-            if (++stripeListIndex < stripeIds.size()) {
+            while (++stripeListIndex < stripeIds.size()) {
                 rowGroupIndex = 0;
                 if (moveRowGroupIndex()) {
                     return true;
@@ -533,11 +531,6 @@ public class MorselColumnarSplit implements ColumnarSplit {
                     memoryAllocatorCtx);
 
                 ScanPolicy scanPolicy = ScanPolicy.of(scanPolicyId);
-                if (executionContext.isEnableOrcDeletedScan()) {
-                    // Special path for check cci consistency.
-                    // Normal oss read should not get here.
-                    scanPolicy = ScanPolicy.DELETED_SCAN;
-                }
 
                 ScanWork<ColumnarSplit, Chunk> scanWork;
                 switch (scanPolicy) {
@@ -577,17 +570,6 @@ public class MorselColumnarSplit implements ColumnarSplit {
                         partNum, nodePartCount,
                         enableCancelLoading,
                         ossColumnTransformer);
-                    break;
-                case DELETED_SCAN:
-                    scanWork = new DeletedScanWork(
-                        scanWorkId,
-                        metrics,
-                        enableMetrics,
-                        lazyEvaluator,
-                        rowGroupIterator, deletion,
-                        currentRange, inputRefsForFilter, inputRefsForProject,
-                        partNum, nodePartCount,
-                        activeLoading, ossColumnTransformer);
                     break;
                 default:
                     throw new UnsupportedOperationException();
@@ -683,7 +665,7 @@ public class MorselColumnarSplit implements ColumnarSplit {
         return fileId;
     }
 
-    private static String generateScanWorkId(String traceId, String file, int stripeId, int workIndex) {
+    protected static String generateScanWorkId(String traceId, String file, int stripeId, int workIndex) {
         return new StringBuilder()
             .append("ScanWork$")
             .append(traceId).append('$')
@@ -877,6 +859,11 @@ public class MorselColumnarSplit implements ColumnarSplit {
         @Override
         public ColumnarSplitBuilder tso(Long tso) {
             this.tso = tso;
+            return this;
+        }
+
+        @Override
+        public ColumnarSplitBuilder position(Long position) {
             return this;
         }
 

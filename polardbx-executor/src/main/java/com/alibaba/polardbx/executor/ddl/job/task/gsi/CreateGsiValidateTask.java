@@ -39,15 +39,20 @@ public class CreateGsiValidateTask extends BaseValidateTask {
     final private String indexName;
     private List<Long> tableGroupIds;
     private TableGroupConfig tableGroupConfig;
+    private boolean removePartitioning;
+    private boolean skipTableGroupChangeCheck;
 
     @JSONCreator
     public CreateGsiValidateTask(String schemaName, String primaryTableName, String indexName,
-                                 List<Long> tableGroupIds, TableGroupConfig tableGroupConfig) {
+                                 List<Long> tableGroupIds, TableGroupConfig tableGroupConfig,
+                                 boolean removePartitioning, boolean skipTableGroupChangeCheck) {
         super(schemaName);
         this.primaryTableName = primaryTableName;
         this.indexName = indexName;
         this.tableGroupIds = tableGroupIds;
         this.tableGroupConfig = TableGroupConfig.copyWithoutTables(tableGroupConfig);
+        this.removePartitioning = removePartitioning;
+        this.skipTableGroupChangeCheck = skipTableGroupChangeCheck;
         if (StringUtils.isEmpty(indexName) || StringUtils.isEmpty(primaryTableName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate",
                 "The table name shouldn't be empty");
@@ -72,12 +77,20 @@ public class CreateGsiValidateTask extends BaseValidateTask {
         if (!TableValidator.checkIfTableExists(schemaName, primaryTableName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, schemaName, primaryTableName);
         }
-        IndexValidator.validateIndexNonExistence(schemaName, primaryTableName, indexName);
+        if (!removePartitioning) {
+            IndexValidator.validateIndexNonExistence(schemaName, primaryTableName, indexName);
+        }
         GsiValidator.validateGsiSupport(schemaName, executionContext);
         GsiValidator.validateCreateOnGsi(schemaName, indexName, executionContext);
 
         TableValidator.validateTableGroupExistence(schemaName, tableGroupIds, executionContext);
-        TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
+        if (!skipTableGroupChangeCheck) {
+            TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
+        }
+    }
+
+    public void skipTgChangeCheck() {
+        skipTableGroupChangeCheck = true;
     }
 
     @Override

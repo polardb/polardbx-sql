@@ -22,7 +22,7 @@ public class PauseRebalanceDrdsTest extends DDLBaseNewDBTestCase {
     private static final String ENABLE_CHANGESET_HINT = "CN_ENABLE_CHANGESET=%s";
     // 本地测试环境需要加该hint 或者 set global
     private static final String LOCAL_HINT =
-        "SHARE_STORAGE_MODE=true,SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true";
+        "SHARE_STORAGE_MODE=true,PHYSICAL_BACKFILL_ENABLE=false,SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true";
     private static final String DROP_DB_HINT = "ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE=true";
 
     private static final int TABLE_COUNT = 4;

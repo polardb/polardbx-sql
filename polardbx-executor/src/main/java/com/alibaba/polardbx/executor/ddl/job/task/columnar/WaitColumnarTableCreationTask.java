@@ -97,11 +97,10 @@ public class WaitColumnarTableCreationTask extends BaseDdlTask {
                 }
 
                 TimeUnit.MILLISECONDS.sleep(1000);
-            } finally {
-                SQLRecorderLogger.ddlLogger.info("Wait Columnar table created task ended, cost "
-                    + ((System.nanoTime() - start) / 1_000_000) + " ms.");
             }
         }
+        SQLRecorderLogger.ddlLogger.info("Wait Columnar table created task ended, cost "
+            + ((System.nanoTime() - start) / 1_000_000) + " ms.");
         if (executionContext.getDdlContext().isInterrupted()) {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "wait columnar table task is interrupted.");
         }

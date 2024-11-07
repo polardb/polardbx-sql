@@ -109,11 +109,9 @@ import org.apache.calcite.sql.SqlSubPartitionByHash;
 import org.apache.calcite.sql.SqlSubPartitionByList;
 import org.apache.calcite.sql.SqlSubPartitionByRange;
 import org.apache.calcite.sql.SqlSubPartitionByUdfHash;
-import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.fun.SqlSubstringFunction;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
-import org.apache.calcite.sql.util.SqlString;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -139,7 +137,8 @@ import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_
 public class PartitionInfoBuilder {
 
     public static void prepareOrderNumForPartitions(PartitionTableType tblType, List<PartitionSpec> partitions) {
-        if (tblType != PartitionTableType.PARTITION_TABLE && tblType != PartitionTableType.GSI_TABLE) {
+//        if (tblType != PartitionTableType.PARTITION_TABLE && tblType != PartitionTableType.GSI_TABLE) {
+        if (!tblType.isA(PartitionTableType.PARTITIONED_TABLE)) {
             for (int i = 0; i < partitions.size(); i++) {
                 partitions.get(i).setIntraGroupConnKey(null);
             }
@@ -211,7 +210,8 @@ public class PartitionInfoBuilder {
                                                                PartitionTableType tblType,
                                                                ExecutionContext ec) {
         return buildPartitionInfoByPartDefAst(schemaName, tableName, tableGroupName, withImplicitTableGroup,
-            joinGroupName, sqlPartitionBy, boundExprInfo, pkColMetas, allColMetas, tblType, ec, new LocalityDesc());
+            joinGroupName, sqlPartitionBy, boundExprInfo, pkColMetas, allColMetas, tblType, ec, new LocalityDesc(),
+            false);
     }
 
 //    public static PartitionInfo buildPartitionInfoByMetaDbConfigBackup(TablePartitionConfig tbPartConf,
@@ -292,7 +292,8 @@ public class PartitionInfoBuilder {
                                                                List<ColumnMeta> allColMetas,
                                                                PartitionTableType tblType,
                                                                ExecutionContext ec,
-                                                               LocalityDesc locality) {
+                                                               LocalityDesc locality,
+                                                               boolean ttlTemporary) {
         BuildPartInfoFromAstParams buildParams = new BuildPartInfoFromAstParams();
         buildParams.setSchemaName(schemaName);
         buildParams.setTableName(tableName);
@@ -306,6 +307,7 @@ public class PartitionInfoBuilder {
         buildParams.setEc(ec);
         buildParams.setLocality(locality);
         buildParams.setWithImplicitTableGroup(withImplicitTableGroup);
+        buildParams.setTtlTemporary(ttlTemporary);
         PartitionInfo partitionInfo = buildPartInfoByAstParams(buildParams);
         return partitionInfo;
     }
@@ -675,7 +677,8 @@ public class PartitionInfoBuilder {
                                                                        SqlAlterTableAddPartition addPartition,
                                                                        Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
                                                                        List<PartitionGroupRecord> invisiblePartitionGroupRecords,
-                                                                       Map<String, Pair<String, String>> physicalTableAndGroupPairs) {
+                                                                       Map<String, Pair<String, String>> physicalTableAndGroupPairs,
+                                                                       boolean isColumnarIndex) {
         assert physicalTableAndGroupPairs.size() == invisiblePartitionGroupRecords.size();
         assert addPartition.getPartitions().size() == invisiblePartitionGroupRecords.size();
 
@@ -721,7 +724,7 @@ public class PartitionInfoBuilder {
             if (!isAddSubPartitions) {
                 newPartitionSpec =
                     buildPartSpec(newSqlPartition, partByDef, newActualPartColCnts, partBoundExprInfoByLevel,
-                        phyPartCounter, partPosCounter, context);
+                        phyPartCounter, partPosCounter, isColumnarIndex, context);
             }
 
             if (subPartByDef != null) {
@@ -742,7 +745,7 @@ public class PartitionInfoBuilder {
                                 buildAllSubPartSpec(newSqlPartition.getSubPartitions(), subPartByDef,
                                     partSpecWithNewSubParts, newActualPartColCnts,
                                     partBoundExprInfoByLevel, invisiblePartitionGroupRecordMap,
-                                    physicalTableAndGroupPairs, context);
+                                    physicalTableAndGroupPairs, isColumnarIndex, context);
 
                             if (!isNewSubPartSpecAdded) {
                                 PartitionInfoUtil.validateAddSubPartitions(partitionInfo, existingSubPartSpecs,
@@ -815,7 +818,7 @@ public class PartitionInfoBuilder {
                                     buildAllSubPartSpec(newSqlPartition.getSubPartitions(), subPartByDef,
                                         partSpecWithNewSubParts, newActualPartColCnts,
                                         partBoundExprInfoByLevel, invisiblePartitionGroupRecordMap,
-                                        physicalTableAndGroupPairs, context);
+                                        physicalTableAndGroupPairs, isColumnarIndex, context);
 
                                 newSubPartitionSpecs.addAll(newSubPartSpecs);
                                 newPartitionSpecs.add(partSpecWithNewSubParts);
@@ -838,7 +841,7 @@ public class PartitionInfoBuilder {
                                 buildAllSubPartSpec(newSqlPartition.getSubPartitions(), subPartByDef,
                                     newPartitionSpec, newActualPartColCnts,
                                     partBoundExprInfoByLevel, invisiblePartitionGroupRecordMap,
-                                    physicalTableAndGroupPairs, context);
+                                    physicalTableAndGroupPairs, isColumnarIndex, context);
                             newSubPartitionSpecs.addAll(newSubPartSpecs);
                         }
                     }
@@ -886,6 +889,7 @@ public class PartitionInfoBuilder {
                                                           Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
                                                           Map<String, PartitionGroupRecord> invisiblePartitionGroupRecordMap,
                                                           Map<String, Pair<String, String>> physicalTableAndGroupPairs,
+                                                          boolean isColumnarIndex,
                                                           ExecutionContext context) {
         List<PartitionSpec> newSubPartitionSpecs = new ArrayList<>();
 
@@ -924,6 +928,7 @@ public class PartitionInfoBuilder {
                     parentPartitionSpec,
                     phySubPartCounter,
                     subPartPosCounter,
+                    isColumnarIndex,
                     context
                 );
             } else if (subStrategy == PartitionStrategy.RANGE || subStrategy == PartitionStrategy.RANGE_COLUMNS
@@ -936,6 +941,7 @@ public class PartitionInfoBuilder {
                     parentPartitionSpec,
                     phySubPartCounter,
                     subPartPosCounter,
+                    isColumnarIndex,
                     context
                 );
             } else {
@@ -971,22 +977,14 @@ public class PartitionInfoBuilder {
     public static PartitionInfo buildNewPartitionInfoByDroppingPartition(PartitionInfo partitionInfo,
                                                                          SqlAlterTableDropPartition dropPartition,
                                                                          List<String> oldPartitionNameList,
-                                                                         List<String> newPartitionNameList,
-                                                                         List<PartitionGroupRecord> invisiblePartitionGroupRecords,
-                                                                         Map<String, Pair<String, String>> physicalTableAndGroupPairs,
                                                                          ExecutionContext context) {
         Set<String> origDroppedPartNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> oldPartitionNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        Set<String> newPartitionNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
         origDroppedPartNames.addAll(
             dropPartition.getPartitionNames().stream().map(o -> ((SqlIdentifier) o).getLastName())
                 .collect(Collectors.toList()));
         oldPartitionNames.addAll(oldPartitionNameList);
-        newPartitionNames.addAll(newPartitionNameList);
-
-        assert !GeneralUtil.isNotEmpty(invisiblePartitionGroupRecords)
-            || physicalTableAndGroupPairs.size() == invisiblePartitionGroupRecords.size();
 
         PartitionInfo newPartInfo = partitionInfo.copy();
 
@@ -1007,13 +1005,6 @@ public class PartitionInfoBuilder {
                     if (oldPartitionNames.contains(subPartName)) {
                         subPartsDropped++;
                         continue;
-                    }
-
-                    if (newPartitionNames.contains(subPartName)) {
-                        Pair<String, String> phyTableAndGroup = physicalTableAndGroupPairs.get(subPartName);
-                        subSpec.getLocation().setVisiable(false);
-                        subSpec.getLocation().setPhyTableName(phyTableAndGroup.getKey());
-                        subSpec.getLocation().setGroupKey(phyTableAndGroup.getValue());
                     }
 
                     newSubPartSpecList.add(subSpec);
@@ -1049,13 +1040,6 @@ public class PartitionInfoBuilder {
 
                 if (oldPartitionNames.contains(partName)) {
                     continue;
-                }
-
-                if (newPartitionNames.contains(partName)) {
-                    Pair<String, String> phyTableAndGroup = physicalTableAndGroupPairs.get(partName);
-                    spec.getLocation().setVisiable(false);
-                    spec.getLocation().setPhyTableName(phyTableAndGroup.getKey());
-                    spec.getLocation().setGroupKey(phyTableAndGroup.getValue());
                 }
 
                 newPartSpecList.add(spec);
@@ -1673,6 +1657,7 @@ public class PartitionInfoBuilder {
                                               Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
                                               AtomicInteger phyPartCounter,
                                               AtomicInteger partPosCounter,
+                                              boolean isColumnarIndex,
                                               ExecutionContext context) {
         List<ColumnMeta> partColMetaList = partByDef.getPartitionFieldList();
         SearchDatumComparator comparator = partByDef.getPruningSpaceComparator();
@@ -1698,6 +1683,9 @@ public class PartitionInfoBuilder {
         partSpecAstParams.setSubPartSpec(false);
         partSpecAstParams.setParentPartSpec(null);
         partSpecAstParams.setPhySpecCounter(phyPartCounter);
+        partSpecAstParams.setPartEngine(isColumnarIndex ?
+            TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+            TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
         return buildPartSpecByAstParamInner(partSpecAstParams);
     }
@@ -1713,6 +1701,7 @@ public class PartitionInfoBuilder {
                                                        PartitionSpec parentPartitionSpec,
                                                        AtomicInteger phySubPartCounter,
                                                        AtomicInteger subPartPosCounter,
+                                                       boolean isColumnarIndex,
                                                        ExecutionContext context) {
         List<ColumnMeta> subPartColMetaList = subPartByDef.getPartitionFieldList();
         SearchDatumComparator comparator = subPartByDef.getPruningSpaceComparator();
@@ -1739,6 +1728,9 @@ public class PartitionInfoBuilder {
         partSpecAstParams.setSubPartSpec(true);
         partSpecAstParams.setParentPartSpec(parentPartitionSpec);
         partSpecAstParams.setPhySpecCounter(phySubPartCounter);
+        partSpecAstParams.setPartEngine(isColumnarIndex ?
+            TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+            TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
         return buildPartSpecByAstParamInner(partSpecAstParams);
     }
@@ -1750,6 +1742,7 @@ public class PartitionInfoBuilder {
                                                                PartitionSpec parentPartitionSpec,
                                                                AtomicInteger phySubPartCounter,
                                                                AtomicInteger subPartPosCounter,
+                                                               boolean isColumnarIndex,
                                                                ExecutionContext context) {
         List<ColumnMeta> subPartColMetaList = subPartByDef.getPartitionFieldList();
         SearchDatumComparator comparator = subPartByDef.getPruningSpaceComparator();
@@ -1774,6 +1767,10 @@ public class PartitionInfoBuilder {
         partSpecAstParams.setSubPartSpec(true);
         partSpecAstParams.setParentPartSpec(parentPartitionSpec);
         partSpecAstParams.setPhySpecCounter(phySubPartCounter);
+        partSpecAstParams.setPartEngine(isColumnarIndex ?
+            TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+            TablePartitionRecord.PARTITION_ENGINE_INNODB);
+
         return buildPartSpecByAstParamInner(partSpecAstParams);
     }
 
@@ -2083,6 +2080,7 @@ public class PartitionInfoBuilder {
                 subPartByAstParam.setParentPartSpecs(partByDef.getPartitions());
                 subPartByAstParam.setParentPartSpecAstList(sqlPartitionBy.getPartitions());
                 subPartByAstParam.setContainNextLevelPartSpec(false);
+                subPartByAstParam.setTtlTemporary(buildParams.isTtlTemporary());
                 PartitionByDefinition subPartByDef = buildPartByDefByAstParams(subPartByAstParam);
                 partByDef.setSubPartitionBy(subPartByDef);
             }
@@ -2231,6 +2229,8 @@ public class PartitionInfoBuilder {
         List<ColumnMeta> partColMetaList = new ArrayList<>();
         List<RelDataType> partExprTypeList = new ArrayList<>();
         int allPhyGroupCnt = HintUtil.allGroup(schemaName).size();
+
+        boolean ttlTemporary = buildParams.isTtlTemporary();
 
         if (tblType.isA(PartitionTableType.PARTITIONED_TABLE)) {
 
@@ -2410,6 +2410,7 @@ public class PartitionInfoBuilder {
         buildAllPartSpecsAstParams.setUseSubPartTemplate(useSubPartTemplate);
         buildAllPartSpecsAstParams.setContainNextLevelPartSpec(containNextLevelPartSpec);
         buildAllPartSpecsAstParams.setPhyPartCounter(phyPartCounter);
+        buildAllPartSpecsAstParams.setTtlTemporary(ttlTemporary);
         partSpecList = buildAllPartBySpecList(buildAllPartSpecsAstParams);
         partitionByDef.setPartitions(partSpecList);
         /**
@@ -2495,6 +2496,7 @@ public class PartitionInfoBuilder {
                     buildAllSubPartSpecsAstParams.setContainNextLevelPartSpec(false);
                     buildAllSubPartSpecsAstParams.setParentPartSpec(parentPartSpec);
                     buildAllSubPartSpecsAstParams.setPhyPartCounter(phyPartCounter);
+                    buildAllSubPartSpecsAstParams.setTtlTemporary(ttlTemporary);
                     List<PartitionSpec> subPartSpecList = buildAllPartBySpecList(buildAllSubPartSpecsAstParams);
                     parentPartSpec.setSubPartitions(subPartSpecList);
 
@@ -2640,12 +2642,15 @@ public class PartitionInfoBuilder {
         ExecutionContext ec = buildParams.getEc();
         LocalityDesc tblLocality = buildParams.getLocality();
         TableGroupConfig tableGroupConfig = null;
+        boolean ttlTemporary = buildParams.isTtlTemporary();
         if (tblLocality.isEmpty() && !StringUtils.isEmpty(tableGroupName)) {
             TableGroupInfoManager tableGroupInfoManager =
                 OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
             tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
             if (!(buildParams.isWithImplicitTableGroup() && tableGroupConfig == null)) {
-                tblLocality = tableGroupConfig.getLocalityDesc();
+                if (tableGroupConfig != null) {
+                    tblLocality = tableGroupConfig.getLocalityDesc();
+                }
             }
         }
 
@@ -2654,6 +2659,11 @@ public class PartitionInfoBuilder {
         String tbSchema = schemaName;
         PartitionStrategy partStrategy = buildPartByStrategy(schemaName, sqlPartitionBy, tblType);
         boolean containNextLevelPartSpec = sqlPartitionBy != null && sqlPartitionBy.getSubPartitionBy() != null;
+
+        long partFlags = 0L;
+        if (ttlTemporary) {
+            partFlags |= TablePartitionRecord.FLAG_TTL_TEMPORARY_TABLE;
+        }
 
         /**
          * Build PartitionBy for partition
@@ -2674,6 +2684,7 @@ public class PartitionInfoBuilder {
         partByAstParam.setEc(ec);
         partByAstParam.setBuildSubPartBy(false);
         partByAstParam.setContainNextLevelPartSpec(containNextLevelPartSpec);
+        partByAstParam.setTtlTemporary(ttlTemporary);
         PartitionByDefinition partByDef = buildCompletePartByDefByAstParams(partByAstParam, sqlPartitionBy);
         PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
         partitionInfo.setPartitionBy(partByDef);
@@ -2689,7 +2700,7 @@ public class PartitionInfoBuilder {
         partitionInfo.setTableName(tbName);
         partitionInfo.setTableSchema(tbSchema);
         partitionInfo.setAutoFlag(TablePartitionRecord.PARTITION_AUTO_BALANCE_DISABLE);
-        partitionInfo.setPartFlags(0L);
+        partitionInfo.setPartFlags(partFlags);
         partitionInfo.setTableType(tblType);
         partitionInfo.setRandomTableNamePatternEnabled(ec.isRandomPhyTableEnabled());
         partitionInfo.setSessionVars(saveSessionVars(ec));
@@ -2841,7 +2852,7 @@ public class PartitionInfoBuilder {
                 ColumnMeta cm = null;
                 for (int j = 0; j < allColumnMetas.size(); j++) {
                     ColumnMeta colMeta = allColumnMetas.get(j);
-                    if (colMeta.getOriginColumnName().equalsIgnoreCase(partColName)) {
+                    if (partColName.equalsIgnoreCase(colMeta.getOriginColumnName())) {
                         cm = colMeta;
                         break;
                     }
@@ -3004,9 +3015,16 @@ public class PartitionInfoBuilder {
                         partitionGroupRecord.getId());
             partitionSpec.setLocation(location);
 
-            if (extras != null && TStringUtil.isNotEmpty(extras.getLocality())) {
-                LocalityDesc locality = LocalityDesc.parse(extras.getLocality());
-                partitionSpec.setLocality(locality.toString());
+            if (extras != null) {
+
+                if (TStringUtil.isNotEmpty(extras.getLocality())) {
+                    LocalityDesc locality = LocalityDesc.parse(extras.getLocality());
+                    partitionSpec.setLocality(locality.toString());
+                }
+
+                if (extras.getArcState() != null) {
+                    partitionSpec.setArcState(extras.getArcState());
+                }
             }
 
             if (!buildSubPartBy) {

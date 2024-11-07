@@ -18,7 +18,6 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -55,6 +54,10 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         return truncateTableWithGsiPreparedData != null && truncateTableWithGsiPreparedData.hasGsi();
     }
 
+    public boolean isWithCci() {
+        return truncateTableWithGsiPreparedData != null && truncateTableWithGsiPreparedData.isHasColumnarIndex();
+    }
+
     public TruncateTableWithGsiPreparedData getTruncateTableWithGsiPreparedData() {
         return truncateTableWithGsiPreparedData;
     }
@@ -84,8 +87,7 @@ public class LogicalTruncateTable extends BaseDdlOperation {
         truncateTableWithGsiPreparedData.setSchemaName(schemaName);
         truncateTableWithGsiPreparedData.setTableName(tableName);
         truncateTableWithGsiPreparedData.setTableVersion(tableMeta.getVersion());
-        truncateTableWithGsiPreparedData.setHasColumnarIndex(
-            GeneralUtil.isNotEmpty(tableMeta.getColumnarIndexPublished()));
+        truncateTableWithGsiPreparedData.setHasColumnarIndex(tableMeta.withCci());
         final GsiMetaBean gsiMetaBean = sm.getGsi(tableName, IndexStatus.ALL);
 
         if (gsiMetaBean.withGsi(tableName)) {

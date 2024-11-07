@@ -18,7 +18,8 @@ public class JoinWithDynamicValueTest extends BaseTestCase {
 
     private static final String TABLE_NAME = "test_dynamic_value";
 
-    private static final String SQL = "/*+TDDL: cmd_extra()*/ select * from %s where c1 in (%s) and c2 = 5;";
+    private static final String SQL =
+        "/*+TDDL: cmd_extra(IN_SUB_QUERY_THRESHOLD=5)*/ select * from %s where c1 in (%s) and c2 = 5;";
 
     @Before
     public void init() throws SQLException {

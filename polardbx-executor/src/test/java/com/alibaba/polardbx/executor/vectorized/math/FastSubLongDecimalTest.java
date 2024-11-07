@@ -41,23 +41,37 @@ public class FastSubLongDecimalTest {
     private final boolean overflow;
     private final InputState inputState;
     private final ExecutionContext executionContext = new ExecutionContext();
-    private long leftConstVal;
+    private final int[] sel;
+    private final boolean withSelection;
+    private Long leftConstVal;
 
-    public FastSubLongDecimalTest(boolean overflow, String inputState) {
+    public FastSubLongDecimalTest(boolean overflow, String inputState, boolean withSelection) {
         this.overflow = overflow;
         this.inputState = InputState.valueOf(inputState);
         if (this.inputState == InputState.SIMPLE) {
             executionContext.getParamManager().getProps().put(ENABLE_DECIMAL_FAST_VEC, "true");
         }
+        this.withSelection = withSelection;
+        if (withSelection) {
+            final int offset = 10;
+            this.sel = new int[COUNT / 2];
+            for (int i = 0; i < sel.length; i++) {
+                sel[i] = i + offset;
+            }
+        } else {
+            this.sel = null;
+        }
     }
 
-    @Parameterized.Parameters(name = "overflow={0},inputState={1}")
+    @Parameterized.Parameters(name = "overflow={0},inputState={1},sel={2}")
     public static List<Object[]> generateParameters() {
         List<Object[]> list = new ArrayList<>();
 
         for (InputState value : InputState.values()) {
-            list.add(new Object[] {true, value.name()});
-            list.add(new Object[] {false, value.name()});
+            list.add(new Object[] {true, value.name(), false});
+            list.add(new Object[] {true, value.name(), true});
+            list.add(new Object[] {false, value.name(), true});
+            list.add(new Object[] {false, value.name(), false});
         }
 
         return list;
@@ -80,6 +94,9 @@ public class FastSubLongDecimalTest {
         case FULL:
             leftConstVal = random.nextLong();
             break;
+        case NULL:
+            leftConstVal = null;
+            break;
         }
         System.out.println("Left const val: " + leftConstVal);
     }
@@ -101,7 +118,7 @@ public class FastSubLongDecimalTest {
         EvaluationContext evaluationContext = new EvaluationContext(chunk, executionContext);
         DecimalBlock leftBlock = (DecimalBlock) Objects.requireNonNull(chunk.slotIn(0));
         Assert.assertEquals("Expect left block to be decimal64: " + isDecimal64(),
-            leftBlock.isDecimal64(), isDecimal64());
+            leftBlock.isDecimal64(), isDecimal64() || inputState == InputState.NULL);
 
         DecimalBlock outputBlock = (DecimalBlock) Objects.requireNonNull(chunk.slotIn(OUTPUT_INDEX));
 
@@ -109,7 +126,11 @@ public class FastSubLongDecimalTest {
 
         expr.eval(evaluationContext);
 
-        Assert.assertFalse("Expect to be allocated after evaluation", outputBlock.isUnalloc());
+        if (inputState == InputState.NULL) {
+            Assert.assertTrue("Expect to be unallocated after evaluation when null", outputBlock.isUnalloc());
+        } else {
+            Assert.assertFalse("Expect to be allocated after evaluation", outputBlock.isUnalloc());
+        }
 
         if (!overflow) {
             switch (inputState) {
@@ -119,8 +140,17 @@ public class FastSubLongDecimalTest {
                     outputBlock.isDecimal64());
                 break;
             case SIMPLE:
-                Assert.assertTrue("Expect output block to simple when input is simple, got: " + outputBlock.getState(),
-                    outputBlock.isSimple());
+                if (withSelection) {
+                    Assert.assertTrue(
+                        "Expect output block to simple when input is simple, got: " + outputBlock.getState(),
+                        outputBlock.getState().isFull());
+                } else {
+                    // simple mode does not support selection
+                    Assert.assertTrue("Expect output block to full when input is simple with selection, got: "
+                            + outputBlock.getState(),
+                        outputBlock.isSimple());
+                }
+
                 break;
             case FULL:
                 Assert.assertTrue("Expect output block to full when input is full got: " + outputBlock.getState(),
@@ -150,9 +180,17 @@ public class FastSubLongDecimalTest {
 
         // check result
         Assert.assertEquals("Incorrect output block positionCount", COUNT, outputBlock.getPositionCount());
-        for (int i = 0; i < COUNT; i++) {
-            Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString() + " at " + i,
-                targetResult[i], outputBlock.getDecimal(i));
+        if (withSelection) {
+            for (int i = 0; i < sel.length; i++) {
+                int j = sel[i];
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(j).toString() + " at pos: " + i,
+                    targetResult[j], outputBlock.getDecimal(j));
+            }
+        } else {
+            for (int i = 0; i < COUNT; i++) {
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString() + " at pos: " + i,
+                    targetResult[i], outputBlock.getDecimal(i));
+            }
         }
     }
 
@@ -165,6 +203,9 @@ public class FastSubLongDecimalTest {
         for (int i = 0; i < COUNT; i++) {
             long l;
             switch (inputState) {
+            case NULL:
+                l = genNotOverflowLong();
+                break;
             case DECIMAL_64:
                 if (!overflow || i % 2 == 1) {
                     l = genNotOverflowLong();
@@ -195,22 +236,28 @@ public class FastSubLongDecimalTest {
 
             Decimal decimal = new Decimal(l, SCALE);
 
-            if (isDecimal64()) {
+            if (isDecimal64() || inputState == InputState.NULL) {
                 builder.writeLong(l);
             } else {
                 builder.writeDecimal(decimal);
             }
 
-            Decimal target = new Decimal();
-            FastDecimalUtils.sub(Decimal.fromLong(leftConstVal).getDecimalStructure(), decimal.getDecimalStructure(),
-                target.getDecimalStructure());
-            targetResult[i] = target;
+            if (inputState != InputState.NULL) {
+                Decimal target = new Decimal();
+                FastDecimalUtils.sub(Decimal.fromLong(leftConstVal).getDecimalStructure(),
+                    decimal.getDecimalStructure(),
+                    target.getDecimalStructure());
+                targetResult[i] = target;
+            } else {
+                targetResult[i] = new Decimal(0, decimalType.getScale());
+            }
         }
         DecimalBlock decimalBlock = (DecimalBlock) builder.build();
         blocks[0] = decimalBlock;
 
         switch (inputState) {
         case DECIMAL_64:
+        case NULL:
             Assert.assertTrue(decimalBlock.isDecimal64());
             break;
         case SIMPLE:
@@ -221,7 +268,13 @@ public class FastSubLongDecimalTest {
             break;
         }
 
-        return new MutableChunk(blocks);
+        MutableChunk chunk = new MutableChunk(blocks);
+        if (withSelection) {
+            chunk.setSelectionInUse(true);
+            chunk.setSelection(sel);
+            chunk.setBatchSize(sel.length);
+        }
+        return chunk;
     }
 
     private long genNotOverflowLong() {
@@ -235,6 +288,7 @@ public class FastSubLongDecimalTest {
     enum InputState {
         DECIMAL_64,
         SIMPLE,
-        FULL
+        FULL,
+        NULL
     }
 }

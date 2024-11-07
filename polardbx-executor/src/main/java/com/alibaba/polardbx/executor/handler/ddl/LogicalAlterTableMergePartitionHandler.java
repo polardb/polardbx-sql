@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableMergePartitionJob
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -52,6 +53,7 @@ public class LogicalAlterTableMergePartitionHandler extends LogicalCommonDdlHand
         LogicalAlterTableMergePartition alterTableMergePartition =
             (LogicalAlterTableMergePartition) logicalDdlPlan;
         alterTableMergePartition.preparedData(executionContext);
+        alterTableMergePartition.getPreparedData().setDdlVersionId(DdlUtils.generateVersionId(executionContext));
         return AlterTableMergePartitionJobFactory
             .create(alterTableMergePartition.relDdl,
                 (AlterTableMergePartitionPreparedData) alterTableMergePartition.getPreparedData(),

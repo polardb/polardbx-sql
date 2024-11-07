@@ -1,11 +1,17 @@
 package com.alibaba.polardbx.qatest.columnar.role;
 
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.explainResultMatchAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.explainResultStrictMatchAssert;
@@ -38,7 +44,7 @@ public class ColumnarRoleTest extends AutoReadBaseTestCase {
                     + "\t`primary` int(11),\n"
                     + "\t`key` int(11)\n"
                     + ") ENGINE = InnoDB DEFAULT CHARACTER SET = GBK DEFAULT COLLATE = gbk_chinese_ci", 2);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             explainResultStrictMatchAssert(
                 "show create table table_multi_db_multi_tb;", null, tddlConnection,
                 "CREATE TABLE `table_multi_db_multi_tb` (\n"
@@ -69,7 +75,7 @@ public class ColumnarRoleTest extends AutoReadBaseTestCase {
                     + "\t`gmt_modified` date,\n"
                     + "\tPRIMARY KEY (`id`)\n"
                     + ") ENGINE = InnoDB DEFAULT CHARACTER SET = GBK DEFAULT COLLATE = gbk_chinese_ci", 2);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             explainResultStrictMatchAssert(
                 "show create table tddl_test;", null, tddlConnection,
                 "CREATE TABLE `tddl_test` (\n"
@@ -95,6 +101,20 @@ public class ColumnarRoleTest extends AutoReadBaseTestCase {
         selectErrorAssert(
             "select * from tddl_test", null, tddlConnection,
             "server error by don't support query the table without columnar index");
+    }
+
+    @Test
+    public void showCreateTableTest() throws SQLException {
+        String showResult = null;
+        try (Connection readOnlyConn = getPolardbxConnection(PropertiesUtil.polardbXDBName1(true))) {
+            JdbcUtil.useDb(readOnlyConn, "drds_polarx1_part_qatest_app");
+            ResultSet result = JdbcUtil.executeQuerySuccess(readOnlyConn,
+                "show create table update_delete_base_autonic_two_multi_db_one_tb");
+            while (result.next()) {
+                showResult = result.getString(2);
+            }
+        }
+        Assert.assertTrue(showResult != null);
     }
 
 }

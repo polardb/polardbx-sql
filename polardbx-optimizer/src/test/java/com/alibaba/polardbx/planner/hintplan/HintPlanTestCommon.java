@@ -18,6 +18,8 @@ package com.alibaba.polardbx.planner.hintplan;
 
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
@@ -63,6 +65,7 @@ public abstract class HintPlanTestCommon extends PlanTestCommon {
 
         PlannerContext plannerContext = new PlannerContext(executionContext);
         plannerContext.setExtraCmds(executionContext.getExtraCmds());
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, false);
         plannerContext.setExecutionContext(executionContext);
         plannerContext.setParams(new Parameters());
         if (hintCollection.cmdOnly()) {

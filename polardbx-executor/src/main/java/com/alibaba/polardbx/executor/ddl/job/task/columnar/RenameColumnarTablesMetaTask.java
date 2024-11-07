@@ -25,35 +25,38 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
 import java.sql.Connection;
+import java.util.List;
 
 @Getter
 @TaskName(name = "RenameColumnarTablesMetaTask")
 public class RenameColumnarTablesMetaTask extends BaseGmsTask {
-    private final String primaryTableName;
-    private final String newPrimaryTableName;
-    private final long versionId;
+    private final List<String> oldTableNames;
+    private final List<String> newTableNames;
+    private final List<Long> versionIds;
 
     @JSONCreator
-    public RenameColumnarTablesMetaTask(String schemaName, String primaryTableName, String newPrimaryTableName,
-                                        long versionId) {
-        super(schemaName, primaryTableName);
-        this.primaryTableName = primaryTableName;
-        this.newPrimaryTableName = newPrimaryTableName;
-        this.versionId = versionId;
+    public RenameColumnarTablesMetaTask(String schemaName, List<String> oldTableNames, List<String> newTableNames,
+                                        List<Long> versionIds) {
+        super(schemaName, null);
+        this.oldTableNames = oldTableNames;
+        this.newTableNames = newTableNames;
+        this.versionIds = versionIds;
         onExceptionTryRecoveryThenRollback();
     }
 
     @Override
-    public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+    protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        TableMetaChanger.renameColumnarTableMeta(metaDbConnection, schemaName, primaryTableName, newPrimaryTableName,
-            versionId, jobId);
+
+        TableMetaChanger.renameColumnarTablesMeta(metaDbConnection, schemaName, oldTableNames, newTableNames,
+            versionIds, jobId);
     }
 
     @Override
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        TableMetaChanger.renameColumnarTableMeta(metaDbConnection, schemaName, newPrimaryTableName, primaryTableName,
-            versionId, jobId);
+        TableMetaChanger.renameColumnarTablesMeta(metaDbConnection, schemaName, newTableNames, oldTableNames,
+            versionIds, jobId);
     }
+
 }

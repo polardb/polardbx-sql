@@ -43,6 +43,7 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
@@ -60,6 +61,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableOptimizePartition;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
@@ -336,6 +338,15 @@ public class TableValidator {
         return tableMeta.withGsi();
     }
 
+    public static void validateTableWithCCI(ExecutionContext executionContext,
+                                            ComplexTaskMetaManager.ComplexTaskType taskType) {
+        boolean forbidDdlWithCci = executionContext.getParamManager().getBoolean(ConnectionParams.FORBID_DDL_WITH_CCI);
+        // allow move partition on table with cci
+        if (forbidDdlWithCci && taskType != ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_WITH_CCI, taskType.name());
+        }
+    }
+
     public static void validateTableWithCCI(String schemaName, String logicalTableName,
                                             ExecutionContext executionContext, SqlKind sqlKind) {
         TableMeta tableMeta =
@@ -523,7 +534,8 @@ public class TableValidator {
         }
     }
 
-    public static void validateTruncatePartition(String schemaName, String tableName, SqlAlterTable sqlAlterTable) {
+    public static void validateTruncatePartition(String schemaName, String tableName, SqlAlterTable sqlAlterTable,
+                                                 ExecutionContext executionContext) {
         TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
         if (tableMeta == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, schemaName, tableName);
@@ -537,7 +549,20 @@ public class TableValidator {
                 if (tableMeta.isGsi()) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_TRUNCATE_PARTITION, tableName);
                 }
+                boolean allDropTruncateCciPartition =
+                    executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DROP_TRUNCATE_CCI_PARTITION);
+                if (tableMeta.isColumnar() && !allDropTruncateCciPartition) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_TRUNCATE_PARTITION,
+                        "Not support truncate CCI `" + tableName + "` partition.");
+                }
             }
+        }
+    }
+
+    public static void validateOptimizePartition(String schemaName, String tableName, SqlAlterTable sqlAlterTable) {
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        if (tableMeta == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TABLE, schemaName, tableName);
         }
     }
 
@@ -577,8 +602,20 @@ public class TableValidator {
         // ddl on file storage table
         if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CHECK_DDL_FILE_STORAGE)
             && ddlOperation.checkIfFileStorage(executionContext)) {
+//            if (!ddlOperation.isSupportedByFileStorage() && !ddlOperation.isCciTable(executionContext)) {
+//                throwEngineNotSupport(ddlOperation.getSchemaName(), ddlOperation.getTableName());
+//            }
             if (!ddlOperation.isSupportedByFileStorage()) {
-                throwEngineNotSupport(ddlOperation.getSchemaName(), ddlOperation.getTableName());
+                if (!ddlOperation.isCciTable(executionContext)) {
+                    throwEngineNotSupport(ddlOperation.getSchemaName(), ddlOperation.getTableName());
+                } else {
+                    /**
+                     * Curr table is cci index
+                     */
+                    if (!ddlOperation.isSupportedByCci(executionContext)) {
+                        throwEngineNotSupport(ddlOperation.getSchemaName(), ddlOperation.getTableName());
+                    }
+                }
             }
         }
         // ddl on innodb table binding to file storage table

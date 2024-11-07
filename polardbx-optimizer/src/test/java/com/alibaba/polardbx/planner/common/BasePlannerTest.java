@@ -40,15 +40,27 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.model.Matrix;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateJavaFunctionStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.JavaFunctionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -61,13 +73,17 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableRecord;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.SimpleSchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.MockStatisticDatasource;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.expression.JavaFunctionManager;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ToDrdsRelVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
@@ -91,6 +107,12 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.rule.VirtualTableRoot;
 import com.alibaba.polardbx.rule.model.TargetDB;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap.Builder;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.DDL;
@@ -126,6 +148,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLSyntaxErrorException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -159,6 +182,11 @@ import static org.junit.Assert.assertEquals;
  */
 public abstract class BasePlannerTest {
 
+    /**
+     * when set this flag,
+     */
+    private static final boolean fixFlag = true;
+
     private Map<String, String> ddlMaps = new HashMap<>();
 
     private Map<String, String> javaUdfMaps = new HashMap<>();
@@ -188,12 +216,12 @@ public abstract class BasePlannerTest {
 
     protected String appName = "optest";
     public static final long ROW_COUNT = 100;
-    private static final boolean fixFlag = false;
 
     private Map<String, OptimizerContext> appNameOptiContextMaps = new HashMap<String, OptimizerContext>();
     private String nodetree;
 
     protected boolean enableParallelQuery = false;
+    protected boolean enableAutoForceIndex = true;
     protected boolean enablePlanManagementTest = false;
     protected boolean enableJoinClustering = true;
     protected int partialAggBucketThreshold = -1;
@@ -210,6 +238,7 @@ public abstract class BasePlannerTest {
     protected boolean ignoreBaseTest = false;
     protected ExecutionContext ec = new ExecutionContext();
     protected boolean useNewPartDb = false;
+    protected boolean withSingleGroup = false;
     private int corMaxNum = 10;
     private String targetEnvFile = this.getClass().getSimpleName();
 
@@ -391,13 +420,18 @@ public abstract class BasePlannerTest {
             useNewPartDb = (boolean) configMaps.get(key);
             //configMaps.remove(key);
         }
+        key = appName.equals(getAppName()) ? "defaltxxAPPName.withSingleGroup" : appName + ".withSingleGroup";
+        if (configMaps.containsKey(key)) {
+            withSingleGroup = (boolean) configMaps.get(key);
+            //configMaps.remove(key);
+        }
         key = appName.equals(getAppName()) ? "defaltxxAPPName.dbNumber" : appName + ".dbNumber";
         int dbNumber = 4;
         if (configMaps.containsKey(key)) {
             dbNumber = ((Number) configMaps.get(key)).intValue();
             //configMaps.remove(key);
         }
-        context = initOptiContext(appName, dbNumber, useNewPartDb);
+        context = initOptiContext(appName, dbNumber, useNewPartDb, withSingleGroup);
         appNameOptiContextMaps.put(appName, context);
         LocalityManager.setMockMode(true);
         OptimizerHelper.clear();
@@ -441,7 +475,8 @@ public abstract class BasePlannerTest {
         });
     }
 
-    public static OptimizerContext initOptiContext(String appName, int dbNumber, boolean useNewPartDb) {
+    public static OptimizerContext initOptiContext(String appName, int dbNumber, boolean useNewPartDb,
+                                                   boolean withSingleGroup) {
         OptimizerContext context = new OptimizerContext(appName);
         PartitionInfoManager partInfoMgr = new PartitionInfoManager(appName, appName, true);
         TableGroupInfoManager tableGroupInfoManager = new TableGroupInfoManager(appName);
@@ -449,12 +484,35 @@ public abstract class BasePlannerTest {
         TddlRule tddlRule = new TddlRule();
         tddlRule.setAppName(appName);
         tddlRule.setAllowEmptyRule(true);
-        tddlRule.setDefaultDbIndex(appName + "_0000");
+        if (!useNewPartDb && withSingleGroup) {
+            tddlRule.setDefaultDbIndex(appName + "_single_group");
+            dbNumber = dbNumber - 1;
+        } else {
+            tddlRule.setDefaultDbIndex(appName + "_0000");
+        }
+        partInfoMgr.setDefaultDbIndex(tddlRule.getDefaultDbIndex());
         TddlRuleManager rule = new TddlRuleManager(tddlRule, partInfoMgr, tableGroupInfoManager, appName);
 
+        Map<String, DbGroupInfoRecord> groupInfoRecordMap = new HashMap<>();
         List<Group> groups = new LinkedList<>();
         for (int i = 0; i < dbNumber; i++) {
-            groups.add(fakeGroup(appName, appName + String.format("_%04d", i)));
+            if (useNewPartDb) {
+                TableGroupUtils.mockTheOrderedLocation(appName).forEach(
+                    groupDetailInfoExRecord -> groups.add(fakeGroup(appName, groupDetailInfoExRecord.getGroupName())));
+            } else if (withSingleGroup) {
+                final String groupKey = appName + String.format("_%06d_group", i);
+                groups.add(fakeGroup(appName, groupKey));
+                groupInfoRecordMap.put(groupKey, fakeGroupInfo(appName, groupKey));
+            } else {
+                groups.add(fakeGroup(appName, appName + String.format("_%04d", i)));
+            }
+        }
+
+        if (!useNewPartDb && withSingleGroup) {
+            final String groupKey = appName + "_single_group";
+            groups.add(fakeGroup(appName, groupKey));
+            groupInfoRecordMap.put(groupKey, fakeGroupInfo(appName, groupKey));
+            DbGroupInfoManager.getInstance().mockDbGroupInfo(appName, groupInfoRecordMap);
         }
 
         Matrix matrix = new Matrix();
@@ -484,6 +542,15 @@ public abstract class BasePlannerTest {
         }
 
         return context;
+    }
+
+    private static DbGroupInfoRecord fakeGroupInfo(String appName, String groupKey) {
+        final DbGroupInfoRecord result = new DbGroupInfoRecord();
+        result.dbName = appName;
+        result.groupName = groupKey;
+        result.phyDbName = groupKey;
+        result.groupType = DbGroupInfoRecord.GROUP_TYPE_NORMAL;
+        return result;
     }
 
     private static Group fakeGroup(String appname, String name) {
@@ -586,7 +653,7 @@ public abstract class BasePlannerTest {
         storeTable(appName, tr, tm, useSequence);
 
         // init gsi meta
-        if (sqlCreateTable.createGsi()) {
+        if (sqlCreateTable.createGsi() || sqlCreateTable.createCci()) {
             final String mainTableDefinition = sqlCreateTable.rewriteForGsi().toString();
             final MySqlCreateTableStatement astCreateIndexTable =
                 (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(mainTableDefinition,
@@ -608,7 +675,7 @@ public abstract class BasePlannerTest {
                 astCreateIndexTable,
                 allIndexRecords,
                 allTableRecords,
-                false, ec);
+                false, false, ec);
 
             // global unique secondary index
             storeGsi(appName,
@@ -622,7 +689,21 @@ public abstract class BasePlannerTest {
                 astCreateIndexTable,
                 allIndexRecords,
                 allTableRecords,
-                true, ec);
+                true, false, ec);
+
+            // columnar index
+            storeGsi(appName,
+                sqlCreateTable,
+                logicalTableName,
+                tm,
+                tr,
+                OptimizerContext.getContext(appName).getPartitionInfoManager().getPartitionInfo(logicalTableName),
+                logicalCreateTable,
+                mainTableDefinition,
+                astCreateIndexTable,
+                allIndexRecords,
+                allTableRecords,
+                false, true, ec);
 
             // store gsi meta for primary table
             final Map<String, Map<String, GsiIndexMetaBean>> tmpTableIndexMap =
@@ -735,6 +816,7 @@ public abstract class BasePlannerTest {
                          TableRule tr, PartitionInfo partitionInfo, LogicalCreateTable logicalCreateTable,
                          String mainTableDefinition, MySqlCreateTableStatement astCreateIndexTable,
                          List<IndexRecord> allIndexRecords, List<TableRecord> allTableRecords, boolean gusi,
+                         boolean cci,
                          ExecutionContext ec) {
         final Map<String, TableRule> gsiTableRules = new HashMap<>();
         final Map<String, SqlIndexDefinition> gsiIndexDefs = new HashMap<>();
@@ -747,6 +829,10 @@ public abstract class BasePlannerTest {
             }
             if (sqlCreateTable.getClusteredUniqueKeys() != null) {
                 gsiList.addAll(sqlCreateTable.getClusteredUniqueKeys());
+            }
+        } else if (cci) {
+            if (sqlCreateTable.getColumnarKeys() != null) {
+                gsiList.addAll(sqlCreateTable.getColumnarKeys());
             }
         } else {
             if (sqlCreateTable.getGlobalKeys() != null) {
@@ -810,6 +896,7 @@ public abstract class BasePlannerTest {
                     (MySqlCreateTableStatement) FastsqlUtils.parseSql(sqlCreateIndexTable.getSourceSql()).get(0);
                 indexTm = new TableMetaParser().parse(indexStat, ec);
                 indexTm.setHasPrimaryKey(indexTm.isHasPrimaryKey());
+                indexTm.setHasPrimaryKey(!useNewPartDb || indexTm.getPrimaryIndex() != null);
                 indexTm.setSchemaName(schema);
             } else {
 
@@ -841,6 +928,7 @@ public abstract class BasePlannerTest {
                         .get(0);
                 indexTm = new TableMetaParser().parse(indexStat, ec);
                 indexTm.setHasPrimaryKey(true);
+                indexTm.setHasPrimaryKey(!useNewPartDb || indexTm.getPrimaryIndex() != null);
                 indexTm.setSchemaName(schema);
             }
 
@@ -913,6 +1001,13 @@ public abstract class BasePlannerTest {
             tr = TableRuleUtil.buildBroadcastTableRuleWithoutRandomPhyTableName(logicalTableName, tm);
         } else if (sqlCreateTable.getDbpartitionBy() != null || sqlCreateTable.getTbpartitionBy() != null) {
             ec.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
+
+            if (!useNewPartDb && withSingleGroup) {
+                // Add this for create partition table in drds mode database.
+                // Otherwise, partition table will be created in defaultDbIndex group.
+                // Details in com.alibaba.polardbx.optimizer.utils.newrule.RuleUtils.filterSpecialGroup
+                ConfigDataMode.setMode(ConfigDataMode.Mode.GMS);
+            }
             tr = TableRuleUtil.buildShardingTableRule(logicalTableName,
                 tm,
                 sqlCreateTable.getDbpartitionBy(),
@@ -920,6 +1015,9 @@ public abstract class BasePlannerTest {
                 sqlCreateTable.getTbpartitionBy(),
                 sqlCreateTable.getTbpartitions(),
                 OptimizerContext.getContext(schema), ec);
+            if (!useNewPartDb && withSingleGroup) {
+                ConfigDataMode.setMode(null);
+            }
         } else {
             tr = new TableRule();
             tr.setDbNamePattern(
@@ -1260,7 +1358,7 @@ public abstract class BasePlannerTest {
     }
 
     private int count = 1;
-    private final Map<String, List<BasePlannerTest>> commonCases = Maps.newHashMap();
+    private final static Map<String, List<BasePlannerTest>> commonCases = Maps.newHashMap();
     private static final Map<String, String> caseContent = Maps.newHashMap();
     private static final Map<String, String> casePath = Maps.newHashMap();
 
@@ -1310,16 +1408,18 @@ public abstract class BasePlannerTest {
             targetSql,
             planStr);
 
-        if (commonCases.get(caseName) != null) {
-            commonCases.get(caseName).add(this);
-        } else {
-            List<BasePlannerTest> list = Lists.newArrayList();
-            list.add(this);
-            commonCases.put(caseName, list);
-        }
-        this.actual = planStr;
-        if (count++ == caseNum && fixFlag) {
-            printFullCases(commonCases);
+        if (fixFlag) {
+            if (commonCases.get(caseName) != null) {
+                commonCases.get(caseName).add(this);
+            } else {
+                List<BasePlannerTest> list = Lists.newArrayList();
+                list.add(this);
+                commonCases.put(caseName, list);
+            }
+            this.actual = planStr;
+            if (commonCases.values().stream().mapToInt(List::size).sum() == caseNum) {
+                printFullCases(commonCases);
+            }
         }
 
         IntStream.range(0, corMaxNum).forEach(i -> targetPlanVal[0] = targetPlanVal[0].replace("$cor" + i, "$cor"));
@@ -1363,7 +1463,7 @@ public abstract class BasePlannerTest {
         FileOutputStream fileOutputStream = null;
         try {
             fileOutputStream = new FileOutputStream(fileName);
-            fileOutputStream.write(content.getBytes("gbk"));
+            fileOutputStream.write(content.getBytes(StandardCharsets.UTF_8));
             fileOutputStream.close();
             flag = true;
         } catch (Exception e) {
@@ -1376,6 +1476,17 @@ public abstract class BasePlannerTest {
         int caseIndexStart = 0;
         for (int i = 0; i <= sqlIndex; i++) {
             caseIndexStart = content.indexOf("plan: |", caseIndexStart + 1);
+        }
+
+        if ((totalMap.get(this.getClass()) != null)) {
+            int caseIndexEnd = content.indexOf("\n  -", caseIndexStart);
+            if (caseIndexEnd == -1) {
+                caseIndexEnd = content.indexOf("\nDDL:", caseIndexStart);
+            }
+            StringBuilder rs = new StringBuilder(content.substring(0, caseIndexStart + "plan: |".length() + 1));
+            actual = "      " + actual.replaceAll("\n", "\n      ");
+            rs.append(actual).append(content.substring(caseIndexEnd));
+            return rs.toString();
         }
         int caseIndexEnd = content.indexOf("\n-", caseIndexStart);
         StringBuilder rs = new StringBuilder(content.substring(0, caseIndexStart + "plan: |".length() + 1));
@@ -1467,6 +1578,8 @@ public abstract class BasePlannerTest {
         } else if (logicalCreateTable.isBroadCastTable()) {
             tblType = PartitionTableType.BROADCAST_TABLE;
         }
+        ParamManager.setBooleanVal(executionContext.getParamManager().getProps(),
+            ConnectionParams.ENABLE_RANDOM_PHY_TABLE_NAME, false, true);
         DDL relDdl = logicalCreateTable.relDdl;
         CreateTablePreparedData preparedData = logicalCreateTable.getCreateTablePreparedData();
 
@@ -1494,9 +1607,12 @@ public abstract class BasePlannerTest {
 
         // Set auto partition flag only on primary table.
         if (tblType == PartitionTableType.PARTITION_TABLE) {
-            assert relDdl.sqlNode instanceof SqlCreateTable;
-            partitionInfo.setPartFlags(
-                ((SqlCreateTable) relDdl.sqlNode).isAutoPartition() ? TablePartitionRecord.FLAG_AUTO_PARTITION : 0);
+            SqlCreateTable sqlCreateTblAst = (SqlCreateTable) relDdl.sqlNode;
+            long partFlags = partitionInfo.getPartFlags();
+            if (sqlCreateTblAst.isAutoPartition()) {
+                partFlags |= TablePartitionRecord.FLAG_AUTO_PARTITION;
+            }
+            partitionInfo.setPartFlags(partFlags);
         }
 
         return partitionInfo;

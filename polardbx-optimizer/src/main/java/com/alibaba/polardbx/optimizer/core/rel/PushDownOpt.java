@@ -29,6 +29,7 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.rule.AutoForceIndexRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterConditionSimplifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterMergeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterReorderRule;
@@ -36,6 +37,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRul
 import com.alibaba.polardbx.optimizer.core.planner.rule.JoinSemiJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinCorrToSubQueryRule;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPruneStepType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
@@ -109,7 +111,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_IN_PRUNE_CACHE_SIZE;
-import static com.alibaba.polardbx.common.properties.ConnectionParams.MAX_IN_PRUNE_CACHE_TABLE_SIZE;
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.deriveJoinType;
 import static com.alibaba.polardbx.optimizer.utils.PushDownUtils.pushAgg;
 import static com.alibaba.polardbx.optimizer.utils.PushDownUtils.pushFilter;
@@ -149,6 +150,12 @@ public class PushDownOpt {
      */
     private Map<String, List<PartitionPruneStep>> allPartPruneSteps = Maps.newConcurrentMap();
 
+    /**
+     * For columnar multi-version partition:
+     * meta_version -> IN expression key -> PartitionPruneStep
+     */
+    private Map<Long, Map<String, PartitionPruneStep>> allColumnarPartPruneSteps = Maps.newConcurrentMap();
+
     private Set<Integer> shardRelatedInTypeParamIndexes;
 
     public PushDownOpt(LogicalView tableScan, DbType dbType, ExecutionContext ec) {
@@ -182,6 +189,7 @@ public class PushDownOpt {
         this.comparatives = pushDownOpt.comparatives;
         this.fullComparatives = pushDownOpt.fullComparatives;
         this.allPartPruneSteps = pushDownOpt.allPartPruneSteps;
+        this.allColumnarPartPruneSteps = pushDownOpt.allColumnarPartPruneSteps;
     }
 
     public final PushDownOpt copy(LogicalView logicalView, RelNode rel) {
@@ -374,6 +382,29 @@ public class PushDownOpt {
     }
 
     /**
+     * transform semiJoin and correlate to subquery, optimize the tree for native sql
+     *
+     * @return the root of a tree without semiJoin and correlate
+     */
+    public void autoForceIndex(String index) {
+        HepProgramBuilder builder = new HepProgramBuilder();
+
+        //pull project
+        builder.addGroupBegin();
+        builder.addRuleInstance(new AutoForceIndexRule(index));
+        builder.addGroupEnd();
+
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.stopOptimizerTrace();
+        planner.setRoot(getPushedRelNode());
+        RelNode optimizedNode = planner.findBestExp();
+
+        optimizedNode = optimizedNode.accept(new RelCastRemover());
+        this.builder.clear();
+        this.builder.push(optimizedNode);
+    }
+
+    /**
      * return current native sql, may be a middle state
      */
     public SqlNode buildNativeSql(RelToSqlConverter sqlConverter, ReplaceCallWithLiteralVisitor visitor) {
@@ -479,6 +510,10 @@ public class PushDownOpt {
      */
     public boolean aggIsPushed() {
         return aggIsPushed;
+    }
+
+    public void setAggIsPushed(boolean aggIsPushed) {
+        this.aggIsPushed = aggIsPushed;
     }
 
     public void pushJoin(Join join, LogicalView rightView, List<RexNode> leftFilters, List<RexNode> rightFilters,
@@ -622,11 +657,19 @@ public class PushDownOpt {
         }
         String key = OptimizerUtils.buildInExprKey(ec);
         // cache prune steps for the key
-        if (this.allPartPruneSteps.size() < ec.getParamManager().getInt(MAX_IN_PRUNE_CACHE_SIZE) &&
-            allPartPruneSteps.size() < ec.getParamManager().getInt(MAX_IN_PRUNE_CACHE_TABLE_SIZE)) {
+        if (this.allPartPruneSteps.size() < ec.getParamManager().getInt(MAX_IN_PRUNE_CACHE_SIZE)) {
             this.allPartPruneSteps.put(key, allPartPruneSteps);
         }
         return allPartPruneSteps;
+    }
+
+    public PartitionPruneStep buildCciPartPruneSteps(ExecutionContext ec, PartitionInfo cciPartInfo) {
+        List<String> logTbNameList = tableScan.getTableNames();
+        Preconditions.checkArgument(logTbNameList.size() == 1);
+        PartRoutingPlanInfo partRoutingPlanInfo = buildCciPartRoutingPlanInfo(getPushedRelNode(), ec, cciPartInfo);
+
+        String tbName = logTbNameList.get(0);
+        return partRoutingPlanInfo.allPartPruningSteps.get(tbName);
     }
 
     public RelNode getPushedRelNode() {
@@ -678,6 +721,29 @@ public class PushDownOpt {
                 if (list.size() > tableIndex) {
                     relShardInfo.setPartPruneStepInfo(list.get(tableIndex));
                 }
+            }
+        }
+
+        return relShardInfo;
+    }
+
+    public RelShardInfo getCciRelShardInfo(ExecutionContext ec, PartitionInfo cciPartInfo) {
+        Long metaVersion = cciPartInfo.getMetaVersion();
+        Map<String, PartitionPruneStep> partPruneStepCache =
+            allColumnarPartPruneSteps.computeIfAbsent(metaVersion, v -> Maps.newConcurrentMap());
+        RelShardInfo relShardInfo = new RelShardInfo();
+        String logTbName = this.tableScan.getTableNames().get(0);
+        relShardInfo.setTableName(logTbName);
+        relShardInfo.setSchemaName(this.tableScan.getSchemaName());
+        relShardInfo.setUsePartTable(true);
+
+        String key = OptimizerUtils.buildInExprKey(ec);
+        if (partPruneStepCache.containsKey(key)) {
+            relShardInfo.setPartPruneStepInfo(partPruneStepCache.get(key));
+        } else {
+            relShardInfo.setPartPruneStepInfo(buildCciPartPruneSteps(ec, cciPartInfo));
+            if (partPruneStepCache.size() < ec.getParamManager().getInt(MAX_IN_PRUNE_CACHE_SIZE)) {
+                partPruneStepCache.put(key, relShardInfo.getPartPruneStepInfo());
             }
         }
 
@@ -924,6 +990,17 @@ public class PushDownOpt {
             pruningPlanInfo.usePartitionTable = true;
             pruningPlanInfo.allPartPruningSteps = allPartPruningSteps;
         }
+        return pruningPlanInfo;
+    }
+
+    public PartRoutingPlanInfo buildCciPartRoutingPlanInfo(RelNode relPlan, ExecutionContext ec,
+                                                           PartitionInfo cciPartitionInfo) {
+
+        PartRoutingPlanInfo pruningPlanInfo = new PartRoutingPlanInfo();
+        ExtractionResult er = ConditionExtractor.predicateFrom(relPlan).extract();
+        Map<String, PartitionPruneStep> allPartPruningSteps = er.allPartPruneSteps(ec, cciPartitionInfo);
+        pruningPlanInfo.usePartitionTable = true;
+        pruningPlanInfo.allPartPruningSteps = allPartPruningSteps;
         return pruningPlanInfo;
     }
 

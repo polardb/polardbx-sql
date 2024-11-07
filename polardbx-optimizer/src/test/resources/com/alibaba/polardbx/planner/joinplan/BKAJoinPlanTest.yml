@@ -1,0 +1,212 @@
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id1, t_shard_id2)*/ select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+
+  plan: |
+
+    project(id="id")
+      bkajoin(condition="id = id", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `name` as `id` from `t_shard_id1` as `t_shard_id1`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id2", shardcount=4, sql="select `name` as `id` from `t_shard_id2` as `t_shard_id2` where (`name` in (...))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_id1, t_shard_id2)*/ select a.id
+    from
+
+      (
+        select name as id
+        from
+          t_shard_id1
+      ) a
+
+      join
+
+      (
+        select name as id
+        from
+          t_shard_id2
+      ) b
+      on a.id=b.id
+    where a.id=5
+
+  plan: |
+
+    project(id="id")
+      bkajoin(condition="id = id", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `name` as `id` from `t_shard_id1` as `t_shard_id1` where (`name` = 5)")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id2", shardcount=4, sql="select `name` as `id` from `t_shard_id2` as `t_shard_id2` where ((`name` = 5) and (`name` in (...)))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN((t_shard_id1,t_shard_business_id), t_shard_name)*/ select
+      c.name,
+      case b.business_id
+        when 0 then '预处理'
+        when 1 then '待付款'
+        when 91 then '终止' end   as  '状态',
+      case a.id
+        when 0 then '正常'
+        when 4 then '退货中' end  as '冻结状态'
+      from t_shard_id1 a left join t_shard_business_id b on a.id = b.business_id left join t_shard_name c on c.name = b.name where a.id in ("100002", "100003");
+
+  plan: |
+
+    project(name="name", 状态="case", 冻结状态="case2")
+      bkajoin(condition="name = name0", type="left")
+        gather(concurrent=true)
+          logicalview(tables="[0002,0003].t_shard_id1,t_shard_business_id", shardcount=2, sql="select `t_shard_business_id`.`name` as `name0`, (case when (`t_shard_business_id`.`business_id` = 0) then '预处理' when (`t_shard_business_id`.`business_id` = 1) then '待付款' when (`t_shard_business_id`.`business_id` = 91) then '终止' else null end) as `case`, (case when (`t_shard_id1`.`id` = 0) then '正常' when (`t_shard_id1`.`id` = 4) then '退货中' else null end) as `case2` from `t_shard_id1` as `t_shard_id1` left join `t_shard_business_id` as `t_shard_business_id` on (`t_shard_id1`.`id` = `t_shard_business_id`.`business_id`) where (`t_shard_id1`.`id` in('100002', '100003'))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `name` from `t_shard_name` as `t_shard_name` where (`name` in (...))")
+
+- sql: |
+    select * from t_shard_id1 a join (select id + 1 as id, name from t_shard_business_id) b on a.id = b.id ;
+
+  plan: |
+
+    project(id="id0", name="name0", create_time="create_time", id0="id", name0="name")
+      bkajoin(condition="id = id", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select (`id` + 1) as `id`, `name` from `t_shard_business_id` as `t_shard_business_id`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id1` as `t_shard_id1` force index(`primary`) where (`id` in (...))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_business_id,t_shard_id1)*/ select * from t_shard_id1 a join (select count(*) as id, name from t_shard_business_id group by name) b on a.name = b.name ;
+
+  plan: |
+
+    project(id0="id0", name0="name0", create_time="create_time", id="id", name="name")
+      bkajoin(condition="name = name", type="inner")
+        hashagg(group="name", id="sum(id)")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `name`, count(*) as `id` from `t_shard_business_id` as `t_shard_business_id` group by `name`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id`, `name`, `create_time` from `t_shard_id1` as `t_shard_id1` where (`name` in (...))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
+    from
+      t_composite_pk_shard_id a
+    join
+      t_shard_name b
+    on a.id=b.id and a.id1=b.name
+
+  plan: |
+
+    project(id="id0")
+      bkajoin(condition="id = id and name = id1", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `id`, `name` from `t_shard_name` as `t_shard_name`")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_composite_pk_shard_id", shardcount=4, sql="select `id`, `id1` from `t_composite_pk_shard_id` as `t_composite_pk_shard_id` force index(`primary`) where (((`id`, `id1`)) in (...))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
+    from
+      t_composite_pk_shard_id a
+     join
+      t_shard_name b
+    on a.id=b.id and a.id1=b.name where a.id = 'a';
+
+  plan: |
+
+    project(id="id0")
+      bkajoin(condition="id = id and name = id1", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `id`, `name` from `t_shard_name` as `t_shard_name` force index(`primary`) where (`id` = 'a')")
+        logicalview(tables="optest_0000.t_composite_pk_shard_id", sql="select `id`, `id1` from `t_composite_pk_shard_id` as `t_composite_pk_shard_id` where ((`id` = 'a') and (((`id`, `id1`)) in (...)))")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_shard_name, t_composite_pk_shard_id)*/ select a.id
+    from
+      t_composite_pk_shard_id a
+     left join
+      t_shard_name b
+    on a.id=b.id and a.id1=b.name where a.id = 'a';
+
+  plan: |
+
+    project(id="id0")
+      bkajoin(condition="id = id and id1 = name", type="right")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `id`, `name` from `t_shard_name` as `t_shard_name` force index(`primary`) where ((`id` = 'a') and (((`id`, `name`)) in (...)))")
+        logicalview(tables="optest_0000.t_composite_pk_shard_id", sql="select `id`, `id1` from `t_composite_pk_shard_id` as `t_composite_pk_shard_id` force index(`auto_shard_key_id`) where (`id` = 'a')")
+
+- sql: |
+    /*+TDDL:BKA_JOIN(t_null_safe1, t_null_safe2)*/ select * from t_null_safe1 left join t_null_safe2 on t_null_safe2.id <=> t_null_safe1.id;
+
+  plan: |
+
+    bkajoin(condition="id <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe1", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe1` as `t_null_safe1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe2", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe2` as `t_null_safe2` force index(`primary`) where (`id` in (...))")
+
+- sql: |
+    select * from t_null_safe1 left join t_null_safe2 on t_null_safe2.id <=> t_null_safe1.id_nullable;
+
+  plan: |
+
+    hashjoin(condition="id <=> id_nullable", type="left")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe1", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe1` as `t_null_safe1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe2", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe2` as `t_null_safe2`")
+
+- sql: |
+    select * from t_null_safe1 left join t_null_safe2 on t_null_safe2.id_nullable <=> t_null_safe1.id;
+
+  plan: |
+
+    hashjoin(condition="id_nullable <=> id", type="left")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe1", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe1` as `t_null_safe1`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].t_null_safe2", shardcount=4, sql="select `id`, `id_nullable`, `name`, `create_time` from `t_null_safe2` as `t_null_safe2`")
+
+- sql: |
+    /*+TDDL: IN_SUB_QUERY_THRESHOLD=8 */ select * from tt where c1 in (1,1,1,1,1,1,1,1,1,1) and c2 in (3,4);
+
+  plan: |
+
+    project(c1="c1", c2="c2")
+      bkajoin(condition="expr$0 = c1", type="inner")
+        hashagg(group="expr$0")
+          dynamicvalues(tuples=[{ 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }, { 1 }])
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` where ((`c2` in(3, 4)) and (`c1` in (...)))")
+
+- sql: |
+    /*+TDDL: IN_SUB_QUERY_THRESHOLD=8 */ select * from tt where c1 in (1,1) and c2 in (3,4);
+
+  plan: |
+
+    gather(concurrent=true)
+      logicalview(tables="optest_0001.tt", sql="select `c1`, `c2` from `tt` as `tt` where ((`c2` in(3, 4)) and (`c1` in(1, 1)))")
+
+
+- sql: |
+    select tt.c1 from tt left join tt_broadcast on tt.c1=tt_broadcast.c1 where tt_broadcast.c1 is null;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].tt,tt_broadcast", shardcount=4, sql="select `tt`.`c1` from `tt` as `tt` left join `tt_broadcast` as `tt_broadcast` on (`tt`.`c1` = `tt_broadcast`.`c1`) where (`tt_broadcast`.`c1` is null)")

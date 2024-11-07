@@ -93,68 +93,6 @@ public class OptimizerAlertManagerTest {
     }
 
     @Test
-    public void testMultiLimitedLog() {
-        long interval = 1000L;
-        MetaDbInstConfigManager.setConfigFromMetaDb(false);
-        DynamicConfig.getInstance()
-            .loadValue(null, ConnectionProperties.OPTIMIZER_ALERT_LOG_INTERVAL, String.valueOf(interval));
-        OptimizerAlertManager.getInstance();
-
-        long sleep = 10;
-        final ExecutorService threadPool = new ThreadPoolExecutor(threadNum, threadNum, 0L,
-            TimeUnit.MILLISECONDS, new SynchronousQueue<>());
-
-        Map<OptimizerAlertType, Long> typeMap = Maps.newTreeMap();
-        for (OptimizerAlertType type : OptimizerAlertType.values()) {
-            typeMap.put(type, 0L);
-        }
-        initLogCount(typeMap);
-
-        List<Future<Long>> tasks = Lists.newArrayList();
-
-        long startTime = System.currentTimeMillis();
-        for (int i = 0; i < threadNum; i++) {
-            tasks.add(threadPool.submit(() -> {
-                long cnt = 0L;
-                try {
-                    for (int j = 0; j < logNum; j++) {
-                        if (OptimizerAlertManager.getInstance().log(OptimizerAlertType.PLAN_CACHE_FULL, null)) {
-                            cnt++;
-                        }
-                        Thread.sleep(sleep);
-                    }
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                return cnt;
-            }));
-        }
-
-        long stackNum = 0L;
-        for (Future<Long> future : tasks) {
-            try {
-                stackNum += future.get(20, TimeUnit.SECONDS);
-            } catch (Throwable e) {
-                e.printStackTrace();
-                Assert.fail("Get future failed.");
-            }
-        }
-
-        // check stack count
-        long endTime = System.currentTimeMillis();
-        double period = endTime - startTime;
-        // at least 5 seconds
-        Assert.assertTrue(period > (logNum * sleep) / 1000D);
-        // at most 1 stack per interval
-        Assert.assertTrue(stackNum <= (period / interval) + 1);
-        // at least 1 stack per 2 intervals
-        Assert.assertTrue(stackNum >= period / interval / 2);
-
-        typeMap.put(OptimizerAlertType.PLAN_CACHE_FULL, typeMap.get(OptimizerAlertType.PLAN_CACHE_FULL) + stackNum);
-        checkLogCount(typeMap);
-    }
-
-    @Test
     public void testLogAndScheduleCollect() throws InterruptedException {
         long interval = 1000L;
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
@@ -167,7 +105,7 @@ public class OptimizerAlertManagerTest {
 
         long sleep = 10;
         List<OptimizerAlertType> logTypes =
-            Lists.newArrayList(OptimizerAlertType.BKA_TOO_MUCH, OptimizerAlertType.XPLAN_SLOW);
+            Lists.newArrayList(OptimizerAlertType.BKA_TOO_MUCH, OptimizerAlertType.TP_SLOW);
         Map<OptimizerAlertType, Long> typeMap = Maps.newTreeMap();
         for (OptimizerAlertType type : OptimizerAlertType.values()) {
             typeMap.put(type, 0L);

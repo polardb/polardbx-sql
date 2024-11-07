@@ -1,6 +1,7 @@
 package com.alibaba.polardbx.qatest.ddl.auto.omc;
 
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Before;
 import org.junit.Test;
@@ -327,9 +328,9 @@ public class ConcurrentInsertTest extends ConcurrentDMLBaseTest {
         QuadFunction<Integer, Integer, String, String, Boolean> checker =
             (colA, colB, colC, colD) -> (colA + 1 == colB && (colC.equals(colD) || colC.substring(0, 2).equals(colD)));
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, true,
-            1, false, false);
+            1, false, false, null);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, false, false,
-            1, false, false);
+            1, false, false, null);
     }
 
     @Test
@@ -578,5 +579,161 @@ public class ConcurrentInsertTest extends ConcurrentDMLBaseTest {
             2);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false,
             false, 2);
+    }
+
+    @Test
+    public void omcWithFloatPk() throws Exception {
+        String tableName = "omc_with_float_pk";
+        String colDef = "float primary key";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") partition by hash(`a`) partitions 3",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s modify column c int," + USE_OMC_ALGORITHM;
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator =
+            (count) -> String.format(
+                "insert into %%s(a,b,c,d) values (%d*2,%d*2+1,%d*2,%d*2+1),(%d*2+1,%d*2+2,%d*2,%d*2+1)",
+                count, count, count, count, count, count, count, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator, generator, checker,
+            false, false, 2, createSql);
+    }
+
+    @Test
+    public void singleChangeMultiWithInsert1() throws Exception {
+        String tableName = "omc_singe_multi_with_insert_1";
+        String colDef = "int";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") single",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint, change column c cc varchar(20) default 'new default', drop column d, add column f varchar(10) not null default 'new column'";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s(a,b) values (%d*2,%d*2+1),(%d*2+1,%d*2+2)", count,
+                count, count, count);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("insert into %%s(a,e) values (%d*2,%d*2+1),(%d*2+1,%d*2+2)", count,
+                count, count, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colA + 1 == colB && !(colC.equalsIgnoreCase("new default")
+                && colD.equalsIgnoreCase("abc")));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            false, false, 2, createSql);
+    }
+
+    @Test
+    public void broadcastChangeMultiWithInsert1() throws Exception {
+        String tableName = "omc_broadcast_multi_with_insert_1";
+        String colDef = "int";
+        String createSql = String.format(
+            "create table %%s ("
+                + "a int, "
+                + "b %s, "
+                + "c varchar(10) default 'abc',"
+                + "d varchar(10) default 'abc'"
+                + ") broadcast",
+            colDef);
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e bigint, change column c cc varchar(20) default 'new default', drop column d, add column f varchar(10) not null default 'new column'";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s(a,b) values (%d*2,%d*2+1),(%d*2+1,%d*2+2)", count,
+                count, count, count);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("insert into %%s(a,e) values (%d*2,%d*2+1),(%d*2+1,%d*2+2)", count,
+                count, count, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker =
+            (colA, colB, colC, colD) -> (colA + 1 == colB && !(colC.equalsIgnoreCase("new default")
+                && colD.equalsIgnoreCase("abc")));
+        concurrentTestInternalWithCreateSql(tableName, colDef, alterSql, selectSql, generator1, generator2, checker,
+            false, false, 2, createSql);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "omc 精度变更导致cdc数据校验无法通过")
+    public void changeWithInsert9() throws Exception {
+        String tableName = "omc_with_insert_9";
+        String colDef = "decimal(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e decimal(9,3)";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s(a,b) values (%d,%f)", count, count / 7.0);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("insert into %%s(a,e) values (%d,%f)", count, count / 7.0);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, false,
+            1, false, false, null);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "omc 精度变更导致cdc数据校验无法通过")
+    public void changeWithInsert10() throws Exception {
+        String tableName = "omc_with_insert_10";
+        String colDef = "decimal(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s modify column b decimal(9,3)";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s(a,b) values (%d,%f)", count, count / 7.0);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator1, checker, false, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator1, checker, false, false,
+            1, false, false, null);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "omc 精度变更导致cdc数据校验无法通过")
+    public void changeWithInsert11() throws Exception {
+        String tableName = "omc_with_insert_11";
+        String colDef = "float(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s change column b e decimal(9,3)";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s(a,b) values (%d,%f)", count, count / 7.0);
+        Function<Integer, String> generator2 =
+            (count) -> String.format("insert into %%s(a,e) values (%d,%f)", count, count / 7.0);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, false, false,
+            1, false, false, null);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "omc 精度变更导致cdc数据校验无法通过")
+    public void changeWithInsert12() throws Exception {
+        String tableName = "omc_with_insert_12";
+        String colDef = "float(8,2)";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s modify column b decimal(9,3)";
+        String selectSql = "select * from %s";
+        Function<Integer, String> generator1 =
+            (count) -> String.format("insert into %%s(a,b) values (%d,%f)", count, count / 7.0);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) -> true;
+
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator1, checker, false, true,
+            1, false, false, null);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator1, checker, false, false,
+            1, false, false, null);
     }
 }

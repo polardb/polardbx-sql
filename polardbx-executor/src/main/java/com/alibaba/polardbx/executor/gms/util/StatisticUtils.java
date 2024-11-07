@@ -23,6 +23,8 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.oss.OSSMetaLifeCycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -38,6 +40,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.UpdateStatisticSyncAction;
@@ -55,9 +58,11 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -67,25 +72,29 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.TopN;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.parse.visitor.DrdsUnparameterizeSqlVisitor;
 import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTables;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.stats.MatrixStatistics;
+import com.alibaba.polardbx.stats.metric.FeatureStats;
 import com.clearspring.analytics.stream.StreamSummary;
 import com.clearspring.analytics.stream.cardinality.HyperLogLog;
 import com.clearspring.analytics.stream.membership.BloomFilter;
@@ -102,6 +111,7 @@ import org.glassfish.jersey.internal.guava.Sets;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -115,6 +125,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -122,6 +133,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.STATISTIC_VISIT_DN_TIMEOUT;
+import static com.alibaba.polardbx.common.utils.GeneralUtil.sampleString;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
@@ -136,9 +148,11 @@ import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUti
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.buildColumnsName;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.getColumnMetas;
 import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.packDateTypeToLong;
+import static com.alibaba.polardbx.stats.metric.FeatureStatsItem.SAMPLE_TASK_FAIL;
+import static com.alibaba.polardbx.stats.metric.FeatureStatsItem.SAMPLE_TASK_SUCC;
 
 /**
- * @author fangwu
+ *
  */
 public class StatisticUtils {
 
@@ -167,6 +181,10 @@ public class StatisticUtils {
                                                  ExecutionContext ec) {
         try {
             long startNanos = System.nanoTime();
+            // to lower case
+            schema = schema.toLowerCase();
+            logicalTableName = logicalTableName.toLowerCase();
+
             // check table if exists
             if (OptimizerContext.getContext(schema).getLatestSchemaManager()
                 .getTableWithNull(logicalTableName) == null) {
@@ -186,7 +204,9 @@ public class StatisticUtils {
                 schema, logicalTableName, (endNanos - startNanos) / 1_000_000_000D));
 
             startNanos = endNanos;
-            sketchTableDdl(schema, logicalTableName, true, ec);
+
+            sketchTableDdl(schema, logicalTableName,
+                !ec.getParamManager().getBoolean(ConnectionParams.ANALYZE_TEST_UPDATE), ec);
             endNanos = System.nanoTime();
             logger.info(String.format("HLL sketch of %s.%s consumed %.2fs",
                 schema, logicalTableName, (endNanos - startNanos) / 1_000_000_000D));
@@ -316,9 +336,11 @@ public class StatisticUtils {
                     logicalTableName,
                     StatisticManager.getInstance().getCacheLine(schema, logicalTableName)),
                 SyncScope.ALL);
-
+            FeatureStats.getInstance().increment(SAMPLE_TASK_SUCC);
         } catch (Exception e) {
             logger.error(e);
+            OptimizerAlertUtil.statisticErrorAlert();
+            FeatureStats.getInstance().increment(SAMPLE_TASK_FAIL);
             return false;
         }
         return true;
@@ -419,12 +441,76 @@ public class StatisticUtils {
         }
     }
 
+    public static void updateMetaDbInformationSchemaTables(String schemaName, Collection<String> logicalTables) {
+        ExecutionContext executionContext = new ExecutionContext(schemaName);
+        executionContext.setTraceId("statistic");
+        executionContext.setParams(new Parameters());
+        executionContext.setRuntimeStatistics(RuntimeStatHelper.buildRuntimeStat(executionContext));
+        SqlConverter sqlConverter = SqlConverter.getInstance(schemaName, executionContext);
+        RelOptCluster relOptCluster = sqlConverter.createRelOptCluster();
+
+        InformationSchemaTables informationSchemaTables =
+            new InformationSchemaTables(relOptCluster, relOptCluster.getPlanner().emptyTraitSet());
+        RexBuilder rexBuilder = relOptCluster.getRexBuilder();
+        RexNode filterCondition = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
+            rexBuilder.makeInputRef(informationSchemaTables, InformationSchemaTables.getTableSchemaIndex()),
+            rexBuilder.makeLiteral(schemaName));
+        List<RexNode> tableNameLiterals = new ArrayList<>(logicalTables.size());
+        logicalTables.forEach(table -> tableNameLiterals.add(rexBuilder.makeLiteral(table)));
+        RexNode inCondition = rexBuilder.makeCall(SqlStdOperatorTable.IN,
+            rexBuilder.makeInputRef(informationSchemaTables, InformationSchemaTables.getTableNameIndex()),
+            rexBuilder.makeCall(SqlStdOperatorTable.ROW, tableNameLiterals));
+        filterCondition = rexBuilder.makeCall(SqlStdOperatorTable.AND, filterCondition, inCondition);
+        informationSchemaTables.pushFilter(filterCondition);
+
+        Cursor cursor = ExecutorHelper.execute(informationSchemaTables, executionContext, false, false);
+
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            TablesAccessor tablesAccessor = new TablesAccessor();
+            tablesAccessor.setConnection(metaDbConn);
+            Row row;
+            while ((row = cursor.next()) != null) {
+
+                String tableSchema = row.getString(1);
+                String tableName = row.getString(2);
+                Long tableRows = row.getLong(7);
+                Long avgRowLength = row.getLong(8);
+                Long dataLength = row.getLong(9);
+                Long maxDataLength = row.getLong(10);
+                Long indexLength = row.getLong(11);
+                Long dataFree = row.getLong(12);
+
+                if (schemaName.equalsIgnoreCase(tableSchema)) {
+                    tablesAccessor.updateStatistic(tableSchema, tableName, tableRows, avgRowLength, dataLength,
+                        maxDataLength, indexLength, dataFree);
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(
+                "Schema `" + schemaName + "` build meta error.");
+        } finally {
+            try {
+                if (cursor != null) {
+                    cursor.close(new ArrayList<>());
+                }
+            } finally {
+                executionContext.clearAllMemoryPool();
+            }
+        }
+    }
+
     public static void sketchTable(String schema, String logicalTableName, boolean needRebuild) {
         sketchTableDdl(schema, logicalTableName, needRebuild, null);
     }
 
     /**
-     * hyper loglog process
+     * Executes the sketch creation or update process for the specified table.
+     *
+     * @param schema Database name
+     * @param logicalTableName Logical table name
+     * @param needRebuild Whether to force a rebuild of the sketches
+     * @param ec Execution context
+     * @throws TddlRuntimeException When the DDL job is interrupted
      */
     public static void sketchTableDdl(String schema, String logicalTableName, boolean needRebuild,
                                       ExecutionContext ec) {
@@ -436,121 +522,108 @@ public class StatisticUtils {
         int hllParallelism = ec.getParamManager().getInt(ConnectionParams.HLL_PARALLELISM);
         logger.info(String.format("Sketch table %s.%s with parallelism: %d", schema, logicalTableName, hllParallelism));
         ThreadPoolExecutor sketchHllExecutor = null;
-        if (hllParallelism > 1) {
-            sketchHllExecutor = ExecutorUtil.createExecutor("SketchHllExecutor", hllParallelism);
-        }
+
+        /**
+         * handle columns inside index
+         */
+        Set<String> colDoneSet = Sets.newHashSet();
+        TableMeta tableMeta = OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(logicalTableName);
+
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+        getIndexInfoFromLocalIndex(tableMeta, colDoneSet, indexColsMap);
+        getIndexInfoFromGsi(tableMeta, colDoneSet, indexColsMap);
 
         try {
-            List<ColumnMeta> columnMetaList = getColumnMetas(false, schema, logicalTableName);
-
-            if (columnMetaList == null || columnMetaList.isEmpty()) {
-                ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, UNEXPECTED,
-                    new String[] {
-                        "statistic sketch",
-                        "column meta is empty :" + schema + "," + logicalTableName
-                    }, LogLevel.NORMAL);
-                return;
+            if (hllParallelism > 1) {
+                sketchHllExecutor = ExecutorUtil.createExecutor("SketchHllExecutor", hllParallelism);
             }
 
-            Map<String, Set<String>> colMap = PlanManager.getInstance().columnsInvolvedByPlan().get(schema);
-
-            if (colMap == null) {
-                colMap = Maps.newHashMap();
-            }
-
-            Set<String> colSet = colMap.get(logicalTableName);
-            Set<String> colDoneSet = Sets.newHashSet();
-
-            /**
-             * handle columns needed by plan
-             */
-            for (ColumnMeta columnMeta : columnMetaList) {
-                if (ec != null && CrossEngineValidator.isJobInterrupted(ec)) {
-                    long jobId = ec.getDdlJobId();
-                    throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                        "The job '" + jobId + "' has been cancelled");
-                }
-
-                String columnName = columnMeta.getOriginColumnName();
-                if (!needRebuild && (colSet == null || !colSet.contains(columnName))) {
-                    continue;
-                }
-
-                if (needRebuild) {
-                    // analyze table would rebuild full ndv sketch info
-                    StatisticManager.getInstance()
-                        .rebuildShardParts(schema, logicalTableName, columnName, ec, sketchHllExecutor);
-                } else {
-                    // schedule job only update ndv sketch info
-                    StatisticManager.getInstance()
-                        .updateAllShardParts(schema, logicalTableName, columnName, ec, sketchHllExecutor);
-                }
-                colDoneSet.add(columnName);
-            }
-
-            /**
-             * handle columns inside index
-             */
-            TableMeta tableMeta =
-                OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(logicalTableName);
-            Map<String, Map<String, List<String>>> indexColsMap = GlobalIndexMeta.getTableIndexMap(tableMeta, null);
-
-            for (String tblName : indexColsMap.keySet()) {
-                if (ec != null && CrossEngineValidator.isJobInterrupted(ec)) {
-                    long jobId = ec.getDdlJobId();
-                    throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                        "The job '" + jobId + "' has been cancelled");
-                }
-                // index key -> columns
-                Map<String, List<String>> indexColumnMap = indexColsMap.get(tblName);
-                for (List<String> cols : indexColumnMap.values()) {
-                    if (cols != null && cols.size() == 1 && colMap.get(tblName) != null && colMap.get(tblName)
-                        .contains(cols.iterator().next())) {
-                        continue;
+            for (Set<String> cols : indexColsMap.values()) {
+                for (String colsName : cols) {
+                    if (ec != null && CrossEngineValidator.isJobInterrupted(ec)) {
+                        Long jobId = ec.getDdlJobId();
+                        throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                            "The job '" + jobId + "' has been cancelled");
                     }
-                    for (int i = 0; i < cols.size() - 1; i++) {
-                        String colsName = buildColumnsName(cols, i + 1);
-                        if (colDoneSet.contains(colsName)) {
-                            continue;
-                        }
-                        if (needRebuild) {
-                            // analyze table would rebuild full ndv sketch info
-                            StatisticManager.getInstance().rebuildShardParts(schema, logicalTableName, colsName, ec,
-                                sketchHllExecutor);
-                        } else {
-                            // schedule job only update ndv sketch info
-                            StatisticManager.getInstance().updateAllShardParts(schema, tblName, colsName, ec,
-                                sketchHllExecutor);
-                        }
-                        colDoneSet.add(colsName);
+                    if (needRebuild) {
+                        // analyze table would rebuild full ndv sketch info
+                        StatisticManager.getInstance().rebuildShardParts(schema, logicalTableName, colsName, ec,
+                            sketchHllExecutor);
+                    } else {
+                        // schedule job only update ndv sketch info
+                        StatisticManager.getInstance().updateAllShardParts(schema, logicalTableName, colsName, ec,
+                            sketchHllExecutor);
                     }
-
-                    String columnsName = buildColumnsName(cols);
-                    if (!colDoneSet.contains(columnsName)) {
-                        if (needRebuild) {
-                            // analyze table would rebuild full ndv sketch info
-                            StatisticManager.getInstance().rebuildShardParts(schema, logicalTableName, columnsName, ec,
-                                sketchHllExecutor);
-                        } else {
-                            // schedule job only update ndv sketch info
-                            StatisticManager.getInstance().updateAllShardParts(schema, tblName, columnsName, ec,
-                                sketchHllExecutor);
-                        }
-                        colDoneSet.add(columnsName);
-                    }
-
                 }
             }
-
-            ModuleLogInfo.getInstance().logRecord(Module.STATISTICS, PROCESS_END,
-                new String[] {
-                    "statistic sketch table ",
-                    schema + "," + logicalTableName + ",is force:" + needRebuild + ",cols:" + String.join(";",
-                        colDoneSet)
-                }, LogLevel.NORMAL);
         } finally {
             if (sketchHllExecutor != null) {
                 sketchHllExecutor.shutdown();
+            }
+        }
+
+        ModuleLogInfo.getInstance().logInfo(Module.STATISTICS, PROCESS_END,
+            new String[] {
+                "statistic sketch table ",
+                schema + "," + logicalTableName + ",is force:" + needRebuild + ",cols:" + indexColsMap
+            });
+    }
+
+    protected static void getIndexInfoFromGsi(TableMeta tableMeta, Set<String> colDoneSet,
+                                              Map<String, Set<String>> indexColsMap) {
+        if (tableMeta == null || tableMeta.getGsiPublished() == null) {
+            return;
+        }
+        for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> entry : tableMeta.getGsiPublished().entrySet()) {
+            List<GsiMetaManager.GsiIndexColumnMetaBean> cols = entry.getValue().getIndexColumns();
+            String indexName = entry.getKey();
+            List<String> colNames = cols.stream().map(bean -> bean.columnName).collect(Collectors.toList());
+            for (int i = 0; i < cols.size(); i++) {
+                if ((!entry.getValue().nonUnique) && i == cols.size() - 1) {
+                    continue;
+                }
+                String colOrder = buildColumnsName(colNames, i + 1);
+                if (colDoneSet.contains(colOrder)) {
+                    continue;
+                }
+                if (indexColsMap.containsKey(indexName)) {
+                    indexColsMap.get(indexName).add(colOrder);
+                } else {
+                    Set<String> newSet = Sets.newHashSet();
+                    newSet.add(colOrder);
+                    indexColsMap.put(indexName, newSet);
+                }
+                colDoneSet.add(colOrder);
+            }
+        }
+    }
+
+    protected static void getIndexInfoFromLocalIndex(TableMeta tableMeta, Set<String> colDoneSet,
+                                                     Map<String, Set<String>> indexColsMap) {
+        if (tableMeta == null) {
+            return;
+        }
+        for (IndexMeta localIndex : tableMeta.getAllIndexes()) {
+            List<ColumnMeta> colList = localIndex.getKeyColumns();
+            List<String> colNames = colList.stream().map(ColumnMeta::getName).collect(Collectors.toList());
+            String indexName = localIndex.getPhysicalIndexName();
+            for (int i = 0; i < colList.size(); i++) {
+                if (localIndex.isUniqueIndex() && i == colList.size() - 1) {
+                    continue;
+                }
+
+                String colOrder = buildColumnsName(colNames, i + 1);
+                if (colDoneSet.contains(colOrder)) {
+                    continue;
+                }
+                if (indexColsMap.containsKey(indexName)) {
+                    indexColsMap.get(indexName).add(colOrder);
+                } else {
+                    Set<String> newSet = Sets.newHashSet();
+                    newSet.add(colOrder);
+                    indexColsMap.put(indexName, newSet);
+                }
+                colDoneSet.add(colOrder);
             }
         }
     }
@@ -620,7 +693,7 @@ public class StatisticUtils {
         int maxSampleSize = InstConfUtil.getInt(ConnectionParams.HISTOGRAM_MAX_SAMPLE_SIZE);
         List<Row> rows = new ArrayList<>();
         double sampleRateUp =
-            scanAnalyze(schemaName, logicalTableName, analyzeColumnList, sampleRate, maxSampleSize, rows);
+            scanAnalyze(schemaName, logicalTableName, analyzeColumnList, sampleRate, maxSampleSize, rows, true);
         for (int i = 0; i < analyzeColumnList.size(); i++) {
             if (ec != null && CrossEngineValidator.isJobInterrupted(ec)) {
                 long jobId = ec.getDdlJobId();
@@ -937,7 +1010,7 @@ public class StatisticUtils {
         return true;
     }
 
-    private static Row purgeRowForHistogram(Row r, int size) {
+    private static Row purgeRowForHistogram(Row r, int size, Boolean purgeMysqlTime) {
         Row tmpRow = new ArrayRow(size, r.getParentCursorMeta());
         for (int i = 0; i < size; i++) {
             try {
@@ -960,7 +1033,7 @@ public class StatisticUtils {
                     }
                 }
                 DataType dt = r.getParentCursorMeta().getColumnMeta(i).getDataType();
-                if (DataTypeUtil.isMysqlTimeType(dt)) {
+                if (purgeMysqlTime && DataTypeUtil.isMysqlTimeType(dt)) {
                     byte[] bytes = r.getBytes(i);
                     tmpRow.setObject(i, packDateTypeToLong(dt, bytes));
                 } else {
@@ -974,8 +1047,69 @@ public class StatisticUtils {
         return tmpRow;
     }
 
-    private static double scanAnalyze(String schema, String logicalTableName, List<ColumnMeta> columnMetaList,
-                                      float sampleRate, int maxSampleSize, List<Row> rows) {
+    public static double scanAnalyzeOnPkRange(String schema, String logicalTableName, List<ColumnMeta> columnMetaList,
+                                              float sampleRate, int maxSampleRows, List<Row> rows,
+                                              PhyTableOperation phyTableOperation,
+                                              Map<Integer, ParameterContext> parameterContextMap) {
+        // scan sampling
+        try {
+            StringBuilder hint = new StringBuilder();
+            hint.append(
+                "/*+TDDL:cmd_extra(MERGE_CONCURRENT=true,ENABLE_DIRECT_PLAN=false,ENABLE_COLUMNAR_SCAN_EXEC=false) */ ");
+            String traceId = "";
+            hint.append(String.format(" /* trace_id(%s) */ ", traceId));
+
+            IServerConfigManager serverConfigManager = GsiUtils.getServerConfigManager();
+            ResultSet resultSet = null;
+            Connection connection = null;
+            try {
+                connection = (Connection) serverConfigManager.getTransConnection(schema);
+                PreparedStatement statement = connection.prepareStatement(hint + phyTableOperation.getNativeSql());
+                ParameterMethod.setParameters(statement, parameterContextMap);
+                resultSet = statement.executeQuery();
+                int rowCount = 0;
+                CursorMeta cursorMeta = CursorMeta.build(columnMetaList);
+                Random random = new Random();
+                while (resultSet.next()) {
+                    Object[] objects = new Object[columnMetaList.size()];
+                    for (int columnIndex = 1; columnIndex <= columnMetaList.size(); columnIndex++) {
+                        objects[columnIndex - 1] = resultSet.getObject(columnIndex);
+                    }
+                    if (rowCount < maxSampleRows) {
+                        rows.add(new ArrayRow(cursorMeta, objects));
+                        rowCount++;
+                    } else {
+                        int rowIndex = random.nextInt(maxSampleRows) - 1;
+                        rows.set(rowIndex, new ArrayRow(cursorMeta, objects));
+                    }
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            } finally {
+                try {
+                    if (resultSet != null) {
+                        resultSet.close();
+                    }
+
+                } catch (SQLException exception) {
+                    throw new RuntimeException(exception);
+                } finally {
+                    if (connection != null) {
+                        connection.close();
+                    }
+                }
+            }
+        } catch (RuntimeException | SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, " scan sample on pk range failed!, and the cause is "
+            + Optional.ofNullable(e.getMessage()).orElse(" unknown cause"));
+        }
+        return (double) rows.size() * sampleRate / maxSampleRows;
+    }
+
+    // purge is true by default.
+    // purge is false when scan analyze on pks driven by backfill, because pk is not nullable, and generally not long.
+    public static double scanAnalyze(String schema, String logicalTableName, List<ColumnMeta> columnMetaList,
+                                     float sampleRate, int maxSampleSize, List<Row> rows, Boolean purge) {
         // scan sampling
         ResultCursor rc = null;
         ITransaction trx = null;
@@ -1006,12 +1140,12 @@ public class StatisticUtils {
                 if (r != null) {
                     if (rowcount > maxSampleSize) {
                         if (rand.nextInt(rowcount) < maxSampleSize) {
-                            rows.set(rand.nextInt(maxSampleSize), purgeRowForHistogram(r, columnMetaList.size()));
+                            rows.set(rand.nextInt(maxSampleSize), purgeRowForHistogram(r, columnMetaList.size(), purge));
                         } else {
                             // ignore
                         }
                     } else {
-                        rows.add(purgeRowForHistogram(r, columnMetaList.size()));
+                        rows.add(purgeRowForHistogram(r, columnMetaList.size(), purge));
                     }
                     rowcount++;
                 }
@@ -1038,7 +1172,33 @@ public class StatisticUtils {
         StringBuilder sql = new StringBuilder();
 
         String cmdExtraSamplePercentage = "";
-        cmdExtraSamplePercentage = ",sample_percentage=" + sampleRate * 100;
+        cmdExtraSamplePercentage = ",sample_percentage=" + sampleString(sampleRate * 100);
+        sql.append(
+            "/*+TDDL:cmd_extra("
+                + "enable_post_planner=false,enable_index_selection=false,merge_union=false,enable_direct_plan=false"
+                + cmdExtraSamplePercentage + ") */ "
+                + "select ");
+        boolean first = true;
+        for (ColumnMeta columnMeta : columnMetaList) {
+            if (first) {
+                first = false;
+            } else {
+                sql.append(",");
+            }
+            sql.append(SqlIdentifier.surroundWithBacktick(columnMeta.getName()));
+        }
+        sql.append(" from ");
+        sql.append(SqlIdentifier.surroundWithBacktick(logicalTableName));
+        return sql.toString();
+    }
+
+    protected static String constructScanSamplingSqlOnPkRange(String logicalTableName, List<ColumnMeta> columnMetaList,
+                                                              float sampleRate, Map<Integer, ParameterContext> leftRow,
+                                                              Map<Integer, ParameterContext> rightRow) {
+        StringBuilder sql = new StringBuilder();
+
+        String cmdExtraSamplePercentage = "";
+        cmdExtraSamplePercentage = ",sample_percentage=" + sampleString(sampleRate * 100);
         sql.append(
             "/*+TDDL:cmd_extra("
                 + "enable_post_planner=false,enable_index_selection=false,merge_union=false,enable_direct_plan=false"

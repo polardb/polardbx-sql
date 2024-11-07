@@ -34,13 +34,15 @@ public class SessionHintPlugin extends BasePlugin {
         }
         enabled = config.getBoolean("enabled", false);
         threads = Math.toIntExact(config.getLong("threads", 1L));
-        // init session hint
-        try (MyConnection conn = getConnection(dsn);
-            Statement stmt = conn.createStatement()) {
-            Utils.initSessionHint(stmt, sessionHint);
-            logger.info("All partitions: " + String.join(",", sessionHint));
-        } catch (Throwable t) {
-            logger.error("Init session hint failed.", t);
+        if (enabled) {
+            // init session hint
+            try (MyConnection conn = getConnection(dsn);
+                Statement stmt = conn.createStatement()) {
+                Utils.initSessionHint(stmt, sessionHint);
+                logger.info("All partitions: " + String.join(",", sessionHint));
+            } catch (Throwable t) {
+                logger.error("Init session hint failed.", t);
+            }
         }
     }
 
@@ -61,6 +63,7 @@ public class SessionHintPlugin extends BasePlugin {
                     accounts.set(Utils.getAccountsWithSessionHint(hint, stmt, sessionHint));
                 } finally {
                     conn.rollback();
+                    conn.setAutoCommit(true);
                 }
             } catch (SQLException e) {
                 error.set(e);

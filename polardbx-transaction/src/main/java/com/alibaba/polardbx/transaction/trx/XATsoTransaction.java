@@ -21,22 +21,16 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.jdbc.SavePoint;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
@@ -130,6 +124,11 @@ public class XATsoTransaction extends TsoTransaction {
     }
 
     public void setInnodbMarkDistributed(IConnection conn) throws SQLException {
+        if (InstanceVersion.isMYSQL80()) {
+            // For 8.0, no need to send innodb_mark_distributed,
+            // because TSO read transactions will always wait for prepared XA transactions.
+            return;
+        }
         XConnection xConnection;
         if (conn.isWrapperFor(XConnection.class) &&
             (xConnection = conn.unwrap(XConnection.class)).supportMarkDistributed()) {
@@ -145,27 +144,9 @@ public class XATsoTransaction extends TsoTransaction {
         try {
             super.commit();
         } catch (Throwable t) {
-            long lastErrTime = xaTsoFailedLastTime.get();
-            if ((System.nanoTime() - lastErrTime) / 1000000000 > 60
-                && xaTsoFailedLastTime.compareAndSet(lastErrTime, System.nanoTime())) {
-                // First error in 1 min, reset err cnt.
-                xaTsoFailedLastTime.set(0);
-            }
-            // 30 err occurs in the last 1 min, switch to XA for safety.
-            if (xaTsoFailedCnt.incrementAndGet() == 30) {
-                try {
-                    if (!InstConfUtil.getBool(ConnectionParams.ENABLE_XA_TSO)) {
-                        return;
-                    }
-
-                    EventLogger.log(EventType.TRX_ERR,
-                        "Error: 30 errors occurred within 1 min, disable XaTsoTrx");
-
-                    disable();
-                } finally {
-                    xaTsoFailedCnt.set(0);
-                }
-            }
+            logger.error("XA_TSO Error.", t);
+            EventLogger.log(EventType.TRX_ERR, "XA_TSO Error: " + t.getMessage());
+            throw t;
         }
     }
 

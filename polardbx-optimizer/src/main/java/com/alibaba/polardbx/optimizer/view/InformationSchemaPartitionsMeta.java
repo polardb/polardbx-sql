@@ -46,39 +46,48 @@ public class InformationSchemaPartitionsMeta extends VirtualView {
         final RelDataTypeFactory typeFactory = getCluster().getTypeFactory();
         List<RelDataTypeFieldImpl> columns = new LinkedList<>();
 
-        columns.add(new RelDataTypeFieldImpl("PART_NUM", 0, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        int colIdx = -1;
+        columns.add(new RelDataTypeFieldImpl("PART_NUM", ++colIdx, typeFactory.createSqlType(SqlTypeName.BIGINT)));
 
-        columns.add(new RelDataTypeFieldImpl("TABLE_SCHEMA", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TABLE_NAME", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("INDEX_NAME", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PRIM_TABLE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TABLE_TYPE", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TG_NAME", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_SCHEMA", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("INDEX_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PRIM_TABLE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_TYPE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("TG_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
-        columns.add(new RelDataTypeFieldImpl("PART_METHOD", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PART_COL", 8, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("PART_COL_TYPE", 9, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PART_EXPR", 10, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        //columns.add(new RelDataTypeFieldImpl("PART_BOUND_TYPE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PART_NAME", 11, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PART_POSI", 12, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("PART_DESC", 13, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PART_METHOD", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PART_COL", ++colIdx, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(
+            new RelDataTypeFieldImpl("PART_COL_TYPE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PART_EXPR", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        //columns.add(new RelDataTypeFieldImpl("PART_BOUND_TYPE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PART_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PART_POSI", ++colIdx, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("PART_DESC", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("PART_ARC_STATE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
-        columns.add(new RelDataTypeFieldImpl("SUBPART_METHOD", 14, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_COL", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_COL_TYPE", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_EXPR", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        //columns.add(new RelDataTypeFieldImpl("SUBPART_BOUND_TYPE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_NAME", 18, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_TEMP_NAME", 19, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_POSI", 20, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("SUBPART_DESC", 21, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SUBPART_METHOD", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_COL", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SUBPART_COL_TYPE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_EXPR", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        //columns.add(new RelDataTypeFieldImpl("SUBPART_BOUND_TYPE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SUBPART_TEMP_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_POSI", ++colIdx, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("SUBPART_DESC", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SUBPART_ARC_STATE", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
-        columns.add(new RelDataTypeFieldImpl("PG_NAME", 22, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PHY_GROUP", 23, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PHY_DB", 24, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PHY_TB", 25, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("RW_DN", 26, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PG_NAME", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PHY_GROUP", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PHY_DB", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PHY_TB", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("RW_DN", ++colIdx, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

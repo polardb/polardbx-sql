@@ -33,7 +33,7 @@ import java.util.List;
 @TaskName(name = "CreateTablePhyDdlTask")
 public class CreateTablePhyDdlTask extends BasePhyDdlTask {
 
-    private String logicalTableName;
+    protected String logicalTableName;
 
     @JSONCreator
     public CreateTablePhyDdlTask(String schemaName, String logicalTableName, PhysicalPlanData physicalPlanData) {

@@ -55,4 +55,13 @@ public class ColumnarConfigRecord implements SystemTableRecord {
 
         return params;
     }
+
+    public Map<Integer, ParameterContext> buildDeleteParams() {
+        Map<Integer, ParameterContext> params = new HashMap<>(2);
+        int index = 0;
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.tableId);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.configKey);
+
+        return params;
+    }
 }

@@ -1,0 +1,247 @@
+## DISABLE_FAST_SQL_PARSER
+## h_r_ntp
+drop table if exists h_r_ntp1;
+drop table if exists h_r_ntp2;
+drop table if exists h_r_ntp3;
+create table if not exists h_r_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( maxvalue )
+)
+);
+
+create table if not exists h_r_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( maxvalue )
+)
+);
+
+create table if not exists h_r_ntp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( maxvalue )
+)
+);
+
+alter table h_r_ntp1 drop subpartition p1sp1;
+alter table h_r_ntp1 drop subpartition p2sp1,p2sp3;
+alter table h_r_ntp2 drop subpartition p1sp1;
+alter table h_r_ntp2 drop subpartition p2sp1,p2sp3;
+alter table h_r_ntp3 drop subpartition p1sp1;
+alter table h_r_ntp3 drop subpartition p2sp1,p2sp3;
+show full create table h_r_ntp1;
+show full create table h_r_ntp2;
+show full create table h_r_ntp3;
+
+## h_rc_ntp
+drop table if exists h_rc_ntp1;
+drop table if exists h_rc_ntp2;
+create table if not exists h_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range columns (c,d)
+(
+partition p1
+(
+subpartition p1sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition p2sp2 values less than ( '2021-01-01', 'abc' ),
+subpartition p2sp3 values less than ( maxvalue, maxvalue )
+)
+);
+create table if not exists h_rc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range columns (c,d)
+(
+partition p1
+(
+subpartition p1sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition p1sp2 values less than ( maxvalue, maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition p2sp2 values less than ( '2021-01-01', 'abc' ),
+subpartition p2sp3 values less than ( maxvalue, maxvalue )
+)
+);
+
+alter table h_rc_ntp1 drop subpartition p1sp1;
+alter table h_rc_ntp1 drop subpartition p2sp1,p2sp3;
+alter table h_rc_ntp2 drop subpartition p1sp1;
+alter table h_rc_ntp2 drop subpartition p2sp1,p2sp3;
+## error_msg: $# Don't allow to drop all the subpartitions for #$
+alter table h_rc_ntp2 drop subpartition p2sp2;
+show full create table h_rc_ntp1;
+show full create table h_rc_ntp2;
+
+## h_l_ntp
+drop table if exists h_l_ntp1;
+drop table if exists h_l_ntp2;
+create table if not exists h_l_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by list (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values in ( to_days('2020-01-01') ),
+subpartition p1sp2 values in ( default )
+),
+partition p2
+(
+subpartition p2sp1 values in ( to_days('2020-01-01') ),
+subpartition p2sp2 values in ( to_days('2021-01-01') ),
+subpartition p2sp3 values in ( default )
+)
+);
+create table if not exists h_l_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by list (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values in ( to_days('2020-01-01') ),
+subpartition p1sp2 values in ( default )
+),
+partition p2
+(
+subpartition p2sp1 values in ( to_days('2020-01-01') ),
+subpartition p2sp2 values in ( to_days('2021-01-01') ),
+subpartition p2sp3 values in ( default )
+)
+);
+alter table h_l_ntp1 drop subpartition p1sp1;
+alter table h_l_ntp1 drop subpartition p2sp1,p2sp3;
+alter table h_l_ntp2 drop subpartition p1sp1;
+alter table h_l_ntp2 drop subpartition p2sp1,p2sp3;
+show full create table h_l_ntp1;
+show full create table h_l_ntp2;
+## h_lc_tp
+drop table if exists h_lc_ntp1;
+drop table if exists h_lc_ntp2;
+create table if not exists h_lc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by list columns (c,d)
+(
+partition p1
+(
+subpartition p1sp1 values in ( ('2020-01-01', 'abc') ),
+subpartition p1sp2 values in ( default )
+),
+partition p2
+(
+subpartition p2sp1 values in ( ('2020-01-01', 'abc') ),
+subpartition p2sp2 values in ( ('2021-01-01', 'abc') ),
+subpartition p2sp3 values in ( default )
+)
+);
+create table if not exists h_lc_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by list columns (c,d)
+(
+partition p1
+(
+subpartition p1sp1 values in ( ('2020-01-01', 'abc') ),
+subpartition p1sp2 values in ( default )
+),
+partition p2
+(
+subpartition p2sp1 values in ( ('2020-01-01', 'abc') ),
+subpartition p2sp2 values in ( ('2021-01-01', 'abc') ),
+subpartition p2sp3 values in ( default )
+)
+);
+alter table h_lc_ntp1 drop subpartition p1sp1;
+alter table h_lc_ntp1 drop subpartition p2sp1,p2sp3;
+alter table h_lc_ntp2 drop subpartition p1sp1;
+alter table h_lc_ntp2 drop subpartition p2sp1,p2sp3;
+show full create table h_lc_ntp1;
+show full create table h_lc_ntp2;

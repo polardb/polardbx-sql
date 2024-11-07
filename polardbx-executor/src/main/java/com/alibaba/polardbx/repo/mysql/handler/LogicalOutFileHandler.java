@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.OutFileCursor;
@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleBufferSpiller;
 import com.alibaba.polardbx.executor.operator.spill.OrcWriter;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
@@ -47,14 +48,18 @@ public class LogicalOutFileHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_DATA_OUTPUT,
                 "OutFileCursor cannot be implemented when the inputs more than one");
         }
+
+        if (!executionContext.isGod()) {
+            if (!InstConfUtil.getValBool(TddlConstants.ENABLE_SELECT_INTO_OUTFILE)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
+                    "Selecting into outfile is not enabled!");
+            }
+        }
+
         if (((LogicalOutFile) logicalPlan).getOutFileParams().getStatistics()) {
             return new OutFileStatisticsCursor(executionContext,
                 ServiceProvider.getInstance().getServer().getSpillerFactory(),
                 ((LogicalOutFile) logicalPlan).getOutFileParams());
-        }
-        if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_SELECT_INTO_OUTFILE)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
-                "Selecting into outfile is not enabled");
         }
 
         RelNode inputRelNode = logicalPlan.getInput(0);

@@ -44,6 +44,7 @@ import java.util.List;
  * targeted at any particular engine or calling convention.
  */
 public class LogicalSort extends Sort {
+  private final SortOptimizationContext sortOptimizationContext = new SortOptimizationContext();
   protected boolean ignore = false;
 
   protected LogicalSort(RelOptCluster cluster, RelTraitSet traitSet,
@@ -97,11 +98,13 @@ public class LogicalSort extends Sort {
       RelCollation newCollation, RexNode offset, RexNode fetch) {
     LogicalSort logicalSort =  new LogicalSort(getCluster(), traitSet, newInput, newCollation,
         offset, fetch, ignore);
+    logicalSort.sortOptimizationContext.copyFrom(sortOptimizationContext);
     return logicalSort;
   }
 
   public Sort copy(RelNode newInput, RelCollation newCollation) {
     LogicalSort logicalSort = new LogicalSort(getCluster(), traitSet, newInput, newCollation, offset, fetch, ignore);
+    logicalSort.sortOptimizationContext.copyFrom(sortOptimizationContext);
     return logicalSort;
   }
 
@@ -141,6 +144,10 @@ public class LogicalSort extends Sort {
 
   public void setIgnore(boolean ignore) {
     this.ignore = ignore;
+  }
+
+  public SortOptimizationContext getSortOptimizationContext() {
+    return sortOptimizationContext;
   }
 }
 

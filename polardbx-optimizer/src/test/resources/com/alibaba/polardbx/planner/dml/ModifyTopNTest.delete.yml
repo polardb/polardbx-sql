@@ -1,0 +1,483 @@
+# one sharding table
+- sql: |
+    delete a from test_hash_ta a where a.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p54]", sql="delete from `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    delete a from test_hash_ta a where a.id = last_insert_id();
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p5]", sql="delete from `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    delete a from test_single a where a.id = last_insert_id(1);
+
+  plan: |
+
+    logicalview(tables="optest_p00000_group.test_single", sql="delete `a` from `test_single` as `a` where (`a`.`id` = last_insert_id(?))", params="1")
+
+- sql: |
+    delete from a using test_hash_ta a where a.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p54]", sql="delete from `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    delete a from test_hash_ta a, test_hash_ta b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p54],test_hash_ta[p54]", sql="delete `test_hash_ta` from `test_hash_ta` as `test_hash_ta` inner join `test_hash_ta` as `test_hash_ta0` on ((`test_hash_ta`.`id` = ?) and (`test_hash_ta0`.`id` = ?) and (`test_hash_ta`.`id` = `test_hash_ta0`.`id`))")
+
+- sql: |
+    delete a from test_broadcast a, test_broadcast b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast", sql="delete `a` from `test_broadcast` as `a`, `test_broadcast` as `b` where ((`a`.`id` = `b`.`id`) and (`a`.`id` = ?))", params="1")
+
+- sql: |
+    delete test_hash_tb from test_hash_tb, test_hash_ta where test_hash_ta.id = test_hash_tb.id;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_tb[p1,p2,p3,...p64],test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete `test_hash_tb` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_ta` as `test_hash_ta` on (`test_hash_tb`.`id` = `test_hash_ta`.`id`)")
+
+- sql: |
+    delete a from test_hash_tb b, test_hash_ta a where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_tb[p54],test_hash_ta[p54]", sql="delete `test_hash_ta` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_ta` as `test_hash_ta` on ((`test_hash_tb`.`id` = ?) and (`test_hash_ta`.`id` = ?) and (`test_hash_tb`.`id` = `test_hash_ta`.`id`))")
+
+- sql: |
+    delete from a,b using test_hash_tb b, test_hash_ta a where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_tb[p54],test_hash_ta[p54]", sql="delete `test_hash_ta`, `test_hash_tb` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_ta` as `test_hash_ta` on ((`test_hash_tb`.`id` = ?) and (`test_hash_ta`.`id` = ?) and (`test_hash_tb`.`id` = `test_hash_ta`.`id`))")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,FORBID_EXECUTE_DML_ALL=false)*/
+    delete a from test_hash_tb a, test_hash_ta;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_tb")
+      nljoin(condition="true", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="test_hash_tb[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` for update")
+        gather(concurrent=true)
+          logicalview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_ta` as `test_hash_ta` for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_broadcast")
+      logicalview(tables="test_hash_tb[p54],test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time` as `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
+
+- sql: |
+    delete b from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_tb[p54],test_broadcast", sql="delete `test_hash_tb` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`))")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a,b from test_broadcast a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_broadcast, optest.test_hash_tb")
+      logicalview(tables="test_hash_tb[p54],test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time` as `create_time0`, `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time` from `test_hash_tb` as `test_hash_tb` inner join `test_broadcast` as `test_broadcast` on ((`test_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = ?) and (`test_hash_tb`.`id` = `test_broadcast`.`id`)) for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a from test_single a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_single")
+      hashjoin(condition="id = id", type="inner")
+        logicalview(tables="test_single[p1]", sql="select `id`, `name`, `create_time` from `test_single` as `test_single` force index(`primary`) where (`id` = ?) for update")
+        logicalview(tables="test_hash_tb[p54]", sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where (`id` = ?) for update")
+
+- sql: |
+    delete b from test_single a join test_hash_tb b where a.id = b.id and a.id = 0;
+
+  plan: |
+
+    phytableoperation(tables="test_single[p1],test_hash_tb[p5]", sql="delete `b` from ? as `a` inner join ? as `b` where ((`a`.`id` = `b`.`id`) and (`a`.`id` = ?))", params="`test_single`,`test_hash_tb_00004`,0")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/
+    delete a,b from test_single a, test_hash_tb b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_single, optest.test_hash_tb")
+      hashjoin(condition="id = id", type="inner")
+        logicalview(tables="test_single[p1]", sql="select `id`, `name`, `create_time` from `test_single` as `test_single` force index(`primary`) where (`id` = ?) for update")
+        logicalview(tables="test_hash_tb[p54]", sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where (`id` = ?) for update")
+
+- sql: |
+    delete a from test_broadcast a, test_broadcast_b b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `a` from `test_broadcast` as `a`, `test_broadcast_b` as `b` where ((`a`.`id` = `b`.`id`) and (`a`.`id` = ?))", params="1")
+
+- sql: |
+    delete a,b from test_broadcast a, test_broadcast_b b where a.id = b.id and a.id = 1;
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `a`, `b` from `test_broadcast` as `a`, `test_broadcast_b` as `b` where ((`a`.`id` = `b`.`id`) and (`a`.`id` = ?))", params="1")
+
+- sql: |
+    delete a from test_hash_ta a join (select name, id from test_hash_tb b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    phytableoperation(tables="test_hash_ta[p54],test_hash_tb[p54]", sql="delete `a` from ? as `a` inner join (select `b`.`name` as `name`, `b`.`id` as `id` from ? as `b` where ((`b`.`name` = ?) and (`b`.`id` = ?))) as `b` where (`a`.`id` = `b`.`id`)", params="`test_hash_ta_00053`,`test_hash_tb_00053`,c,1")
+
+- sql: |
+    delete a from test_broadcast a join (select name, id from test_broadcast b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast", sql="delete `a` from `test_broadcast` as `a` inner join (select `b`.`name` as `name`, `b`.`id` as `id` from `test_broadcast` as `b` where ((`b`.`name` = ?) and (`b`.`id` = ?))) as `b` where (`a`.`id` = `b`.`id`)", params="c,1")
+
+- sql: |
+    delete a from test_hash_tb a join (select name, id from test_broadcast b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    phytableoperation(tables="test_hash_tb[p54],test_broadcast[p2]", sql="delete `a` from ? as `a` inner join (select `b`.`name` as `name`, `b`.`id` as `id` from ? as `b` where ((`b`.`name` = ?) and (`b`.`id` = ?))) as `b` where (`a`.`id` = `b`.`id`)", params="`test_hash_tb_00053`,`test_broadcast`,c,1")
+
+- sql: |
+    delete a from test_broadcast a join (select name, id from test_hash_ta b where b.name = "c" and b.id = 1) b where a.id = b.id;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_broadcast")
+      logicalview(tables="test_hash_ta[p54],test_broadcast", sql="select `test_broadcast`.`id` as `id0`, `test_broadcast`.`name` as `name0`, `test_broadcast`.`create_time`, `test_hash_ta`.`name`, `test_hash_ta`.`id` from `test_hash_ta` as `test_hash_ta` inner join `test_broadcast` as `test_broadcast` on (`test_hash_ta`.`id` = `test_broadcast`.`id`) where ((`test_hash_ta`.`id` = ?) and (`test_hash_ta`.`name` = ?)) for update")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete test_hash_ta from test_hash_ta;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete test_hash_ta from optest.test_hash_ta;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_ta from test_hash_ta;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_ta from optest.test_hash_ta;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete test_hash_ta from optest1.test_hash_ta;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : object 'optest1' not found
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest1.test_hash_ta from test_hash_ta;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : table 'optest1.test_hash_ta' not found
+
+- sql: |
+    delete optest.test_hash_ta from optest1.test_hash_ta;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : object 'optest1' not found
+
+- sql: |
+    delete optest1.test_hash_ta from optest.test_hash_ta;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : table 'optest1.test_hash_ta' not found
+
+- sql: |
+    delete optest1.test_hash_ta from optest1.test_hash_ta;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : object 'optest1' not found
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta a;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from test_hash_ta AS a;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete a from test_hash_ta AS a;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    delete from test_hash_ta AS `a-a` where `a-a`.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p54]", sql="delete from `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    delete `a-a` from test_hash_ta AS `a-a` where `a-a`.id = 1;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p54]", sql="delete from `test_hash_ta` where (`id` = ?)")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from optest.test_hash_ta;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from optest.test_hash_ta a;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from optest.test_hash_ta AS a;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete a from optest.test_hash_ta AS a;
+
+  plan: |
+
+    logicalmodifyview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="delete from `test_hash_ta`")
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_tb, test_hash_ta from optest.test_hash_ta join test_hash_tb;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_tb, optest.test_hash_ta")
+      nljoin(condition="true", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_ta` as `test_hash_ta` for update")
+        gather(concurrent=true)
+          logicalview(tables="test_hash_tb[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` for update")
+
+- sql: |
+    delete optest1.test_hash_tb, test_hash_ta from optest.test_hash_ta join test_hash_tb;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : unknown table 'optest1.test_hash_tb' in multi delete
+
+- sql: |
+    /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete optest.test_hash_tb, a from optest.test_hash_ta as a join test_hash_tb;
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_tb, optest.test_hash_ta")
+      nljoin(condition="true", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="test_hash_ta[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_ta` as `test_hash_ta` for update")
+        gather(concurrent=true)
+          logicalview(tables="test_hash_tb[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` for update")
+
+- sql: |
+    delete optest.test_hash_tb, optest.test_hash_ta from optest.test_hash_ta as a join test_hash_tb;
+
+  plan: |
+
+    err-code: [pxc-4518][err_validate] : unknown table 'optest.test_hash_ta' in multi delete
+
+- sql: |
+    delete b from self_join_t1 a join self_join_t1 b on a.c1 = b.c1 and a.pk > b.pk where a.pk > 0;
+
+  plan: |
+
+    logicalmodifyview(tables="self_join_t1[p1,p2,p3,...p64],self_join_t1[p1,p2,p3,...p64]", shardcount=64, sql="delete `self_join_t10` from `self_join_t1` as `self_join_t1` inner join `self_join_t1` as `self_join_t10` on ((`self_join_t1`.`c1` = `self_join_t10`.`c1`) and (`self_join_t1`.`pk` > `self_join_t10`.`pk`) and (`self_join_t1`.`pk` > ?))")
+
+- sql: |
+    delete from test_broadcast where id > 0 and exists (select id from test_broadcast_b where test_broadcast.name = name);
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `test_broadcast` from `test_broadcast` as `test_broadcast` where ((`id` > ?) and (exists (select `test_broadcast_b`.`id` as `id` from `test_broadcast_b` as `test_broadcast_b` where (`test_broadcast`.`name` = `test_broadcast_b`.`name`))))", params="0")
+
+- sql: |
+    delete from optest.test_broadcast where id > 0 and exists (select id from optest.test_broadcast_b where test_broadcast.name = name);
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast,test_broadcast_b", sql="delete `test_broadcast` from `test_broadcast` as `test_broadcast` where ((`id` > ?) and (exists (select `test_broadcast_b`.`id` as `id` from `test_broadcast_b` as `test_broadcast_b` where (`test_broadcast`.`name` = `test_broadcast_b`.`name`))))", params="0")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_subpartition where user_id = 1 and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodifyview(tables="test_ordered_subpartition[p11sp202403a,p11sp202403b,p11sp202403c,p11sp202404a,p11sp202404b,p11sp202404c]", shardcount=6, sql="delete from `test_ordered_subpartition` where ((`user_id` = ?) and (`create_time` <= ?)) order by `create_time` desc limit ?")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_subpartition where user_id in (1, 1) and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodifyview(tables="test_ordered_subpartition[p11sp202403a,p11sp202403b,p11sp202403c,p11sp202404a,p11sp202404b,p11sp202404c]", shardcount=6, sql="delete from `test_ordered_subpartition` where ((`user_id` in(?)) and (`create_time` <= ?)) order by `create_time` desc limit ?")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_subpartition_c where user_id in (1, 1) and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodifyview(tables="test_ordered_subpartition_c[sp202403asp11,sp202403bsp11,sp202403csp11,sp202404asp11,sp202404bsp11,sp202404csp11]", shardcount=6, sql="delete from `test_ordered_subpartition_c` where ((`user_id` in(?)) and (`create_time` <= ?)) order by `create_time` desc limit ?")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_partition where user_id = 1 and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodifyview(tables="test_ordered_partition[sp202403a,sp202403b,sp202403c,sp202404a,sp202404b,sp202404c]", shardcount=6, sql="delete from `test_ordered_partition` where ((`user_id` = ?) and (`create_time` <= ?)) order by `create_time` desc limit ?")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete a from test_ordered_subpartition a join test_ordered_subpartition_b b on a.user_id = b.user_id and a.create_time = b.create_time where a.user_id = 1 and a.create_time<="2024-04-23" order by a.create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_subpartition")
+      mergesort(sort="create_time desc", fetch=?2)
+        logicalview(tables="test_ordered_subpartition[p11sp202403a,p11sp202403b,p11sp202403c,p11sp202404a,p11sp202404b,p11sp202404c],test_ordered_subpartition_b[p11sp202403a,p11sp202403b,p11sp202403c,p11sp202404a,p11sp202404b,p11sp202404c]", shardcount=6, sql="select `test_ordered_subpartition`.`id`, `test_ordered_subpartition`.`user_id`, `test_ordered_subpartition`.`pad`, `test_ordered_subpartition`.`create_time`, `test_ordered_subpartition_b`.`id` as `id0`, `test_ordered_subpartition_b`.`user_id` as `user_id0`, `test_ordered_subpartition_b`.`pad` as `pad0`, `test_ordered_subpartition_b`.`create_time` as `create_time0` from `test_ordered_subpartition` as `test_ordered_subpartition` inner join `test_ordered_subpartition_b` as `test_ordered_subpartition_b` on ((`test_ordered_subpartition_b`.`user_id` = ?) and (`test_ordered_subpartition`.`user_id` = `test_ordered_subpartition_b`.`user_id`) and (`test_ordered_subpartition`.`user_id` = ?) and (`test_ordered_subpartition`.`create_time` = `test_ordered_subpartition_b`.`create_time`) and (`test_ordered_subpartition`.`create_time` <= ?)) order by `test_ordered_subpartition`.`create_time` desc limit ? for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete a from test_ordered_partition a join test_ordered_partition_b b on a.create_time = b.create_time where a.user_id = 1 and a.create_time<="2024-04-23" order by a.create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_partition")
+      mergesort(sort="create_time desc", fetch=?2)
+        logicalview(tables="test_ordered_partition[sp202403a,sp202403b,sp202403c,sp202404a,sp202404b,sp202404c],test_ordered_partition_b[sp202403a,sp202403b,sp202403c,sp202404a,sp202404b,sp202404c]", shardcount=6, sql="select `test_ordered_partition`.`id`, `test_ordered_partition`.`user_id`, `test_ordered_partition`.`pad`, `test_ordered_partition`.`create_time`, `test_ordered_partition_b`.`id` as `id0`, `test_ordered_partition_b`.`user_id` as `user_id0`, `test_ordered_partition_b`.`pad` as `pad0`, `test_ordered_partition_b`.`create_time` as `create_time0` from `test_ordered_partition` as `test_ordered_partition` inner join `test_ordered_partition_b` as `test_ordered_partition_b` on ((`test_ordered_partition`.`user_id` = ?) and (`test_ordered_partition`.`create_time` = `test_ordered_partition_b`.`create_time`) and (`test_ordered_partition`.`create_time` <= ?)) order by `test_ordered_partition`.`create_time` desc limit ? for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_partition where user_id = 1 and create_time<="2024-04-23" order by create_time desc limit 0,1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_partition")
+      mergesort(sort="create_time desc", offset=?2, fetch=?3)
+        logicalview(tables="test_ordered_partition[sp202403a,sp202403b,sp202403c,sp202404a,sp202404b,sp202404c]", shardcount=6, sql="select `id`, `user_id`, `pad`, `create_time` from `test_ordered_partition` as `test_ordered_partition` where ((`user_id` = ?) and (`create_time` <= ?)) order by `create_time` desc limit (? + ?) for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete a from test_ordered_subpartition a join test_ordered_subpartition_b b on a.id = b.id and a.create_time = b.create_time where a.user_id = 1 and a.create_time<="2024-04-23" order by a.create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_subpartition")
+      topn(sort="create_time desc", fetch=?2)
+        bkajoin(condition="id = id and create_time = create_time", type="inner")
+          gather(concurrent=true)
+            logicalview(tables="test_ordered_subpartition[p11sp202403a,p11sp202403b,p11sp202403c,p11sp202404a,p11sp202404b,p11sp202404c]", shardcount=6, sql="select `id`, `user_id`, `pad`, `create_time` from `test_ordered_subpartition` as `test_ordered_subpartition` where ((`user_id` = ?) and (`create_time` <= ?)) for update")
+          gather(concurrent=true)
+            logicalview(tables="test_ordered_subpartition_b[p1sp202403a,p1sp202403b,p1sp202403c,...p16sp202404c]", shardcount=96, sql="select `id`, `user_id`, `pad`, `create_time` from `test_ordered_subpartition_b` as `test_ordered_subpartition_b` force index(`primary`) where ((`create_time` <= ?) and (((`id`, `create_time`)) in (...))) for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_hash_tb where name = "b" and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_hash_tb")
+      mergesort(sort="create_time desc", fetch=?2)
+        logicalview(tables="test_hash_tb[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb` where ((`name` = ?) and (`create_time` <= ?)) order by `create_time` desc limit ? for update")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_broadcast where name = "b" and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_broadcast", sql="delete from `test_broadcast` where ((`name` = ?) and (`create_time` <= ?)) order by `create_time` desc limit ?", params="b,2024-04-23,1")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_single where name = "b" and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalview(tables="optest_p00000_group.test_single", sql="delete from `test_single` where ((`name` = ?) and (`create_time` <= ?)) order by `create_time` desc limit ?", params="b,2024-04-23,1")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_subpartition where user_id in (1, 2) and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_subpartition", ismodifytopn=true)
+      mergesort(sort="create_time desc", fetch=?2)
+        logicalview(tables="test_ordered_subpartition[p9sp202403a,p9sp202403b,p9sp202403c,...p11sp202404c]", shardcount=12, sql="select `id`, `user_id`, `pad`, `create_time` from `test_ordered_subpartition` as `test_ordered_subpartition` where ((`user_id` in(?)) and (`create_time` <= ?)) order by `create_time` desc limit ? for update", pruninginfo="all size:2*12(part), pruning size:12")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_subpartition where user_id in (1, 2) and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_subpartition", ismodifytopn=true)
+      mergesort(sort="create_time desc", fetch=?2)
+        logicalview(tables="test_ordered_subpartition[p9sp202403a,p9sp202403b,p9sp202403c,...p11sp202404c]", shardcount=12, sql="select `id`, `user_id`, `pad`, `create_time` from `test_ordered_subpartition` as `test_ordered_subpartition` where ((`user_id` in(?)) and (`create_time` <= ?)) order by `create_time` desc limit ? for update", pruninginfo="all size:2*12(part), pruning size:12")
+
+- sql: |
+    /*+TDDL:CMD_EXTRA(OPTIMIZE_MODIFY_TOP_N_BY_RETURNING=TRUE)*/ delete test_ordered_subpartition_c where user_id in (1, 2) and create_time<="2024-04-23" order by create_time desc limit 1; 
+
+  plan: |
+
+    logicalmodify(type="delete", tables="optest.test_ordered_subpartition_c", ismodifytopn=true)
+      mergesort(sort="create_time desc", fetch=?2)
+        logicalview(tables="test_ordered_subpartition_c[sp202403asp9,sp202403asp11,sp202403bsp9,...sp202404csp11]", shardcount=12, sql="select `id`, `user_id`, `pad`, `create_time` from `test_ordered_subpartition_c` as `test_ordered_subpartition_c` where ((`user_id` in(?)) and (`create_time` <= ?)) order by `create_time` desc limit ? for update", pruninginfo="all size:2*12(part), pruning size:12")

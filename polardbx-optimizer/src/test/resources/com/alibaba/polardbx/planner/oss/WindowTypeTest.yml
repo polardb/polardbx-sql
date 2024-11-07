@@ -76,8 +76,7 @@ SQL:
                   exchange(distribution=hash[1], collation=[])
                     bkajoin(condition="l_partkey = p_partkey", type="inner")
                       logicalview(tables="part[p1,p2,p3,p4]", shardcount=4, sql="select `p_partkey` from `part` as `part` where (`p_brand` = 'brand#51')")
-                      logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem` where (`l_partkey` in (...))")
-
+                      logicalview(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem` force index(`i_l_partkey`) where (`l_partkey` in (...))")
   - sql: |
       select          
         l_shipdate,          

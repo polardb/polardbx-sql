@@ -1,2 +1,5 @@
 test_select_bka_partition
 test_select_metadb
+#test_select_partition
+#test_select_partition_broadcast
+#test_select_partition_in_dml

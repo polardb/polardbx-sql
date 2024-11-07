@@ -50,6 +50,7 @@ public class BuildAllPartSpecsFromAstParams {
     protected boolean containNextLevelPartSpec;
     protected PartitionSpec parentPartSpec;
     protected AtomicInteger phyPartCounter;
+    protected boolean ttlTemporary = false;
 
     public BuildAllPartSpecsFromAstParams() {
     }
@@ -190,5 +191,13 @@ public class BuildAllPartSpecsFromAstParams {
 
     public void setPhyPartCounter(AtomicInteger phyPartCounter) {
         this.phyPartCounter = phyPartCounter;
+    }
+
+    public boolean isTtlTemporary() {
+        return ttlTemporary;
+    }
+
+    public void setTtlTemporary(boolean ttlTemporary) {
+        this.ttlTemporary = ttlTemporary;
     }
 }

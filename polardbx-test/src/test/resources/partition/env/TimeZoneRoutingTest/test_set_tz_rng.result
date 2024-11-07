@@ -1,0 +1,78 @@
+## DISABLE_FAST_SQL_PARSER
+set LOGICAL_DB_TIME_ZONE='Asia/Shanghai';
+set time_zone='+08:00';
+drop table if exists part_ts;
+CREATE TABLE if not exists part_ts (
+a INT,
+b varchar(32),
+ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+PRIMARY KEY (a)
+)
+partition by range( unix_timestamp(ts) )
+(
+  partition p1 values less than (unix_timestamp('2024-09-30 00:00:00')),
+  partition p2 values less than (unix_timestamp('2024-10-01 12:00:00')),
+  partition p3 values less than (unix_timestamp('2024-10-01 12:30:00')),
+  partition p4 values less than (unix_timestamp('2024-10-02 01:00:00')),
+  partition p5 values less than (unix_timestamp('2024-10-02 01:30:00')),
+  partition p6 values less than (unix_timestamp('2024-10-03 00:00:00')),
+  partition p7 values less than (maxvalue)
+);
+set time_zone='+08:00';
+insert into part_ts values (1, '+08:00/shanghai', '2024-10-01 12:00:00');
+set time_zone='+09:00';
+insert into part_ts values (2, '+09:00/tokyo', '2024-10-01 12:00:00');
+set time_zone='-05:00';
+insert into part_ts values (3, '-05:00/chicago', '2024-10-01 12:00:00');
+set time_zone='+08:00';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+a,b,ts
+1,+08:00/shanghai,2024-10-01 12:00:00.0
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="part_ts[p3]", sql="SELECT `part_ts`.`a`, `part_ts`.`b`, `part_ts`.`ts` FROM ? AS `part_ts` WHERE (`part_ts`.`ts` = ?)", params="2024-10-01 12:00:00")
+set time_zone='+09:00';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+a,b,ts
+2,+09:00/tokyo,2024-10-01 12:00:00.0
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="part_ts[p2]", sql="SELECT `part_ts`.`a`, `part_ts`.`b`, `part_ts`.`ts` FROM ? AS `part_ts` WHERE (`part_ts`.`ts` = ?)", params="2024-10-01 12:00:00")
+set time_zone='-05:00';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+a,b,ts
+3,-05:00/chicago,2024-10-01 12:00:00.0
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="part_ts[p5]", sql="SELECT `part_ts`.`a`, `part_ts`.`b`, `part_ts`.`ts` FROM ? AS `part_ts` WHERE (`part_ts`.`ts` = ?)", params="2024-10-01 12:00:00")
+##########
+set time_zone='Asia/Shanghai';
+insert into part_ts values (4, '+08:00/shanghai', '2024-10-01 12:00:00');
+set time_zone='Asia/Tokyo';
+insert into part_ts values (5, '+09:00/tokyo', '2024-10-01 12:00:00');
+set time_zone='America/Chicago';
+insert into part_ts values (6, '-05:00/chicago', '2024-10-01 12:00:00');
+set time_zone='Asia/Shanghai';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+a,b,ts
+1,+08:00/shanghai,2024-10-01 12:00:00.0
+4,+08:00/shanghai,2024-10-01 12:00:00.0
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="part_ts[p3]", sql="SELECT `part_ts`.`a`, `part_ts`.`b`, `part_ts`.`ts` FROM ? AS `part_ts` WHERE (`part_ts`.`ts` = ?)", params="2024-10-01 12:00:00")
+set time_zone='Asia/Tokyo';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+a,b,ts
+2,+09:00/tokyo,2024-10-01 12:00:00.0
+5,+09:00/tokyo,2024-10-01 12:00:00.0
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="part_ts[p2]", sql="SELECT `part_ts`.`a`, `part_ts`.`b`, `part_ts`.`ts` FROM ? AS `part_ts` WHERE (`part_ts`.`ts` = ?)", params="2024-10-01 12:00:00")
+set time_zone='America/Chicago';
+select * from part_ts where ts = '2024-10-01 12:00:00';
+a,b,ts
+3,-05:00/chicago,2024-10-01 12:00:00.0
+6,-05:00/chicago,2024-10-01 12:00:00.0
+explain select * from part_ts where ts = '2024-10-01 12:00:00';
+Logical ExecutionPlan
+PhyTableOperation(tables="part_ts[p5]", sql="SELECT `part_ts`.`a`, `part_ts`.`b`, `part_ts`.`ts` FROM ? AS `part_ts` WHERE (`part_ts`.`ts` = ?)", params="2024-10-01 12:00:00")

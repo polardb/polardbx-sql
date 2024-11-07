@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +51,13 @@ public class PartSpecSearcher {
      * subpartSpec Temp
      */
     protected Map<String, PartitionSpec> subPartTempNameToSpecMap;
+
+    /**
+     * key： phyPartName of subpart-table
+     * val: first-level partSpec
+     */
+    protected Map<String, PartitionSpec> phyPartNameToFirstLevelPartSpecMap;
+
     protected PartitionTableType tableType;
     protected int phyPartCount;
     /**
@@ -73,8 +79,10 @@ public class PartSpecSearcher {
         this.partNameToSpecMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         this.subPartTempNameToSpecMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         this.subPartSpecDefDigestMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        this.phyPartNameToFirstLevelPartSpecMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         partByDef.refreshPhysicalPartitionsCache();
         List<PartitionSpec> phySpecList = partByDef.getPhysicalPartitions();
+        boolean useSubPartBy = partByDef.getSubPartitionBy() != null;
         this.phyPartCount = phySpecList.size();
         for (int i = 0; i < phySpecList.size(); i++) {
             PartitionSpec p = phySpecList.get(i);
@@ -109,6 +117,18 @@ public class PartSpecSearcher {
                     this.subPartTempNameToSpecMap.put(subPartSpecTemps.get(i).getName(), subPartSpecTemps.get(i));
                 }
             }
+
+            for (int i = 0; i < pSpecList.size(); i++) {
+                PartitionSpec p = pSpecList.get(i);
+                List<PartitionSpec> spList = p.getSubPartitions();
+                if (spList != null) {
+                    for (int j = 0; j < spList.size(); j++) {
+                        this.phyPartNameToFirstLevelPartSpecMap.put(spList.get(j).getName(), p);
+                    }
+                }
+            }
+        } else {
+            this.phyPartNameToFirstLevelPartSpecMap.putAll(this.partNameToSpecMap);
         }
     }
 
@@ -165,4 +185,7 @@ public class PartSpecSearcher {
         return false;
     }
 
+    public Map<String, PartitionSpec> getPhyPartNameToFirstLevelPartSpecMap() {
+        return phyPartNameToFirstLevelPartSpecMap;
+    }
 }

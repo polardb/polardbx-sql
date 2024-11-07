@@ -95,4 +95,17 @@ public class MySqlAlterTableTest extends TestCase {
             SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
+    public void test_alter_7() throws Exception {
+        String sql = "ALTER TABLE `event_record`\n"
+            + "	ADD COLUMN `notifyId` varchar(32) NOT NULL COMMENT '消息通知ID' AFTER `id`,\n"
+            + "	MODIFY COLUMN `event_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '事件类型：order_pay，refund，refund_finish' AFTER `event_no`,\n"
+            + "	MODIFY COLUMN `biz_type` tinyint NOT NULL COMMENT '业务类型：1订单，2履约，3退款' AFTER `event_type`,\n"
+            + "	MODIFY COLUMN `user_id` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '用户id' AFTER `biz_no` WITH TABLEGROUP=tg28 IMPLICIT";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        SQLStatement stmt = parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        Assert.assertEquals(sql,
+            SQLUtils.toMySqlString(stmt));
+    }
+
 }

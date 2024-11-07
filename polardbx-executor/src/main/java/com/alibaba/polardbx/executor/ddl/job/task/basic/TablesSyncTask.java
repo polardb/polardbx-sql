@@ -39,6 +39,7 @@ public class TablesSyncTask extends BaseSyncTask {
     final Long initWait;
     final Long interval;
     final TimeUnit timeUnit;
+    final boolean forceSyncFailed;
 
     public TablesSyncTask(String schemaName,
                           List<String> tableNames) {
@@ -48,6 +49,7 @@ public class TablesSyncTask extends BaseSyncTask {
         this.initWait = null;
         this.interval = null;
         this.timeUnit = null;
+        this.forceSyncFailed = false;
     }
 
     public TablesSyncTask(String schemaName,
@@ -62,16 +64,33 @@ public class TablesSyncTask extends BaseSyncTask {
         this.initWait = initWait;
         this.interval = interval;
         this.timeUnit = timeUnit;
+        this.forceSyncFailed = false;
+    }
+
+    public TablesSyncTask(String schemaName,
+                          List<String> tableNames,
+                          boolean preemptive,
+                          Long initWait,
+                          Long interval,
+                          TimeUnit timeUnit,
+                          boolean forceSyncFailed) {
+        super(schemaName);
+        this.tableNames = tableNames;
+        this.preemptive = preemptive;
+        this.initWait = initWait;
+        this.interval = interval;
+        this.timeUnit = timeUnit;
+        this.forceSyncFailed = forceSyncFailed;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         try {
             if (!preemptive) {
-                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames), SyncScope.ALL, true);
+                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames, forceSyncFailed), SyncScope.ALL, true);
             } else {
                 SyncManagerHelper.sync(
-                    new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit),
+                    new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit, forceSyncFailed),
                     SyncScope.ALL,
                     true);
             }

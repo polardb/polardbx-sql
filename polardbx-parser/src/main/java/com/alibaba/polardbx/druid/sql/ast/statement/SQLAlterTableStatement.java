@@ -24,6 +24,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveDefinitionExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlignToTableGroup;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 import com.alibaba.polardbx.druid.util.Pair;
@@ -34,6 +35,11 @@ import java.util.List;
 public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLStatement, SQLAlterStatement {
 
     private SQLExprTableSource tableSource;
+
+    public void setItems(List<SQLAlterTableItem> items) {
+        this.items = items;
+    }
+
     private List<SQLAlterTableItem> items = new ArrayList<SQLAlterTableItem>();
 
     // for mysql
@@ -51,6 +57,8 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
     private SQLPartitionBy partition = null;
     private SQLPartitionBy localPartition = null;
     private DrdsAlignToTableGroup alignToTableGroup = null;
+
+    private DrdsArchivePartition drdsArchivePartition = null;
 
     public SQLExpr getLocality() {
         return locality;
@@ -319,6 +327,14 @@ public class SQLAlterTableStatement extends SQLStatementImpl implements SQLDDLSt
 
     public void setAlterIndexName(SQLName alterIndexName) {
         this.alterIndexName = alterIndexName;
+    }
+
+    public DrdsArchivePartition getDrdsArchivePartition() {
+        return drdsArchivePartition;
+    }
+
+    public void setDrdsArchivePartition(DrdsArchivePartition drdsArchivePartition) {
+        this.drdsArchivePartition = drdsArchivePartition;
     }
 
     @Override

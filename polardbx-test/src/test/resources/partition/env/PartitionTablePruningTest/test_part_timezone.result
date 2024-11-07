@@ -120,7 +120,8 @@ a
 1998-12-31 17:00:00.0
 explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/select * from tbl_rng_ts2 where a='1998-12-31 15:00:00' or a='1998-12-31 17:00:00';
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_ts2[p0]", sql="SELECT `tbl_rng_ts2`.`a` FROM ? AS `tbl_rng_ts2` WHERE (`tbl_rng_ts2`.`a` IN (?, ?))", params="1998-12-31 17:00:00,1998-12-31 15:00:00")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_ts2[p0]", sql="SELECT `a` FROM `tbl_rng_ts2` AS `tbl_rng_ts2` WHERE (`a` IN(?, ?))")
 set time_zone="+08:00";
 ## both '1998-12-31 23:00:00' and '1999-01-01 01:00:00' should be route to p0
 select * from tbl_rng_ts2 where a ='1998-12-31 23:00:00' or a='1999-01-01 01:00:00';
@@ -129,4 +130,5 @@ a
 1999-01-01 01:00:00.0
 explain /*TDDL:cmd_extra(IN_SUB_QUERY_THRESHOLD=8)*/select * from tbl_rng_ts2 where a ='1998-12-31 23:00:00' or a='1999-01-01 01:00:00';
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_ts2[p0]", sql="SELECT `tbl_rng_ts2`.`a` FROM ? AS `tbl_rng_ts2` WHERE (`tbl_rng_ts2`.`a` IN (?, ?))", params="1999-01-01 01:00:00,1998-12-31 23:00:00")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_ts2[p0]", sql="SELECT `a` FROM `tbl_rng_ts2` AS `tbl_rng_ts2` WHERE (`a` IN(?, ?))")

@@ -35,6 +35,7 @@ import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
+import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -244,10 +245,21 @@ public class SPMBaseLineSyncScheduledJob extends SchedulerExecutor {
         for (Map.Entry<String, BaselineInfo> e : tempMap.entrySet()) {
             String sql = e.getKey();
             if (!currentMap.containsKey(sql)) {
-                final int maxBaselineSize = InstConfUtil.getInt(ConnectionParams.SPM_MAX_BASELINE_SIZE);
-                if (currentMap.size() < maxBaselineSize &&
-                    e.getValue().getAcceptedPlans().size() > 0) {
-                    currentMap.put(sql, e.getValue());
+                BaselineInfo baselineInfo = e.getValue();
+                boolean fixed = false;
+                for (PlanInfo planInfo : baselineInfo.getAcceptedPlans().values()) {
+                    if (planInfo.isFixed()) {
+                        fixed = true;
+                    }
+                }
+                if (fixed || baselineInfo.isRebuildAtLoad()) {
+                    currentMap.put(sql, baselineInfo);
+                } else {
+                    final int maxBaselineSize = InstConfUtil.getInt(ConnectionParams.SPM_MAX_BASELINE_SIZE);
+                    if (currentMap.size() < maxBaselineSize &&
+                        e.getValue().getAcceptedPlans().size() > 0) {
+                        currentMap.put(sql, e.getValue());
+                    }
                 }
             } else {
                 BaselineInfo c = currentMap.get(sql);

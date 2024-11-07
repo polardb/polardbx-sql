@@ -42,6 +42,7 @@ public class BuildPartInfoFromAstParams {
     protected PartitionTableType tblType;
     protected ExecutionContext ec;
     protected LocalityDesc locality;
+    protected boolean ttlTemporary = false;
 
     public BuildPartInfoFromAstParams() {
     }
@@ -140,5 +141,13 @@ public class BuildPartInfoFromAstParams {
 
     public void setLocality(LocalityDesc locality) {
         this.locality = locality;
+    }
+
+    public boolean isTtlTemporary() {
+        return ttlTemporary;
+    }
+
+    public void setTtlTemporary(boolean ttlTemporary) {
+        this.ttlTemporary = ttlTemporary;
     }
 }

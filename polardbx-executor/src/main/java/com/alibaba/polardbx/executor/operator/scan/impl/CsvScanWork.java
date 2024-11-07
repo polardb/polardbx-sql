@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.scan.impl;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -40,6 +41,7 @@ import org.roaringbitmap.RoaringBitmap;
 import java.io.IOException;
 import java.time.ZoneId;
 import java.util.BitSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
@@ -48,13 +50,15 @@ import java.util.stream.Collectors;
 public class CsvScanWork extends AbstractScanWork {
     private static final Logger logger = LoggerFactory.getLogger("COLUMNAR_TRANS");
 
-    private final ColumnarManager columnarManager;
+    protected final ColumnarManager columnarManager;
 
-    private final ExecutionContext executionContext;
+    protected final ExecutionContext executionContext;
 
-    private final long tso;
+    protected final long tso;
 
-    private final Path csvFile;
+    private final Long position;
+
+    protected final Path csvFile;
 
     private final boolean useSelection;
 
@@ -64,7 +68,10 @@ public class CsvScanWork extends AbstractScanWork {
 
     private final TimeZone targetTimeZone;
 
-    public CsvScanWork(ColumnarManager columnarManager, long tso, Path csvFile,
+    private final boolean enableDebug;
+
+    public CsvScanWork(ColumnarManager columnarManager, long tso,
+                       Long position, Path csvFile,
                        List<Integer> inputRefsForFilter,
                        List<Integer> inputRefsForProject,
                        ExecutionContext executionContext,
@@ -76,29 +83,35 @@ public class CsvScanWork extends AbstractScanWork {
             inputRefsForProject, partNum, nodePartCount, ossColumnTransformer);
         this.columnarManager = columnarManager;
         this.tso = tso;
+        this.position = position;
         this.csvFile = csvFile;
         this.useSelection = useSelection;
         this.enableCompatible = enableCompatible;
         this.executionContext = executionContext;
         this.targetTimeZone = TimestampUtils.getTimeZone(executionContext);
         refList = refSet.stream().sorted().collect(Collectors.toList());
+
+        this.enableDebug =
+            LOGGER.isDebugEnabled() || executionContext.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_COLUMNAR_DEBUG);
     }
 
     protected void handleNextWork() throws Throwable {
-        List<Chunk> chunkList;
-        if (executionContext.isEnableOrcRawTypeBlock()) {
-            // Special csv scan work for raw orc type.
-            // Only Long/Double/ByteArray blocks are created.
-            // Normal query should not get there.
-            chunkList = columnarManager.rawCsvData(tso, csvFile.getName(), executionContext);
+        Iterator<Chunk> chunkIterator;
+        if (position != null) {
+            // Scan from a specific position, for flashback query
+            chunkIterator = columnarManager.csvData(csvFile.getName(), position);
         } else {
-            chunkList = columnarManager.csvData(tso, csvFile.getName());
+            chunkIterator = columnarManager.csvData(tso, csvFile.getName());
         }
         int filterColumns = inputRefsForFilter.size();
 
         boolean skipEvaluation = filterColumns == 0;
         int totalPositionCnt = 0;
-        for (Chunk chunk : chunkList) {
+        int totalChunkCnt = 0;
+        int actualPositionCnt = 0;
+        while (chunkIterator.hasNext()) {
+            Chunk chunk = chunkIterator.next();
             if (isCanceled) {
                 break;
             }
@@ -122,22 +135,31 @@ public class CsvScanWork extends AbstractScanWork {
             // NULL selection means full selection here
             if (selection == null) {
                 ioStatus.addResult(chunk);
+                actualPositionCnt += chunk.getPositionCount();
             } else if (selection.length > 0) {
                 // rebuild chunk according to project refs.
                 Chunk projectChunk = rebuildProject(chunk, selection, selection.length);
                 ioStatus.addResult(projectChunk);
+                actualPositionCnt += projectChunk.getPositionCount();
             }
             totalPositionCnt += positionCnt;
+            totalChunkCnt++;
         }
 
-        logger.debug(
-            String.format("Csv scan work finished: chunk count: %d, row count: %d, row/chunk: %f", chunkList.size(),
-                totalPositionCnt, (double) totalPositionCnt / chunkList.size()));
+        if (enableDebug) {
+            logger.info(
+                String.format(
+                    "%s scan work finished: chunk count: %d, scan rows: %d, available rows: %d, row/chunk: %f",
+                    csvFile.getName(), totalChunkCnt, totalPositionCnt, actualPositionCnt,
+                    totalChunkCnt == 0 ? -1 : (double) totalPositionCnt / totalChunkCnt
+                )
+            );
+        }
 
         ioStatus.finish();
     }
 
-    private Chunk projectCsvChunk(Chunk chunk) {
+    protected Chunk projectCsvChunk(Chunk chunk) {
         Block[] blocks = new Block[refList.size()];
         int blockIndex = 0;
 

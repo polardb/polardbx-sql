@@ -14,11 +14,15 @@
 
     <properties>
         <dep.airlift.version>206</dep.airlift.version>
+        <hadoop.version>3.2.2</hadoop.version>
         <orc.version>1.6.9</orc.version>
         <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
+        <hadoop-aliyun.version>3.2.2</hadoop-aliyun.version>
         <jna.version>5.9.0</jna.version>
         <ojalgo.version>43.0</ojalgo.version>
+        <airlift.shade.version>1.0-SNAPSHOT</airlift.shade.version>
         <google.diffutils.version>4.12</google.diffutils.version>
+
     </properties>
     <dependencies>
         <dependency>
@@ -48,7 +52,7 @@
             <version>${sigar.version}</version>
         </dependency>
         <dependency>
-            <groupId>${project.groupId}</groupId>
+            <groupId>com.alibaba.polardbx</groupId>
             <artifactId>polardbx-calcite</artifactId>
             <exclusions>
                 <exclusion>
@@ -56,8 +60,8 @@
                     <groupId>commons-logging</groupId>
                 </exclusion>
                 <exclusion>
-                    <groupId>${project.groupId}</groupId>
-                    <artifactId>polardbx-common</artifactId>
+                    <artifactId>com.alibaba.polardbx</artifactId>
+                    <groupId>polardbx-common</groupId>
                 </exclusion>
                 <exclusion>
                     <artifactId>commons-codec</artifactId>
@@ -123,6 +127,10 @@
         </dependency>
 
         <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>bootstrap</artifactId>
             <version>${dep.airlift.version}</version>
@@ -130,10 +138,6 @@
                 <exclusion>
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-jdk14</artifactId>
-                </exclusion>
-                <exclusion>
-                    <artifactId>log4j-over-slf4j</artifactId>
-                    <groupId>org.slf4j</groupId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -233,11 +237,10 @@
             <version>${aircompressor.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.airlift.resolver</groupId>
-            <artifactId>resolver</artifactId>
-            <version>${resolver.version}</version>
+            <groupId>com.alibaba.polardbx</groupId>
+            <artifactId>airlift-all-shade</artifactId>
+            <version>${airlift.shade.version}</version>
         </dependency>
-
         <dependency>
             <groupId>javax.validation</groupId>
             <artifactId>validation-api</artifactId>
@@ -288,40 +291,19 @@
             <groupId>commons-codec</groupId>
         </dependency>
         <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-client</artifactId>
-            <version>${hadoop-client.version}</version>
-            <exclusions>
-                <exclusion>
-                    <artifactId>slf4j-reload4j</artifactId>
-                    <groupId>org.slf4j</groupId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-client</artifactId>
-            <version>${hadoop.version}</version>
-        </dependency>
-
-        <dependency>
             <groupId>com.cronutils</groupId>
             <artifactId>cron-utils</artifactId>
         </dependency>
 
         <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-vector</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-memory-netty</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpcore</artifactId>
+            <version>4.4.13</version>
+            <scope>compile</scope>
         </dependency>
 
     </dependencies>

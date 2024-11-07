@@ -108,7 +108,7 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
         List<ExecutableDdlJob4CreatePartitionGsi> createGsiJobs = new ArrayList<>();
         globalIndexPrepareData.forEach((createGlobalIndexPreparedData, physicalPlanData) -> {
             CreateGsiJobFactory createGsiJobFactory =
-                CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, executionContext);
+                CreateGsiJobFactory.create(createGlobalIndexPreparedData, physicalPlanData, null, executionContext);
             createGsiJobFactory.stayAtBackFill = true;
             createGsiJobs.add((ExecutableDdlJob4CreatePartitionGsi) createGsiJobFactory.create());
         });

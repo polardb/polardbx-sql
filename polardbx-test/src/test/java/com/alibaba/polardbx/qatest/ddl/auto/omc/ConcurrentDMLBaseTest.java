@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -30,8 +31,10 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
     // Use logical execution since result may be different from pushdown execution
     protected static final String USE_LOGICAL_EXECUTION = "DML_EXECUTION_STRATEGY=LOGICAL";
     protected static final String DISABLE_DML_RETURNING = "DML_USE_RETURNING=FALSE";
-    protected static final int FILL_COUNT = 2500;
-    protected static final int FILL_BATCH_SIZE = 2500;
+    protected static final String ENABLE_LOCAL_UK_FULL_TABLE_SCAN =
+        DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN + "=TRUE";
+    protected static final int FILL_COUNT = 1500;
+    protected static final int FILL_BATCH_SIZE = 1500;
 
     protected static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -72,14 +75,24 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                                        boolean fillData, boolean withGsi,
                                        int batchSize, boolean isModifyPartitionKey) throws Exception {
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
-            withGsi, batchSize, isModifyPartitionKey, true);
+            withGsi, batchSize, isModifyPartitionKey, true, null);
+    }
+
+    public void concurrentTestInternalWithCreateSql(String tableName, String colDef, String alterSql, String selectSql,
+                                                    Function<Integer, String> generator1,
+                                                    Function<Integer, String> generator2,
+                                                    QuadFunction<Integer, Integer, String, String, Boolean> checker,
+                                                    boolean fillData, boolean withGsi,
+                                                    int batchSize, String createSql) throws Exception {
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, fillData,
+            withGsi, batchSize, false, true, createSql);
     }
 
     public void concurrentTestInternal(String tableName, String colDef, String alterSql, String selectSql,
                                        Function<Integer, String> generator1, Function<Integer, String> generator2,
                                        QuadFunction<Integer, Integer, String, String, Boolean> checker,
-                                       boolean fillData, boolean withGsi,
-                                       int batchSize, boolean isModifyPartitionKey, boolean isStrictMode)
+                                       boolean fillData, boolean withGsi, int batchSize, boolean isModifyPartitionKey,
+                                       boolean isStrictMode, String createTableSql)
         throws Exception {
         tableName = tableName + RandomUtils.getStringBetween(1, 5);
         dropTableIfExists(tableName);
@@ -135,6 +148,9 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                             + ") partition by hash(`a`) partitions 3",
                         tableName, colDef);
             }
+            if (createTableSql != null) {
+                createSql = String.format(createTableSql, finalTableName);
+            }
 
             // Retry in case of table group not exist
             int retryCnt = 0;
@@ -188,6 +204,7 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                                     if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
                                         .contains("Deadlock found")) {
                                         // ignore
+                                        Thread.sleep(500);
                                         totalCount.getAndDecrement();
                                     } else if ((e.getMessage().contains("Unknown target column") || e.getMessage()
                                         .contains("not found")) && !changed) {
@@ -220,7 +237,8 @@ public class ConcurrentDMLBaseTest extends DDLBaseNewDBTestCase {
                         }
                         Thread.sleep(1000);
                         String algorithm = isModifyPartitionKey ? "" : USE_OMC_ALGORITHM;
-                        String sql = String.format(alterSql, finalTableName) + algorithm;
+                        String batchHint = "/*+TDDL:cmd_extra(GSI_BACKFILL_BATCH_SIZE=50,CHANGE_SET_APPLY_BATCH=32)*/";
+                        String sql = batchHint + String.format(alterSql, finalTableName) + algorithm;
                         try {
                             execDdlWithRetry(tddlDatabase1, finalTableName, sql, connection);
                         } finally {

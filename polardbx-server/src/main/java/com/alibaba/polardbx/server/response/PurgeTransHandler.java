@@ -97,7 +97,7 @@ public class PurgeTransHandler extends AbstractTransHandler {
         }
 
         if (2 == v || 0 == v) {
-            StringBuilder remark = new StringBuilder();
+            StringBuffer remark = new StringBuffer();
             try {
                 purgedCount += CleanLogTableTask.run(true, remark);
             } catch (Throwable ex) {

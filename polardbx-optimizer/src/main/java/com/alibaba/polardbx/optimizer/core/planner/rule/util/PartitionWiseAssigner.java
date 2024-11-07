@@ -119,9 +119,9 @@ public class PartitionWiseAssigner {
                     // keep partition info of join result as probe side
                     RelNode probeNode = null;
                     if (other instanceof HashJoin) {
-                        probeNode = ((HashJoin) other).getProbeNode();
+                        probeNode = ((HashJoin) node).getProbeNode();
                     } else {
-                        probeNode = ((SemiHashJoin) other).getProbeNode();
+                        probeNode = ((SemiHashJoin) node).getProbeNode();
                     }
                     partitionWise.put(node.getId(), partitionWise.getOrDefault(probeNode.getId(), true));
                 }

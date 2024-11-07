@@ -145,4 +145,8 @@ public class CdcMarkUtil {
     public static boolean isVersionIdInitialized(Long versionId) {
         return !Objects.equals(versionId, DEFAULT_DDL_VERSION_ID);
     }
+
+    public static boolean isScheduleJobDdl(String ddlSql) {
+        return ddlSql.startsWith("/*SCHEDULE_JOB_DDL*/");
+    }
 }

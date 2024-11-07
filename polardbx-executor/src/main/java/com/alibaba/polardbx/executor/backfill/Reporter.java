@@ -87,6 +87,13 @@ public class Reporter {
         backfillManager.splitBackfillObject(ec, backfillObjects, newBackfillRecord);
     }
 
+    public void addPositionMarkBatch(ExecutionContext ec, List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
+                                   long successRowCount, List<ParameterContext> lastPk,
+                                   List<ParameterContext> beforeLastPk, boolean finished,
+                                   Map<Long, Long> primaryKeysIdMap) {
+
+    }
+
     public void updatePositionMark(ExecutionContext ec, List<GsiBackfillManager.BackfillObjectBean> backfillObjects,
                                    long successRowCount, List<ParameterContext> lastPk,
                                    List<ParameterContext> beforeLastPk, boolean finished,

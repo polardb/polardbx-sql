@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.common.oss.filesystem;
 
-import org.apache.curator.shaded.com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.RateLimiter;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -77,7 +77,7 @@ public class GuavaFileSystemRateLimiter implements FileSystemRateLimiter {
                         "read timeout for rate limiter: %s s with max rate: %s bytes/s",
                         ACQUIRE_TIMEOUT_IN_SECOND,
                         this.readRate)
-                    );
+                );
             }
         }
     }

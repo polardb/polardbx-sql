@@ -20,17 +20,21 @@ import lombok.Getter;
 import org.apache.calcite.sql.SqlCheckColumnarIndex.CheckCciExtraCmd;
 
 import java.util.EnumSet;
+import java.util.List;
 
 @Getter
 public class CheckCciPrepareData extends DdlPreparedData {
 
     String indexName;
     CheckCciExtraCmd extraCmd;
+    List<Long> tsoList;
 
-    public CheckCciPrepareData(String schemaName, String tableName, String indexName, CheckCciExtraCmd extraCmd) {
+    public CheckCciPrepareData(String schemaName, String tableName, String indexName, CheckCciExtraCmd extraCmd,
+                               List<Long> tsoList) {
         super(schemaName, tableName);
         this.indexName = indexName;
         this.extraCmd = extraCmd;
+        this.tsoList = tsoList;
     }
 
     /**
@@ -50,6 +54,14 @@ public class CheckCciPrepareData extends DdlPreparedData {
         return this.extraCmd == CheckCciExtraCmd.SHOW;
     }
 
+    public boolean isIncrement() {
+        return this.extraCmd == CheckCciExtraCmd.INCREMENT;
+    }
+
+    public boolean isSnapshot() {
+        return this.extraCmd == CheckCciExtraCmd.SNAPSHOT;
+    }
+
     public boolean isCheck() {
         return EnumSet
             .of(CheckCciExtraCmd.DEFAULT, CheckCciExtraCmd.CHECK, CheckCciExtraCmd.LOCK)
@@ -64,6 +76,9 @@ public class CheckCciPrepareData extends DdlPreparedData {
     }
 
     public boolean isNeedReport(boolean asyncDdlMode) {
-        return isShow() || isMeta() || (!asyncDdlMode && isCheck());
+        return isShow() || isMeta()
+            || (!asyncDdlMode && isCheck())
+            || (!asyncDdlMode && isIncrement())
+            || (!asyncDdlMode && isSnapshot());
     }
 }

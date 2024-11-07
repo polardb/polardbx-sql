@@ -82,6 +82,7 @@ public class AlterTableGroupBackFillTask extends BaseBackfillTask implements Rem
         updateTaskStateInNewTxn(DdlTaskState.DIRTY);
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         executionContext.setSchemaName(schemaName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);

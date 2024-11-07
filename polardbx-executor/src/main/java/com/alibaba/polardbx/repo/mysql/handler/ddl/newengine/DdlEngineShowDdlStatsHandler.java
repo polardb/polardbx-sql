@@ -59,6 +59,7 @@ public class DdlEngineShowDdlStatsHandler extends DdlEngineJobsHandler {
         // backfill parallelism
         BackFillThreadPool.updateStats();
         ChangeSetThreadPool.updateStats();
+        DdlEngineStats.updateBackfillRowsMetric(0);
 
         // Merge stats from all nodes
         GmsSyncManagerHelper.sync(sync, executionContext.getSchemaName(), SyncScope.MASTER_ONLY, results -> {
@@ -94,6 +95,7 @@ public class DdlEngineShowDdlStatsHandler extends DdlEngineJobsHandler {
             // backfill parallelism
             BackFillThreadPool.updateStats();
             ChangeSetThreadPool.updateStats();
+            DdlEngineStats.updateBackfillRowsMetric(0);
 
             //only leader update the fastchecker stats
             if (ExecUtils.hasLeadership(null)) {
@@ -103,7 +105,9 @@ public class DdlEngineShowDdlStatsHandler extends DdlEngineJobsHandler {
             }
 
             for (DdlEngineStats.Metric metric : DdlEngineStats.getAllMetrics().values()) {
-                result.addRow(metric.toRow());
+                if (metric.getShow()) {
+                    result.addRow(metric.toRow());
+                }
             }
             return result;
         }

@@ -57,6 +57,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.rel.core.Aggregate;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
 import org.apache.calcite.rel.core.Project;
@@ -404,8 +405,8 @@ public class PlannerUtils {
                 // Check if all tables are single table or broadcast table
                 PartitionInfo partInfo = tddlRuleManager.getPartitionInfoManager().getPartitionInfo(table);
                 if (partInfo != null) {
-                    if (!partInfo.isSingleTable() || !partInfo.isBroadcastTable()) {
-                        // For partitioned/gsi table,  check if only has only one partitions
+                    if (!partInfo.isSingleTable() && !partInfo.isBroadcastTable()) {
+                        // For partitioned/gsi table, check if it has only one partitions
                         if (!partInfo.isSinglePartition()) {
                             return false;
                         }
@@ -506,6 +507,16 @@ public class PlannerUtils {
         Object[] args = oldPc.getArgs();
         Object[] newArgs = Arrays.copyOf(args, args.length);
         newArgs[0] = index;
+        pc.setArgs(newArgs);
+        return pc;
+    }
+
+    public static ParameterContext changeParameterContextValue(ParameterContext oldPc, Object value) {
+        ParameterContext pc = new ParameterContext();
+        pc.setParameterMethod(oldPc.getParameterMethod());
+        Object[] args = oldPc.getArgs();
+        Object[] newArgs = Arrays.copyOf(args, args.length);
+        newArgs[1] = value;
         pc.setArgs(newArgs);
         return pc;
     }
@@ -797,7 +808,7 @@ public class PlannerUtils {
         return false;
     }
 
-    public static boolean canSplitDistinct(Set<Integer> shardIndex, LogicalAggregate aggregate) {
+    public static boolean canSplitDistinct(Set<Integer> shardIndex, Aggregate aggregate) {
         boolean enableSplitDistinct = true;
         for (int i = 0; i < aggregate.getAggCallList().size(); ++i) {
             AggregateCall aggregateCall = aggregate.getAggCallList().get(i);

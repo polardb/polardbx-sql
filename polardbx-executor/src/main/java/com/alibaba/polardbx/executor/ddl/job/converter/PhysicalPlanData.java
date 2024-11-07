@@ -17,10 +17,15 @@
 package com.alibaba.polardbx.executor.ddl.job.converter;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.executor.TddlGroupExecutor;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
+import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.lbac.LBACSecurityEntity;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -35,6 +40,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Data
 public class PhysicalPlanData {
@@ -130,15 +136,105 @@ public class PhysicalPlanData {
         return Lists.partition(paramsList, count);
     }
 
-    public List<Map<String, List<List<String>>>> partitionTableTopology(int count) {
+    /**
+     * <pre>
+     *     Convert to data_struct from
+     *          Map{GrpKey,List<log_name_list_with_same_phy_index}
+     *              grp0->[[t1_0,t2_0,t3_0],[t1_2,t2_2,t3_2],...]
+     *              grp1->[[t1_1,t2_1,t3_1],[t1_3,t2_2,t3_3],...]
+     *     to
+     *          SubMap1{grpKey, List[log_name_list_with_same_phy_index]}
+     *              grp0->[[t1_0,t2_0,t3_0],...]
+     *              grp1->[[t1_1,t2_1,t3_1],...]
+     *          SubMap2{grpKey, List[log_name_list_with_same_phy_index]}
+     *              grp0->[[t1_2,t2_2,t3_2],...]
+     *              grp1->[[t1_3,t2_2,t3_3],...]
+     *
+     * </pre>
+     */
+    public List<Map<String, List<List<String>>>> partitionTableTopology(int parallelism) {
+        /**
+         * <pre>
+         *     Convert to data_struct from
+         *          Map{GrpKey,List<log_name_list_with_same_phy_index}
+         *              grp0->[[t1_0,t2_0,t3_0],[t1_2,t2_2,t3_2],...]
+         *              grp1->[[t1_1,t2_1,t3_1],[t1_3,t2_2,t3_3],...]
+         *     to
+         [{grp0, [t1_0,t2_0,t3_0]}, {grp0,[t1_2,t2_2,t3_2]}, {grp1, [t1_1,t2_1,t3_1]},...]
+         * </pre>
+         */
         List<Pair<String, List<String>>> flatTopology = new ArrayList<>();
         for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
             for (List<String> item : entry.getValue()) {
                 flatTopology.add(Pair.of(entry.getKey(), item));
             }
         }
-        List<List<Pair<String, List<String>>>> partitionedFlatTopology = Lists.partition(flatTopology, count);
 
+        /**
+         * <pre>
+         *     Convert to data_struct from
+         *      List< {grpKey, log_name_list_with_same_phy_index} >
+         *          e.g.
+         *              grp0, t1_0,t2_0,t3_0
+         *              grp0, t1_2,t2_2,t3_2
+         *              grp1, t1_3,t2_3,t3_3
+         *              grp1, t1_1,t2_1,t3_1
+         *     to
+         *      List< {grpKey, log_name_list_with_same_phy_index} > order bb zigzag
+         *              grp0, t1_0,t2_0,t3_0
+         *              grp1, t1_1,t2_1,t3_1
+         *              grp0, t1_2,t2_2,t3_2
+         *              grp1, t1_3,t2_3,t3_3
+         *
+         * </pre>
+         */
+        List<Pair<String, List<String>>> zigzaggedFlatTopology = zigzagOrderByDnList(flatTopology);
+
+        /**
+         * <pre>
+         *     Convert to data_struct from
+         *      List< {grpKey, log_name_list_with_same_phy_index} >
+         *          e.g.
+         *              grp0, t1_0,t2_0,t3_0
+         *              grp1, t1_1,t2_1,t3_1
+         *              grp0, t1_2,t2_2,t3_2
+         *              grp1, t1_3,t2_3,t3_3
+         *     to
+         *      SubList1[{grpKey, log_name_list_with_same_phy_index}],
+         *          e.g.
+         *              grp0, t1_0,t2_0,t3_0
+         *              grp1, t1_1,t2_1,t3_1
+         *      SubList2[{grpKey, log_name_list_with_same_phy_index}],s
+         *          e.g.
+         *              grp0, t1_2,t2_2,t3_2
+         *              grp1, t1_3,t2_2,t3_3
+         * </pre>
+         */
+        List<List<Pair<String, List<String>>>> partitionedFlatTopology =
+            Lists.partition(zigzaggedFlatTopology, parallelism);
+
+        /**
+         * <pre>
+         *     Convert to data_struct from
+         *      SubList1[{grpKey, log_name_list_with_same_phy_index}],
+         *          e.g.
+         *              [grp0, t1_0,t2_0,t3_0]
+         *              [grp1, t1_1,t2_1,t3_1]
+         *      SubList2[{grpKey, log_name_list_with_same_phy_index}],s
+         *          e.g.
+         *              [grp0, t1_2,t2_2,t3_2]
+         *              [grp1, t1_3,t2_2,t3_3]
+         *
+         *      to
+         *
+         *          SubMap1{grpKey, List[log_name_list_with_same_phy_index]}
+         *              grp0->t1_0,t2_0,t3_0
+         *              grp1->t1_1,t2_1,t3_1
+         *          SubMap2{grpKey, List[log_name_list_with_same_phy_index]}
+         *              grp0->t1_2,t2_2,t3_2
+         *              grp1->t1_3,t2_2,t3_3
+         * </pre>
+         */
         List<Map<String, List<List<String>>>> result = new ArrayList<>();
         for (List<Pair<String, List<String>>> itemsInOneMap : partitionedFlatTopology) {
             Map<String, List<List<String>>> map = new HashMap<>();
@@ -154,6 +250,52 @@ public class PhysicalPlanData {
             result.add(map);
         }
         return result;
+    }
+
+    protected List<Pair<String, List<String>>> zigzagOrderByDnList(List<Pair<String, List<String>>> flatTopology) {
+
+        /**
+         * <pre>
+         *     key: dnId,
+         *     val: idx list of flatTopology, start with zero
+         * </pre>
+         */
+        Map<String, List<Integer>> dnIdToListIdxMapping = new TreeMap<>();
+        TopologyHandler topologyHandler = ExecutorContext.getContext(this.schemaName).getTopologyHandler();
+
+        for (int i = 0; i < flatTopology.size(); i++) {
+            Pair<String, List<String>> item = flatTopology.get(i);
+            String grpKey = item.getKey();
+            TddlGroupExecutor grpExecutor = (TddlGroupExecutor) topologyHandler.get(grpKey);
+            String rwDnId = grpExecutor.getDataSource().getMasterDNId();
+            List<Integer> idxList = dnIdToListIdxMapping.get(rwDnId);
+            if (idxList == null) {
+                idxList = new ArrayList<>();
+                dnIdToListIdxMapping.put(rwDnId, idxList);
+            }
+            idxList.add(i);
+        }
+
+        List<Pair<String, List<String>>> newFlatTopology = new ArrayList<>();
+
+        int curPosiOfDnList = -1;
+        boolean findAnyItems = false;
+        while (true) {
+            ++curPosiOfDnList;
+            findAnyItems = false;
+            for (Map.Entry<String, List<Integer>> mapItem : dnIdToListIdxMapping.entrySet()) {
+                List<Integer> idxListOfDn = mapItem.getValue();
+                if (curPosiOfDnList < idxListOfDn.size()) {
+                    Integer idxVal = idxListOfDn.get(curPosiOfDnList);
+                    newFlatTopology.add(flatTopology.get(idxVal));
+                    findAnyItems = true;
+                }
+            }
+            if (!findAnyItems) {
+                break;
+            }
+        }
+        return newFlatTopology;
     }
 
     public List<String> explainInfo() {

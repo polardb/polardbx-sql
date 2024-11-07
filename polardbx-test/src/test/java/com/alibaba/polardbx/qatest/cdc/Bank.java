@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.qatest.cdc;
 
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.support.JdbcUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -118,7 +118,7 @@ public class Bank {
         } catch (Exception e) {
             conn.rollback();
         } finally {
-            JdbcUtils.closeConnection(conn);
+            JdbcUtil.closeConnection(conn);
         }
     }
 

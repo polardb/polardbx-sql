@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropColumnarTableHideTable
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateGsiExistenceTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -100,7 +101,8 @@ public class DropColumnarIndexJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-
+        GsiValidator.validateIfDroppingCciOfArcTableOfTtlTable(schemaName, primaryTableName, indexTableName,
+            executionContext);
     }
 
     @Override
@@ -162,7 +164,6 @@ public class DropColumnarIndexJobFactory extends DdlJobFactory {
             final DdlTask syncTableGroup = new TableGroupSyncTask(
                 schemaName,
                 indexTgConfig.getTableGroupRecord().getTg_name());
-
             taskList.add(syncTableGroup);
         }
 

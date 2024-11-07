@@ -69,6 +69,9 @@ public class RelXPlanOptimizer {
 
     public static void setXTemplate(BaseQueryOperation operation, RelNode relNode,
                                     ExecutionContext ec) {
+        if (ec.isFlashbackArea()) {
+            return;
+        }
         final RelToXPlanConverter converter = new RelToXPlanConverter();
         try {
             RelNode node = RelXPlanOptimizer.optimize(relNode);

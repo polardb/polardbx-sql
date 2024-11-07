@@ -26,6 +26,7 @@ import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author chenmo.cm
@@ -33,40 +34,14 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 public class HintCmdIndex extends BaseHintOperator implements HintCmdOperator {
     public final SqlIdentifier tableName;
     public final SqlIdentifier indexName;
+    private final SqlIdentifier localIndexName;
 
     public HintCmdIndex(SqlBasicCall hint, ExecutionContext ec) {
         super(hint, ec);
-
-        final AtomicReference<SqlIdentifier> tmpTableName = new AtomicReference<>(null);
-        final AtomicReference<SqlIdentifier> tmpIndexName = new AtomicReference<>(null);
-
-        getArgKeys().forEach(argKey -> {
-            final SqlNode value = this.argMap.get(argKey);
-
-            if (null == value) {
-                return;
-            }
-
-            switch (argKey.ordinal) {
-            case 0:
-                tmpTableName.set(Optional.of(value)
-                    .filter(v -> v instanceof SqlIdentifier)
-                    .map(v -> (SqlIdentifier) v)
-                    .orElseGet(() -> new SqlIdentifier(RelUtils.stringValue(value), SqlParserPos.ZERO)));
-                break;
-            case 1:
-                tmpIndexName.set(Optional.of(value)
-                    .filter(v -> v instanceof SqlIdentifier)
-                    .map(v -> (SqlIdentifier) v)
-                    .orElseGet(() -> new SqlIdentifier(RelUtils.stringValue(value), SqlParserPos.ZERO)));
-                break;
-            default:
-                break;
-            } // end of switch
-        });
-
-        this.tableName = tmpTableName.get();
-        this.indexName = tmpIndexName.get();
+        // init tableName
+        tableName = (SqlIdentifier) this.argMap.get(new HintArgKey("table", 0));
+        indexName = (SqlIdentifier) this.argMap.get(new HintArgKey("index", 1));
+        localIndexName = (SqlIdentifier) this.argMap.get(new HintArgKey("local_index", 2));
     }
 
     @Override
@@ -85,5 +60,9 @@ public class HintCmdIndex extends BaseHintOperator implements HintCmdOperator {
 
     public String indexNameLast() {
         return Optional.ofNullable(indexName).map(SqlIdentifier::getLastName).orElse(null);
+    }
+
+    public SqlIdentifier getLocalIndexName() {
+        return localIndexName;
     }
 }

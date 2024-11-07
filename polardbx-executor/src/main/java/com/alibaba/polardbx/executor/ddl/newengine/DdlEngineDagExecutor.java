@@ -82,10 +82,12 @@ import org.apache.commons.lang3.StringUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
@@ -133,7 +135,6 @@ public class DdlEngineDagExecutor {
     private String errorMessage;
 
     private final ExecutionContext executionContext;
-
     private final DdlJob ddlJob;
     private final DdlContext ddlContext;
     private final DdlJobManager ddlJobManager = new DdlJobManager();
@@ -188,8 +189,8 @@ public class DdlEngineDagExecutor {
         this.semaphore = new Semaphore(maxParallelism);
     }
 
-    public static DdlEngineDagExecutor create(Long jobId, ExecutionContext ec) {
-        Pair<DdlJob, DdlContext> pair = new DdlJobManager().restoreJob(jobId);
+    public static DdlEngineDagExecutor create(Long jobId, Long taskId, ExecutionContext ec) {
+        Pair<DdlJob, DdlContext> pair = new DdlJobManager().restoreJob(jobId, taskId);
         return new DdlEngineDagExecutor(jobId, pair.getKey(), pair.getValue(), ec);
     }
 
@@ -360,12 +361,17 @@ public class DdlEngineDagExecutor {
             }
             if (executingTaskScheduler.hasMoreExecutable()) {
                 // fetch & execute next batch
-                submitDdlTask(executingTaskScheduler.pollBatch(), true, executingTaskScheduler);
+                List<DdlTask> ddlTasks = executingTaskScheduler.pollBatchByResource();
+                submitDdlTask(ddlTasks, true, executingTaskScheduler);
                 continue;
             }
             //get some rest
             sleep(50L);
         }
+    }
+
+    public Map<TaskScheduler.ScheduleStatus, Set<DdlTask>> getActiveTaskInfo() {
+        return taskScheduler.queryActiveTasks();
     }
 
     private void onRollingBack() {
@@ -395,7 +401,8 @@ public class DdlEngineDagExecutor {
             }
             if (reveredTaskScheduler.hasMoreExecutable()) {
                 // fetch & execute next batch
-                submitDdlTask(reveredTaskScheduler.pollBatch(), false, reveredTaskScheduler);
+                List<DdlTask> ddlTasks = reveredTaskScheduler.pollBatchByResource();
+                submitDdlTask(ddlTasks, false, reveredTaskScheduler);
                 continue;
             }
             //get some rest
@@ -432,7 +439,8 @@ public class DdlEngineDagExecutor {
             }
             if (reveredTaskScheduler.hasMoreExecutable()) {
                 // fetch & execute next batch
-                submitDdlTask(reveredTaskScheduler.pollBatch(), false, reveredTaskScheduler);
+                List<DdlTask> ddlTasks = reveredTaskScheduler.pollBatchByResource();
+                submitDdlTask(ddlTasks, false, reveredTaskScheduler);
                 continue;
             }
             //get some rest
@@ -593,13 +601,24 @@ public class DdlEngineDagExecutor {
      * @param executeElseRollback true means execute, false means rollback
      */
     private void submitDdlTask(List<DdlTask> taskList, boolean executeElseRollback, final TaskScheduler scheduler) {
+        taskList = taskList.stream().filter(o -> o != null).collect(Collectors.toList());
         if (CollectionUtils.isEmpty(taskList)) {
             return;
         }
 
         for (DdlTask task : taskList) {
+            String logInfo;
             try {
+                logInfo =
+                    String.format("schedule task %d %s for job %d %s, task info %s, semaphore %d", task.getTaskId(),
+                        task.getName(), getJobId(), getDdlStmt(), task.executionInfo(), semaphore.availablePermits());
+                LOGGER.info(logInfo);
                 semaphore.acquire();
+                logInfo = String.format("now scheduled! schedule task %d %s for job %d %s, task info %s, semaphore %d",
+                    task.getTaskId(), task.getName(), getJobId(), getDdlStmt(), task.executionInfo(),
+                    semaphore.availablePermits());
+                task.setScheduled(true);
+                LOGGER.info(logInfo);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new TddlNestableRuntimeException(e);
@@ -654,6 +673,8 @@ public class DdlEngineDagExecutor {
                     return false;
                 } finally {
                     MDC.remove(MDC_KEY_TASK_ID);
+                    scheduler.releaseResource(task);
+                    task.setScheduled(false);
                     semaphore.release();
                 }
             }));
@@ -666,6 +687,7 @@ public class DdlEngineDagExecutor {
             DdlEngineStats.METRIC_BACKFILL_TASK_FINISHED.update(1);
         }
         DdlEngineStats.METRIC_DDL_TASK_FINISHED.update(1);
+        DdlEngineStats.taskBeginTime.remove(task);
     }
 
     private void statTaskFail(DdlTask task) {
@@ -673,6 +695,11 @@ public class DdlEngineDagExecutor {
             DdlEngineStats.METRIC_BACKFILL_TASK_FAILED.update(1);
         }
         DdlEngineStats.METRIC_DDL_TASK_FAILED.update(1);
+        DdlEngineStats.taskBeginTime.remove(task);
+    }
+
+    private void statTaskBegin(DdlTask task) {
+        DdlEngineStats.taskBeginTime.put(task, System.currentTimeMillis());
     }
 
     /**
@@ -686,6 +713,7 @@ public class DdlEngineDagExecutor {
                     return false;
                 }
                 LOGGER.info(String.format("start to execute task:[%s], name:[%s]", task.getTaskId(), task.getName()));
+                statTaskBegin(task);
                 if (task instanceof RemoteExecutableDdlTask) {
                     remoteExecute(task, executionContext);
                 } else {
@@ -1297,20 +1325,20 @@ public class DdlEngineDagExecutor {
     }
 
     public static void remoteExecute(DdlTask remoteTask, ExecutionContext executionContext) {
-        Optional<String> serverKey = ((RemoteExecutableDdlTask) remoteTask).chooseServer();
-        if (!serverKey.isPresent()) {
+        String serverKey = ((RemoteExecutableDdlTask) remoteTask).getDdlEngineResources().getServerKey();
+        if (serverKey == null) {
             SQLRecorderLogger.ddlEngineLogger.info("choose local server to execute DDL TASK");
             remoteTask.execute(executionContext);
             return;
         }
         //remote execute
-        SQLRecorderLogger.ddlEngineLogger.info("choose remote server to execute DDL TASK: " + serverKey.get());
+        SQLRecorderLogger.ddlEngineLogger.info("choose remote server to execute DDL TASK: " + serverKey);
         try {
             List<Map<String, Object>> result = GmsSyncManagerHelper.sync(new RemoteDdlTaskSyncAction(
                 remoteTask.getSchemaName(),
                 remoteTask.getJobId(),
                 remoteTask.getTaskId()
-            ), remoteTask.getSchemaName(), serverKey.get());
+            ), remoteTask.getSchemaName(), serverKey);
             if (!RemoteDdlTaskSyncAction.isRemoteDdlTaskSyncActionSuccess(result)) {
                 throw new TddlNestableRuntimeException(RemoteDdlTaskSyncAction.getMsgFromResult(result));
             }
@@ -1337,6 +1365,10 @@ public class DdlEngineDagExecutor {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public DdlJob getDdlJob() {
+        return ddlJob;
     }
 
 }

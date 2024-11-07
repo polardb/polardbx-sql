@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.newengine.meta;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -37,12 +39,24 @@ public class DdlEngineSchedulerManager {
 
     protected DdlEngineResourceManager resourceManager = new DdlEngineResourceManager();
 
-    public Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> fetchJobAndTasks(Long jobId) {
+    public Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> fetchJobAndTask(Long jobId) {
         return new DdlEngineAccessorDelegate<Pair<DdlEngineRecord, List<DdlEngineTaskRecord>>>() {
             @Override
             protected Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> invoke() {
                 DdlEngineRecord key = engineAccessor.query(jobId);
                 List<DdlEngineTaskRecord> value = engineTaskAccessor.query(jobId);
+                return Pair.of(key, value);
+            }
+        }.execute();
+    }
+
+    public Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> fetchJobAndTask(Long jobId, Long taskId) {
+        return new DdlEngineAccessorDelegate<Pair<DdlEngineRecord, List<DdlEngineTaskRecord>>>() {
+            @Override
+            protected Pair<DdlEngineRecord, List<DdlEngineTaskRecord>> invoke() {
+                DdlEngineRecord key = engineAccessor.query(jobId);
+                DdlEngineTaskRecord task = engineTaskAccessor.query(jobId, taskId);
+                List<DdlEngineTaskRecord> value = Collections.singletonList(task);
                 return Pair.of(key, value);
             }
         }.execute();
@@ -71,6 +85,15 @@ public class DdlEngineSchedulerManager {
             @Override
             protected List<DdlEngineTaskRecord> invoke() {
                 return engineTaskAccessor.query(jobId);
+            }
+        }.execute();
+    }
+
+    public int querySuccessTaskCount(long jobId) {
+        return new DdlEngineAccessorDelegate<Integer>() {
+            @Override
+            protected Integer invoke() {
+                return engineTaskAccessor.querySuccessTaskCount(jobId, DdlTaskState.SUCCESS.name());
             }
         }.execute();
     }

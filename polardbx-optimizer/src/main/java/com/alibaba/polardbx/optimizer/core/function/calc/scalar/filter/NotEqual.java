@@ -33,6 +33,10 @@ public class NotEqual extends AbstractCollationScalarFunction {
         super(operandTypes, resultType);
     }
 
+    public NotEqual() {
+        super(null, null);
+    }
+
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
         for (Object arg : args) {

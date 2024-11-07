@@ -17,13 +17,14 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.changeset.ChangeSetManager;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CloneTableDataFileTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DiscardTableSpaceDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.ImportTableSpaceDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
@@ -37,6 +38,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
+import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -45,6 +47,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabaseItemPreparedData;
 import com.google.common.collect.ImmutableList;
+import com.mysql.cj.polarx.protobuf.PolarxPhysicalBackfill;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
@@ -119,17 +122,14 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations, executionContext);
         DdlTask phyDdlTask =
-            new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
+            new CreatePhyTableWithRollbackCheckTask(schemaName, physicalPlanData.getLogicalTableName(),
+                physicalPlanData, sourceTableTopology);
         taskList.add(phyDdlTask);
         MoveTableBackFillTask moveTableBackFillTask = null;
+        List<DdlTask> discardTableSpaceTasks = null;
         if (usePhysicalBackfill) {
-            physicalPlanData =
-                DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, discardTableSpaceOperations,
-                    executionContext);
-            phyDdlTask =
-                new DiscardTableSpaceDdlTask(schemaName, physicalPlanData.getLogicalTableName(),
-                    physicalPlanData);
-            taskList.add(phyDdlTask);
+            discardTableSpaceTasks = ScaleOutUtils.generateDiscardTableSpaceDdlTask(schemaName, tableTopology,
+                discardTableSpaceOperations, executionContext);
         } else {
             moveTableBackFillTask =
                 new MoveTableBackFillTask(schemaName, tableName, sourceTableTopology, targetTableTopology,
@@ -167,12 +167,6 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
 
         final boolean useApplyOpt = changeSetApplyFinishTask != null
             && executionContext.getParamManager().getBoolean(CHANGE_SET_APPLY_OPTIMIZATION);
-        MoveTableCheckTask moveTableCheckTask =
-            new MoveTableCheckTask(schemaName, tableName, preparedData.getSourceTargetGroupMap(), sourceTableTopology,
-                targetTableTopology, useApplyOpt, relatedTables);
-        MoveTableCheckTask moveTableCheckTwiceTask =
-            new MoveTableCheckTask(schemaName, tableName, preparedData.getSourceTargetGroupMap(), sourceTableTopology,
-                targetTableTopology, false, relatedTables);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.SCALE_OUT_FINAL_TABLE_STATUS_DEBUG);
@@ -187,6 +181,7 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
         boolean healthyCheck =
             executionContext.getParamManager().getBoolean(ConnectionParams.PHYSICAL_BACKFILL_STORAGE_HEALTHY_CHECK);
 
+        long totalDataSize = 0l;
         if (usePhysicalBackfill) {
             for (Map.Entry<String, Set<String>> entry : sourceTableTopology.entrySet()) {
                 String srcGroupName = entry.getKey();
@@ -220,16 +215,43 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                         .getLong(ConnectionParams.PHYSICAL_BACKFILL_MIN_SUCCESS_BATCH_UPDATE);
                 final long parallelism =
                     executionContext.getParamManager().getLong(ConnectionParams.PHYSICAL_BACKFILL_PARALLELISM);
+                final long ioAdvise =
+                    executionContext.getParamManager()
+                        .getLong(ConnectionParams.PHYSICAL_BACKFILL_IMPORT_TABLESPACE_IO_ADVISE);
 
                 for (String phyTb : entry.getValue()) {
                     List<String> phyPartNames =
                         PhysicalBackfillUtils.getPhysicalPartitionNames(schemaName, srcDbAndGroup.getValue(),
                             srcDbAndGroup.getKey(),
                             phyTb);
+
+                    Pair<String, String> srcDnUserAndPasswd = storageInstAndUserInfos.computeIfAbsent(sourceStorageId,
+                        key -> PhysicalBackfillUtils.getUserPasswd(sourceStorageId));
+
+                    Pair<String, String> userAndPasswd = storageInstAndUserInfos.computeIfAbsent(targetStorageId,
+                        key -> PhysicalBackfillUtils.getUserPasswd(targetStorageId));
+
+                    boolean hasNoPhyPart = GeneralUtil.isEmpty(phyPartNames);
+                    List<String> temPhyPartNames = new ArrayList<>();
+                    if (hasNoPhyPart) {
+                        temPhyPartNames.add("");
+                    } else {
+                        temPhyPartNames.addAll(phyPartNames);
+                    }
+                    PolarxPhysicalBackfill.GetFileInfoOperator fileInfoOperator =
+                            PhysicalBackfillUtils.checkFileExistence(srcDnUserAndPasswd, srcDbAndGroup.getKey(),
+                                    phyTb.toLowerCase(),
+                                    temPhyPartNames,
+                                    true, PhysicalBackfillUtils.getMySQLLeaderIpAndPort(sourceStorageId));
+                    long dataSize = 0l;
+                    for (PolarxPhysicalBackfill.FileInfo fileInfo : fileInfoOperator.getTableInfo().getFileInfoList()) {
+                        dataSize += fileInfo.getDataSize();
+                    }
+
                     CloneTableDataFileTask cloneTableDataFileTask =
                         new CloneTableDataFileTask(schemaName, tableName, srcDbAndGroup, tarDbAndGroup, phyTb,
                             phyPartNames, sourceStorageId, sourceHostIpAndPort, targetHostsIpAndPort, batchSize,
-                            tableMeta.isEncryption());
+                            dataSize, tableMeta.isEncryption());
                     cloneTableDataFileTask.setTaskId(ID_GENERATOR.nextId());
 
                     List<DdlTask> importTableSpaceTasks = new ArrayList<>();
@@ -238,22 +260,23 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                         new PhysicalBackfillTask(schemaName, cloneTableDataFileTask.getTaskId(), tableName, phyTb,
                             phyPartNames,
                             srcTarGroup,
-                            Pair.of(sourceStorageId, targetStorageId), storageInstAndUserInfos, batchSize, parallelism,
+                            Pair.of(sourceStorageId, targetStorageId),
+                            storageInstAndUserInfos,
+                            batchSize,
+                            dataSize,
+                            parallelism,
                             minUpdateBatch,
                             waitLsn,
                             tableMeta.isEncryption());
-
-                    storageInstAndUserInfos.computeIfAbsent(sourceStorageId,
-                        key -> PhysicalBackfillUtils.getUserPasswd(sourceStorageId));
-
-                    Pair<String, String> userAndPasswd = storageInstAndUserInfos.computeIfAbsent(targetStorageId,
-                        key -> PhysicalBackfillUtils.getUserPasswd(targetStorageId));
 
                     for (Pair<String, Integer> hostIpAndPort : targetHostsIpAndPort) {
                         ImportTableSpaceDdlTask importTableSpaceDdlTask =
                             new ImportTableSpaceDdlTask(schemaName, tableName, tarDbAndGroup.getKey(), phyTb,
                                 hostIpAndPort,
-                                userAndPasswd);
+                                userAndPasswd,
+                                targetStorageId,
+                                dataSize,
+                                ioAdvise);
                         importTableSpaceTasks.add(importTableSpaceDdlTask);
                     }
                     List<DdlTask> tasks = new ArrayList<>(importTableSpaceTasks.size() + 2);
@@ -261,9 +284,18 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                     tasks.add(physicalBackfillTask);
                     tasks.addAll(importTableSpaceTasks);
                     physicalyTaskPipeLine.add(tasks);
+                    totalDataSize += dataSize;
                 }
             }
 
+            MoveTableCheckTask moveTableCheckTask =
+                new MoveTableCheckTask(schemaName, tableName, preparedData.getSourceTargetGroupMap(),
+                    sourceTableTopology,
+                    targetTableTopology, useApplyOpt, relatedTables, totalDataSize);
+            MoveTableCheckTask moveTableCheckTwiceTask =
+                new MoveTableCheckTask(schemaName, tableName, preparedData.getSourceTargetGroupMap(),
+                    sourceTableTopology,
+                    targetTableTopology, false, relatedTables, totalDataSize);
             moveDatabaseTasks = ChangeSetUtils.genChangeSetOnlineSchemaChangeTasks(
                 schemaName, tableName,
                 relatedTables,
@@ -277,6 +309,14 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                 backfillTaskEdgeNodes,
                 executionContext);
         } else {
+            MoveTableCheckTask moveTableCheckTask =
+                new MoveTableCheckTask(schemaName, tableName, preparedData.getSourceTargetGroupMap(),
+                    sourceTableTopology,
+                    targetTableTopology, useApplyOpt, relatedTables, totalDataSize);
+            MoveTableCheckTask moveTableCheckTwiceTask =
+                new MoveTableCheckTask(schemaName, tableName, preparedData.getSourceTargetGroupMap(),
+                    sourceTableTopology,
+                    targetTableTopology, false, relatedTables, totalDataSize);
             moveDatabaseTasks = ChangeSetUtils.genChangeSetOnlineSchemaChangeTasks(
                 schemaName, tableName,
                 relatedTables,
@@ -295,6 +335,14 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
 
         taskList.addAll(moveDatabaseTasks);
         executableDdlJob.addSequentialTasks(taskList);
+
+        if (usePhysicalBackfill) {
+            executableDdlJob.removeTaskRelationship(phyDdlTask, moveDatabaseTasks.get(0));
+            for (DdlTask discardTask : discardTableSpaceTasks) {
+                executableDdlJob.addTaskRelationship(phyDdlTask, discardTask);
+                executableDdlJob.addTaskRelationship(discardTask, moveDatabaseTasks.get(0));
+            }
+        }
 
         //todo(ziyang) cdc ddl mark task
         if (changeSetApplyExecutorInitTask != null) {

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
 import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 
 import java.math.BigInteger;
@@ -108,9 +107,7 @@ public interface BlockBuilder extends Block {
         throw new UnsupportedOperationException(getClass().getName());
     }
 
-    default void ensureCapacity(int capacity) {
-        throw new UnsupportedOperationException(getClass().getName());
-    }
+    void ensureCapacity(int capacity);
 
     /**
      * Write an object

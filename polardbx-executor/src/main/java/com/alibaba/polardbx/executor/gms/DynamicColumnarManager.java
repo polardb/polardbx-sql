@@ -16,20 +16,28 @@
 
 package com.alibaba.polardbx.executor.gms;
 
+import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
 import com.alibaba.polardbx.common.oss.OSSFileType;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.archive.schemaevolution.ColumnMetaWithTs;
 import com.alibaba.polardbx.executor.chunk.Chunk;
-import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
+import com.alibaba.polardbx.executor.columnar.CsvDataIterator;
+import com.alibaba.polardbx.executor.columnar.SimpleCSVFileReader;
 import com.alibaba.polardbx.executor.gms.util.ColumnarTransactionUtils;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarFileMappingAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarFileMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
@@ -37,23 +45,28 @@ import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
+import org.apache.htrace.shaded.fasterxml.jackson.databind.util.EmptyIterator;
 import org.jetbrains.annotations.NotNull;
 import org.roaringbitmap.RoaringBitmap;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.Set;
+import java.util.SortedMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
@@ -99,7 +112,11 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
      * cache append file last record: {tso, filename} -> {records}
      */
     private LoadingCache<Pair<Long, String>, List<ColumnarAppendedFilesRecord>> appendFileRecordCache;
-    private final AtomicLong appendFileAccessCounter = new AtomicLong();
+    /**
+     * cache min compaction tso: checkpoint tso -> min compaction tso
+     */
+    private LoadingCache<Long, Long> minCompactionTsoCache;
+    private AtomicLong appendFileAccessCounter = new AtomicLong();
     private volatile Long minTso;
     private volatile Long latestTso;
 
@@ -136,11 +153,17 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
     /**
      * This method is for unit test ONLY
      */
-    void injectForTest(FileVersionStorage versionStorage,
-                       MultiVersionColumnarSchema multiVersionColumnarSchema) {
+    public void injectForTest(FileVersionStorage versionStorage,
+                              MultiVersionColumnarSchema multiVersionColumnarSchema,
+                              AtomicLong appendFileAccessCounter,
+                              LoadingCache<Pair<Long, String>, List<ColumnarAppendedFilesRecord>> appendFileRecordCache) {
         this.versionStorage = versionStorage;
-        this.versionStorage.open();
+        if (versionStorage != null) {
+            this.versionStorage.open();
+        }
         this.columnarSchema = multiVersionColumnarSchema;
+        this.appendFileAccessCounter = appendFileAccessCounter;
+        this.appendFileRecordCache = appendFileRecordCache;
     }
 
     @Override
@@ -240,6 +263,25 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
                 }
             });
 
+        this.minCompactionTsoCache = CacheBuilder.newBuilder()
+            .maximumSize(256)
+            .build(new CacheLoader<Long, Long>() {
+                @Override
+                public Long load(@NotNull Long tso) throws SQLException {
+                    try (Connection connection = MetaDbUtil.getConnection()) {
+                        ColumnarCheckpointsAccessor accessor = new ColumnarCheckpointsAccessor();
+                        accessor.setConnection(connection);
+
+                        List<ColumnarCheckpointsRecord> checkpointsRecords = accessor.queryValidCheckpointByTso(tso);
+                        if (checkpointsRecords != null && !checkpointsRecords.isEmpty()) {
+                            return checkpointsRecords.get(0).minCompactionTso;
+                        }
+
+                        return 0L;
+                    }
+                }
+            });
+
         LOGGER.info("Columnar Manager of has been initialized");
     }
 
@@ -261,8 +303,7 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
             snapshotCache.asMap().values().forEach(snapshot -> snapshot.purge(tso));
 
             for (String fileName = nextPurgedFile(); fileName != null; fileName = nextPurgedFile()) {
-                ColumnarFileType columnarFileType =
-                    ColumnarFileType.of(fileName.substring(fileName.lastIndexOf('.') + 1));
+                ColumnarFileType columnarFileType = FileSystemUtils.getFileType(fileName);
                 fileMetaCache.invalidate(fileName);
 
                 if (columnarFileType.isDeltaFile()) {
@@ -335,6 +376,34 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
         }
     }
 
+    public Map<String, Pair<List<String>, List<String>>> findFileNames(long tso,
+                                                                       String logicalSchema, String logicalTable,
+                                                                       SortedMap<Long, Set<String>> partitionResult) {
+        if (tso == Long.MIN_VALUE) {
+            return new HashMap<>();
+        }
+        try {
+            Long tableId = getTableId(tso, logicalSchema, logicalTable);
+            return snapshotCache.get(
+                Pair.of(logicalSchema, tableId)
+            ).generateSnapshot(partitionResult, tso);
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
+                String.format("Failed to generate columnar snapshot of tso: %d", tso));
+        }
+    }
+
+    public SortedMap<Long, PartitionInfo> getPartitionInfos(long tso, String logicalSchema, String logicalTable) {
+        try {
+            Long tableId = getTableId(tso, logicalSchema, logicalTable);
+            long schemaTso = snapshotCache.get(Pair.of(logicalSchema, tableId)).getLatestSchemaTso(tso);
+            return columnarSchema.getPartitionInfos(schemaTso, tableId);
+        } catch (Throwable e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
+                String.format("Failed to generate columnar partition info of tso: %d", tso));
+        }
+    }
+
     public List<String> delFileNames(long tso, String logicalSchema, String logicalTable,
                                      String partName) {
         if (tso == Long.MIN_VALUE) {
@@ -354,16 +423,17 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
     }
 
     @Override
-    public List<Chunk> csvData(long tso, String csvFileName) {
+    public Iterator<Chunk> csvData(long tso, String csvFileName) {
         appendFileAccessCounter.getAndIncrement();
         try {
             List<ColumnarAppendedFilesRecord> appendedFilesRecords =
                 appendFileRecordCache.get(Pair.of(tso, csvFileName));
             if (appendedFilesRecords == null || appendedFilesRecords.isEmpty()) {
-                return new ArrayList<>();
+                return new EmptyIterator<>();
             } else {
                 Preconditions.checkArgument(appendedFilesRecords.size() == 1);
-                return versionStorage.csvData(appendedFilesRecords.get(0).checkpointTso, csvFileName);
+                // TODO(siyun): async IO
+                return versionStorage.csvData(appendedFilesRecords.get(0).checkpointTso, csvFileName).iterator();
             }
         } catch (Throwable t) {
             throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE, t,
@@ -372,26 +442,17 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
     }
 
     @Override
-    public List<Chunk> rawCsvData(long tso, String csvFileName, ExecutionContext context) {
-        appendFileAccessCounter.getAndIncrement();
-        try {
-            List<ColumnarAppendedFilesRecord> appendedFilesRecords =
-                appendFileRecordCache.get(Pair.of(tso, csvFileName));
-            if (appendedFilesRecords == null || appendedFilesRecords.isEmpty()) {
-                return new ArrayList<>();
-            } else {
-                Preconditions.checkArgument(appendedFilesRecords.size() == 1);
-                return versionStorage.csvRawOrcTypeData(appendedFilesRecords.get(0).checkpointTso,
-                    csvFileName, context);
-            }
-        } catch (Throwable t) {
-            throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE, t,
-                String.format("Failed to load csv file, filename: %s, tso: %d", csvFileName, tso));
-        }
+    public Iterator<Chunk> csvData(String csvFileName, long position) {
+        FileMeta fileMeta = fileMetaOf(csvFileName);
+        Engine engine = fileMeta.getEngine();
+        List<ColumnMeta> columnMetas = fileMeta.getColumnMetas();
+
+        // Create and return the chunk iterator
+        return new CsvDataIterator(new SimpleCSVFileReader(), csvFileName, position, columnMetas, engine);
     }
 
     @Override
-    public int fillSelection(String fileName, long tso, int[] selection, IntegerBlock positionBlock) {
+    public int fillSelection(String fileName, long tso, int[] selection, LongBlock positionBlock) {
         return versionStorage.fillSelection(fileName, tso, selection, positionBlock);
     }
 
@@ -473,8 +534,15 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
             if (latestTso != null) {
                 return latestTso;
             }
-
-            Long gmsLatestTso = ColumnarTransactionUtils.getLatestTsoFromGms();
+            int tsoUpdateDelay = InstConfUtil.getInt(ConnectionParams.COLUMNAR_TSO_UPDATE_DELAY);
+            Long gmsLatestTso;
+            if (tsoUpdateDelay > 0) {
+                gmsLatestTso = ColumnarTransactionUtils.getLatestTsoFromGmsWithDelay(
+                    1000L * tsoUpdateDelay // convert milliseconds to microseconds
+                );
+            } else {
+                gmsLatestTso = ColumnarTransactionUtils.getLatestTsoFromGms();
+            }
             latestTso = gmsLatestTso != null ? gmsLatestTso : Long.MIN_VALUE;
             return latestTso;
         }
@@ -491,7 +559,7 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
         }
     }
 
-    private Long getTableId(long tso, String logicalSchema, String logicalTable) {
+    public Long getTableId(long tso, String logicalSchema, String logicalTable) {
         try {
             return columnarSchema.getTableId(tso, logicalSchema, logicalTable);
         } catch (ExecutionException e) {
@@ -554,6 +622,14 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
         return minTso;
     }
 
+    public long getMinCompactionTso(Long tso) {
+        try {
+            return minCompactionTsoCache.get(tso);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     /**
      * approximate number of entries in this cache
      */
@@ -574,36 +650,47 @@ public class DynamicColumnarManager extends AbstractLifecycle implements Columna
 
     @Override
     public void reload() {
+        reload(ReloadType.ALL);
+    }
+
+    @Override
+    public void reload(ReloadType type) {
         synchronized (minTsoLock) {
             minTso = null;
             synchronized (latestTsoLock) {
                 latestTso = null;
-                try {
-                    snapshotCache.invalidateAll();
-                    fileMetaCache.invalidateAll();
-                    fileIdMapping.invalidateAll();
-                    appendFileRecordCache.invalidateAll();
-                    filesToBePurged.clear();
-                } catch (Throwable t) {
-                    // ignore
+                if (type == ReloadType.ALL || type == ReloadType.SNAPSHOT_ONLY) {
+                    try {
+                        snapshotCache.invalidateAll();
+                        fileMetaCache.invalidateAll();
+                        fileIdMapping.invalidateAll();
+                        appendFileRecordCache.invalidateAll();
+                        minCompactionTsoCache.invalidateAll();
+                        filesToBePurged.clear();
+                    } catch (Throwable t) {
+                        // ignore
+                    }
                 }
 
-                try {
-                    this.columnarSchema = new MultiVersionColumnarSchema(this);
-                } catch (Throwable t) {
-                    // ignore
+                if (type == ReloadType.ALL || type == ReloadType.SCHEMA_ONLY) {
+                    try {
+                        this.columnarSchema = new MultiVersionColumnarSchema(this);
+                    } catch (Throwable t) {
+                        // ignore
+                    }
                 }
 
-                try {
-                    this.versionStorage = new FileVersionStorage(this);
-                    this.versionStorage.open();
-                } catch (Throwable t) {
-                    // ignore
+                if (type == ReloadType.ALL || type == ReloadType.CACHE_ONLY) {
+                    try {
+                        this.versionStorage = new FileVersionStorage(this);
+                        this.versionStorage.open();
+                    } catch (Throwable t) {
+                        // ignore
+                    }
                 }
             }
         }
 
         LOGGER.info("Columnar Manager of has been reloaded");
     }
-
 }

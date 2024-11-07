@@ -92,6 +92,13 @@ public class FilterAggregateTransposeRule extends RelOptRule {
     final Filter filterRel = call.rel(0);
     final Aggregate aggRel = call.rel(1);
 
+    if (aggRel.getGroupCount() == 0) {
+      // We can not push the Filter pass the Aggregate without group keys. The whole
+      // input dataset would be the only group if there is no GROUP BY. Think about the case:
+      // 'select count(*) from T1 having false', the result is expected to be an empty set,
+      // but it would return zero if we push the Filter pass the Aggregate.
+      return;
+    }
     final List<RexNode> conditions =
         RelOptUtil.conjunctions(filterRel.getCondition());
     final RexBuilder rexBuilder = filterRel.getCluster().getRexBuilder();

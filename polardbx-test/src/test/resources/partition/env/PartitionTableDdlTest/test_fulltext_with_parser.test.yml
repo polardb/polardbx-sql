@@ -1,0 +1,40 @@
+drop table if exists tb1;
+
+create table tb1 (
+a int primary key, 
+b text, 
+c text,
+d text,
+e text,
+FULLTEXT KEY `test_idx1` (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */,
+FULLTEXT INDEX `test_idx2` (`b`) COMMENT '234' /*!50100 WITH PARSER `ngram` */,
+FULLTEXT KEY `test_idx3` (`d`) WITH PARSER ngram,
+FULLTEXT INDEX `test_idx4` (`e`) WITH PARSER ngram
+) 
+partition by key(a);
+
+show create table tb1;
+
+alter table tb1 add fulltext key `test_idx5` (`c`) COMMENT '456' /*!50100 WITH PARSER `ngram` */;
+
+alter table tb1 add fulltext index `test_idx6` (`c`) COMMENT '789' /*!50100 WITH PARSER `ngram` */;
+
+show create table tb1;
+
+create fulltext index `test_idx7` on tb1 (`b`) COMMENT '123' /*!50100 WITH PARSER `ngram` */;
+
+create fulltext index `test_idx8` on tb1 (`c`) COMMENT '123' /*!50100 WITH PARSER `ngram` */;
+
+show create table tb1;
+
+alter table tb1 add fulltext key `test_idx9` (`c`) WITH PARSER ngram;
+
+alter table tb1 add fulltext index `test_idx10` (`c`) WITH PARSER ngram;
+
+show create table tb1;
+
+create fulltext index `test_idx11` on tb1 (`b`) WITH PARSER ngram;
+
+create fulltext index `test_idx12` on tb1 (`c`) WITH PARSER ngram;
+
+show create table tb1;

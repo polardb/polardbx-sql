@@ -25,6 +25,8 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author chenghui.lch
@@ -56,6 +58,7 @@ public class SystemDbHelper {
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE beans PUBLIC \"-//SPRING//DTD BEAN//EN\" \"http://www.springframework.org/dtd/spring-beans.dtd\"><beans><bean id=\"vtabroot\" class=\"com.taobao.tddl.interact.rule.VirtualTableRoot\" init-method=\"init\"><property name=\"dbType\" value=\"MYSQL\" /><property name=\"defaultDbIndex\" value=\""
             + DEFAULT_DB_GROUP_NAME + "\" /><property name=\"tableRules\"><map></map></property></bean></beans>";
 
+    public static final String[] SYS_SCHEMA_DB_NAME = {"mysql", "performance_schema", "metadb"};
 
     // Properties for Cdc Db
     public static final String CDC_DB_NAME = "__cdc__";
@@ -64,6 +67,14 @@ public class SystemDbHelper {
     private final static String[] buildInDb =
         {INFO_SCHEMA_DB_NAME, CDC_DB_NAME, DEFAULT_DB_NAME, DEFAULT_META_DB_NAME};
     private final static String[] buildInDbExcludeCdc = {INFO_SCHEMA_DB_NAME, DEFAULT_DB_NAME};
+
+    public static List<String> getAllBuildInDbNameList() {
+        List<String> buildInDbNameList = new ArrayList<>();
+        for (int i = 0; i < buildInDb.length; i++) {
+            buildInDbNameList.add(buildInDb[i]);
+        }
+        return buildInDbNameList;
+    }
 
     public static void checkOrCreateDefaultDb(MetaDbDataSource metaDbDs) {
         String dbName = DEFAULT_DB_NAME;

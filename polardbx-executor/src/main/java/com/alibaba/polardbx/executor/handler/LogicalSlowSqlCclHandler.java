@@ -283,7 +283,9 @@ public class LogicalSlowSqlCclHandler extends HandlerCommon {
             List<List<Map<String, Object>>> results = SyncManagerHelper.sync(
                 killSyncAction, schema, SyncScope.CURRENT_ONLY);
             for (List<Map<String, Object>> result : results) {
-                count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
+                if (CollectionUtils.isNotEmpty(result)) {
+                    count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
+                }
             }
         }
         return new AffectRowCursor(new int[] {count});

@@ -25,6 +25,18 @@ public class Threads {
     public static final boolean ENABLE_WISP = System.getProperties().containsKey(
         "com.alibaba.wisp.transparentWispSwitch");
 
+    public static final boolean ENABLE_CGROUP;
+
+    static {
+        final String CGROUP_KEY = "com.alibaba.polardbx.cgroup";
+        if (System.getProperties().containsKey(CGROUP_KEY)) {
+            String val = System.getProperties().getProperty(CGROUP_KEY);
+            ENABLE_CGROUP = Boolean.parseBoolean(val);
+        } else {
+            ENABLE_CGROUP = false;
+        }
+    }
+
     public static ThreadFactory threadsNamed(String nameFormat) {
         return new TenantThreadFactory(nameFormat, false);
     }

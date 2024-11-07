@@ -235,6 +235,17 @@ public class AlterTableJobFactory extends DdlJobFactory {
             !prepareData.getAddedForeignKeys().isEmpty() || !prepareData.getDroppedForeignKeys().isEmpty();
         boolean isForeignKeyCdcMark = isForeignKeysDdl && !executionContext.getDdlContext().isFkRepartition();
 
+        boolean isRenameCci = false;
+        String cciTableName = null;
+        if (prepareData.isColumnar() && !prepareData.getRenamedIndexes().isEmpty()) {
+            TableMeta cciTableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager()
+                .getTableWithNull(prepareData.getRenamedIndexes().get(0).getValue());
+            isRenameCci = cciTableMeta != null && cciTableMeta.isColumnar();
+            if (isRenameCci) {
+                cciTableName = prepareData.getRenamedIndexes().get(0).getValue();
+            }
+        }
+
         Boolean generateTwoPhaseDdlTask = supportTwoPhaseDdl;
         DdlTask phyDdlTask = new AlterTablePhyDdlTask(schemaName, logicalTableName, physicalPlanData);
         if (this.repartition) {
@@ -261,6 +272,10 @@ public class AlterTableJobFactory extends DdlJobFactory {
         } else {
             if (ignoreMarkCdcDDL()) {
                 cdcDdlMarkTask = null;
+            } else if (isRenameCci) {
+                cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, isForeignKeyCdcMark,
+                    prepareData.getDdlVersionId());
+                ((CdcDdlMarkTask) cdcDdlMarkTask).setCci(true);
             } else {
                 cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, isForeignKeyCdcMark,
                     prepareData.getDdlVersionId());
@@ -333,9 +348,9 @@ public class AlterTableJobFactory extends DdlJobFactory {
                     beginAlterColumnDefault,
                     beginAlterColumnDefaultSyncTask,
                     phyDdlTask,
+                    updateMetaTask,
                     cdcDdlMarkTask,
-                    dropESATask,
-                    updateMetaTask
+                    dropESATask
                 ).stream().filter(Objects::nonNull).collect(Collectors.toList());
             } else {
                 taskList = Lists.newArrayList(
@@ -345,8 +360,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
                     tableSyncTaskAfterHiding
                 );
                 taskList.addAll(generateTwoPhaseDdlTask(ddlAlgorithmType, twoPhaseDdlId));
-                taskList.add(cdcDdlMarkTask);
                 taskList.add(updateMetaTask);
+                taskList.add(cdcDdlMarkTask);
                 taskList = taskList.stream().filter(Objects::nonNull).collect(Collectors.toList());
             }
         } else {
@@ -362,7 +377,15 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 alterTableViaDefaultAlgorithm(generateTwoPhaseDdlTask, isModifyColumn);
             DdlAlgorithmType algorithmType = alterCheckResult.getKey();
             Long twoPhaseDdlId = alterCheckResult.getValue();
-            if (!generateTwoPhaseDdlTask || algorithmType == DdlAlgorithmType.COPY_ADD_DROP_COLUMN_INDEX
+            if (isRenameCci) {
+                taskList = Lists.newArrayList(
+                    validateTask,
+                    updateMetaTask,
+                    cdcDdlMarkTask,
+                    // must sync cci table to reload table group cache
+                    new TableSyncTask(schemaName, cciTableName)
+                ).stream().filter(Objects::nonNull).collect(Collectors.toList());
+            } else if (!generateTwoPhaseDdlTask || algorithmType == DdlAlgorithmType.COPY_ADD_DROP_COLUMN_INDEX
                 || algorithmType == DdlAlgorithmType.UNKNOWN_MODIFY_CHANGE_COLUMN_ALGORITHM
                 || algorithmType == DdlAlgorithmType.UNKNOWN_ALGORITHM) {
                 taskList = Lists.newArrayList(
@@ -370,8 +393,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
                     beginAlterColumnDefault,
                     beginAlterColumnDefaultSyncTask,
                     phyDdlTask,
-                    cdcDdlMarkTask,
-                    updateMetaTask
+                    updateMetaTask,
+                    cdcDdlMarkTask
                 ).stream().filter(Objects::nonNull).collect(Collectors.toList());
             } else {
                 taskList = Lists.newArrayList(
@@ -381,8 +404,8 @@ public class AlterTableJobFactory extends DdlJobFactory {
                 );
 
                 taskList.addAll(generateTwoPhaseDdlTask(algorithmType, twoPhaseDdlId));
-                taskList.add(cdcDdlMarkTask);
                 taskList.add(updateMetaTask);
+                taskList.add(cdcDdlMarkTask);
                 taskList = taskList.stream().filter(Objects::nonNull).collect(Collectors.toList());
             }
         }
@@ -440,13 +463,16 @@ public class AlterTableJobFactory extends DdlJobFactory {
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, logicalTableName));
 
+        // exclude foreign key tables
+        excludeFkTables(resources);
+    }
+
+    @Override
+    protected void sharedResources(Set<String> resources) {
         String tgName = FactoryUtils.getTableGroupNameByTableName(schemaName, logicalTableName);
         if (tgName != null) {
             resources.add(concatWithDot(schemaName, tgName));
         }
-
-        // exclude foreign key tables
-        excludeFkTables(resources);
     }
 
     protected Boolean checkAlgorithmSpecificationCopy(SQLAlterTableStatement alterTable) {
@@ -713,10 +739,6 @@ public class AlterTableJobFactory extends DdlJobFactory {
         taskList.add(finishTwoPhaseDdlTask);
         taskList.add(compensationPhysicalDdlTask);
         return taskList;
-    }
-
-    @Override
-    protected void sharedResources(Set<String> resources) {
     }
 
     public void validateExistence(boolean validateExistence) {

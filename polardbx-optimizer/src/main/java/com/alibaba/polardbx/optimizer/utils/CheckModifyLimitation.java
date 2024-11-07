@@ -553,20 +553,6 @@ public class CheckModifyLimitation {
         });
     }
 
-    public static boolean checkOnlineModifyColumnDdl(List<RelOptTable> targetTables, ExecutionContext ec) {
-        for (RelOptTable targetTable : targetTables) {
-            if (TableColumnUtils.isModifying(targetTable, ec)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static boolean checkOnlineModifyColumnDdl(TableModify tableModify, ExecutionContext ec) {
-        final List<RelOptTable> targetTables = tableModify.getTargetTables();
-        return checkOnlineModifyColumnDdl(targetTables, ec);
-    }
-
     public static boolean checkModifyPk(TableModify tableModify, ExecutionContext ec) {
         if (!tableModify.isUpdate()) {
             return false;

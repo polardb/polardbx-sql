@@ -36,6 +36,7 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.calcite.util.Pair;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -53,9 +54,10 @@ import java.util.stream.Collectors;
 
 public class GlobalIndexMeta {
 
-    public static boolean hasIndex(String mainTableName, String schemaName, ExecutionContext ec) {
+    public static boolean hasGsi(String mainTableName, String schemaName, ExecutionContext ec) {
         final TableMeta table = ec.getSchemaManager(schemaName).getTable(mainTableName);
-        return table.withGsi();
+        // ignore CCI
+        return table.withGsiExcludingPureCci();
     }
 
     public static int getGsiIndexNum(String mainTableName, String schemaName, ExecutionContext ec) {
@@ -524,11 +526,24 @@ public class GlobalIndexMeta {
     public static boolean isEveryUkContainsAllPartitionKey(String table, String schema, boolean includingPrimaryIndex,
                                                            ExecutionContext ec) {
         final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(table);
+        final Map<String, Map<String, Set<String>>> tableUkMap =
+            getTableUkMapWithoutImplicitPk(table, schema, includingPrimaryIndex, ec, tableMeta);
+        return isEveryUkContainsAllPartitionKey(tableMeta, tableUkMap, ec);
+    }
+
+    public static @NotNull Map<String, Map<String, Set<String>>> getTableUkMapWithoutImplicitPk(String table,
+                                                                                                String schema,
+                                                                                                boolean includingPrimaryIndex,
+                                                                                                ExecutionContext ec,
+                                                                                                TableMeta tableMeta) {
+        if (null == tableMeta) {
+            tableMeta = ec.getSchemaManager(schema).getTable(table);
+        }
         final Map<String, Map<String, Set<String>>> tableUkMap = getTableUkMap(tableMeta, includingPrimaryIndex, ec);
         // Skip implicit primary key
         tableUkMap.values().forEach(
             ukMap -> ukMap.entrySet().removeIf(entry -> SqlValidatorImpl.isImplicitKey(entry.getKey())));
-        return isEveryUkContainsAllPartitionKey(tableMeta, tableUkMap, ec);
+        return tableUkMap;
     }
 
     /**
@@ -587,6 +602,37 @@ public class GlobalIndexMeta {
         gsiMetaList.stream().map(gsiMeta -> rm.getSharedColumns(gsiMeta.getTableName()))
             .forEach(partitionKeySet::addAll);
         return partitionKeySet;
+    }
+
+    public static TreeMap<String, TreeSet<String>> getPartitionKeyMap(String table, String schema,
+                                                                      ExecutionContext ec) {
+        final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(table);
+        return getPartitionKeyMap(tableMeta, ec);
+    }
+
+    public static TreeMap<String, TreeSet<String>> getPartitionKeyMap(TableMeta primary, ExecutionContext ec) {
+        final List<TableMeta> gsiMetaList = getIndex(primary.getTableName(), primary.getSchemaName(), ec);
+
+        // Get all partition key
+        final TreeMap<String, TreeSet<String>> tablePartitionKeyMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        final TddlRuleManager rm = OptimizerContext.getContext(primary.getSchemaName()).getRuleManager();
+        tablePartitionKeyMap
+            .computeIfAbsent(
+                primary.getTableName(),
+                (k) -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
+            .addAll(rm.getSharedColumns(primary.getTableName()));
+
+        for (TableMeta gsiMeta : gsiMetaList) {
+            final String gsiName = gsiMeta.getTableName();
+            final List<String> gsiShardKeyList = rm.getSharedColumns(gsiName);
+            tablePartitionKeyMap
+                .computeIfAbsent(
+                    gsiName,
+                    (k) -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER))
+                .addAll(gsiShardKeyList);
+        }
+        return tablePartitionKeyMap;
     }
 
     public static Map<String, Map<String, Set<String>>> getTableUkMap(String table, String schema,

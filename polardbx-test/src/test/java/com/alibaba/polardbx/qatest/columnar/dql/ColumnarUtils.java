@@ -7,6 +7,7 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 public class ColumnarUtils {
     private static final String SHOW_COLUMNAR_OFFSET = "show columnar offset";
@@ -83,6 +84,36 @@ public class ColumnarUtils {
             throw new RuntimeException(e);
         }
         throw new RuntimeException("get columnar offset failed");
+    }
+
+    public static long getColumnarTso(Connection tddlConnection) {
+        try (ResultSet rs = JdbcUtil.executeQuery(SHOW_COLUMNAR_OFFSET, tddlConnection)) {
+            while (rs.next()) {
+                String type = rs.getString("type");
+                long tso = rs.getLong("tso");
+                if (type.equalsIgnoreCase("COLUMNAR_LATENCY")) {
+                    return tso;
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        throw new RuntimeException("get columnar offset failed");
+    }
+
+    static public long columnarFlushAndGetTso(Statement stmt) throws SQLException {
+        ResultSet rs = stmt.executeQuery("call polardbx.columnar_flush()");
+        if (rs.next()) {
+            return rs.getLong(1);
+        } else {
+            return -1;
+        }
+    }
+
+    static public long columnarFlushAndGetTso(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            return columnarFlushAndGetTso(statement);
+        }
     }
 
     public static Pair<Long, Long> getInnodbAndColumnarOffset(Connection tddlConnection) {

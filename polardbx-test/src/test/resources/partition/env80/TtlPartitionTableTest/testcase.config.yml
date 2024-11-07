@@ -1,0 +1,10 @@
+#test_create_ttl
+#test_modify_ttl
+#test_ttl_alter_col
+#test_create_ttl_ts
+#test_invalid_usage
+#test_invalid_usage2
+#test_ttl_unit
+#test_modify_ttl2
+#test_remove_ttl
+#test_create_with_cci_ttl

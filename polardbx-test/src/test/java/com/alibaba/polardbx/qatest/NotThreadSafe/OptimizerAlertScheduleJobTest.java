@@ -15,11 +15,9 @@ import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.AfterClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
-import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -62,50 +60,6 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
     protected static final String ENABLE_TP_SLOW_ALERT_THRESHOLD = "set global ENABLE_TP_SLOW_ALERT_THRESHOLD = 10";
 
     public OptimizerAlertScheduleJobTest() {
-    }
-
-    @Test
-    public void testXplanSlow() {
-        testShouldAlert(OptimizerAlertType.XPLAN_SLOW, () -> {
-            try (Connection conn = getPolardbxConnection();
-                Statement statement = conn.createStatement()) {
-                String sql;
-                sql = "set ENABLE_ALERT_TEST=true";
-                statement.execute(sql);
-                sql =
-                    String.format(
-                        "/*+TDDL:enable_mpp=false*/select * from select_base_four_%s where pk =10",
-                        ExecuteTableName.ONE_DB_MUTIL_TB_SUFFIX);
-                statement.execute(sql);
-                return true;
-            }
-        });
-    }
-
-    @Test
-    public void testPlanCacheFull() {
-        testShouldAlert(OptimizerAlertType.PLAN_CACHE_FULL, () -> {
-            try (Connection conn = getPolardbxConnection();
-                Statement statement = conn.createStatement()) {
-                String sql;
-                sql = "set global OPTIMIZER_ALERT_LOG_INTERVAL = 1000";
-                statement.execute(sql);
-                sql = "set ENABLE_ALERT_TEST=true";
-                statement.execute(sql);
-                Thread.sleep(2000L);
-                sql = "clear plancache";
-                statement.execute(sql);
-                sql = "select * from select_base_four_" + ExecuteTableName.ONE_DB_MUTIL_TB_SUFFIX;
-                statement.execute(sql);
-                return true;
-            } finally {
-                try (Connection conn = getPolardbxConnection()) {
-                    String sql = "set global OPTIMIZER_ALERT_LOG_INTERVAL = " + 600000;
-                    JdbcUtil.executeSuccess(conn, sql);
-                    JdbcUtil.executeSuccess(conn, ENABLE_DEFAULT_CHECK);
-                }
-            }
-        });
     }
 
     @Test
@@ -208,42 +162,6 @@ public class OptimizerAlertScheduleJobTest extends ReadBaseTestCase {
 
         try (Connection connection = getPolardbxConnection()) {
             connection.createStatement().execute("set global alert_statistic_interrupt=false");
-        }
-    }
-
-    @Test
-    @Ignore
-    public void testStatisticJobInconsistent() throws SQLException, InterruptedException {
-        try (Connection connection = getPolardbxConnection()) {
-            Statement statement = connection.createStatement();
-            statement.execute("set global alert_statistic_inconsistent=true");
-            statement.execute("set global alert_statistic_interrupt=false");
-            statement.execute("set @fp_inject_ignore_interrupted_to_statistic_schedule_job='true'");
-            statement.execute("analyze table select_base_four_" + ExecuteTableName.ONE_DB_MUTIL_TB_SUFFIX);
-        }
-
-        // wait 5 sec
-        Thread.sleep(5 * 1000L);
-
-        testShouldAlert(OptimizerAlertType.STATISTIC_INCONSISTENT, () -> {
-            try (Connection conn = getPolardbxConnection();
-                Statement statement = conn.createStatement()) {
-
-                ResultSet rs = statement.executeQuery(
-                    "select schedule_id from metadb.scheduled_jobs where executor_type='statistic_sample_sketch'");
-                rs.next();
-                String scheduleId = rs.getString("schedule_id");
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                String now = sdf.format(new Date(System.currentTimeMillis()));
-                statement.execute("fire schedule " + scheduleId);
-                return true;
-            }
-        });
-
-        try (Connection connection = getPolardbxConnection()) {
-            Statement statement = connection.createStatement();
-            statement.execute("set @fp_inject_ignore_interrupted_to_statistic_schedule_job='false'");
-            statement.execute("set global alert_statistic_inconsistent=false");
         }
     }
 

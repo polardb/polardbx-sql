@@ -71,7 +71,7 @@ public class DdlConstants {
 
     public static final int MIN_LOGICAL_DDL_PARALLELISM = 1;
     public static final int MAX_LOGICAL_DDL_PARALLELISM = 16;
-    public static final int DEFAULT_LOGICAL_DDL_PARALLELISM = 4;
+    public static final int DEFAULT_LOGICAL_DDL_PARALLELISM = 8;
 
     public static final int MIN_ALLOWED_TABLE_SHARDS_PER_DB = 1;
     public static final int MAX_ALLOWED_TABLE_SHARDS_PER_DB = 65535;

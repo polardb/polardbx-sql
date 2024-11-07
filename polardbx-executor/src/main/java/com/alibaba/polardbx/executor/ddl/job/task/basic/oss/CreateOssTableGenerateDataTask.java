@@ -181,6 +181,7 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
             ExecutionContext sourceDbContext = executionContext.copy();
             sourceDbContext.setSchemaName(sourceLogicalSchema);
             sourceDbContext.setBackfillId(getTaskId());
+            sourceDbContext.setTaskId(getTaskId());
 
             TableMeta sourceTableMeta =
                 executionContext.getSchemaManager(sourceLogicalSchema).getTable(sourceLogicalTable);

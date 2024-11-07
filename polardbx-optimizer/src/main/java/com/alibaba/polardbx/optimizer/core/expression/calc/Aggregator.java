@@ -23,6 +23,10 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CheckSum
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.DenseRank;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.FirstValue;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.GroupConcat;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonArrayAgg;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonArrayGlobalAgg;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonObjectAgg;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.JsonObjectGlobalAgg;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Lag;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.LastValue;
 import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.NThValue;
@@ -155,6 +159,12 @@ public abstract class Aggregator extends AbstractExpression implements IExtraFun
             return;
         }
 
+        if (this instanceof JsonObjectAgg || this instanceof JsonArrayAgg
+            || this instanceof JsonObjectGlobalAgg || this instanceof JsonArrayGlobalAgg) {
+            aggregateJsonAgg(row);
+            return;
+        }
+
         if (aggTargetIndexes.length == 0) { // e.g. COUNT(*)
             if (isDistinct) {
                 Row arrayRow = FunctionUtils.fromIRowSetToArrayRowSet(row);
@@ -211,6 +221,10 @@ public abstract class Aggregator extends AbstractExpression implements IExtraFun
     }
 
     private void aggregateChecksumV2(Row row) {
+        conductAgg(row);
+    }
+
+    private void aggregateJsonAgg(Row row) {
         conductAgg(row);
     }
 

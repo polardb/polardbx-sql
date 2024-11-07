@@ -48,7 +48,8 @@ public final class ServerParseSelect {
     public static final int POLARDB_VERSION = 16;
     public static final int COMPATIBILITY_LEVEL = 17;
     public static final int ENCDB_PROCESS_MESSAGE = 18;
-    public static final int SESSION_TRANSACTION_READ_ONLY = 19;
+    public static final int COLUMNAR_FILE = 19;
+    public static final int SESSION_TRANSACTION_READ_ONLY = 20;
 
     public static final Set<Integer> PREPARE_UNSUPPORTED_SELECT_TYPE;
     private static final char[] _VERSION_COMMENT = "VERSION_COMMENT".toCharArray();
@@ -65,6 +66,7 @@ public final class ServerParseSelect {
     private static final char[] _SESSION_TRANSACTION_READ_ONLY = "SESSION.TRANSACTION_READ_ONLY".toCharArray();
     private static final char[] _COMPATIBILITY_LEVEL = "COMPATIBILITY_LEVEL".toCharArray();
     private static final char[] _ENCDB_PROCESS_MESSAGE = "ENCDB_PROCESS_MESSAGE".toCharArray();
+    private static final char[] _COLUMNAR_FILE = "COLUMNAR_FILE".toCharArray();
 
     static {
         PREPARE_UNSUPPORTED_SELECT_TYPE = new HashSet<>();
@@ -84,6 +86,7 @@ public final class ServerParseSelect {
         PREPARE_UNSUPPORTED_SELECT_TYPE.add(SEQ_SKIP_BENCHMARK);
         PREPARE_UNSUPPORTED_SELECT_TYPE.add(COMPATIBILITY_LEVEL);
         PREPARE_UNSUPPORTED_SELECT_TYPE.add(ENCDB_PROCESS_MESSAGE);
+        PREPARE_UNSUPPORTED_SELECT_TYPE.add(COLUMNAR_FILE);
     }
 
     public static int parse(String stmt, int offset, Object[] exData) {
@@ -585,6 +588,8 @@ public final class ServerParseSelect {
             }
         } else if (ParseUtil.compare(stmt, offset, _COMPATIBILITY_LEVEL)) {
             return COMPATIBILITY_LEVEL;
+        } else if (ParseUtil.compare(stmt, offset, _COLUMNAR_FILE)) {
+            return COLUMNAR_FILE;
         }
         return OTHER;
     }

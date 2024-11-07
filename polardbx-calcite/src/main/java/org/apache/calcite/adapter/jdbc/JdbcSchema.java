@@ -16,6 +16,11 @@
  */
 package org.apache.calcite.adapter.jdbc;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Multimap;
 import org.apache.calcite.avatica.AvaticaUtils;
 import org.apache.calcite.avatica.SqlType;
 import org.apache.calcite.linq4j.tree.Expression;
@@ -38,12 +43,7 @@ import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Util;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Multimap;
-
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -53,7 +53,6 @@ import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import javax.sql.DataSource;
 
 /**
  * Implementation of {@link Schema} that is backed by a JDBC data source.
@@ -186,12 +185,7 @@ public class JdbcSchema implements Schema {
   /** Creates a JDBC data source with the given specification. */
   public static DataSource dataSource(String url, String driverClassName,
       String username, String password) {
-    if (url.startsWith("jdbc:hsqldb:")) {
-      // Prevent hsqldb from screwing up java.util.logging.
-      System.setProperty("hsqldb.reconfig_logging", "false");
-    }
-    return JdbcUtils.DataSourcePool.INSTANCE.get(url, driverClassName, username,
-        password);
+    throw  new IllegalAccessError();
   }
 
   public boolean isMutable() {

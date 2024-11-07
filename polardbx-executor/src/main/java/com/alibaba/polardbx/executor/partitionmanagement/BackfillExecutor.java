@@ -90,7 +90,7 @@ public class BackfillExecutor {
         if (useChangeSet) {
             extractor = ChangeSetExecutor
                 .create(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, useBinary,
-                    null, sourcePhyTables, baseEc);
+                    null, sourcePhyTables, false, baseEc);
         } else {
             extractor = AlterTableGroupExtractor
                 .create(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, useBinary,

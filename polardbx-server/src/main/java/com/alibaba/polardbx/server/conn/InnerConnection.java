@@ -24,6 +24,8 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -31,6 +33,8 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
@@ -49,6 +53,7 @@ import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.Maps;
 
 import java.sql.Array;
 import java.sql.Blob;
@@ -71,6 +76,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -82,7 +88,7 @@ import java.util.function.Consumer;
  *
  * @author ziyang.lb 2020-12-05
  */
-public class InnerConnection implements Connection, IInnerConnection {
+public class InnerConnection implements IInnerConnection {
     private final static Logger logger = LoggerFactory.getLogger(InnerConnection.class);
 
     private final Long id;
@@ -103,16 +109,32 @@ public class InnerConnection implements Connection, IInnerConnection {
     private String user = PolarPrivUtil.POLAR_ROOT + '@' + "127.0.0.1";
     private String sqlSample = null;
     final private Map<String, Object> extraServerVariables = new HashMap<>();
+    private AtomicBoolean isClosed = new AtomicBoolean(false);
+
+    private boolean recordCommitTso = false;
+
+    private long commitTso = -1L;
 
     public InnerConnection() throws SQLException {
         this(SystemDbHelper.DEFAULT_DB_NAME);
     }
 
     public InnerConnection(String schemaName) throws SQLException {
+        this(schemaName, false, Maps.newHashMap());
+    }
+
+    public InnerConnection(String schemaName, boolean recordCommitTso) throws SQLException {
+        this(schemaName, recordCommitTso, Maps.newHashMap());
+    }
+
+    public InnerConnection(String schemaName,
+                           boolean recordCommitTso,
+                           Map<String, Object> sessionVariables) throws SQLException {
         this.schemaName = schemaName;
         this.id = ClusterAcceptIdGenerator.getInstance().nextId();
         this.mdlContext = MdlManager.addContext(id);
         this.mdlContextLock = new Object();
+        this.recordCommitTso = recordCommitTso;
 
         // JDBC会改成STRICT_TRANS_TABLES，为与MySQL兼容，需要改成global的设置
         Map<String, Object> serverVariables = new HashMap<>();
@@ -137,6 +159,7 @@ public class InnerConnection implements Connection, IInnerConnection {
         this.connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
         this.connection.setAutoCommit(autoCommit);
         this.connection.setEncoding("utf8");
+
         this.connection.setTrxPolicy(trxPolicy, false);
         this.connection.setServerVariables(serverVariables);
         this.connection.setExtraServerVariables(extraServerVariables);
@@ -144,6 +167,89 @@ public class InnerConnection implements Connection, IInnerConnection {
         if (null != InnerConnectionManager.getActiveConnections().putIfAbsent(id, this)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Found duplicate inner connection id.");
         }
+        initConnBySessionVariables(sessionVariables);
+    }
+
+    /**
+     * Init the InnerConnection by the session variables,
+     * so, its functions are added as needed,
+     */
+    protected void initConnBySessionVariables(Map<String, Object> sessionVariables) {
+
+        if (sessionVariables == null || sessionVariables.isEmpty()) {
+            return;
+        }
+
+        Map<String, Object> sessionVariablesToBeSetOnDn = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        for (Map.Entry<String, Object> variableItem : sessionVariables.entrySet()) {
+            String key = variableItem.getKey();
+            Object val = variableItem.getValue();
+            if (key.equalsIgnoreCase("time_zone")) {
+                String tzStr = (String) SQLUtils.normalizeNoTrim((String) val);
+                if (!StringUtils.isEmpty(tzStr)) {
+                    InternalTimeZone internalTz = TimeZoneUtils.convertFromMySqlTZ(tzStr);
+                    this.connection.setTimeZone(internalTz);
+                }
+                continue;
+            }
+
+            if (key.equalsIgnoreCase("sql_mode")) {
+                String sqlModeStr = (String) SQLUtils.normalizeNoTrim((String) val);
+                if (!StringUtils.isEmpty(sqlModeStr)) {
+                    this.connection.setSqlMode(sqlModeStr);
+                }
+                continue;
+            }
+
+            if (key.equalsIgnoreCase("names")) {
+                String charsetStr = (String) SQLUtils.normalizeNoTrim((String) val);
+                if (!StringUtils.isEmpty(charsetStr)) {
+                    this.connection.setEncoding(charsetStr);
+                }
+                continue;
+            }
+
+            if (key.equalsIgnoreCase("group_parallelism")) {
+                String groupParallelismStr = SQLUtils.normalizeNoTrim((String) val);
+                if (!StringUtils.isEmpty(groupParallelismStr)) {
+                    Long grpParallelismVal = Long.valueOf(groupParallelismStr);
+                    if (grpParallelismVal > 0) {
+                        this.connection.setGroupParallelism(grpParallelismVal);
+                    }
+                }
+                continue;
+            }
+
+            if (key.equalsIgnoreCase("transaction_policy")) {
+                String trxPolicyStr = (String) SQLUtils.normalizeNoTrim((String) val);
+                if (!StringUtils.isEmpty(trxPolicyStr)) {
+                    if (trxPolicyStr.equalsIgnoreCase("archive")) {
+                        this.setTrxPolicy(ITransactionPolicy.ARCHIVE);
+                        this.connection.setTrxPolicy(ITransactionPolicy.ARCHIVE, false);
+                    }
+                }
+                continue;
+            }
+            sessionVariablesToBeSetOnDn.put(key, val);
+        }
+
+//        if (!sessionVariablesToBeSetOnDn.isEmpty()) {
+//            this.connection.getServerVariables().putAll(sessionVariablesToBeSetOnDn);
+//        }
+    }
+
+    public InnerConnection(TConnection connection) {
+        this.id = 0L;
+        this.connection = connection;
+        this.schemaName = "polardbx";
+        this.mdlContextLock = new Object();
+    }
+
+    public void setExtraServerVariables(String key, Object value) {
+        if (null == this.connection.getExtraServerVariables()) {
+            this.connection.setExtraServerVariables(new HashMap<>());
+        }
+        this.connection.getExtraServerVariables().put(key, value);
     }
 
     protected Object executeSql(String sql, List<Pair<Integer, ParameterContext>> params) throws SQLException {
@@ -151,14 +257,18 @@ public class InnerConnection implements Connection, IInnerConnection {
         int sqlSimpleMaxLen = CobarServer.getInstance().getConfig().getSystem().getSqlSimpleMaxLen();
         sqlSample = sql.substring(0, Math.min(sqlSimpleMaxLen, sql.length()));
         boolean success = true;
+        String traceIdToLog = "";
+        Integer updateCountToLog = 0;
         try {
             genTxIdAndTraceId();
             CobarServer.getInstance().getServerExecutor().initTraceStats(traceId);
+            traceIdToLog = this.traceId;
 
             // 设置TrxPolicy & ExecutionContext信息
             connection.setTrxPolicy(trxPolicy, false);
 
             // 变量定义
+            boolean flag = false;
             Object result = null;
             Throwable exception = null;
             ITransaction trx = null;
@@ -180,7 +290,7 @@ public class InnerConnection implements Connection, IInnerConnection {
                 processExecutionContextHooks(ec);
                 fillParams(stmt, params);
                 statementExecuting.set(true);
-                boolean flag = stmt.execute();
+                flag = stmt.execute();
                 if (flag) {
                     result = stmt.getResultSet();
                     result = buildResultSet((TResultSet) result);
@@ -190,6 +300,13 @@ public class InnerConnection implements Connection, IInnerConnection {
             } catch (Throwable t) {
                 logger.error(t);
                 exception = t;
+                if (!flag) {
+                    updateCountToLog = -1;
+                }
+            }
+
+            if (!flag && result != null) {
+                updateCountToLog = (Integer) result;
             }
 
             // 自动提交模式下，直接提交即可
@@ -265,7 +382,9 @@ public class InnerConnection implements Connection, IInnerConnection {
                 sql,
                 success ? "0" : "1",
                 // in milliseconds
-                (System.nanoTime() - lastActiveTime) / 1_000_000
+                (System.nanoTime() - lastActiveTime) / 1_000_000,
+                traceIdToLog,
+                updateCountToLog
             }));
             // Reset.
             lastActiveTime = System.nanoTime();
@@ -366,6 +485,10 @@ public class InnerConnection implements Connection, IInnerConnection {
         }
     }
 
+    public ITransaction getTransaction() {
+        return connection.getTrx();
+    }
+
     @Override
     public void addExecutionContextInjectHook(Consumer<Object> hook) {
         executionContextInjectHooks.add(hook);
@@ -425,6 +548,11 @@ public class InnerConnection implements Connection, IInnerConnection {
 
         if (this.connection != null) {
             connection.commit();
+
+            //如果需要搜集commitTso，判断到是TsoTransaction时，搜集commitTso
+            if (recordCommitTso) {
+                commitTso = connection.getCommitTso();
+            }
         }
     }
 
@@ -439,6 +567,9 @@ public class InnerConnection implements Connection, IInnerConnection {
 
     @Override
     public void close() {
+        if (!isClosed.compareAndSet(false, true)) {
+            return;
+        }
         try {
             if (this.statementExecuting.get()) {
                 if (connection.isDdlStatement()) {
@@ -453,10 +584,7 @@ public class InnerConnection implements Connection, IInnerConnection {
                         int retry = 0;
                         do {
                             try {
-                                if (connection != null) {
-                                    connection.kill();
-                                }
-
+                                connection.kill();
                             } catch (Exception ex) {
                                 logger.warn("error when kill", ex);
                             }
@@ -468,15 +596,14 @@ public class InnerConnection implements Connection, IInnerConnection {
                             }
 
                         } while (statementExecuting.get() && ++retry < 10);
+
                         try {
-                            if (connection != null) {
-                                connection.close();
-                            }
+                            connection.close();
                         } catch (Exception ex) {
                             logger.warn("error when kill inner connection close", ex);
                         }
 
-                        if (retry >= 10) {
+                        if (10 == retry) {
                             logger.error("KILL Inner Connection Failed, retry: " + retry);
                         } else {
                             logger.warn("Inner Connection Killed");
@@ -555,6 +682,11 @@ public class InnerConnection implements Connection, IInnerConnection {
             this.extraServerVariables.put("time_zone", timeZoneId);
             this.connection.setTimeZone(timeZone);
         }
+    }
+
+    @Override
+    public int hashCode() {
+        return id.hashCode();
     }
 
     private static class InnerResultCursor extends AbstractCursor {
@@ -731,6 +863,12 @@ public class InnerConnection implements Connection, IInnerConnection {
         throw new UnsupportedOperationException("unsupported operation");
     }
 
+    public void releaseAutoSavepoint() {
+        if (null != this.connection && null != this.connection.getTrx()) {
+            this.connection.getTrx().releaseAutoSavepoint();
+        }
+    }
+
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability)
         throws SQLException {
@@ -852,5 +990,13 @@ public class InnerConnection implements Connection, IInnerConnection {
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
         throw new UnsupportedOperationException("unsupported operation");
+    }
+
+    public void setRecordCommitTso(boolean recordCommitTso) {
+        this.recordCommitTso = recordCommitTso;
+    }
+
+    public long getCommitTso() {
+        return commitTso;
     }
 }

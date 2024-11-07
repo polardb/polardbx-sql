@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -31,7 +33,6 @@ import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.google.common.collect.Lists;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,6 +51,9 @@ import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_
  * @author chenghui.lch
  */
 public class PartitionInfo {
+
+    private static final Logger logger = LoggerFactory.getLogger(PartitionInfo.class);
+    private static final Long MOCK_TABLE_VERSION = -2l;
 
     /**
      * the id of logical table in table_partitions of metadb
@@ -112,7 +116,7 @@ public class PartitionInfo {
     /**
      * The general partition flags
      */
-    protected Long partFlags;
+    protected Long partFlags = new Long(0L);
 
     /**
      * the locality Info
@@ -190,11 +194,12 @@ public class PartitionInfo {
         return this.tableType == PartitionTableType.GSI_TABLE;
     }
 
-    public boolean isPartitionedTableOrGsiTable() {
-        return this.tableType == PartitionTableType.PARTITION_TABLE || this.tableType == PartitionTableType.GSI_TABLE;
+    public boolean isPartitionedTableOrGsiCciTable() {
+        return this.tableType == PartitionTableType.PARTITION_TABLE || this.tableType == PartitionTableType.GSI_TABLE
+            || this.tableType == PartitionTableType.COLUMNAR_TABLE;
     }
 
-    public boolean isColumnarTable() {
+    public boolean isPartitionedColumnarTable() {
         return this.tableType == PartitionTableType.COLUMNAR_TABLE;
     }
 
@@ -311,6 +316,10 @@ public class PartitionInfo {
         this.autoFlag = autoFlag;
     }
 
+    public boolean isTtlTemporary() {
+        return (this.partFlags & TablePartitionRecord.FLAG_TTL_TEMPORARY_TABLE) != 0;
+    }
+
     public Long getPartFlags() {
         return partFlags;
     }
@@ -400,9 +409,17 @@ public class PartitionInfo {
                         if (ignoreInvalid && location != null && !location.isValidLocation()) {
                             continue;
                         }
+                        try {
+                            logger.error("Found invalid location info of " + this.getTableName() + " " + this.getDigest(
+                                MOCK_TABLE_VERSION));
+                        } catch (Exception e) {
+                            //pass
+                        }
                         throw GeneralUtil
                             .nestedException(new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                                "Found invalid location info of " + this.getTableName()));
+                                "Found invalid location info of " + this.getTableName() + "." + subPartName + (
+                                    (location == null) ?
+                                        "location is null" : "")));
                     }
 
                 }
@@ -440,9 +457,16 @@ public class PartitionInfo {
                     if (ignoreInvalid && location != null && !location.isValidLocation()) {
                         continue;
                     }
+                    try {
+                        logger.error("Found invalid location info of " + this.getTableName() + " " + this.getDigest(
+                            MOCK_TABLE_VERSION));
+                    } catch (Exception e) {
+                        //pass
+                    }
                     throw GeneralUtil
                         .nestedException(new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                            "Found invalid location info of " + this.getTableName()));
+                            "Found invalid location info of " + this.getTableName() + "." + name + ((location == null) ?
+                                "location is null" : "")));
                 }
             }
         }
@@ -509,7 +533,8 @@ public class PartitionInfo {
 
     public Integer getAllPartLevelCount() {
         if (this.tableType != PartitionTableType.PARTITION_TABLE
-            && this.tableType != PartitionTableType.GSI_TABLE) {
+            && this.tableType != PartitionTableType.GSI_TABLE
+            && this.tableType != PartitionTableType.COLUMNAR_TABLE) {
             return 0;
         } else {
             return this.partitionBy.getAllPartLevelCount();
@@ -652,6 +677,7 @@ public class PartitionInfo {
         this.status = status;
     }
 
+    //PartitionInfo.copy() won't copy PartitionByDefinitionBase.router
     public PartitionInfo copy() {
         PartitionInfo newPartInfo = new PartitionInfo();
         newPartInfo.setTableSchema(this.tableSchema);
@@ -730,7 +756,8 @@ public class PartitionInfo {
     public List<List<String>> getAllLevelActualPartCols() {
         PartitionTableType tableType = this.tableType;
         List<List<String>> result = new ArrayList<>();
-        if (tableType != PartitionTableType.PARTITION_TABLE && tableType != PartitionTableType.GSI_TABLE) {
+        if (tableType != PartitionTableType.PARTITION_TABLE && tableType != PartitionTableType.GSI_TABLE
+            && tableType != PartitionTableType.COLUMNAR_TABLE) {
             result.add(Lists.newArrayList());
             result.add(Lists.newArrayList());
             return result;
@@ -742,7 +769,8 @@ public class PartitionInfo {
     public List<List<String>> getAllLevelFullPartCols() {
         PartitionTableType tableType = this.tableType;
         List<List<String>> result = new ArrayList<>();
-        if (tableType != PartitionTableType.PARTITION_TABLE && tableType != PartitionTableType.GSI_TABLE) {
+        if (tableType != PartitionTableType.PARTITION_TABLE && tableType != PartitionTableType.GSI_TABLE
+            && tableType != PartitionTableType.COLUMNAR_TABLE) {
             result.add(Lists.newArrayList());
             result.add(Lists.newArrayList());
             return result;
@@ -995,6 +1023,9 @@ public class PartitionInfo {
         sb.append("tableVersion:");
         sb.append(tableVersion);
         sb.append(",");
+        sb.append("locality:");
+        sb.append(this.getLocality());
+        sb.append(",");
         sb.append(showCreateTablePartitionDefInfo(true));
         for (PartitionSpec partitionSpec : partitionBy.getPartitions()) {
             sb.append(partitionSpec.getDigest());
@@ -1007,7 +1038,7 @@ public class PartitionInfo {
 
     public boolean canPerformPruning(List<String> actualUsedCols, PartKeyLevel level) {
         if (level == PartKeyLevel.PARTITION_KEY && (this.tableType == PartitionTableType.PARTITION_TABLE
-            || this.tableType == PartitionTableType.GSI_TABLE)) {
+            || this.tableType == PartitionTableType.GSI_TABLE || this.tableType == PartitionTableType.COLUMNAR_TABLE)) {
             return this.partitionBy.canPerformPruning(actualUsedCols);
         } else {
             return false;

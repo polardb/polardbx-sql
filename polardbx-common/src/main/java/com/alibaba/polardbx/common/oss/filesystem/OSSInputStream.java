@@ -49,6 +49,7 @@ public class OSSInputStream extends FSInputStream {
     private long contentLength;
     private long position;
     private long partRemaining;
+    private long latestPartSize;
     private byte[] buffer;
     private int maxReadAheadPartNumber;
     private long expectNextPos;
@@ -109,7 +110,7 @@ public class OSSInputStream extends FSInputStream {
         }
 
         boolean isRandomIO = true;
-        if (pos == this.expectNextPos) {
+        if (pos == this.expectNextPos && partSize == latestPartSize) {
             isRandomIO = false;
         } else {
             //new seek, remove cache buffers if its byteStart is not equal to pos
@@ -182,6 +183,7 @@ public class OSSInputStream extends FSInputStream {
         }
         position = pos;
         partRemaining = partSize;
+        latestPartSize = partSize;
     }
 
     /**

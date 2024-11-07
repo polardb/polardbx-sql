@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DateType;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
@@ -29,20 +30,18 @@ import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static com.alibaba.polardbx.common.utils.Assert.assertTrue;
 
 public class DateBlockTest extends BaseBlockTest {
     private final static Random R = new Random();
-    private final static int TEST_SIZE = 1 << 20;
+    private final static int TEST_SIZE = 1 << 10;
     private final static int TEST_SCALE = 4;
 
     @Test
     public void testDate() {
-
+        ExecutionContext context = new ExecutionContext();
         final DateType dataType = new DateType(TEST_SCALE);
-        DateBlockBuilder dateBlockBuilder = new DateBlockBuilder(TEST_SIZE, dataType, new ExecutionContext());
+        DateBlockBuilder dateBlockBuilder = new DateBlockBuilder(TEST_SIZE, dataType, context);
 
         // write
         List<String> values = IntStream.range(0, TEST_SIZE)
@@ -69,9 +68,78 @@ public class DateBlockTest extends BaseBlockTest {
         IntStream.range(0, TEST_SIZE)
             .forEach(
                 i -> {
-                    boolean isEqual = block.equals(i, block1, i);
-                    assertTrue(isEqual);
+                    Assert.assertTrue(block.equals(i, block1, i));
+                    assertTrue(block.equals(i, dateBlockBuilder, i));
                 }
             );
+
+        DateBlock dateBlock = (DateBlock) block;
+        DateBlockBuilder builder1 = new DateBlockBuilder(TEST_SIZE / 2, dataType, context);
+        for (int i = 0; i < TEST_SIZE; i++) {
+            int r = i % 4;
+            switch (r) {
+            case 0:
+                dateBlock.writePositionTo(i, builder1);
+                break;
+            case 1:
+                if (dateBlock.isNull(i)) {
+                    builder1.appendNull();
+                } else {
+                    builder1.writeDate(dateBlock.getDate(i));
+                }
+                break;
+            case 2:
+                if (dateBlock.isNull(i)) {
+                    builder1.appendNull();
+                } else {
+                    builder1.writeDatetimeRawLong((Long) dateBlock.getObjectForCmp(i));
+                }
+                break;
+            case 3:
+                builder1.writeObject(dateBlock.getObject(i));
+                break;
+            }
+        }
+        DateBlock newBlock = (DateBlock) builder1.build();
+        for (int i = 0; i < TEST_SIZE; i++) {
+            Assert.assertEquals(dateBlock.hashCode(i), newBlock.hashCode(i));
+            Assert.assertEquals(dateBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
+            if (dateBlock.isNull(i)) {
+                Assert.assertTrue(newBlock.isNull(i));
+                continue;
+            }
+            Assert.assertEquals(dateBlock.getDate(i), newBlock.getDate(i));
+            Assert.assertEquals(dateBlock.getDate(i), builder1.getDate(i));
+            Assert.assertEquals(dateBlock.getObjectForCmp(i), builder1.getPackedLong(i));
+            Assert.assertEquals(dateBlock.getObject(i), newBlock.getObject(i));
+            Assert.assertEquals(dateBlock.getLong(i), newBlock.getLong(i));
+        }
+
+        BlockBuilder builder = builder1.newBlockBuilder();
+        Assert.assertTrue(builder instanceof DateBlockBuilder);
+
+        DateBlock newBlock2 = DateBlock.from(dateBlock, TEST_SIZE, null, false);
+        for (int i = 0; i < TEST_SIZE; i++) {
+            if (dateBlock.isNull(i)) {
+                Assert.assertTrue(newBlock2.isNull(i));
+                continue;
+            }
+            Assert.assertEquals(dateBlock.getDate(i), newBlock2.getDate(i));
+        }
+
+        int[] sel = new int[TEST_SIZE / 2];
+        for (int i = 0; i < sel.length; i++) {
+            sel[i] = i * 2;
+        }
+        DateBlock newBlock3 = DateBlock.from(dateBlock, TEST_SIZE / 2, sel, true);
+        for (int i = 0; i < TEST_SIZE / 2; i++) {
+            int j = sel[i];
+            if (dateBlock.isNull(j)) {
+                Assert.assertTrue(newBlock3.isNull(i));
+                continue;
+            }
+            Assert.assertEquals(dateBlock.getDate(j), newBlock3.getDate(i));
+        }
+
     }
 }

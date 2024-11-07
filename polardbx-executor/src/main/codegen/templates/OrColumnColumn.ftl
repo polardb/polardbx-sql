@@ -44,8 +44,7 @@ import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Var
                 Variable,
             </#if>
         </#list>
-        },
-    priority = ExpressionPriority.SPECIAL)
+})
 public class ${className} extends AbstractVectorizedExpression {
     public ${className}(
         int outputIndex,
@@ -73,30 +72,30 @@ public class ${className} extends AbstractVectorizedExpression {
 
         </#list>
 
-	long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
-	boolean[] outputNulls = outputVectorSlot.nulls();
+        long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+        boolean[] outputNulls = outputVectorSlot.nulls();
 
-	boolean outputVectorHasNull = false;
-	if (isSelectionInUse) {
-	for (int i = 0; i < batchSize; i++) {
-	int j = sel[i];
+        boolean outputVectorHasNull = false;
+        if (isSelectionInUse) {
+            for (int i = 0; i < batchSize; i++) {
+                int j = sel[i];
 
-    <#list 1..(operator.operandCount) as c>
-                boolean null${c} = !input${c}HasNull ? false : nulls${c}[j];
+                <#list 1..(operator.operandCount) as c>
+                    boolean null${c} = !input${c}HasNull ? false : nulls${c}[j];
                 </#list>
 
                 <#list 1..(operator.operandCount) as c>
-                boolean b${c} = (array${c}[j] != 0);
+                    boolean b${c} = (array${c}[j] != 0);
                 </#list>
 
                 boolean hasNull = null1;
                 <#list 2..(operator.operandCount) as c>
-                hasNull |= null${c};
+                    hasNull |= null${c};
                 </#list>
 
                 boolean anyTrue = b1 && !null1;
                 <#list 2..(operator.operandCount) as c>
-                anyTrue |= (b${c} && !null${c});
+                    anyTrue |= (b${c} && !null${c});
                 </#list>
 
                 outputNulls[j] = !anyTrue && hasNull;

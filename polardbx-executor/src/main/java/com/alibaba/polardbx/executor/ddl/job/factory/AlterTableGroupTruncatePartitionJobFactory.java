@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupTruncatePartitionPreparedData;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
@@ -54,13 +56,16 @@ public class AlterTableGroupTruncatePartitionJobFactory extends DdlJobFactory {
     protected DDL ddl;
     protected AlterTableGroupTruncatePartitionPreparedData preparedData;
     protected ExecutionContext executionContext;
+    protected final Long versionId;
 
     public AlterTableGroupTruncatePartitionJobFactory(DDL ddl,
                                                       AlterTableGroupTruncatePartitionPreparedData preparedData,
-                                                      ExecutionContext executionContext) {
+                                                      ExecutionContext executionContext,
+                                                      Long versionId) {
         this.ddl = ddl;
         this.preparedData = preparedData;
         this.executionContext = executionContext;
+        this.versionId = versionId;
     }
 
     @Override
@@ -119,8 +124,13 @@ public class AlterTableGroupTruncatePartitionJobFactory extends DdlJobFactory {
         tableVersions.put(tableName, tableVersion);
         ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, tableVersions);
 
-        DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
+        DdlTask phyDdlTask = new EmptyTask(schemaName);
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(tableName);
+        if (tableMeta != null && !tableMeta.isColumnar()) {
+            phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
+        }
+        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, versionId);
 
         subTasks.addSequentialTasks(Lists.newArrayList(
             validateTableVersionTask,

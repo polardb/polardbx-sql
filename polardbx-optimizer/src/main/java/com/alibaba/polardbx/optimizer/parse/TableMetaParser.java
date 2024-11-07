@@ -202,7 +202,8 @@ public class TableMetaParser {
                         null,
                         null,
                         false,
-                        true), true, true);
+                        true,
+                        null), true, true);
             }
         }
 

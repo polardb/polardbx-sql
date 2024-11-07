@@ -35,28 +35,31 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
     private List<String> logicalTables;
 
     private Long connId;
+    private Boolean forceSyncFailed;
 
     public TablesMetaChangeSyncAction() {
 
     }
 
-    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables) {
+    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Boolean forceSyncFailed) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
         this.connId = -1L;
+        this.forceSyncFailed = forceSyncFailed;
     }
 
     @JSONCreator
-    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Long connId) {
+    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Long connId, Boolean forceSyncFailed) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
         this.connId = connId;
+        this.forceSyncFailed = forceSyncFailed;
     }
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        oldSchemaManager.toNewVersionInTrx(logicalTables, connId, true);
+        oldSchemaManager.toNewVersionInTrx(logicalTables, connId, true, forceSyncFailed);
         return null;
     }
 
@@ -82,5 +85,13 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
 
     public void setConnId(Long connId) {
         this.connId = connId;
+    }
+
+    public Boolean getForceSyncFailed() {
+        return forceSyncFailed;
+    }
+
+    public void setForceSyncFailed(Boolean forceSyncFailed) {
+        this.forceSyncFailed = forceSyncFailed;
     }
 }

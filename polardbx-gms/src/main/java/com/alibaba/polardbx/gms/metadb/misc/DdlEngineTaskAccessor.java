@@ -54,6 +54,9 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
     private static final String SELECT_FULL =
         "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`, `value`, `extra`, `cost`, `root_job_id`";
 
+    private static final String SELECT_COUNT =
+        "select count(1) ";
+
     private static final String SELECT_SIMPLE =
         "select `job_id`, `task_id`, `schema_name`, `name`, `state`, `exception_action`, null as `value`, null as `extra`, `cost`, `root_job_id` ";
 
@@ -70,13 +73,19 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
 
     private static final String WITH_TASK_ID = " and `task_id` = ?";
 
+    private static final String WITH_STATE = " and `state` = ?";
+
     private static final String WITH_ONGOING_TASK = " and `state` <> 'SUCCESS' and `state` <> 'ROLLBACK_SUCCESS' ";
 
     private static final String WITH_TASK_NAME = " and `name` = ?";
 
     private static final String SELECT_BASE = SELECT_FULL + FROM_TABLE;
 
+    private static final String SELECT_TASK_COUNT = SELECT_COUNT + FROM_TABLE;
+
     private static final String SELECT_BY_JOB_ID = SELECT_BASE + WHERE_JOB_ID;
+
+    private static final String SELECT_SUCCESS_TASK_COUNT_BY_JOB_ID = SELECT_TASK_COUNT + WHERE_JOB_ID + WITH_STATE;
 
     private static final String SELECT_BY_JOB_ID_TASK_ID = SELECT_BASE + WHERE_JOB_ID + WITH_TASK_ID;
 
@@ -84,6 +93,9 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
         SELECT_BASE + WHERE_SCHEMA_NAME + WITH_ONGOING_TASK + WITH_TASK_NAME;
 
     private static final String SELECT_BY_JOB_ID_TASK_NAME = SELECT_BASE + WHERE_JOB_ID + WITH_TASK_NAME;
+
+    private static final String SELECT_BY_JOB_ID_TASK_NAME_FOR_UPDATE =
+        SELECT_BASE + WHERE_JOB_ID + WITH_TASK_NAME + " FOR UPDATE";
 
     private static final String SELECT_TASK_SIMPLE_INFO_BY_ROOT_JOB_ID =
         SELECT_SIMPLE + FROM_TABLE + " " + WHERE_ROOT_JOB_ID;
@@ -122,6 +134,9 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
     private static final String RESET_PHY_OBJECT_DONE = UPDATE_BASE + "`extra` = ?" + WHERE_JOB_ID + WITH_TASK_ID;
 
     private static final String UPDATE_EXTRA_FOR_CREATE_DATABASE_AS_LIKE =
+        UPDATE_BASE + "`extra` = ?" + WHERE_JOB_ID + WITH_TASK_ID;
+
+    private static final String UPDATE_EXTRA_INFO_BY_JOB_ID_AND_TASK_ID =
         UPDATE_BASE + "`extra` = ?" + WHERE_JOB_ID + WITH_TASK_ID;
 
     private static final String DELETE_BASE = "delete" + FROM_TABLE;
@@ -180,6 +195,25 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
         }
     }
 
+    public Integer querySuccessTaskCount(long jobId, String state) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, state);
+
+            List<Map<String, Object>> successCount =
+                MetaDbUtil.executeCount(SELECT_SUCCESS_TASK_COUNT_BY_JOB_ID, params, connection);
+
+            if (!successCount.isEmpty()) {
+                return Integer.parseInt(
+                    successCount.get(0).values().stream().collect(Collectors.toList()).get(0).toString());
+            }
+            return null;
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
+        }
+    }
+
     public DdlEngineTaskRecord query(long jobId, long taskId) {
         try {
             final Map<Integer, ParameterContext> params = new HashMap<>();
@@ -222,6 +256,21 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
             List<DdlEngineTaskRecord> records =
                 MetaDbUtil.query(SELECT_ONGOING_TASK, params, DdlEngineTaskRecord.class, connection);
             return CollectionUtils.isNotEmpty(records);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
+        }
+    }
+
+    public List<DdlEngineTaskRecord> queryTasksForUpdate(long jobId, String name) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setLong, jobId);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, name);
+
+            List<DdlEngineTaskRecord> records =
+                MetaDbUtil.query(SELECT_BY_JOB_ID_TASK_NAME_FOR_UPDATE, params, DdlEngineTaskRecord.class, connection);
+
+            return records;
         } catch (Exception e) {
             throw logAndThrow("Failed to query from " + DDL_ENGINE_TASK_TABLE, "query from", e);
         }
@@ -336,6 +385,24 @@ public class DdlEngineTaskAccessor extends AbstractAccessor {
             throw logAndThrow(
                 "Failed to update " + DDL_ENGINE_TASK_TABLE + " for job " + jobId + " and task " + taskId + " with "
                     + (isReset ? "resetting" : "appending"), "update done", e);
+        }
+    }
+
+    public int updateTaskExtraInfo(long jobId, long taskId, String extraInfo) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(3);
+            int i = 0;
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setString, extraInfo);
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setLong, jobId);
+            MetaDbUtil.setParameter(++i, params, ParameterMethod.setLong, taskId);
+            return MetaDbUtil.update(UPDATE_EXTRA_INFO_BY_JOB_ID_AND_TASK_ID, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow(
+                "Failed to update " + DDL_ENGINE_TASK_TABLE + " for job " + jobId + " and task " + taskId
+                    + " with updating",
+                "update done",
+                e
+            );
         }
     }
 

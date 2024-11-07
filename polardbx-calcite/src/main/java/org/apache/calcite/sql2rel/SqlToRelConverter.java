@@ -88,6 +88,7 @@ import org.apache.calcite.rel.ddl.AlterRule;
 import org.apache.calcite.rel.ddl.AlterStoragePool;
 import org.apache.calcite.rel.ddl.AlterSystemSetConfig;
 import org.apache.calcite.rel.ddl.AlterTable;
+import org.apache.calcite.rel.ddl.AlterTableArchivePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupAddPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupAddTable;
 import org.apache.calcite.rel.ddl.AlterTableGroupDropPartition;
@@ -95,6 +96,7 @@ import org.apache.calcite.rel.ddl.AlterTableGroupExtractPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMergePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupModifyPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
+import org.apache.calcite.rel.ddl.AlterTableGroupOptimizePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupReorgPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSetLocality;
@@ -229,6 +231,7 @@ import org.apache.calcite.sql.SqlAlterSystemReloadStorage;
 import org.apache.calcite.sql.SqlAlterSystemSetConfig;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
+import org.apache.calcite.sql.SqlAlterTableArchivePartition;
 import org.apache.calcite.sql.SqlAlterTableDropPartition;
 import org.apache.calcite.sql.SqlAlterTableExtractPartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
@@ -245,6 +248,7 @@ import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableModifySubPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
+import org.apache.calcite.sql.SqlAlterTableOptimizePartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
@@ -3179,7 +3183,28 @@ public class SqlToRelConverter {
             final RelNode inputRel = bb.root;
 
             // Project the expressions required by agg and having.
-            bb.setRoot(RelOptUtil.createProject(inputRel, preExprs, true).setHints(inputRel.getHints()), false);
+            RelNode rel = RelOptUtil.createProject(inputRel, preExprs, true).setHints(inputRel.getHints());
+            CorrelationUse correlationUse = null;
+            if (rel instanceof LogicalProject) {
+                Map<Integer, Integer> exprIndex = Maps.newHashMap();
+                correlationUse = getCorrelationUse(bb, rel, exprIndex, firstValueForSubquery, firstValueTarget);
+                if (correlationUse != null) {
+                    // update correlation id rowtype
+                    RelDataType newType = ((Project) rel).getInput().getRowType();
+                    RelNode newrel =
+                        RexUtil.replaceRexFieldAccess(correlationUse.r, exprIndex, correlationUse.id, newType);
+                    correlationUse = new CorrelationUse(correlationUse.id, correlationUse.requiredColumns, newrel);
+                }
+            }
+
+            if (correlationUse == null) {
+                bb.setRoot(rel, false);
+            } else {
+                LogicalProject logicalProject = (LogicalProject) correlationUse.r;
+                bb.setRoot(
+                    LogicalProject.create(logicalProject.getInput(), logicalProject.getProjects(), rel.getRowType(),
+                        ImmutableSet.<CorrelationId>of(correlationUse.id)), false);
+            }
             bb.mapRootRelToFieldProjection.put(bb.root, r.groupExprProjection);
 
             // REVIEW jvs 31-Oct-2007: doesn't the declaration of
@@ -3334,7 +3359,7 @@ public class SqlToRelConverter {
             }
             if (isNotNullOperands.size() > 0) {
                 relNode = LogicalFilter.create(
-                    relNode,  RexUtil.composeConjunction(rexBuilder, isNotNullOperands, true));
+                    relNode, RexUtil.composeConjunction(rexBuilder, isNotNullOperands, true));
             }
         }
         return LogicalAggregate.create(relNode, groupSet, groupSets, aggregateCalls);
@@ -3754,7 +3779,8 @@ public class SqlToRelConverter {
             || (alterSpecItem instanceof SqlAlterTableDropPartition)
             || (alterSpecItem instanceof SqlAlterTableModifyPartitionValues)
             || (alterSpecItem instanceof SqlAlterTableTruncatePartition)
-            || (alterSpecItem instanceof SqlAlterTableReorgPartition);
+            || (alterSpecItem instanceof SqlAlterTableReorgPartition)
+            || (alterSpecItem instanceof SqlAlterTableOptimizePartition);
 
         if (!changePartition) {
             query = checkAndRewriteGsiName(query);
@@ -3778,7 +3804,7 @@ public class SqlToRelConverter {
                         || o instanceof SqlAlterTableExtractPartition || o instanceof SqlAlterTableMergePartition
                         || o instanceof SqlAlterTableMovePartition || o instanceof SqlAlterTableAddPartition
                         || o instanceof SqlAlterTableDropPartition || o instanceof SqlAlterTableModifyPartitionValues
-                        || o instanceof SqlAlterTableTruncatePartition)
+                        || o instanceof SqlAlterTableTruncatePartition || o instanceof SqlAlterTableOptimizePartition)
                 .findFirst();
             if (mergeSplitItem.isPresent()) {
                 throw new RuntimeException(
@@ -3795,6 +3821,8 @@ public class SqlToRelConverter {
             return AlterTablePartitionCount.create(getCluster(), query, query.getOperandList().get(0));
         } else if (query instanceof SqlAlterTableRemovePartitioning) {
             return AlterTableRemovePartitioning.create(getCluster(), query, query.getOperandList().get(0));
+        } else if (query instanceof SqlAlterTableArchivePartition) {
+            return AlterTableArchivePartition.create(getCluster(), query, query.getOperandList().get(0));
         }
 
         return AlterTable.create(getCluster(), query, query.getOperandList().get(0), new HashMap<>());
@@ -3953,6 +3981,9 @@ public class SqlToRelConverter {
                 targetRowType, tableGroupName);
         } else if (item instanceof SqlAlterTableTruncatePartition) {
             return AlterTableGroupTruncatePartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
+                query, targetRowType, tableGroupName);
+        } else if (item instanceof SqlAlterTableOptimizePartition) {
+            return AlterTableGroupOptimizePartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
                 query, targetRowType, tableGroupName);
         } else if (item instanceof SqlAlterTableReorgPartition) {
             return AlterTableGroupReorgPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
@@ -4701,6 +4732,8 @@ public class SqlToRelConverter {
 
             } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
 
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableOptimizePartition) {
+
             } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableModifyPartitionValues) {
                 SqlAlterTableModifyPartitionValues modifyPartition =
                     (SqlAlterTableModifyPartitionValues) sqlAlterSpecifications.get(0);
@@ -5410,8 +5443,14 @@ public class SqlToRelConverter {
             ImmutableList.of(), ImmutableList.of());
     }
 
+    protected void checkSubqueryInSetClause(SqlUpdate call) {
+
+    }
+
     protected RelNode convertUpdate(SqlUpdate call) {
         interceptDMLAllTableSql(call);
+
+        checkSubqueryInSetClause(call);
 
         // Source table info
         // Map column to table it belongs to

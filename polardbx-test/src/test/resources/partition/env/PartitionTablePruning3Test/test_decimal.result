@@ -185,24 +185,16 @@ explain select * from rng_decimal_2400 where c1 between '16777215' and '42949672
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="rng_decimal_2400[p7,p8,p9]", shardCount=3, sql="SELECT `c1` FROM `rng_decimal_2400` AS `rng_decimal_2400` WHERE (`c1` BETWEEN ? AND ?)")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: cdf3b018
 ## p10,pm
 explain select * from rng_decimal_2400 where c1 between '123456789012345678809999' and '123456789012345679909999';
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="rng_decimal_2400[p10,pm]", shardCount=2, sql="SELECT `c1` FROM `rng_decimal_2400` AS `rng_decimal_2400` WHERE (`c1` BETWEEN ? AND ?)")
-HitCache:true
-Source:PLAN_CACHE
-TemplateId: cdf3b018
 ## pm
 explain select * from rng_decimal_2400 where c1 between '123456789012345678909999' and '123456789012345678919999';
 Logical ExecutionPlan
-PhyTableOperation(tables="rng_decimal_2400[pm]", sql="SELECT `rng_decimal_2400`.`c1` FROM ? AS `rng_decimal_2400` WHERE (`rng_decimal_2400`.`c1` BETWEEN ? AND ?)", params="123456789012345678919999,123456789012345678909999")
-HitCache:true
-Source:PLAN_CACHE
-TemplateId: cdf3b018
+Gather(concurrent=true)
+  LogicalView(tables="rng_decimal_2400[pm]", sql="SELECT `c1` FROM `rng_decimal_2400` AS `rng_decimal_2400` WHERE (`c1` BETWEEN ? AND ?)")
 ####------- case 7 test rng route with biggest int------
 drop table if exists rng_decimal_6500;
 set sql_mode='';
@@ -231,7 +223,8 @@ Logical ExecutionPlan
 PhyTableOperation(tables="rng_decimal_6500[pmax]", sql="SELECT `rng_decimal_6500`.`c1` FROM ? AS `rng_decimal_6500` WHERE (`rng_decimal_6500`.`c1` = ?)", params="99999999999999999999999999999999999999999999999999999999999999999")
 explain select * from rng_decimal_6500 where c1>'99999999999999999999999999999999999999999999999999999999999999999';
 Logical ExecutionPlan
-PhyTableOperation(tables="rng_decimal_6500[pmax]", sql="SELECT `rng_decimal_6500`.`c1` FROM ? AS `rng_decimal_6500` WHERE (`rng_decimal_6500`.`c1` > ?)", params="99999999999999999999999999999999999999999999999999999999999999999")
+Gather(concurrent=true)
+  LogicalView(tables="rng_decimal_6500[pmax]", sql="SELECT `c1` FROM `rng_decimal_6500` AS `rng_decimal_6500` WHERE (`c1` > ?)")
 select part_route('','key_decimal_6500',-1234567890123456789012340);
 part_route('', 'key_decimal_6500', -1234567890123456789012340)
 p1
@@ -258,29 +251,18 @@ explain select * from list_decimal_2400 where c1 between '16777215' and '4294967
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="list_decimal_2400[p2,p3,pm]", shardCount=3, sql="SELECT `c1` FROM `list_decimal_2400` AS `list_decimal_2400` WHERE (`c1` BETWEEN ? AND ?)")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 5747dcef
 ## p10,pm
 explain select * from list_decimal_2400 where c1 between '123456789012345678809999' and '123456789012345679909999';
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="list_decimal_2400[p5,pm]", shardCount=2, sql="SELECT `c1` FROM `list_decimal_2400` AS `list_decimal_2400` WHERE (`c1` BETWEEN ? AND ?)")
-HitCache:true
-Source:PLAN_CACHE
-TemplateId: 5747dcef
 ## zero
 explain select * from list_decimal_2400 where c1 >= '123456789012345688909999' and c1 <= '123456789012345678919999';
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="list_decimal_2400[]", shardCount=0, sql="SELECT `c1` FROM `list_decimal_2400` AS `list_decimal_2400` WHERE ((`c1` >= ?) AND (`c1` <= ?))")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 3070605e
 ## pm
 explain select * from list_decimal_2400 where c1 <= '123456789012345688909999' and c1 >= '123456789012345678919999';
 Logical ExecutionPlan
-PhyTableOperation(tables="list_decimal_2400[pm]", sql="SELECT `list_decimal_2400`.`c1` FROM ? AS `list_decimal_2400` WHERE ((`list_decimal_2400`.`c1` <= ?) AND (`list_decimal_2400`.`c1` >= ?))", params="123456789012345678919999,123456789012345688909999")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 8f1d8d1a
+Gather(concurrent=true)
+  LogicalView(tables="list_decimal_2400[pm]", sql="SELECT `c1` FROM `list_decimal_2400` AS `list_decimal_2400` WHERE ((`c1` <= ?) AND (`c1` >= ?))")

@@ -1,0 +1,14 @@
+## DISABLE_FAST_SQL_PARSER
+create table t1(a int, b bigint, c int, index i1(b)) partition by key(a) partitions 2;
+create table t2(a int, b bigint, c int, index i1(a)) partition by key(a) partitions 2;
+create table t3(a int, b bigint, c int, index i1(a), primary key(a)) partition by key(a) partitions 2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+
+alter table t1 remove partitioning with tablegroup=tgi1 implicit, index i1 with tablegroup=tgi2 implicit;
+alter table t2 remove partitioning with tablegroup=tgi1 implicit, index i1 with tablegroup=tgi3 implicit;
+alter table t3 remove partitioning with tablegroup=tgi3 implicit, index i1 with tablegroup=tgi3 implicit;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;

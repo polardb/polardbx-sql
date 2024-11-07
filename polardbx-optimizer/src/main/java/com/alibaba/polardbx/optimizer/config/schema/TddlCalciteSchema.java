@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.config.schema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -175,7 +176,14 @@ public class TddlCalciteSchema extends CalciteSchema {
         @Override
         public RelDataType apply(RelDataTypeFactory factory) {
             SqlNode ast = new FastsqlParser().parse(viewDefinition).get(0);
-            SqlConverter converter = SqlConverter.getInstance(new ExecutionContext());
+            SqlConverter converter;
+            //if schema is a logical table, e.g. mysql.user, wo don't need to modify the schemaName
+            //however if schema is a physical table, .e.g db.tb1, we set the newest schemaName to ExecutionContext
+            if (DbInfoManager.getInstance().getDbList().contains(this.schemaName)) {
+                converter = SqlConverter.getInstance(this.schemaName, new ExecutionContext(this.schemaName));
+            } else {
+                converter = SqlConverter.getInstance(new ExecutionContext());
+            }
             SqlNode validatedNode = converter.validate(ast);
             RelDataType rowType = converter.toRel(validatedNode).getRowType();
 

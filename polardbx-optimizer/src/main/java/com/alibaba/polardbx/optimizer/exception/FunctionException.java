@@ -23,16 +23,19 @@ public class FunctionException extends TddlRuntimeException {
 
     private static final long serialVersionUID = 7119345874409878404L;
 
-    public FunctionException(String... params){
+    public FunctionException(String... params) {
         super(ErrorCode.ERR_FUNCTION, params);
     }
 
-    public FunctionException(Throwable cause, String... params){
+    public FunctionException(Throwable cause, String... params) {
         super(ErrorCode.ERR_FUNCTION, cause, params);
     }
 
-    public FunctionException(Throwable cause){
-        super(ErrorCode.ERR_FUNCTION, cause, new String[] { cause.getMessage() });
+    public FunctionException(Throwable cause) {
+        super(ErrorCode.ERR_FUNCTION, cause, new String[] {cause.getMessage()});
     }
 
+    public static FunctionException invalidParamCount(String functionName) {
+        return new FunctionException(String.format("Incorrect parameter count in the call to '%s'", functionName));
+    }
 }

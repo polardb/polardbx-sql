@@ -1039,4 +1039,35 @@ public class InsertSelectTest extends AutoCrudBasedLockTestCase {
         sql = "select * from " + baseTwoTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
+
+    @Test
+    public void insertWithSelectAggTest() throws Exception {
+        String sql = "insert into " + baseTwoTableName
+            + " (varchar_test, integer_test, bigint_test) select varchar_test, min(integer_test), max(integer_test) from "
+            + baseOneTableName
+            + " group by varchar_test;";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
+
+        sql = "select " + selectColumn + " from " + baseTwoTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void insertWithSelectFuncTest() throws Exception {
+        String sql = "insert into " + baseTwoTableName
+            + " (varchar_test) select lower(uuid()) from " + baseOneTableName;
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
+
+        sql = "select varchar_test from " + baseTwoTableName;
+        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        String uuid = "";
+        while (rs.next()) {
+            String uuidTemp = rs.getString(1);
+            Assert.assertNotEquals(uuidTemp, uuid);
+            uuid = uuidTemp;
+        }
+    }
+
 }

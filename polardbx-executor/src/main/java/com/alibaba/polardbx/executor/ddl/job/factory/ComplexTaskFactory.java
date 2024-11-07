@@ -24,13 +24,15 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.AlterTableGroupBackFillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTablePhyDdlWithCheckTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseCleanupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseSwitchDataSourcesTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.UpdateTablesVersionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcColumnarTableGroupDdlMark;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMoveDatabaseDdlMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.WaitColumnarTableAlterPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyLogTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterComplexTaskUpdateJobStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableChangeTopologyRefreshMetaTask;
@@ -41,7 +43,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableSetTableG
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.CleanupEmptyTableGroupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
@@ -49,6 +50,8 @@ import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableDropPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabasePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.sql.SqlKind;
@@ -61,6 +64,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
 
 public class ComplexTaskFactory {
     /**
@@ -186,9 +191,12 @@ public class ComplexTaskFactory {
                                                        String tableGroupName,
                                                        String tableName,
                                                        ComplexTaskMetaManager.ComplexTaskType complexTaskType,
+                                                       Long versionId,
                                                        ExecutionContext executionContext) {
 
         List<String> logicalTableNames = new ArrayList<>();
+        final String finalStatus =
+            executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
         // not include GSI tables
         Set<String> primaryLogicalTables = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
@@ -255,7 +263,7 @@ public class ComplexTaskFactory {
         List<BaseDdlTask> synTableGroupTasks = new ArrayList<>();
         if (complexTaskType == ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION) {
             alterTableGroupRefreshTableGroupMetaTask =
-                new AlterTableGroupMovePartitionRefreshMetaTask(schemaName, tableGroupName);
+                new AlterTableGroupMovePartitionRefreshMetaTask(schemaName, tableGroupName, versionId);
             BaseDdlTask synTableGroup =
                 new TableGroupSyncTask(schemaName, tableGroupName);
             synTableGroupTasks.add(synTableGroup);
@@ -270,7 +278,7 @@ public class ComplexTaskFactory {
 
             alterTableGroupRefreshTableGroupMetaTask =
                 new AlterTableSetTableGroupRefreshMetaTask(schemaName, tableGroupName, partitionInfo.getTableGroupId(),
-                    tableName);
+                    tableName, versionId);
             CleanupEmptyTableGroupTask cleanupEmptyTableGroupTask =
                 new CleanupEmptyTableGroupTask(schemaName,
                     sourceTableGroupConfigInfo.getTableGroupRecord().getTg_name());
@@ -283,24 +291,52 @@ public class ComplexTaskFactory {
             synTableGroupTasks.add(synSourceTableGroup);
         } else {
             alterTableGroupRefreshTableGroupMetaTask =
-                new AlterTableGroupRefreshMetaBaseTask(schemaName, tableGroupName);
+                new AlterTableGroupRefreshMetaBaseTask(schemaName, tableGroupName, versionId);
             BaseDdlTask synTableGroup =
                 new TableGroupSyncTask(schemaName, tableGroupName);
             synTableGroupTasks.add(synTableGroup);
         }
 
+        List<String> columnarTables = new ArrayList<>();
+        boolean hasColumnar = hasColumnarTable(tableGroupConfig, columnarTables, executionContext, schemaName);
+
         AlterTableGroupCleanupTask alterTableGroupCleanupTask = new AlterTableGroupCleanupTask(schemaName);
 
         taskList.add(DoingReorgTask);
+
+        if (ComplexTaskMetaManager.ComplexTaskStatus.SOURCE_WRITE_ONLY.name().equalsIgnoreCase(finalStatus)) {
+            taskList
+                .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                    TimeUnit.MILLISECONDS, true));
+            return taskList;
+        }
         taskList
             .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
                 TimeUnit.MILLISECONDS));
         taskList.add(sourceWriteOnlyTask);
+
+        if (ComplexTaskMetaManager.ComplexTaskStatus.SOURCE_DELETE_ONLY.name().equalsIgnoreCase(finalStatus)) {
+            taskList
+                .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
+                    TimeUnit.MILLISECONDS, true));
+            return taskList;
+        }
         taskList
             .add(new TablesSyncTask(schemaName, logicalTableNames, enablePreemptiveMdl, initWait, interval,
                 TimeUnit.MILLISECONDS));
-
         taskList.add(alterTableGroupRefreshTableGroupMetaTask);
+        if (hasColumnar) {
+            // mark after refresh meta
+            CdcColumnarTableGroupDdlMark cdcColumnarTableGroupDdlMark =
+                new CdcColumnarTableGroupDdlMark(tableGroupName, schemaName, columnarTables, versionId);
+            taskList.add(cdcColumnarTableGroupDdlMark);
+            // wait until alter partition success
+            boolean skipTask =
+                executionContext.skipDdlTasks().contains(WaitColumnarTableAlterPartitionTask.class.getSimpleName());
+            WaitColumnarTableAlterPartitionTask waitColumnarTableAlterPartitionTask =
+                new WaitColumnarTableAlterPartitionTask(schemaName, columnarTables, skipTask);
+            taskList.add(waitColumnarTableAlterPartitionTask);
+        }
         taskList.addAll(synTableGroupTasks);
         DdlTask updateTablesVersionTask = new UpdateTablesVersionTask(schemaName, logicalTableNames);
         taskList.add(updateTablesVersionTask);
@@ -385,7 +421,7 @@ public class ComplexTaskFactory {
             alterTableRefreshMetaTask =
                 new AlterTableSetTableGroupRefreshMetaTask(schemaName, targetTableGroupName,
                     partitionInfo.getTableGroupId(),
-                    tableName);
+                    tableName, DEFAULT_DDL_VERSION_ID);
         } else if (complexTaskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE ||
             complexTaskType == ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION ||
             complexTaskType == ComplexTaskMetaManager.ComplexTaskType.SPLIT_PARTITION ||
@@ -626,6 +662,7 @@ public class ComplexTaskFactory {
 
     public static DdlTask CreateDropUselessPhyTableTask(String schemaName, String logicalTableName,
                                                         Map<String, Set<String>> sourceTables,
+                                                        Map<String, Set<String>> targetTables,
                                                         ExecutionContext executionContext) {
 
         PartitionInfo partitionInfo =
@@ -650,7 +687,19 @@ public class ComplexTaskFactory {
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, executionContext);
 
-        return new DropTablePhyDdlTask(schemaName, physicalPlanData);
+        return new DropTablePhyDdlWithCheckTask(schemaName, physicalPlanData, targetTables);
     }
 
+    public static boolean hasColumnarTable(TableGroupConfig tableGroupConfig, List<String> columnarTables,
+                                           ExecutionContext executionContext, String schemaName) {
+        boolean hasColumnar = false;
+        for (String logicalTable : tableGroupConfig.getAllTables()) {
+            TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTable);
+            if (tableMeta.isColumnar()) {
+                hasColumnar = true;
+                columnarTables.add(logicalTable);
+            }
+        }
+        return hasColumnar;
+    }
 }

@@ -499,6 +499,7 @@ public class ChangeSetManager {
         final ChangeSetMeta meta = task.getData().getMeta();
         executionContext = executionContext.copy();
         executionContext.setBackfillId(taskId);
+        executionContext.setTaskId(taskId);
         executionContext.setSchemaName(meta.getSchemaName());
 
         Map<String, Set<String>> sourcePhyTables = new HashMap<>(1);
@@ -741,14 +742,13 @@ public class ChangeSetManager {
             if (targetTableMeta.containsColumn(columnName)) {
                 if (isModify && columnMultiWriteMapping.get(columnName.toLowerCase()) != null) {
                     targetTableColumns.add(columnMultiWriteMapping.get(columnName.toLowerCase()));
-                    DataType dataType = columnMeta.getDataType();
-                    if (DataTypeUtil.isStringType(dataType)) {
-                        notUsingBinaryStringColumns.add(columnName);
-                    }
                 } else {
                     targetTableColumns.add(columnName);
                 }
                 sourceTableColumns.add(columnName);
+                if (DataTypeUtil.isStringType(columnMeta.getDataType())) {
+                    notUsingBinaryStringColumns.add(columnName);
+                }
             }
         }
 

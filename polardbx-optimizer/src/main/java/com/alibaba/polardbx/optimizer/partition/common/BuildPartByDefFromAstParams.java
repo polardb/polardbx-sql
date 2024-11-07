@@ -51,6 +51,8 @@ public class BuildPartByDefFromAstParams {
     protected List<SqlNode> parentPartSpecAstList;
     protected boolean containNextLevelPartSpec;
 
+    protected boolean ttlTemporary = false;
+
     public BuildPartByDefFromAstParams() {
     }
 
@@ -216,5 +218,17 @@ public class BuildPartByDefFromAstParams {
 
     public void setContainNextLevelPartSpec(boolean containNextLevelPartSpec) {
         this.containNextLevelPartSpec = containNextLevelPartSpec;
+    }
+
+    public boolean isTtlTemporary() {
+        return ttlTemporary;
+    }
+
+    public void setTtlTemporary(boolean ttlTemporary) {
+        this.ttlTemporary = ttlTemporary;
+    }
+
+    public void setBuildSubpartBy(boolean buildSubpartBy) {
+        this.buildSubpartBy = buildSubpartBy;
     }
 }

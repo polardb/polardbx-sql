@@ -59,6 +59,25 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
         "`schedule_policy`," +
         "`table_group_name`";
 
+    private static final String COLUMNS_TO_SET =
+        "`table_schema` = ?," +
+            "`table_name` = ?," +
+            "`schedule_name` = ?," +
+            "`schedule_comment` = ?," +
+            "`executor_type` = ?," +
+            "`schedule_context` = ?," +
+            "`executor_contents` = ?," +
+            "`status` = ?," +
+            "`schedule_type` = ?," +
+            "`schedule_expr` = ?," +
+            "`time_zone` = ?," +
+            "`last_fire_time` = ?," +
+            "`next_fire_time` = ?," +
+            "`starts`  = ?," +
+            "`ends` = ?," +
+            "`schedule_policy`  = ?," +
+            "`table_group_name` = ?";
+
     private static final String ALL_VALUES = "(null,null,null,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     private static final String INSERT_TABLE_SCHEDULED_JOBS =
@@ -66,6 +85,9 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
 
     private static final String REPLACE_TABLE_SCHEDULED_JOBS =
         "replace into " + SCHEDULED_JOBS + " (" + ALL_COLUMNS + ") VALUES " + ALL_VALUES;
+
+    private static final String UPDATE_TABLE_SCHEDULED_JOBS_BY_SCHEDULED_ID =
+        "update " + SCHEDULED_JOBS + " SET  " + COLUMNS_TO_SET + " WHERE schedule_id=?";
 
     private static final String GET_TABLE_SCHEDULED_JOBS = "select " + ALL_COLUMNS + " from " + SCHEDULED_JOBS;
 
@@ -123,9 +145,50 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
         }
     }
 
-    public int replace(ScheduledJobsRecord record) {
+    public int updateScheduledJobsRecordByScheduleId(ScheduledJobsRecord record) {
         try {
-            return MetaDbUtil.insert(REPLACE_TABLE_SCHEDULED_JOBS, record.buildParams(), connection);
+
+//                "`table_schema` = ?," +  // varchar,string
+//                "`table_name` = ?," +  // varchar,string
+//                "`schedule_name` = ?," +  // varchar,string
+//                "`schedule_comment` = ?," +  // varchar,string
+//                "`executor_type` = ?," + // varchar,string
+//                "`schedule_context` = ?," + // longtext,string
+//                "`executor_contents` = ?," + // longtext,string
+//                "`status` = ?," + // longtext,string
+//                "`schedule_type` = ?," + // varchar,string
+//                "`schedule_expr` = ?," + // varchar,string
+//                "`time_zone` = ?," + // varchar,string
+//                "`last_fire_time` = ?," + // bigint,long
+//                "`next_fire_time` = ?," + // bigint,long
+//                "`starts`  = ?," + // bigint,long
+//                "`ends` = ?," + // bigint,long
+//                "`schedule_policy`  = ?," + // varchar,string
+//                "`table_group_name` = ?"; // varchar,string
+//                where schedule_id = ？ // bigint,long
+
+            final Map<Integer, ParameterContext> params = new HashMap<>();
+            int paramIndex = 0; // start with 1
+
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getTableSchema());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getTableName());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getScheduleName());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getScheduleComment());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getExecutorType());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getScheduleContext());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getExecutorContents());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getStatus());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getScheduleType());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getScheduleExpr());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getTimeZone());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setLong, record.getLastFireTime());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setLong, record.getNextFireTime());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setLong, record.getStarts());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setLong, record.getEnds());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getSchedulePolicy());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setString, record.getTableGroupName());
+            MetaDbUtil.setParameter(++paramIndex, params, ParameterMethod.setLong, record.getScheduleId());
+            return MetaDbUtil.update(UPDATE_TABLE_SCHEDULED_JOBS_BY_SCHEDULED_ID, params, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to insert into " + SCHEDULED_JOBS, "insert into", e);
         }
@@ -140,7 +203,7 @@ public class ScheduledJobsAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(4, params, ParameterMethod.setString, oldScheduleName);
             return MetaDbUtil.update(RENAME_TABLE_BY_TABLE_NAME, params, connection);
         } catch (Exception e) {
-            throw logAndThrow("Failed to update " + SCHEDULED_JOBS, "rename", e);
+            throw logAndThrow("Failed to update " + SCHEDULED_JOBS, "update scheduled job info by scheduled_id", e);
         }
     }
 

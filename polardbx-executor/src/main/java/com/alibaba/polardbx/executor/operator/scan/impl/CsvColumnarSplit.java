@@ -44,27 +44,29 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 public class CsvColumnarSplit implements ColumnarSplit {
-    private final ExecutionContext executionContext;
-    private final ColumnarManager columnarManager;
-    private final long tso;
-    private final Path csvFile;
+    protected final ExecutionContext executionContext;
+    protected final ColumnarManager columnarManager;
+    protected final long tso;
+    protected final Long position;
+    protected final Path csvFile;
     private final int fileId;
     private final int sequenceId;
-    private final ScanPreProcessor preProcessor;
-    private final OSSColumnTransformer columnTransformer;
+    protected final ScanPreProcessor preProcessor;
+    protected final OSSColumnTransformer columnTransformer;
 
-    private final List<Integer> inputRefsForFilter;
-    private final List<Integer> inputRefsForProject;
+    protected final List<Integer> inputRefsForFilter;
+    protected final List<Integer> inputRefsForProject;
 
-    private CsvScanWork csvScanWork;
-    private boolean isScanWorkInvoked = false;
-    private LazyEvaluator<Chunk, BitSet> lazyEvaluator;
+    protected CsvScanWork csvScanWork;
+    protected boolean isScanWorkInvoked = false;
+    protected LazyEvaluator<Chunk, BitSet> lazyEvaluator;
 
-    private int partNum;
+    protected int partNum;
 
-    private int nodePartCount;
+    protected int nodePartCount;
 
     public CsvColumnarSplit(ExecutionContext executionContext, ColumnarManager columnarManager, long tso,
+                            Long position,
                             Path csvFile, int fileId, int sequenceId, List<Integer> inputRefsForFilter,
                             List<Integer> inputRefsForProject, ScanPreProcessor preProcessor,
                             LazyEvaluator<Chunk, BitSet> lazyEvaluator,
@@ -73,6 +75,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         this.executionContext = executionContext;
         this.columnarManager = columnarManager;
         this.tso = tso;
+        this.position = position;
         this.csvFile = csvFile;
         this.fileId = fileId;
         this.sequenceId = sequenceId;
@@ -117,7 +120,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         boolean enableCompatible = executionContext.getParamManager()
             .getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE);
         RuntimeMetrics metrics = RuntimeMetrics.create(scanWorkId);
-        csvScanWork = new CsvScanWork(columnarManager, tso, csvFile, inputRefsForFilter, inputRefsForProject,
+        csvScanWork = new CsvScanWork(columnarManager, tso, position, csvFile, inputRefsForFilter, inputRefsForProject,
             executionContext, scanWorkId, metrics, enableMetrics, lazyEvaluator, preProcessor.getDeletion(csvFile),
             partNum, nodePartCount, useSelection, enableCompatible, columnTransformer);
         isScanWorkInvoked = true;
@@ -129,7 +132,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         return ColumnarSplitPriority.CSV_SPLIT_PRIORITY;
     }
 
-    private static String generateScanWorkId(String traceId, String file, int workIndex) {
+    protected static String generateScanWorkId(String traceId, String file, int workIndex) {
         return "ScanWork$"
             + traceId + '$'
             + file + '$'
@@ -147,6 +150,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
         private String logicalSchema;
         private String logicalTable;
         private Long tso;
+        private Long position;
         private Path csvFile;
         private int fileId;
         private int sequenceId;
@@ -166,7 +170,7 @@ public class CsvColumnarSplit implements ColumnarSplit {
 
         @Override
         public ColumnarSplit build() {
-            return new CsvColumnarSplit(executionContext, columnarManager, tso, csvFile, fileId, sequenceId,
+            return new CsvColumnarSplit(executionContext, columnarManager, tso, position, csvFile, fileId, sequenceId,
                 inputRefsForFilter,
                 inputRefsForProject,
                 preProcessor, lazyEvaluator,
@@ -195,6 +199,12 @@ public class CsvColumnarSplit implements ColumnarSplit {
         @Override
         public ColumnarSplitBuilder tso(Long tso) {
             this.tso = tso;
+            return this;
+        }
+
+        @Override
+        public ColumnarSplitBuilder position(Long position) {
+            this.position = position;
             return this;
         }
 

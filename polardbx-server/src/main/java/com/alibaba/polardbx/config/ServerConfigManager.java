@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.config;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +27,8 @@ import java.util.Map;
 
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.DefaultSchema;
+import com.alibaba.polardbx.common.ddl.Job;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
@@ -34,10 +39,12 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.ddl.sync.JobRequest;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.matrix.config.MatrixConfigHolder;
+import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -45,6 +52,7 @@ import com.alibaba.polardbx.optimizer.context.DdlContext;
 
 import java.util.List;
 import java.util.Map;
+import com.alibaba.polardbx.server.conn.InnerConnection;
 
 import java.util.List;
 import java.util.Map;
@@ -203,6 +211,88 @@ public class ServerConfigManager implements IServerConfigManager {
             }
         }
         return loadedSchemas;
+    }
+
+    @Override
+    public Object getTransConnection(String schema) throws SQLException {
+        return new InnerConnection(schema);
+    }
+
+    @Override
+    public Object getTransConnection(String schema, Map<String, Object> sessionVariables) throws SQLException {
+        return new InnerConnection(schema, false, sessionVariables);
+    }
+
+    @Override
+    public void closeTransConnection(Object transConn) throws SQLException {
+        ((InnerConnection) transConn).close();
+    }
+
+    @Override
+    public int executeBackgroundDmlByTransConnection(String sql, String schema,
+                                                     InternalTimeZone timeZone,
+                                                     Object transConn) {
+        InnerConnection connection = (InnerConnection) transConn;
+        int arows = 0;
+        Exception ex = null;
+        try (Statement stmt = connection.createStatement()) {
+            arows = stmt.executeUpdate(sql);
+            return arows;
+        } catch (SQLException e) {
+            ex = e;
+            throw new TddlNestableRuntimeException(e);
+        } finally {
+            if (ex == null) {
+                connection.releaseAutoSavepoint();
+            }
+        }
+
+    }
+
+    @Override
+    public List<Map<String, Object>> executeBackgroundQueryByTransConnection(String sql, String schema,
+                                                                             InternalTimeZone timeZone,
+                                                                             Object transConn) {
+        InnerConnection connection = (InnerConnection) transConn;
+        List<Map<String, Object>> result = null;
+        Exception ex = null;
+
+        try (Statement stmt = connection.createStatement()) {
+            ResultSet rs = stmt.executeQuery(sql);
+            result = ExecUtils.resultSetToList(rs);
+            return result;
+        } catch (SQLException e) {
+            ex = e;
+            throw new TddlNestableRuntimeException(e);
+        } finally {
+            if (ex == null) {
+                connection.releaseAutoSavepoint();
+            }
+        }
+    }
+
+    @Override
+    public void transConnectionBegin(Object transConn) throws SQLException {
+        InnerConnection conn = (InnerConnection) transConn;
+        conn.setAutoCommit(false);
+    }
+
+    @Override
+    public void transConnectionCommit(Object transConn) throws SQLException {
+        InnerConnection conn = (InnerConnection) transConn;
+        conn.commit();
+    }
+
+    @Override
+    public void transConnectionRollback(Object transConn) throws SQLException {
+        InnerConnection conn = (InnerConnection) transConn;
+        conn.rollback();
+
+    }
+
+    private void releaseAutoSavepoint(Object transConn) {
+        InnerConnection conn = (InnerConnection) transConn;
+        conn.releaseAutoSavepoint();
     }
 
 }

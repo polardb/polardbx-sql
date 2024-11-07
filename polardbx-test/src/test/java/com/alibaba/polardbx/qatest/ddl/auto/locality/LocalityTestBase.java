@@ -25,12 +25,18 @@ import lombok.Value;
 import org.apache.commons.lang.BooleanUtils;
 import org.junit.Assert;
 import org.junit.Before;
-import org.springframework.util.StringUtils;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -68,13 +74,17 @@ public abstract class LocalityTestBase extends BaseTestCase {
         return queryTableDetails(schema, tableName, tddlConnection);
     }
 
+    public String quote(String str) {
+        return (str != null ? "\"" + str + "\"" : null);
+    }
+
     /**
      * Query the approximate data length of the table
      */
     protected TableDetails queryTableDetails(String schema, String tableName, Connection conn) throws SQLException {
         final String fromClause = " from information_schema.table_detail";
         final String whereClause =
-            " where TABLE_SCHEMA = " + StringUtils.quote(schema) + " and table_name = " + StringUtils.quote(tableName);
+            " where TABLE_SCHEMA = " + quote(schema) + " and table_name = " + quote(tableName);
         final String summarySql = "select table_group_name, sum(data_length), sum(index_length), sum(table_rows) "
             + fromClause + whereClause;
         final String selectColumns =

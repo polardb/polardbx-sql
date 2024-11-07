@@ -42,10 +42,12 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t11_cancel_add_then_rollback() throws SQLException {
+    public void t11_cancel_add_then_rollback_legacy() throws SQLException {
         // Expected: ADD COLUMN can be rolled back regardless of whether the shards are done.
         String columnInfo = "c5 int(11)";
         String sql = String.format(ALTER_TABLE, ADD_COLUMN, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         JobInfo job = executeAsyncDDL(sql, ALTER_PREFIX, false);
         cancelDDL(job);
         checkPhyProcess(job);
@@ -144,10 +146,12 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
     }
 
     @Test
-    public void t32_kill_logical_add_then_rollback() throws SQLException {
+    public void t32_kill_logical_add_then_rollback_legacy() throws SQLException {
         // Expected: ADD COLUMN can be killed, then rolled back (equivalent to PAUSE DDL).
         String columnInfo = "c5 int(11)";
         String sql = String.format(ALTER_TABLE, ADD_COLUMN, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         JobInfo job = executeSeparateDDL(sql, ALTER_PREFIX, false);
         killLogicalProcess(ALTER_PREFIX);
         waitForSeconds(2);
@@ -335,6 +339,8 @@ public class InterruptAlterTableTest extends InterruptDDLByLockTest {
             return;
         }
         String sql = String.format(ALTER_TABLE, operation, columnInfo);
+        String disableHint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        sql = disableHint + sql;
         try {
             injectDDLException(failPointKey, true);
             JobInfo job = executeDDL(sql);

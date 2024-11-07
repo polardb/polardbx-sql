@@ -112,7 +112,7 @@ public class StringBlockBuilder extends AbstractBlockBuilder {
         int beginOffset = position > 0 ? offsets.getInt(position - 1) : 0;
         int endOffset = offsets.getInt(position);
 
-        return ChunkUtil.hashCode(data.elements(), beginOffset, endOffset, true);
+        return ChunkUtil.hashCodeIgnoreCase(data.elements(), beginOffset, endOffset);
     }
 
     int beginOffset(int position) {

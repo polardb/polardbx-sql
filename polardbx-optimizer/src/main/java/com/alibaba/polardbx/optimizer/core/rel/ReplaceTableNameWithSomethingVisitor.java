@@ -101,6 +101,8 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected final ExecutionContext ec;
 
+    protected boolean isExplain = false;
+
     protected ReplaceTableNameWithSomethingVisitor(Map<RexFieldAccess, RexNode> correlateFieldInViewMap,
                                                    String defaultSchemaName, ExecutionContext ec) {
         this.handleIndexHint = false;
@@ -318,6 +320,7 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             } else {
                 throw new UnsupportedOperationException("Unsupported DDL syntax.");
             }
+
             return ddl;
         } else if (kind == SqlKind.RENAME_TABLE || kind == SqlKind.ALTER_TABLE_DISCARD_TABLESPACE
             || kind == SqlKind.ALTER_TABLE_IMPORT_TABLESPACE) {
@@ -494,10 +497,42 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
         return SqlNode.clone(type);
     }
 
+    /**
+     * Builds a dynamic parameter for a correlated subquery.
+     *
+     * @param isExplain whether in explain mode
+     * @param dynamicParam the dynamic parameter object
+     * @param correlateFieldMap the map of correlated fields
+     * @return the constructed SQL node
+     */
+    public static SqlNode buildDynamicParamForCorrelatedSubquery(
+        boolean isExplain,
+        SqlDynamicParam dynamicParam,
+        Map<RexFieldAccess, RexNode> correlateFieldMap
+    ) {
+
+        // If in explain mode, return the symbolic representation of the dynamic parameter value
+        if (isExplain) {
+            if (dynamicParam.getValue() instanceof RexFieldAccess) {
+                return SqlLiteral.createSymbol(dynamicParam.getValue().toString(), SqlParserPos.ZERO);
+            } else {
+                return dynamicParam;
+            }
+        }
+
+        // In non-explain mode, retrieve the corresponding literal from the correlated field map and construct an SQL literal node
+        RexNode fieldValue = correlateFieldMap.get(dynamicParam.getValue());
+        if (fieldValue == null) {
+            throw new IllegalArgumentException(
+                "Corresponding item not found in correlated field map: " + dynamicParam.getValue());
+        }
+        return SqlImplementor.buildSqlLiteral((RexLiteral) fieldValue);
+    }
+
     @Override
     public SqlNode visit(SqlDynamicParam param) {
         if (param.getIndex() == -4 && correlateFieldInViewMap != null) {
-            return SqlImplementor.buildSqlLiteral((RexLiteral) correlateFieldInViewMap.get(param.getValue()));
+            return buildDynamicParamForCorrelatedSubquery(isExplain, param, correlateFieldInViewMap);
         }
 
         if (param.getIndex() == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX && scalarSubqueryExecCtxMap != null) {
@@ -572,6 +607,11 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             sqlJoin.setRight(buildForIdentifier((SqlIdentifier) right));
         }
 
+        SqlNode oldCondition = sqlJoin.getCondition();
+        if (oldCondition instanceof SqlCall) {
+            SqlNode newCondition = visit((SqlCall) oldCondition);
+            sqlJoin.setOperand(5, newCondition);
+        }
         return sqlJoin;
     }
 

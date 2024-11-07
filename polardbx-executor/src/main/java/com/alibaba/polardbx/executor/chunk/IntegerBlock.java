@@ -448,6 +448,12 @@ public class IntegerBlock extends AbstractBlock {
     }
 
     @Override
+    public long getLong(int position) {
+        position = realPositionOf(position);
+        return values[position + arrayOffset];
+    }
+
+    @Override
     public Object getObject(int position) {
         position = realPositionOf(position);
         return isNullInner(position) ? null : getIntInner(position);

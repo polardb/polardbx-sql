@@ -36,6 +36,8 @@ import org.apache.calcite.util.BuiltInMethod;
 
 import java.util.Map;
 
+import static com.alibaba.polardbx.optimizer.utils.OptimizerUtils.getParametersMapForOptimizer;
+
 public class DrdsRelMdMaxRowCount extends RelMdMaxRowCount {
 
     public static final RelMetadataProvider SOURCE =
@@ -64,12 +66,11 @@ public class DrdsRelMdMaxRowCount extends RelMdMaxRowCount {
 
     @Override
     public Double getMaxRowCount(Sort rel, RelMetadataQuery mq) {
-        PlannerContext plannerContext = PlannerContext.getPlannerContext(rel);
         Double rowCount = mq.getMaxRowCount(rel.getInput());
         if (rowCount == null) {
             rowCount = Double.POSITIVE_INFINITY;
         }
-        Map<Integer, ParameterContext> params = plannerContext.getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> params = getParametersMapForOptimizer(rel);
 
         long offset = 0;
         if (rel.offset != null) {

@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.corrector.Reporter;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseBackfillTask;
+import com.alibaba.polardbx.executor.ddl.job.task.RemoteExecutableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
@@ -40,8 +41,10 @@ import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import io.airlift.slice.DataSize;
 import lombok.Getter;
 import org.apache.calcite.sql.SqlSelect;
 
@@ -53,20 +56,23 @@ import java.util.concurrent.TimeUnit;
 
 @TaskName(name = "MoveTableCheckTask")
 @Getter
-public class MoveTableCheckTask extends BaseBackfillTask {
+public class MoveTableCheckTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
     final private String logicalTableName;
     final private Map<String, String> sourceTargetGroup;
     final private Map<String, Set<String>> sourcePhyTableNames;
     final private Map<String, Set<String>> targetPhyTableNames;
     final private Boolean optimizeDoubleWrite;
     final private List<String> relatedTables;
+    final private long dataSize;
 
     @JSONCreator
     public MoveTableCheckTask(String schemaName, String logicalTableName,
                               Map<String, String> sourceTargetGroup,
                               Map<String, Set<String>> sourcePhyTableNames,
                               Map<String, Set<String>> targetPhyTableNames,
-                              Boolean optimizeDoubleWrite, List<String> relatedTables
+                              Boolean optimizeDoubleWrite,
+                              List<String> relatedTables,
+                              long dataSize
     ) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
@@ -75,6 +81,7 @@ public class MoveTableCheckTask extends BaseBackfillTask {
         this.targetPhyTableNames = targetPhyTableNames;
         this.optimizeDoubleWrite = optimizeDoubleWrite;
         this.relatedTables = relatedTables;
+        this.dataSize = dataSize;
         onExceptionTryRollback();
     }
 
@@ -289,7 +296,56 @@ public class MoveTableCheckTask extends BaseBackfillTask {
     }
 
     @Override
-    protected String remark() {
-        return "|tableName: " + logicalTableName;
+    public String remark() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("|checker detail: ");
+        sb.append("table_schema [");
+        sb.append(schemaName);
+        sb.append("] ");
+        sb.append("table [");
+        sb.append(logicalTableName);
+        sb.append("] ");
+        sb.append("source physical table info [");
+        int j = 0;
+        for (Map.Entry<String, Set<String>> entry : sourcePhyTableNames.entrySet()) {
+            if (j > 0) {
+                sb.append(", ");
+            }
+            j++;
+            sb.append("(");
+            sb.append(entry.getKey()).append(":");
+            int i = 0;
+            for (String tbName : entry.getValue()) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(tbName);
+                i++;
+            }
+            sb.append(")");
+        }
+        sb.append("], target physical table info [");
+        j = 0;
+        for (Map.Entry<String, Set<String>> entry : targetPhyTableNames.entrySet()) {
+            if (j > 0) {
+                sb.append(", ");
+            }
+            j++;
+            sb.append("(");
+            sb.append(entry.getKey()).append(":");
+            int i = 0;
+            for (String tbName : entry.getValue()) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(tbName);
+                i++;
+            }
+            sb.append(")");
+        }
+        sb.append("], size [");
+        sb.append(DataSize.succinctBytes(dataSize));
+        sb.append("]");
+        return sb.toString();
     }
 }

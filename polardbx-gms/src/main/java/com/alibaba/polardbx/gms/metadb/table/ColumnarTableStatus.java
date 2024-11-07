@@ -41,9 +41,13 @@ public enum ColumnarTableStatus {
      */
     ABSENT,
     /**
-     * 待删除
+     * cn标记了删除，等待列存同步，列存收到后会将DROP 改为PURGE状态
      */
-    DROP;
+    DROP,
+    /**
+     * 等待后台线程进行purge，真正删除文件。
+     */
+    PURGE;
 
     public static ColumnarTableStatus from(String value) {
         switch (value.toLowerCase()) {
@@ -61,6 +65,8 @@ public enum ColumnarTableStatus {
             return ABSENT;
         case "drop":
             return DROP;
+        case "purge":
+            return PURGE;
         default:
             throw new IllegalArgumentException("Illegal ColumnarTableStatus: " + value);
         }
@@ -76,6 +82,7 @@ public enum ColumnarTableStatus {
             return IndexStatus.PUBLIC;
         case DROP:
         case ABSENT:
+        case PURGE:
             return IndexStatus.ABSENT;
         case NONE:
         case ERROR:

@@ -67,25 +67,28 @@ import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.TRANSIENT_S
 @TaskName(name = "SubJobTask")
 @Getter
 @Setter
-public final class SubJobTask extends BaseDdlTask implements CostEstimableDdlTask {
+public class SubJobTask extends BaseDdlTask implements CostEstimableDdlTask {
 
-    private String ddlStmt;
+    protected String ddlStmt;
     /**
      * -1: TransientDdlJob
      * 0: not submitted yet
      * \d{19}: subJob id
      */
-    private long subJobId;
+    protected long subJobId;
 
-    private String rollbackDdlStmt;
+    protected String rollbackDdlStmt;
+
     /**
      * -1: TransientDdlJob
      * 0: not submitted yet
      * \d{19}: subJob id
      */
-    private long rollbackSubJobId;
+    protected long rollbackSubJobId;
 
-    private boolean parentAcquireResource;
+    protected boolean parentAcquireResource;
+
+    protected boolean skipCdcMarkTask;
 
     public SubJobTask(String schemaName, String ddlStmt, String rollbackDdlStmt) {
         this(schemaName, ddlStmt, 0, rollbackDdlStmt, 0);

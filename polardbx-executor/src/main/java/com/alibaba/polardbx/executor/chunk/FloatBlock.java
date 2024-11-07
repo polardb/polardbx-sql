@@ -20,10 +20,13 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
@@ -33,17 +36,19 @@ public class FloatBlock extends AbstractBlock {
 
     private float[] values;
 
-    private boolean forDeletedOrcScan = false;
+    private final int scale;
 
     public FloatBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new float[slotLen];
+        this.scale = null == dataType ? XResultUtil.DECIMAL_NOT_SPECIFIED : dataType.getScale();
         updateSizeInfo();
     }
 
-    public FloatBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, float[] values) {
+    public FloatBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, float[] values, int scale) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
+        this.scale = scale;
         updateSizeInfo();
     }
 
@@ -51,16 +56,9 @@ public class FloatBlock extends AbstractBlock {
         FloatBlock block = new FloatBlock(0,
             selSize,
             BlockUtils.copyNullArray(other.isNull, selection, selSize),
-            BlockUtils.copyFloatArray(other.values, selection, selSize));
-        block.forDeletedOrcScan = other.forDeletedOrcScan;
+            BlockUtils.copyFloatArray(other.values, selection, selSize),
+            other.scale);
         return block;
-    }
-
-    public FloatBlock(DataType dataType, int slotLen, boolean forDeletedOrcScan) {
-        super(dataType, slotLen);
-        this.values = new float[slotLen];
-        this.forDeletedOrcScan = forDeletedOrcScan;
-        updateSizeInfo();
     }
 
     @Override
@@ -220,5 +218,19 @@ public class FloatBlock extends AbstractBlock {
         elementUsedBytes = Byte.BYTES * positionCount + Float.BYTES * positionCount;
     }
 
+    @Override
+    public int checksumV2(int position) {
+        if (isNull(position)) {
+            return 0;
+        }
+        float roundVal;
+        if (scale > 0 && scale < XResultUtil.DECIMAL_NOT_SPECIFIED) {
+            BigDecimal bd = new BigDecimal(Double.toString(values[position + arrayOffset]));
+            roundVal = bd.setScale(scale, RoundingMode.HALF_UP).floatValue();
+        } else {
+            roundVal = values[position + arrayOffset];
+        }
+        return Float.hashCode(roundVal);
+    }
 }
 

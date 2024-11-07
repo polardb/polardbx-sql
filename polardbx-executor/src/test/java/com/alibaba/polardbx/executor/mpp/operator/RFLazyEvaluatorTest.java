@@ -8,6 +8,7 @@ import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlockBuilder;
+import com.alibaba.polardbx.executor.chunk.NullBlock;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItem;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItemImpl;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItemKey;
@@ -241,5 +242,39 @@ public class RFLazyEvaluatorTest {
             }
         }
 
+    }
+
+    @Test
+    public void testNoRFWithDeletion() {
+        OperatorStatistics operatorStatistics = new OperatorStatistics();
+
+        // Initialize FragmentRFManager
+        int totalPartitionCount = PARTITION_COUNT;
+        double defaultFpp = 0.1d;
+        int rowUpperBound = 100000;
+        int rowLowerBound = 4096;
+        double filterRatioThreshold = 0.25d;
+        int rfSampleCount = 10;
+        FragmentRFManager manager = new SimpleFragmentRFManager(
+            totalPartitionCount, 1, defaultFpp,
+            rowUpperBound, rowLowerBound,
+            filterRatioThreshold, rfSampleCount
+        );
+
+        RFLazyEvaluator evaluator = new RFLazyEvaluator(manager, operatorStatistics, new HashMap<>());
+
+        // empty
+        RoaringBitmap deletion = new RoaringBitmap();
+        deletion.add(1, 3, 5, 7, 1001, 1005, 1007, 1010, 1099);
+        boolean[] bitmap = new boolean[CHUNK_LIMIT];
+
+        // evaluate and check the filter ratio.
+        Chunk chunk = new Chunk(CHUNK_LIMIT, new NullBlock(CHUNK_LIMIT));
+        int selectionCount = evaluator.eval(chunk, 0, CHUNK_LIMIT, deletion, bitmap);
+        Assert.assertTrue(selectionCount == (CHUNK_LIMIT - 4));
+
+        chunk = new Chunk(CHUNK_LIMIT, new NullBlock(CHUNK_LIMIT));
+        selectionCount = evaluator.eval(chunk, CHUNK_LIMIT, CHUNK_LIMIT, deletion, bitmap);
+        Assert.assertTrue(selectionCount == (CHUNK_LIMIT - 5));
     }
 }

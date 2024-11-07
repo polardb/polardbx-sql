@@ -148,16 +148,39 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
             predLocality,
             dbType,
             isCreateIfNotExists, socketTimeoutVal, shardDbCountEachStorageInst);
-        long dbId = DbTopologyManager.createLogicalDb(createDbInfo);
+        initHookFuncForCreateDbInfo(executionContext, dbName, sqlCreateDatabase, createDbInfo, finalLocalityDesc, lm);
+        DbTopologyManager.createLogicalDb(createDbInfo);
         DbEventUtil.logFirstAutoDbCreationEvent(createDbInfo);
-        CdcManagerHelper.getInstance()
-            .notifyDdl(dbName, null, sqlCreateDatabase.getKind().name(), executionContext.getOriginSql(),
-                null, CdcDdlMarkVisibility.Public, buildExtendParameter(executionContext));
 
-        if (!finalLocalityDesc.holdEmptyDnList()) {
-            lm.setLocalityOfDb(dbId, finalLocalityDesc.toString());
-        }
         return new AffectRowCursor(new int[] {1});
+    }
+
+    private void initHookFuncForCreateDbInfo(ExecutionContext executionContext,
+                                             String dbName,
+                                             SqlCreateDatabase sqlCreateDatabase,
+                                             CreateDbInfo createDbInfo,
+                                             LocalityDesc finalLocalityDesc,
+                                             LocalityManager lm) {
+        CreateDbInfo.CreatedDbHookFunc markCdcFunc = new CreateDbInfo.CreatedDbHookFunc() {
+            @Override
+            public void handle(Long newAddedDbInfoId) {
+                CdcManagerHelper.getInstance()
+                    .notifyDdl(dbName, null, sqlCreateDatabase.getKind().name(), executionContext.getOriginSql(),
+                        null, CdcDdlMarkVisibility.Public, buildExtendParameter(executionContext));
+
+            }
+        };
+        createDbInfo.getCreatedDbHookFuncList().add(markCdcFunc);
+
+        CreateDbInfo.CreatedDbHookFunc refreshLocalityFunc = new CreateDbInfo.CreatedDbHookFunc() {
+            @Override
+            public void handle(Long newAddedDbInfoId) {
+                if (!finalLocalityDesc.holdEmptyDnList()) {
+                    lm.setLocalityOfDb(newAddedDbInfoId, finalLocalityDesc.toString());
+                }
+            }
+        };
+        createDbInfo.getCreatedDbHookFuncList().add(refreshLocalityFunc);
     }
 
     @NotNull

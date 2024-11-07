@@ -1,0 +1,19 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table ttl_t1(
+a int not null auto_increment,
+b datetime default current_timestamp,
+primary key(a)
+)
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 6 MONTH TIMEZONE '+08:00'
+partition by key(a) partitions 2;
+
+
+CREATE TABLE oss_t1
+LIKE ttl_t1 ENGINE = 'local_disk' ARCHIVE_MODE = 'TTL';
+
+
+
+## 手动触发行级ttl清理数据的命令
+alter Table ttl_t1 cleanup expaired data;

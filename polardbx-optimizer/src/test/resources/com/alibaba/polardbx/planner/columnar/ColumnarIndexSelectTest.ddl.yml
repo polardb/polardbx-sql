@@ -1,0 +1,36 @@
+t_order:
+  CREATE TABLE `t_order` (
+      `id` bigint(11) NOT NULL AUTO_INCREMENT,
+      `order_id` varchar(20) DEFAULT NULL,
+      `buyer_id` varchar(20) DEFAULT NULL,
+      `seller_id` varchar(20) DEFAULT NULL,
+      `order_snapshot` longtext,
+      `order_detail` longtext,
+      PRIMARY KEY (`id`),
+      KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+      GLOBAL INDEX `g_i_buyer`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) PARTITION BY HASH(`buyer_id`) PARTITIONS 3,
+      UNIQUE GLOBAL KEY `g_i_seller` (`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`) PARTITION BY HASH(`seller_id`) PARTITIONS 3，
+      CLUSTERED COLUMNAR INDEX `cc_i_seller` ON t_order (`seller_id`) partition by hash(`order_id`) partitions 16
+  ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 DEFAULT CHARSET = latin1 partition by hash(`order_id`) PARTITIONS 3,
+
+lineitem:
+    CREATE TABLE IF NOT EXISTS `lineitem` (
+    `l_orderkey` int(11) NOT NULL,
+    `l_partkey` int(11) NOT NULL,
+    `l_suppkey` int(11) NOT NULL,
+    `l_linenumber` int(11) NOT NULL,
+    `l_quantity` decimal(15, 2) NOT NULL,
+    `l_extendedprice` decimal(15, 2) NOT NULL,
+    `l_discount` decimal(15, 2) NOT NULL,
+    `l_tax` decimal(15, 2) NOT NULL,
+    `l_returnflag` varchar(1) NOT NULL,
+    `l_linestatus` varchar(1) NOT NULL,
+    `l_shipdate` date NOT NULL,
+    `l_commitdate` date NOT NULL,
+    `l_receiptdate` date NOT NULL,
+    `l_shipinstruct` varchar(25) NOT NULL,
+    `l_shipmode` varchar(10) NOT NULL,
+    `l_comment` varchar(44) NOT NULL,
+    PRIMARY KEY (`l_orderkey`, `l_linenumber`),
+    CLUSTERED COLUMNAR INDEX `lineitem_col_index` on lineitem(`l_shipdate`, `l_orderkey`) PARTITION BY HASH(`l_orderkey`) PARTITIONS 16
+    ) ENGINE = InnoDB DEFAULT CHARSET = latin1 PARTITION BY KEY (`l_orderkey`) PARTITIONS 8;

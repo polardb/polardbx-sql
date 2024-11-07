@@ -12,11 +12,14 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.polardbx.transfer.utils.AllTypesTestUtils.TABLE_NAME;
+
 /**
  * @author yaozhili
  */
 public class AllTypesWriteOnlyPlugin extends BasePlugin {
     private static final Logger logger = LoggerFactory.getLogger(AllTypesWriteOnlyPlugin.class);
+    private final boolean bigColumn;
 
     private final List<String> allColumns = new ArrayList<>();
 
@@ -25,15 +28,14 @@ public class AllTypesWriteOnlyPlugin extends BasePlugin {
         Toml config = TomlConfig.getConfig().getTable("write_only");
         if (null == config) {
             enabled = false;
+            bigColumn = false;
             return;
         }
         enabled = config.getBoolean("enabled", false);
         threads = Math.toIntExact(config.getLong("threads", 1L));
-        boolean bigColumn = TomlConfig.getConfig().getBoolean("big_column", false);
+        bigColumn = TomlConfig.getConfig().getBoolean("big_column", false);
         allColumns.addAll(AllTypesTestUtils.getColumns());
-        if (bigColumn) {
-            allColumns.addAll(AllTypesTestUtils.getBigColumns());
-        }
+        allColumns.addAll(AllTypesTestUtils.getBigColumns());
     }
 
     @Override
@@ -46,21 +48,31 @@ public class AllTypesWriteOnlyPlugin extends BasePlugin {
                 String sql = null;
                 try {
                     // Insert a new record.
-                    sql = AllTypesTestUtils.buildInsertSql(1, allColumns);
+                    sql = AllTypesTestUtils.buildInsertSql(1, allColumns, bigColumn);
                     stmt.execute(sql);
 
-                    // Update a random row.
-                    sql = AllTypesTestUtils.buildSelectRandomSql();
+                    sql = "SELECT MIN(id), MAX(id) FROM " + TABLE_NAME;
                     ResultSet rs = stmt.executeQuery(sql);
+                    int min, max;
+                    if (rs.next()) {
+                        min = rs.getInt(1);
+                        max = rs.getInt(2);
+                    } else {
+                        throw new RuntimeException("Can not find min/max id from " + TABLE_NAME);
+                    }
+
+                    // Update a random row.
+                    sql = AllTypesTestUtils.buildSelectRandomSql(min, max);
+                    rs = stmt.executeQuery(sql);
                     long id = 0;
                     if (rs.next()) {
                         id = rs.getLong(1);
                     }
-                    sql = AllTypesTestUtils.buildUpdateSql(id, allColumns);
+                    sql = AllTypesTestUtils.buildUpdateSql(id, allColumns, bigColumn);
                     stmt.execute(sql);
 
                     // Delete a random row.
-                    sql = AllTypesTestUtils.buildSelectRandomSql();
+                    sql = AllTypesTestUtils.buildSelectRandomSql(min, max);
                     rs = stmt.executeQuery(sql);
                     id = 0;
                     if (rs.next()) {

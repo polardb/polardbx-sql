@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.ddl.job.builder.MoveDatabaseBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AnalyzePhyTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DdlBackfillCostRecordTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.ImportTableSpaceDdlNormalTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InitNewStorageInstTask;
@@ -140,7 +141,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                 tarGroupAndStorageIds.put(srcTarGroup.getValue(), targetStorageId);
             }
         }
-        int parallelism = ScaleOutUtils.getScaleoutTaskParallelism(executionContext);
+        int pipelineSize = ScaleOutUtils.getTaskPipelineSize(executionContext);
         Queue<DdlTask> leavePipeLineQueue = new LinkedList<>();
 
         for (Map.Entry<String, Map<String, List<List<String>>>> entry : tablesTopologyMap.entrySet()) {
@@ -186,14 +187,16 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                         targetGroupAndStorageIdMap.put(preparedData.getSourceTargetGroupMap().get(groupName),
                             preparedData.getGroupAndStorageInstId().get(groupName).getValue());
                     }
-                    syncLsnTask =
-                        new SyncLsnTask(schemaName, sourceGroupAndStorageIdMap, targetGroupAndStorageIdMap);
-                    executableDdlJob.addTask(syncLsnTask);
-                    syncLsnTaskAdded = true;
+                    if (GeneralUtil.isNotEmpty(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
+                        syncLsnTask =
+                            new SyncLsnTask(schemaName, sourceGroupAndStorageIdMap, targetGroupAndStorageIdMap);
+                        executableDdlJob.addTask(syncLsnTask);
+                        syncLsnTaskAdded = true;
+                    }
                 }
                 for (List<DdlTask> pipeLine : GeneralUtil.emptyIfNull(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
                     DdlTask parentLeaveNode;
-                    if (leavePipeLineQueue.size() < parallelism) {
+                    if (leavePipeLineQueue.size() < pipelineSize) {
                         parentLeaveNode = syncLsnTask;
                     } else {
                         parentLeaveNode = leavePipeLineQueue.poll();
@@ -224,9 +227,13 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                         executableDdlJob.addTaskRelationship(pipeLine.get(i),
                             importTableSpaceDdlNormalTask);
                     }
-                    executableDdlJob.addTaskRelationship(importTableSpaceDdlNormalTask,
+
+                    AnalyzePhyTableTask analyzePhyTableTask = new AnalyzePhyTableTask(schemaName, tarGroupKey,
+                        phyTableName);
+                    executableDdlJob.addTaskRelationship(importTableSpaceDdlNormalTask, analyzePhyTableTask);
+                    executableDdlJob.addTaskRelationship(analyzePhyTableTask,
                         subTaskJobFactory.getBackfillTaskEdgeNodes().get(1));
-                    leavePipeLineQueue.add(importTableSpaceDdlNormalTask);
+                    leavePipeLineQueue.add(analyzePhyTableTask);
                 }
             }
         }

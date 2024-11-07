@@ -22,7 +22,8 @@ public class AllTypesTestUtils {
      * Big columns values providers.
      */
     private final static Map<String, List<String>> BIG_COLUMNS_VALUES_PROVIDER;
-    private final static String TABLE_NAME = "`full_type`";
+    public final static String TABLE_NAME = "`full_types`";
+    public final static String COLUMNAR_INDEX_NAME = "`full_types_cci`";
 
     public static Collection<String> getColumns() {
         return VALUES_PROVIDER.keySet();
@@ -32,13 +33,13 @@ public class AllTypesTestUtils {
         return BIG_COLUMNS_VALUES_PROVIDER.keySet();
     }
 
-    public static String buildInsertSql(int row, Collection<String> columns) {
+    public static String buildInsertSql(int row, Collection<String> columns, boolean useBigColumn) {
         Collection<Collection<String>> values = new ArrayList<>(row);
 
         while (row-- > 0) {
             Collection<String> oneRow = new ArrayList<>();
             for (String column : columns) {
-                oneRow.add(getRandomValue(column));
+                oneRow.add(getRandomValue(column, useBigColumn));
             }
             values.add(oneRow);
         }
@@ -85,10 +86,10 @@ public class AllTypesTestUtils {
         return buildInsertSql(columns, values);
     }
 
-    public static String buildUpdateSql(long id, Collection<String> columns) {
+    public static String buildUpdateSql(long id, Collection<String> columns, boolean isBigColumn) {
         Collection<String> values = new ArrayList<>();
         for (String column : columns) {
-            values.add(getRandomValue(column));
+            values.add(getRandomValue(column, isBigColumn));
         }
         return buildUpdateSql(id, columns, values);
     }
@@ -97,8 +98,11 @@ public class AllTypesTestUtils {
         return "DELETE FROM " + TABLE_NAME + " WHERE id = " + id;
     }
 
-    public static String buildSelectRandomSql() throws SQLException {
-        return "SELECT id FROM " + TABLE_NAME + " ORDER BY RAND() LIMIT 1";
+    public static String buildSelectRandomSql(int min, int max) throws SQLException {
+        long begin = new SecureRandom().nextInt(max - min) + min;
+        long end = Math.min(max, begin + 1000);
+        return "SELECT id FROM " + TABLE_NAME + " WHERE id BETWEEN " + begin + " AND " + end
+            + " ORDER BY RAND() LIMIT 1";
     }
 
     /**
@@ -155,16 +159,22 @@ public class AllTypesTestUtils {
         return sb.toString();
     }
 
-    private static String getRandomValue(String column) {
+    private static String getRandomValue(String column, boolean useBigColumn) {
         List<String> possibleValues = BIG_COLUMNS_VALUES_PROVIDER.get(column);
         if (null == possibleValues) {
             possibleValues = VALUES_PROVIDER.get(column);
+        } else {
+            return possibleValues.get(
+                new SecureRandom().nextInt(useBigColumn ? possibleValues.size() : possibleValues.size() - 1));
         }
         if (null == possibleValues) {
             throw new IllegalArgumentException("Invalid column name");
         }
         return possibleValues.get(new SecureRandom().nextInt(possibleValues.size()));
     }
+
+    public static final String FULL_TYPE_TABLE_COLUMNAR_INDEX = "ALTER TABLE " + TABLE_NAME
+        + " ADD CLUSTERED COLUMNAR INDEX " + COLUMNAR_INDEX_NAME + "(`id`)";
 
     public static final String FULL_TYPE_TABLE_TEMPLATE = "CREATE TABLE IF NOT EXISTS " + TABLE_NAME + " (\n"
         + "  `id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
@@ -331,6 +341,10 @@ public class AllTypesTestUtils {
         }
         VALUES_PROVIDER = builder0.build();
         BIG_COLUMNS_VALUES_PROVIDER = builder1.build();
+    }
+
+    private boolean isBigColumn(String column) {
+        return BIG_COLUMNS_VALUES_PROVIDER.containsKey(column);
     }
 
     /**
@@ -809,6 +823,7 @@ public class AllTypesTestUtils {
             "'a中国a'",
             "x'313233616263'",
             "x'0A08080E10011894AB0E'",
+            "RANDOM_BYTES(FLOOR(1 + (RAND() * 255)))",
             /* from 64B to 64KB */
             "REPEAT(RANDOM_BYTES(FLOOR(1 + (RAND() * 1024))), 64)"
         ));
@@ -819,6 +834,7 @@ public class AllTypesTestUtils {
             "'a中国a'",
             "x'313233616263'",
             "x'0A08080E10011894AB0E'",
+            "RANDOM_BYTES(FLOOR(1 + (RAND() * 255)))",
             /* from 16KB to 16MB */
             "REPEAT(RANDOM_BYTES(FLOOR(1 + (RAND() * 1024))), 16384)"
         ));
@@ -829,6 +845,7 @@ public class AllTypesTestUtils {
             "'a中国a'",
             "x'313233616263'",
             "x'0A08080E10011894AB0E'",
+            "RANDOM_BYTES(FLOOR(1 + (RAND() * 255)))",
             /* from 128KB to 128MB */
             "REPEAT(RANDOM_BYTES(FLOOR(1 + (RAND() * 1024))), 131072)"
         ));
@@ -846,6 +863,7 @@ public class AllTypesTestUtils {
             "'99'",
             "'a中国a'",
             "x'313233616263'",
+            "SUBSTRING(MD5(RAND()), 1, 10)",
             "REPEAT(SUBSTRING(MD5(RAND()), 1, 10), 100)"
         ));
 
@@ -854,6 +872,7 @@ public class AllTypesTestUtils {
             "'99'",
             "'a中国a'",
             "x'313233616263'",
+            "SUBSTRING(MD5(RAND()), 1, 10)",
             "REPEAT(SUBSTRING(MD5(RAND()), 1, 10), 10000)"
         ));
 
@@ -862,6 +881,7 @@ public class AllTypesTestUtils {
             "'99'",
             "'a中国a'",
             "x'313233616263'",
+            "SUBSTRING(MD5(RAND()), 1, 10)",
             "REPEAT(SUBSTRING(MD5(RAND()), 1, 10), 1000000)"
         ));
 

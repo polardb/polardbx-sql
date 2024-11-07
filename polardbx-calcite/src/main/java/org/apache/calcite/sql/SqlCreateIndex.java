@@ -17,6 +17,7 @@
 package org.apache.calcite.sql;
 
 import com.alibaba.polardbx.common.ColumnarTableOptions;
+import com.alibaba.polardbx.common.ColumnarOptions;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
@@ -35,10 +36,8 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.util.SqlString;
 import org.apache.calcite.util.ImmutableNullableList;
-import org.apache.commons.collections.CollectionUtils;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,6 +89,7 @@ public class SqlCreateIndex extends SqlCreate {
     private SqlCreateTable primaryTableNode;
     private final boolean withImplicitTableGroup;
     private boolean visible = true;
+    private final Map<String, String> columnarOptions;
 
     private SqlCreateIndex(SqlParserPos pos,
                            SqlIdentifier indexName,
@@ -117,7 +117,8 @@ public class SqlCreateIndex extends SqlCreate {
                            boolean withImplicitTableGroup,
                            SqlNode engineName,
                            List<SqlIndexColumnName> dictColumns,
-                           boolean visible) {
+                           boolean visible,
+                           Map<String, String> columnarOptions) {
         super(OPERATOR, pos, false, false);
         this.indexName = indexName;
         this.originIndexName = originIndexName;
@@ -146,6 +147,7 @@ public class SqlCreateIndex extends SqlCreate {
         this.engineName = engineName;
         this.dictColumns = dictColumns;
         this.visible = visible;
+        this.columnarOptions = columnarOptions;
     }
 
     public SqlCreateIndex(SqlParserPos pos,
@@ -179,7 +181,8 @@ public class SqlCreateIndex extends SqlCreate {
                           boolean withImplicitTableGroup,
                           SqlNode engineName,
                           List<SqlIndexColumnName> dictColumns,
-                          boolean visible) {
+                          boolean visible,
+                          Map<String, String> columnarOptions) {
         super(OPERATOR, pos, replace, ifNotExists);
         this.name = name;
         this.originTableName = originTableName;
@@ -210,6 +213,7 @@ public class SqlCreateIndex extends SqlCreate {
         this.engineName = engineName;
         this.dictColumns = dictColumns;
         this.visible = visible;
+        this.columnarOptions = columnarOptions;
     }
 
     public static SqlCreateIndex createLocalIndex(SqlIdentifier indexName, SqlIdentifier tableName,
@@ -246,7 +250,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             null,
             null,
-            true);
+            true,
+            null);
     }
 
     public static SqlCreateIndex createGlobalIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -284,7 +289,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             null,
             null,
-            visible);
+            visible,
+            null);
     }
 
     public static SqlCreateIndex createClusteredIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -323,7 +329,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             null,
             null,
-            visible);
+            visible,
+            null);
     }
 
     public static SqlCreateIndex createColumnarIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
@@ -339,7 +346,8 @@ public class SqlCreateIndex extends SqlCreate {
                                                      boolean withImplicitTableGroup,
                                                      SqlNode engineName,
                                                      List<SqlIndexColumnName> dictKeys,
-                                                     boolean visible) {
+                                                     boolean visible,
+                                                     Map<String, String> columnarOptions) {
         return new SqlCreateIndex(pos,
             indexName,
             indexName,
@@ -366,7 +374,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictKeys,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     public SqlNode getEngineName() {
@@ -744,7 +753,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            visible);
+            visible,
+            columnarOptions);
     }
 
     public SqlCreateIndex rebuildCovering(Collection<String> coveringColumns) {
@@ -787,7 +797,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     /**
@@ -824,7 +835,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     /**
@@ -861,7 +873,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     public SqlCreateIndex rebuildToExplicitLocal(SqlIdentifier newName, String sql) {
@@ -891,7 +904,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     public SqlCreateIndex replaceTableName(SqlIdentifier newTableName) {
@@ -921,7 +935,8 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     public SqlCreateIndex replaceIndexName(SqlIdentifier newIndexName) {
@@ -951,20 +966,24 @@ public class SqlCreateIndex extends SqlCreate {
             withImplicitTableGroup,
             engineName,
             dictColumns,
-            this.visible);
+            this.visible,
+            columnarOptions);
     }
 
     /**
      * columnar index options
      */
     public Map<String, String> getColumnarOptions() {
-        Map<String, String> options = new HashMap<>();
-        if (CollectionUtils.isNotEmpty(dictColumns)) {
-            String columns = dictColumns.stream()
-                    .map(sqlIndexColumnName -> SqlIdentifier.surroundWithBacktick(sqlIndexColumnName.getColumnNameStr()))
-                    .collect(Collectors.joining(","));
-            options.put(ColumnarTableOptions.DICTIONARY_COLUMNS, columns);
+        Map<String, String> options = columnarOptions;
+        // Normalize dict columns.
+        String dictColumnStr = options.get(ColumnarOptions.DICTIONARY_COLUMNS);
+        if (null != dictColumnStr) {
+            dictColumnStr = SQLUtils.splitNamesByComma(dictColumnStr.toLowerCase()).stream()
+                .map(SqlIdentifier::surroundWithBacktick)
+                .collect(Collectors.joining(","));
+            options.put(ColumnarOptions.DICTIONARY_COLUMNS, dictColumnStr);
         }
+
         return options;
     }
 

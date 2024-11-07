@@ -6,19 +6,12 @@
 </head>
 
 <body>
-<script>
-    function getQueryVariable(variable) {
-        let query = window.location.search.substring(1);
-        let vars = query.split("&");
-        for (let i = 0; i < vars.length; i++) {
-            let pair = vars[i].split("=");
-            if (pair[0] == variable) {
-                return pair[1];
-            }
-        }
-        return (false);
-    }
+<form onsubmit="handleSubmit(); return false;">
+    <div><textarea rows="30" cols="60" id="inputText" placeholder="Please input DDL DAG"></textarea></div>
+    <button type="submit">Submit</button>
+</form>
 
+<script>
     function show(text) {
         var viz = new Viz();
         viz.renderSVGElement(text)
@@ -34,21 +27,22 @@
             });
     }
 
-    var jobId = getQueryVariable("jobId");
-    fetch('/v1/ddl/' + jobId)
-        .then(function (response) {
-            return response.text();
-        })
-        .then(function (text) {
-            console.log('Request successful', text);
-            if (text == '') {
-                text = 'digraph G { no_ddl_job }';
-            }
-            show(text);
-        })
-        .catch(function (err) {
-            console.log('Fetch Error :-S', err);
-        });
+    function handleSubmit() {
+        const text = document.getElementById('inputText').value;
+        show(text);
+    }
+
+    // function getQueryVariable(variable) {
+    //     let query = window.location.search.substring(1);
+    //     let vars = query.split("&");
+    //     for (let i = 0; i < vars.length; i++) {
+    //         let pair = vars[i].split("=");
+    //         if (pair[0] == variable) {
+    //             return pair[1];
+    //         }
+    //     }
+    //     return (false);
+    // }
 </script>
 </body>
 </html>

@@ -16,22 +16,44 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.table.ShowTablesSchemaRecord;
+import com.alibaba.polardbx.gms.metadb.table.ViewsInfoRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.dal.Show;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowTableStatus;
 import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.SqlShowTables.SqlShowTablesOperator;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang.StringUtils;
+
+import javax.sql.DataSource;
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author chenmo.cm
@@ -70,15 +92,78 @@ public class LogicalShowTableStatusHandler extends LogicalInfoSchemaQueryHandler
             show,
             infoSchemaContext);
 
-        for (String logicalTableName : infoSchemaContext.getLogicalTableNames()) {
-            result.addRow(showSingleTableStatus(logicalTableName, infoSchemaContext));
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOGICAL_TABLE_META)
+            || ConfigDataMode.isColumnarMode()) {
+            //access metadb
+            List<Object[]> objects = showSingleTableStatusWithColumnarMode(schemaName);
+            for (Object[] row : objects) {
+                result.addRow(row);
+            }
+        } else {
+            for (String logicalTableName : infoSchemaContext.getLogicalTableNames()) {
+                TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager()
+                    .getTableWithNull(logicalTableName);
+                result.addRow(showSingleTableStatus(logicalTableName, infoSchemaContext));
+            }
         }
 
         return result;
     }
 
-    private void showTables(SqlNode like, SqlNode dbName, LogicalShow showNode,
-                            LogicalInfoSchemaContext infoSchemaContext) {
+    protected List<Object[]> showSingleTableStatusWithColumnarMode(String schemaName) {
+        List<Object[]> result = new ArrayList<>();
+        //get dataSource and Connection
+        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+        try (Connection connection = dataSource.getConnection()) {
+            //fetch table status
+            String sql = "select * from " + SqlIdentifier.surroundWithBacktick(GmsSystemTables.TABLES)
+                + "where engine != ? and table_schema = ?";
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            //we don't show OSS index by default
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, "OSS");
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schemaName);
+            List<ShowTablesSchemaRecord> tablesInfoSchemaRecords =
+                MetaDbUtil.query(sql, params, ShowTablesSchemaRecord.class, connection);
+            for (ShowTablesSchemaRecord tablesInfoSchemaRecord : tablesInfoSchemaRecords) {
+                result.add(transTableInfoScheamRecordToObject(tablesInfoSchemaRecord));
+            }
+            //fetch view status
+            String sqlView =
+                "select * from " + SqlIdentifier.surroundWithBacktick(GmsSystemTables.VIEWS) + "where schema_name = '"
+                    + schemaName + "'";
+            List<ViewsInfoRecord> viewsInfoRecords = MetaDbUtil.query(sqlView, ViewsInfoRecord.class, connection);
+            for (ViewsInfoRecord viewsInfoRecord : viewsInfoRecords) {
+                result.add(transViewsRecordToObject(viewsInfoRecord));
+            }
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                "fail to access metadb" + e.getMessage());
+        }
+        return result;
+    }
+
+    public Object[] transTableInfoScheamRecordToObject(ShowTablesSchemaRecord info) {
+        BigDecimal rowsCopy = BigDecimal.valueOf(info.tableRows), avgRowLengthCopy =
+            BigDecimal.valueOf(info.avgRowLength);
+        BigDecimal dataLengthCopy = BigDecimal.valueOf(info.dataLength), maxDataLengthCopy =
+            BigDecimal.valueOf(info.maxDataLength);
+        BigDecimal indexLengthCopy = BigDecimal.valueOf(info.indexLength), dataFreeCopy =
+            BigDecimal.valueOf(info.dataFree);
+
+        return new Object[] {
+            info.tableName, info.engine, info.version, info.rowFormat, rowsCopy, avgRowLengthCopy, dataLengthCopy,
+            maxDataLengthCopy, indexLengthCopy, dataFreeCopy, info.autoIncrement, info.createTime, info.updateTime,
+            info.checkTime, info.tableCollation,
+            info.checkSum, info.createOptions, info.tableComment};
+    }
+
+    public Object[] transViewsRecordToObject(ViewsInfoRecord info) {
+        return new Object[] {
+            info.viewName, null, 0, null, 0, 0, 0, 0, 0, 0, 0, null, null, null, null, null, null, "VIEW"};
+    }
+
+    void showTables(SqlNode like, SqlNode dbName, LogicalShow showNode,
+                    LogicalInfoSchemaContext infoSchemaContext) {
         String schemaName = infoSchemaContext.getTargetSchema();
 
         final SqlShowTables showTables = SqlShowTables.create(SqlParserPos.ZERO,

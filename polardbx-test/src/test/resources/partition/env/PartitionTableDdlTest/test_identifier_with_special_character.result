@@ -1,0 +1,136 @@
+DROP TABLE IF EXISTS `t``1`;
+CREATE TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`)
+);
+ALTER TABLE `t``1`
+	ADD CLUSTERED INDEX cgsi (`a``a`);
+SHOW CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	CLUSTERED INDEX `cgsi` (`a``a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE PARTITION TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	CLUSTERED INDEX /* cgsi_$ */ `cgsi` (`a``a`)
+		PARTITION BY KEY(`a``a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_cgsi` (`a``a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a``a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE `t``1`
+	RENAME INDEX cgsi TO `c``gsi`;
+SHOW CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	CLUSTERED INDEX `c``gsi` (`a``a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE PARTITION TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	CLUSTERED INDEX /* c`gsi_$ */ `c``gsi` (`a``a`)
+		PARTITION BY KEY(`a``a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_c``gsi` (`a``a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a``a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE `t``1`
+	ADD INDEX idxa (`a``a`);
+ALTER TABLE `t``1`
+	ADD COLUMN `c``c` int;
+INSERT INTO `t``1`
+VALUES (1, 2, 3),
+	(4, 5, 6),
+	(7, 8, 9);
+ALTER TABLE `t``1`
+PARTITION BY KEY (`c``c`);
+SHOW CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	`c``c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	KEY `c``gsi` USING BTREE (`a``a`),
+	KEY `idxa` USING BTREE (`a``a`),
+	KEY `auto_shard_key_c``c` USING BTREE (`c``c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c``c`)
+PARTITIONS 3
+SHOW FULL CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	`c``c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	LOCAL KEY `c``gsi` USING BTREE (`a``a`),
+	LOCAL KEY `idxa` USING BTREE (`a``a`),
+	LOCAL KEY `auto_shard_key_c``c` USING BTREE (`c``c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c``c`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM `t``1`
+ORDER BY `a``a`;
+a`a,b`b,c`c
+1,2,3
+4,5,6
+7,8,9
+ALTER TABLE `t``1`
+	REMOVE PARTITIONING;
+SHOW CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	`c``c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	INDEX `c``gsi` (`a``a`),
+	INDEX `idxa` (`a``a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE `t``1`;
+Table,Create Table
+t`1,CREATE PARTITION TABLE `t``1` (
+	`a``a` int(11) NOT NULL,
+	`b``b` int(11) DEFAULT NULL,
+	`c``c` int(11) DEFAULT NULL,
+	PRIMARY KEY (`a``a`),
+	GLOBAL INDEX /* c`gsi_$ */ `c``gsi` (`a``a`)
+		PARTITION BY KEY(`a``a`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* idxa_$ */ `idxa` (`a``a`)
+		PARTITION BY KEY(`a``a`)
+		PARTITIONS 3,
+	LOCAL KEY `_local_c``gsi` USING BTREE (`a``a`),
+	LOCAL KEY `_local_idxa` USING BTREE (`a``a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a``a`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM `t``1`
+ORDER BY `a``a`;
+a`a,b`b,c`c
+1,2,3
+4,5,6
+7,8,9

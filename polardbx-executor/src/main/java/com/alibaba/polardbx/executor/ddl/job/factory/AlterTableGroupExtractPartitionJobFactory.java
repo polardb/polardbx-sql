@@ -112,7 +112,8 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(validateTask, addMetaTask));
         List<DdlTask> bringUpAlterTableGroupTasks =
-            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null, taskType, executionContext);
+            ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null, taskType,
+                preparedData.getDdlVersionId(), executionContext);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.TABLEGROUP_REORG_FINAL_TABLE_STATUS_DEBUG);
@@ -188,7 +189,8 @@ public class AlterTableGroupExtractPartitionJobFactory extends AlterTableGroupBa
                 executableDdlJob.addTaskRelationship(subTask.getTail(), bringUpAlterTableGroupTasks.get(0));
             }
             DdlTask dropUselessTableTask = ComplexTaskFactory.CreateDropUselessPhyTableTask(schemaName, entry.getKey(),
-                sourceTablesTopology.get(entry.getKey()), executionContext);
+                sourceTablesTopology.get(entry.getKey()), targetTablesTopology.get(entry.getKey()),
+                executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
             executableDdlJob.addTaskRelationship(
                 bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1), dropUselessTableTask);

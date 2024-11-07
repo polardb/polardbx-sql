@@ -184,16 +184,11 @@ public class PartPrunedResult {
         List<PhysicalPartitionInfo> prunedPartInfos = new ArrayList<>();
 
         PartKeyLevel phyPartKeyLevel = partInfo.getPartitionBy().getPhysicalPartLevel();
-        List<PartitionSpec> partitions = partInfo.getPartitionBy().getPhysicalPartitions();
+        List<PartitionSpec> phyPartitions = partInfo.getPartitionBy().getPhysicalPartitions();
+        List<PartitionSpec> firstLevelParts = partInfo.getPartitionBy().getPartitions();
+        boolean useSubPartBy = phyPartKeyLevel == PartKeyLevel.SUBPARTITION_KEY;
 
-        int partCnt = partitions.size();
-
-//        boolean hasSubPart = partInfo.containSubPartitions();
-//        if (hasSubPart) {
-//            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-//                "Not supported partitioning with subpartitions");
-//        }
-
+        int partCnt = phyPartitions.size();
         BitSet phyPartBitSet = getPhysicalPartBitSet();
         for (int i = phyPartBitSet.nextSetBit(0); i >= 0; i = phyPartBitSet.nextSetBit(i + 1)) {
             if (i >= partCnt) {
@@ -201,36 +196,32 @@ public class PartPrunedResult {
                     "Find pruned partition error");
             }
             // operate on index i here
-            PartitionSpec ps = partitions.get(i);
+            PartitionSpec ps = phyPartitions.get(i);
+            PartitionSpec parentPs = null;
+            String parentPartName = null;
+            if (useSubPartBy) {
+                Integer parentPartPosi = ps.getParentPartPosi().intValue() - 1;
+                parentPs = firstLevelParts.get(parentPartPosi);
+                parentPartName = parentPs.getName();
+            }
             PhysicalPartitionInfo prunedPartInfo = new PhysicalPartitionInfo();
             prunedPartInfo.setPartLevel(phyPartKeyLevel);
             prunedPartInfo.setPartName(ps.getName());
+            if (phyPartKeyLevel == PartKeyLevel.SUBPARTITION_KEY) {
+                Long parentPartPosi = ps.getParentPartPosi();
+                PartitionSpec parentPartSpec = partInfo.getPartitionBy().getNthPartition(parentPartPosi.intValue());
+                prunedPartInfo.setParentPartName(parentPartSpec.getName());
+            } else {
+                prunedPartInfo.setParentPartName(null);
+            }
             prunedPartInfo.setPartId(ps.getId());
             prunedPartInfo.setPartBitSetIdx(i);
             prunedPartInfo.setGroupKey(ps.getLocation().getGroupKey());
             prunedPartInfo.setPhyTable(ps.getLocation().getPhyTableName());
+            prunedPartInfo.setParentPartName(parentPartName);
             prunedPartInfos.add(prunedPartInfo);
         }
 
-//        if (!hasSubPart) {
-//            for (int i = 0; i < partCnt; i++) {
-//                PartitionSpec ps = partitions.get(i);
-//                if (partBitSet.get(i)) {
-//                    PhysicalPartitionInfo prunedPartInfo = new PhysicalPartitionInfo();
-//                    prunedPartInfo.setPartLevel(PartKeyLevel.PARTITION_KEY);
-//                    prunedPartInfo.setPartName(ps.getName());
-//                    prunedPartInfo.setPartId(ps.getId());
-//                    prunedPartInfo.setPartBitSetIdx(i);
-//                    prunedPartInfo.setGroupKey(ps.getLocation().getGroupKey());
-//                    prunedPartInfo.setPhyTable(ps.getLocation().getPhyTableName());
-//                    prunedPartInfos.add(prunedPartInfo);
-//                }
-//            }
-//
-//        } else {
-//            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-//                "Not supported partitioning with subpartitions");
-//        }
         return prunedPartInfos;
     }
 

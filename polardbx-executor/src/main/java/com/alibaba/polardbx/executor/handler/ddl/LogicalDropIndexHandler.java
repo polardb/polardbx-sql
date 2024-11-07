@@ -47,6 +47,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
+
 /**
  * DROP INDEX xxx ON xxx
  *
@@ -157,14 +159,14 @@ public class LogicalDropIndexHandler extends LogicalCommonDdlHandler {
         if (renameIndexPreparedData != null) {
             String newRenameIndex = String.format(
                 "/*+TDDL:cmd_extra(DDL_ON_GSI=true)*/alter table %s rename index %s to %s",
-                renameIndexPreparedData.getTableName(),
-                renameIndexPreparedData.getOrgIndexName(),
-                renameIndexPreparedData.getNewIndexName());
+                surroundWithBacktick(renameIndexPreparedData.getTableName()),
+                surroundWithBacktick(renameIndexPreparedData.getOrgIndexName()),
+                surroundWithBacktick(renameIndexPreparedData.getNewIndexName()));
             String rollbackRenameIndex = String.format(
                 "/*+TDDL:cmd_extra(DDL_ON_GSI=true)*/alter table %s rename index %s to %s",
-                renameIndexPreparedData.getTableName(),
-                renameIndexPreparedData.getNewIndexName(),
-                renameIndexPreparedData.getOrgIndexName());
+                surroundWithBacktick(renameIndexPreparedData.getTableName()),
+                surroundWithBacktick(renameIndexPreparedData.getNewIndexName()),
+                surroundWithBacktick(renameIndexPreparedData.getOrgIndexName()));
             SubJobTask ddlTask = new SubJobTask(
                 renameIndexPreparedData.getSchemaName(), newRenameIndex, rollbackRenameIndex);
             ddlTask.setParentAcquireResource(true);

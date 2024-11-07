@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IMppReadOnlyTransaction;
+import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 
 import java.sql.SQLException;
@@ -106,7 +107,8 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
         } else {
             sendSnapshotSeq(connection);
         }
-        return connection;
+        boolean needSetFlashbackArea = executionContext.isFlashbackArea() && rw == ITransaction.RW.READ;
+        return connection.enableFlashbackArea(needSetFlashbackArea);
     }
 
     @Override

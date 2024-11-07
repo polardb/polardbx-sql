@@ -62,7 +62,7 @@ public class CleanLogTableScheduledJob extends SchedulerExecutor {
         long fireTime = executableScheduledJob.getFireTime();
         long startTime = ZonedDateTime.now().toEpochSecond();
 
-        StringBuilder remark = new StringBuilder();
+        StringBuffer remark = new StringBuffer();
         try {
             // Mark as RUNNING.
             boolean casSuccess =

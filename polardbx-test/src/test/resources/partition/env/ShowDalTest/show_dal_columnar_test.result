@@ -1,0 +1,129 @@
+DROP TABLE IF EXISTS `triangle`;
+CREATE TABLE `triangle` (
+	`sidea` DOUBLE,
+	`sideb` DOUBLE,
+	`sidec` DOUBLE GENERATED ALWAYS AS (SQRT(sidea * sidea + sideb * sideb))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+SHOW INDEX FROM triangle;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW INDEX FROM triangle;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+SHOW COLUMNS FROM triangle;
+Field,Type,Null,Key,Default,Extra
+sidea,double,YES,,null,
+sideb,double,YES,,null,
+sidec,double,YES,,null,VIRTUAL GENERATED
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=ture*/SHOW COLUMNS FROM triangle;
+Field,Type,Null,Key,Default,Extra
+sidea,double,YES,,null,
+sideb,double,YES,,null,
+sidec,double,YES,,null,VIRTUAL GENERATED
+DROP TABLE IF EXISTS `triangle`;
+DROP TABLE IF EXISTS fi3;
+CREATE TABLE fi3 (
+	id INT PRIMARY KEY,
+	col1 INT,
+	col2 INT,
+	col3 CHAR(16)
+);
+/*+TDDL:CMD_EXTRA(ENABLE_CREATE_EXPRESSION_INDEX=TRUE,ENABLE_UNIQUE_KEY_ON_GEN_COL=TRUE)*/ALTER TABLE fi3
+	ADD UNIQUE LOCAL INDEX func_index (SUBSTRING(col3, 1, 2));
+SHOW INDEX FROM fi3;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+fi3,0,PRIMARY,1,id,A,0,null,null,,BTREE,,
+fi3,0,func_index,1,func_index$0,A,0,null,null,YES,BTREE,,
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW INDEX FROM fi3;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+fi3,0,func_index,1,func_index$0,A,0,0,null,YES,BTREE,,
+fi3,0,PRIMARY,1,id,A,0,0,null,,BTREE,,
+SHOW COLUMNS FROM fi3;
+Field,Type,Null,Key,Default,Extra
+id,int(11),NO,PRI,null,
+col1,int(11),YES,,null,
+col2,int(11),YES,,null,
+col3,char(16),YES,,null,
+func_index$0,char(16),YES,UNI,null,VIRTUAL GENERATED
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW COLUMNS FROM fi3;
+Field,Type,Null,Key,Default,Extra
+col1,int(11),YES,,null,
+col2,int(11),YES,,null,
+col3,char(16),YES,,null,
+func_index$0,char(16),YES,UNI,(SUBSTRING(`col3` FROM 1 FOR 2)),VIRTUAL GENERATED
+id,int(11),NO,PRI,null,
+DROP TABLE IF EXISTS fi3;
+DROP TABLE IF EXISTS sp_tbl_list_key_tp;
+CREATE TABLE sp_tbl_list_key_tp (
+	id int,
+	country varchar(64),
+	city varchar(64),
+	order_time datetime NOT NULL,
+	PRIMARY KEY (id)
+)
+PARTITION BY LIST COLUMNS (country, city)
+SUBPARTITION BY KEY (id) SUBPARTITIONS 4 (
+	PARTITION p1 VALUES IN (('China', 'Hangzhou')),
+	PARTITION p2 VALUES IN (('Russian', 'Moscow')),
+	PARTITION pd VALUES IN (DEFAULT)
+);
+SHOW INDEX FROM sp_tbl_list_key_tp;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+sp_tbl_list_key_tp,0,PRIMARY,1,id,A,0,null,null,,BTREE,,
+sp_tbl_list_key_tp,1,auto_shard_key_country_city,1,country,A,0,null,null,YES,BTREE,,
+sp_tbl_list_key_tp,1,auto_shard_key_country_city,2,city,A,0,null,null,YES,BTREE,,
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW INDEX FROM sp_tbl_list_key_tp;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+sp_tbl_list_key_tp,1,auto_shard_key_country_city,2,city,A,0,0,null,YES,BTREE,,
+sp_tbl_list_key_tp,1,auto_shard_key_country_city,1,country,A,0,0,null,YES,BTREE,,
+sp_tbl_list_key_tp,0,PRIMARY,1,id,A,0,0,null,,BTREE,,
+SHOW COLUMNS FROM sp_tbl_list_key_tp;
+Field,Type,Null,Key,Default,Extra
+id,int(11),NO,PRI,null,
+country,varchar(64),YES,MUL,null,
+city,varchar(64),YES,,null,
+order_time,datetime,NO,,null,
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW COLUMNS FROM sp_tbl_list_key_tp;
+Field,Type,Null,Key,Default,Extra
+city,varchar(64),YES,,null,
+country,varchar(64),YES,MUL,null,
+id,int(11),NO,PRI,null,
+order_time,datetime,NO,,null,
+DROP TABLE IF EXISTS sp_tbl_list_key_tp;
+DROP TABLE IF EXISTS user;
+CREATE TABLE user (
+	user_id bigint,
+	name varchar(10),
+	addr varchar(30),
+	GLOBAL INDEX `g_i_name`(name) PARTITION BY HASH (name),
+	PRIMARY KEY (user_id)
+)
+PARTITION BY KEY (user_id);
+SHOW INDEX FROM user;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+user,0,PRIMARY,1,user_id,A,0,null,null,,BTREE,,
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW INDEX FROM user;
+Table,Non_unique,Key_name,Seq_in_index,Column_name,Collation,Cardinality,Sub_part,Packed,Null,Index_type,Comment,Index_comment
+user,0,PRIMARY,1,user_id,A,0,0,null,,BTREE,,
+SHOW COLUMNS FROM user;
+Field,Type,Null,Key,Default,Extra
+user_id,bigint(20),NO,PRI,null,
+name,varchar(10),YES,,null,
+addr,varchar(30),YES,,null,
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW COLUMNS FROM user;
+Field,Type,Null,Key,Default,Extra
+addr,varchar(30),YES,,null,
+name,varchar(10),YES,,null,
+user_id,bigint(20),NO,PRI,null,
+DROP INDEX `g_i_name` ON user;
+DROP TABLE IF EXISTS user;
+/*+TDDL:ENABLE_LOGICAL_TABLE_META=true*/SHOW ENGINES
+Engine,Support,Comment,Transaction,XA,Savepoints
+CSV,YES,CSV storage engine,NO,NO,NO
+MRG_MYISAM,YES,Collection of identical MyISAM tables,NO,NO,NO
+PERFORMANCE_SCHEMA,YES,Performance Schema,NO,NO,NO
+BLACKHOLE,YES,/dev/null storage engine (anything you write to it disappears),NO,NO,NO
+MyISAM,YES,MyISAM storage engine,NO,NO,NO
+MEMORY,YES,Hash based, stored in memory, useful for temporary tables,NO,NO,NO
+ARCHIVE,YES,Archive storage engine,NO,NO,NO
+InnoDB,DEFAULT,Supports transactions, row-level locking, and foreign keys,YES,YES,YES
+FEDERATED,NO,Federated MySQL storage engine,null,null,null
+Sequence,YES,Sequence Storage Engine Helper,NO,NO,NO

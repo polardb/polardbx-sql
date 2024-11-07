@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.fastchecker;
 
-import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -34,25 +33,16 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
-import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
-import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
-import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
-import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
-import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -89,7 +79,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -98,11 +87,11 @@ import static java.lang.Math.max;
 public class FastChecker extends PhyOperationBuilderCommon {
     private static final Logger logger = LoggerFactory.getLogger(FastChecker.class);
 
-    private final String srcSchemaName;
+    protected final String srcSchemaName;
 
-    private final String dstSchemaName;
-    private final String srcLogicalTableName;
-    private final String dstLogicalTableName;
+    protected final String dstSchemaName;
+    protected final String srcLogicalTableName;
+    protected final String dstLogicalTableName;
     private Map<String, Set<String>> srcPhyDbAndTables;
     private Map<String, Set<String>> dstPhyDbAndTables;
     private final List<String> srcColumns;
@@ -127,8 +116,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
     private final PhyTableOperation planSelectSampleSrc;
     private final PhyTableOperation planSelectSampleDst;
 
-    private volatile AtomicInteger phyTaskSum;
-    private volatile AtomicInteger phyTaskFinished;
+    protected volatile AtomicInteger phyTaskSum;
+    protected volatile AtomicInteger phyTaskFinished;
 
     /**
      * srcColumns and dstColumns must have the same order,
@@ -201,7 +190,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
         final List<String> allColumns =
             tableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
         final List<String> allColumnsDst = new ArrayList<>(allColumns);
-        final List<String> srcPks = getorderedPrimaryKeys(tableMeta);
+        final List<String> srcPks = getOrderedPrimaryKeys(tableMeta);
         final List<String> dstPks = new ArrayList<>(srcPks);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
@@ -225,7 +214,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
             builder.buildSqlSelectForSample(tableMeta, dstPks));
     }
 
-    private long getTableRowsCount(final String schema, final String dbIndex, final String phyTable) {
+    protected long getTableRowsCount(final String schema, final String dbIndex, final String phyTable) {
         String dbIndexWithoutGroup = GroupInfoUtil.buildPhysicalDbNameFromGroupName(dbIndex);
         List<List<Object>> phyDb = StatsUtils.queryGroupByPhyDb(schema, dbIndexWithoutGroup, "select database();");
         if (GeneralUtil.isEmpty(phyDb) || GeneralUtil.isEmpty(phyDb.get(0))) {
@@ -244,7 +233,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
         return Long.parseLong(String.valueOf(result.get(0).get(0)));
     }
 
-    private long getTableAvgRowSize(final String schema, final String dbIndex, final String phyTable) {
+    protected long getTableAvgRowSize(final String schema, final String dbIndex, final String phyTable) {
         String dbIndexWithoutGroup = GroupInfoUtil.buildPhysicalDbNameFromGroupName(dbIndex);
         List<List<Object>> phyDb = StatsUtils.queryGroupByPhyDb(schema, dbIndexWithoutGroup, "select database();");
         if (GeneralUtil.isEmpty(phyDb) || GeneralUtil.isEmpty(phyDb.get(0))) {
@@ -271,7 +260,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
         PhyTableOperation phyTableOperation = isSrcSchema ? this.planSelectSampleSrc : this.planSelectSampleDst;
         SqlSelect sqlSelect = (SqlSelect) phyTableOperation.getNativeSqlNode().clone();
         OptimizerHint optimizerHint = new OptimizerHint();
-        optimizerHint.addHint("+sample_percentage(" + calSamplePercentage + ")");
+        optimizerHint.addHint("+sample_percentage(" + GeneralUtil.formatSampleRate(calSamplePercentage) + ")");
         sqlSelect.setOptimizerHint(optimizerHint);
 
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
@@ -330,11 +319,11 @@ public class FastChecker extends PhyOperationBuilderCommon {
     }
 
     //for large table, we split table into batch
-    private List<Map<Integer, ParameterContext>> splitPhyTableIntoBatch(final ExecutionContext baseEc,
-                                                                        final String phyDbName, final String phyTable,
-                                                                        final long tableRowsCount,
-                                                                        final long batchSize,
-                                                                        final boolean isSrcSchema) {
+    protected List<Map<Integer, ParameterContext>> splitPhyTableIntoBatch(final ExecutionContext baseEc,
+                                                                          final String phyDbName, final String phyTable,
+                                                                          final long tableRowsCount,
+                                                                          final long batchSize,
+                                                                          final boolean isSrcSchema) {
         boolean enableInnodbBtreeSampling = OptimizerContext.getContext(srcSchemaName).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_INNODB_BTREE_SAMPLING);
 
@@ -461,13 +450,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
         return returnedSampledRowsPc;
     }
 
-    private Long getPhyTableDegistByBatch(String phyDbName, String phyTable, ExecutionContext baseEc,
-                                          boolean isSrcTableTask, List<Map<Integer, ParameterContext>> batchBoundList) {
-        if (batchBoundList.isEmpty()) {
-            return null;
-        }
-
-        List<Long> hashResults = new ArrayList<>();
+    protected List<PhyTableOperation> genHashCheckPlans(String phyDbName, String phyTable, boolean isSrcTableTask,
+                                                        List<Map<Integer, ParameterContext>> batchBoundList) {
         List<PhyTableOperation> hashcheckPlans = new ArrayList<>();
 
         Map<Integer, ParameterContext> firstBound = null, lastBound = null;
@@ -512,18 +496,20 @@ public class FastChecker extends PhyOperationBuilderCommon {
         }
         hashcheckPlans.add(
             buildHashcheckPlanWithDnfParam(phyDbName, phyTable, lastBoundPc, operationLastBound, true, false));
+        return hashcheckPlans;
+    }
 
-        //log batch sql
-//        for (int i = 0; i < hashcheckPlans.size(); i++) {
-//            SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
-//                "[{0}] FastChecker {1}[{2}][{3}], batch {4}, phySqlInfo: {5}, param: {6}",
-//                baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst", i,
-//                hashcheckPlans.get(i).getBytesSql(), hashcheckPlans.get(i).getParam()));
-//        }
+    private Long getPhyTableDigestByBatch(String phyDbName, String phyTable, ExecutionContext baseEc,
+                                          boolean isSrcTableTask, List<Map<Integer, ParameterContext>> batchBoundList) {
+        if (batchBoundList.isEmpty()) {
+            return null;
+        }
 
-        //excute
-        for (int i = 0; i < hashcheckPlans.size(); i++) {
-            PhyTableOperation phyPlan = hashcheckPlans.get(i);
+        List<Long> hashResults = new ArrayList<>();
+        List<PhyTableOperation> hashCheckPlans = genHashCheckPlans(phyDbName, phyTable, isSrcTableTask, batchBoundList);
+
+        // execute
+        for (PhyTableOperation phyPlan : hashCheckPlans) {
             Long batchHashResult = executeHashcheckPlan(phyPlan, baseEc);
             if (batchHashResult != null) {
                 hashResults.add(batchHashResult);
@@ -539,22 +525,15 @@ public class FastChecker extends PhyOperationBuilderCommon {
             return null;
         }
 
-        final HashCaculator caculator = new HashCaculator();
+        final HashCalculator calculator = new HashCalculator();
         for (Long elem : hashResults) {
-            caculator.caculate(elem);
+            calculator.calculate(elem);
         }
-        return caculator.getHashVal();
+        return calculator.getHashVal();
     }
 
-    private Long getPhyTableDegistByFullScan(String phyDbName, String phyTable, ExecutionContext baseEc,
-                                             boolean isSrcTableTask) {
-
-        if (CrossEngineValidator.isJobInterrupted(baseEc) || Thread.currentThread().isInterrupted()) {
-            long jobId = baseEc.getDdlJobId();
-            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                "The job '" + jobId + "' has been cancelled");
-        }
-
+    protected PhyTableOperation genHashCheckPlan(String phyDbName, String phyTable, ExecutionContext baseEc,
+                                                 boolean isSrcTableTask) {
         final Map<Integer, ParameterContext> params = new HashMap<>(1);
         params.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
 
@@ -570,6 +549,20 @@ public class FastChecker extends PhyOperationBuilderCommon {
         SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
             "[{0}] FastChecker {1}[{2}][{3}], full scan, phySqlInfo: {4}",
             baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst", plan));
+
+        return plan;
+    }
+
+    private Long getPhyTableDigestByFullScan(String phyDbName, String phyTable, ExecutionContext baseEc,
+                                             boolean isSrcTableTask) {
+
+        if (CrossEngineValidator.isJobInterrupted(baseEc) || Thread.currentThread().isInterrupted()) {
+            long jobId = baseEc.getDdlJobId();
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "The job '" + jobId + "' has been cancelled");
+        }
+
+        PhyTableOperation plan = genHashCheckPlan(phyDbName, phyTable, baseEc, isSrcTableTask);
 
         return executeHashcheckPlan(plan, baseEc);
     }
@@ -598,7 +591,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
      * 1. 含local partition的表将不进行batch check (因为sample结果是乱序的)
      * 2. 逻辑表为unique gsi的表将不进行batch check (因为其物理表只含主键列，但主键列没有主键属性)
      */
-    private boolean whetherCanSplitIntoBatch(ExecutionContext baseEc, boolean isSrc) {
+    protected boolean whetherCanSplitIntoBatch(ExecutionContext baseEc, boolean isSrc) {
         //won't do sample for local partition table
         TableMeta tableMeta = isSrc ?
             baseEc.getSchemaManager(srcSchemaName).getTable(srcLogicalTableName)
@@ -663,7 +656,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
                     baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst",
                     batchBoundList.size() + 1));
 
-                hashResult = getPhyTableDegistByBatch(phyDbName, phyTable, baseEc, isSrcTableTask, batchBoundList);
+                hashResult = getPhyTableDigestByBatch(phyDbName, phyTable, baseEc, isSrcTableTask, batchBoundList);
             } else {
                 failedToSplitBatch = true;
             }
@@ -674,7 +667,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
                 "[{0}] FastChecker start hash phy for {1}[{2}][{3}], and phy table is hashed by full scan",
                 baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst"));
 
-            hashResult = getPhyTableDegistByFullScan(phyDbName, phyTable, baseEc, isSrcTableTask);
+            hashResult = getPhyTableDigestByFullScan(phyDbName, phyTable, baseEc, isSrcTableTask);
 
         }
 
@@ -1020,10 +1013,10 @@ public class FastChecker extends PhyOperationBuilderCommon {
         }
 
         List<Long> srcResult =
-            result.stream().filter(p -> p != null && p.getKey() != null && p.getValue() == true).map(Pair::getKey)
+            result.stream().filter(p -> p != null && p.getKey() != null && p.getValue()).map(Pair::getKey)
                 .collect(Collectors.toList());
         List<Long> dstResult =
-            result.stream().filter(p -> p != null && p.getKey() != null && p.getValue() == false).map(Pair::getKey)
+            result.stream().filter(p -> p != null && p.getKey() != null && !p.getValue()).map(Pair::getKey)
                 .collect(Collectors.toList());
 
         return srcTableTaskCount == result.stream().filter(Objects::nonNull).filter(Pair::getValue).count()
@@ -1032,11 +1025,11 @@ public class FastChecker extends PhyOperationBuilderCommon {
     }
 
     private boolean compare(List<Long> src, List<Long> dst) {
-        final HashCaculator srcCaculator = new HashCaculator();
-        final HashCaculator dstCaculator = new HashCaculator();
-        src.forEach(elem -> srcCaculator.caculate(elem));
-        dst.forEach(elem -> dstCaculator.caculate(elem));
-        return srcCaculator.getHashVal().equals(dstCaculator.getHashVal());
+        final HashCalculator srcCalculator = new HashCalculator();
+        final HashCalculator dstCalculator = new HashCalculator();
+        src.forEach(srcCalculator::calculate);
+        dst.forEach(dstCalculator::calculate);
+        return srcCalculator.getHashVal().equals(dstCalculator.getHashVal());
     }
 
     public void reportCheckOk(ExecutionContext ec) {
@@ -1049,7 +1042,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
                 CheckerManager.CheckerReportStatus.FINISH.getValue(), "--", finishDetails, "Reporter.", null)));
     }
 
-    class HashCaculator {
+    public class HashCalculator {
         private final Long p;
         private final Long q;
         private final Long r;
@@ -1058,7 +1051,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
         private boolean firstCaculate;
 
         //p q r should be same as p q r in DN
-        public HashCaculator() {
+        public HashCalculator() {
             p = 3860031L;
             q = 2779L;
             r = 2L;
@@ -1066,8 +1059,11 @@ public class FastChecker extends PhyOperationBuilderCommon {
             firstCaculate = true;
         }
 
-        public Long caculate(Long elem) {
-            if (firstCaculate == true) {
+        public Long calculate(Long elem) {
+            if (elem == null) {
+                return hashVal;
+            }
+            if (firstCaculate) {
                 hashVal = elem;
                 firstCaculate = false;
             } else {
@@ -1089,20 +1085,19 @@ public class FastChecker extends PhyOperationBuilderCommon {
         this.srcPhyDbAndTables = srcPhyDbAndTables;
     }
 
-    public static List<String> getorderedPrimaryKeys(TableMeta tableMeta) {
-        List<String> primaryKeys = ImmutableList
+    public static List<String> getOrderedPrimaryKeys(TableMeta tableMeta) {
+        return ImmutableList
             .copyOf(
                 (tableMeta.isHasPrimaryKey() ? tableMeta.getPrimaryIndex().getKeyColumns() :
                     new ArrayList<ColumnMeta>())
                     .stream().map(ColumnMeta::getName).collect(Collectors.toList())
             );
-        return primaryKeys;
     }
 
     /**
      * map < groupName, storageInstId >
      */
-    private Map<String, String> queryStorageInstIdByPhyGroup(Set<String> groupName) {
+    protected Map<String, String> queryStorageInstIdByPhyGroup(Set<String> groupName) {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
             groupDetailInfoAccessor.setConnection(metaDbConn);

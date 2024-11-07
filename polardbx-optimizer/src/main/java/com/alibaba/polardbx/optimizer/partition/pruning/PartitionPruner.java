@@ -17,13 +17,18 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -32,6 +37,7 @@ import org.apache.calcite.sql.SqlNode;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -72,16 +78,6 @@ public class PartitionPruner {
                                                                             RelDataType tupleValRowType,
                                                                             List<List<SqlNode>> tupleValAst,
                                                                             ExecutionContext ec) {
-
-//        GenPartTupleRouteInfoParams genParams = new GenPartTupleRouteInfoParams();
-//        genParams.setSchemaName(schemaName);
-//        genParams.setLogTbName(logTbName);
-//        genParams.setSpecificPartInfo(specificPartInfo);
-//        genParams.setValueRowType(valueRowType);
-//        genParams.setAstValues(astValues);
-//        genParams.setEc(ec);
-//        return PartitionTupleRouteInfoBuilder.genParTupleRoutingInfo(genParams);
-
         return PartitionTupleRouteInfoBuilder
             .genPartTupleRoutingInfo(schemaName, logTbName, specificPartInfo, tupleValRowType, tupleValAst, ec);
     }
@@ -100,15 +96,34 @@ public class PartitionPruner {
                 PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo,
                     partInfo.getPartitionBy().getPhysicalPartLevel(), true);
             pruningCtx.setRootStep(fullScanStep);
-
             PartPrunedResult prunedResult = fullScanStep.prunePartitions(context, pruningCtx, null);
             PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
             return prunedResult;
         }
         pruningCtx.setRootStep(stepInfo);
         PartPrunedResult prunedResult = stepInfo.prunePartitions(context, pruningCtx, null);
+        invalidParitionFilter(stepInfo.getPartitionInfo(), prunedResult);
         PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
         return prunedResult;
+    }
+
+    public static void invalidParitionFilter(PartitionInfo partitionInfo, PartPrunedResult prunedResult) {
+        if (!prunedResult.getPartBitSet().isEmpty()) {
+            List<PartitionSpec> phyPartSpecs = partitionInfo.getPartitionBy().getPhysicalPartitions();
+            int partCnt = phyPartSpecs.size();
+            for (int i = prunedResult.getPartBitSet().nextSetBit(0); i >= 0;
+                 i = prunedResult.getPartBitSet().nextSetBit(i + 1)) {
+                if (i >= partCnt) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        "Find pruned partition error");
+                }
+                PartitionSpec phySpec = phyPartSpecs.get(i);
+                if (phySpec.getStatus() != null
+                    && phySpec.getStatus() == TablePartitionRecord.PARTITION_STATUS_PARTITION_OFFLINE) {
+                    prunedResult.getPartBitSet().clear(i);
+                }
+            }
+        }
     }
 
     /**
@@ -124,6 +139,7 @@ public class PartitionPruner {
         pruningCtx.setEnableConstExprEvalCache(false);
         PartPrunedResult rs = tupleRouteInfo.routeTuple(tupleIndex, context, pruningCtx);
         pruningCtx.setRootTuple(tupleRouteInfo);
+        invalidParitionFilter(tupleRouteInfo.getPartInfo(), rs);
         PartitionPrunerUtils.logStepExplainInfo(context, rs.getPartInfo(), pruningCtx);
         return rs;
     }
@@ -245,5 +261,24 @@ public class PartitionPruner {
         } else {
             throw GeneralUtil.nestedException(new NotSupportException("Not support to non logical view"));
         }
+    }
+
+    public static List<PartPrunedResult> pruneCciPartitions(RelNode relPlan, ExecutionContext context,
+                                                            PartitionInfo cciPartInfo) {
+        if (!(relPlan instanceof OSSTableScan)) {
+            throw GeneralUtil.nestedException(new NotSupportException("Not support to non OSS table scan"));
+        }
+        OSSTableScan ossTableScan = (OSSTableScan) relPlan;
+        boolean useSelectPartitions = ossTableScan.useSelectPartitions();
+        PartPrunedResult tbPrunedResult;
+        if (!useSelectPartitions) {
+            RelShardInfo relShardInfo = ossTableScan.getCciRelShardInfo(context, cciPartInfo);
+            tbPrunedResult = PartitionPruner.doPruningByStepInfo(relShardInfo.getPartPruneStepInfo(), context);
+        } else {
+            PartitionPruneStep fullScanStep = PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(cciPartInfo,
+                cciPartInfo.getPartitionBy().getPartLevel(), true);
+            tbPrunedResult = PartitionPruner.doPruningByStepInfo(fullScanStep, context);
+        }
+        return Collections.singletonList(tbPrunedResult);
     }
 }

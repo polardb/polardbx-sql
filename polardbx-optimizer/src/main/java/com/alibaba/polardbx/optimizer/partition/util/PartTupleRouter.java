@@ -36,6 +36,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
+ * A Full Tuple Partition Router
+ * for the internal usage of routing,
+ * such as Split hot value.
+ *
+ * <pre>
+ *     Notice:
+ *          PartTupleRouter is non-thread-safe，
+ *          so route tuple one by one.
+ *     e.g:
+ *     PartTupleRouter router = new PartTupleRouter(...);
+ *      for each tuple of tupleList
+ *            part = router.routeTuple(tuple)
+ *
+ * </pre>
+ *
  * @author chenghui.lch
  */
 public class PartTupleRouter extends AbstractLifecycle {

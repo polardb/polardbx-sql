@@ -37,7 +37,8 @@ public interface ITsoTransaction extends IMppTsoTransaction {
     TransactionManager getManager();
 
     @Override
-    default long nextTimestamp(Consumer<Long> updateGetTsoTime) {
+    default long
+    nextTimestamp(Consumer<Long> updateGetTsoTime) {
         long getTsoStartTime = System.nanoTime();
         long tso = getManager().getTimestampOracle().nextTimestamp();
         updateGetTsoTime.accept(System.nanoTime() - getTsoStartTime);

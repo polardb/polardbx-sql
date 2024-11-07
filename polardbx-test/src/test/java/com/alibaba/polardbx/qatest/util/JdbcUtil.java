@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.util;
 
 import com.alibaba.druid.pool.DruidDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
@@ -376,6 +377,10 @@ public class JdbcUtil {
      */
     public static void setGlobal(Connection tddlConn, String sql) {
         executeUpdate(tddlConn, "set enable_set_global=true;" + sql);
+    }
+
+    public static void disableAutoForceIndex(Connection tddlConn) {
+        executeUpdate(tddlConn, "set " + ConnectionProperties.ENABLE_AUTO_FORCE_INDEX + " =false;");
     }
 
     /**
@@ -1388,6 +1393,27 @@ public class JdbcUtil {
             log.error(e.getMessage(), e);
             assertWithMessage("语句并未按照预期执行成功:" + sql + e.getMessage()).fail();
         } finally {
+            close(stmt);
+        }
+
+    }
+
+    public static void executeUpdateSuccessInTrx(Connection conn, String sql) {
+        Statement stmt = null;
+        try {
+            stmt = conn.createStatement();
+            stmt.execute("begin");
+            stmt.execute(sql);
+            stmt.execute("commit");
+        } catch (SQLException e) {
+            log.error(e.getMessage(), e);
+            assertWithMessage("语句并未按照预期执行成功:" + sql + e.getMessage()).fail();
+        } finally {
+            try {
+                stmt.execute("rollback");
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
             close(stmt);
         }
 

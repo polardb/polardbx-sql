@@ -81,15 +81,34 @@ public class LogicalBinaryOperatorsTest extends BaseProjectionTest {
         return result;
     }
 
-    private static List<Object[]> generateColCol(String col1Name, String col2Name, String operator) {
-        Random random = getRandom();
-        List<Object[]> col1DataList = Lists.newArrayList(
-            generateColumnInput(random, col1Name, true),
-            generateColumnInput(random, col1Name, false));
+    protected static List<Object[]> generateColCol(String col1Name, String col2Name, String operator) {
+        return generateColCol(col1Name, col2Name, operator, true);
+    }
 
-        List<Object[]> col2DataList = Lists.newArrayList(
-            generateColumnInput(random, col2Name, true),
-            generateColumnInput(random, col2Name, false));
+    protected static List<Object[]> generateColCol(String col1Name, String col2Name, String operator,
+                                                   boolean withNull) {
+        Random random = getRandom();
+        List<Object[]> col1DataList;
+        if (withNull) {
+            col1DataList = Lists.newArrayList(
+                generateColumnInput(random, col1Name, true),
+                generateColumnInput(random, col1Name, false));
+        } else {
+            col1DataList = Lists.newArrayList(
+                generateColumnInput(random, col1Name, false),
+                generateColumnInput(random, col1Name, false));
+        }
+
+        List<Object[]> col2DataList;
+        if (withNull) {
+            col2DataList = Lists.newArrayList(
+                generateColumnInput(random, col2Name, true),
+                generateColumnInput(random, col2Name, false));
+        } else {
+            col2DataList = Lists.newArrayList(
+                generateColumnInput(random, col2Name, false),
+                generateColumnInput(random, col2Name, false));
+        }
 
         int[] selection = createSelectionArray(SELECTION_LEN, TEST_ROW_COUNT, random);
 
@@ -109,7 +128,7 @@ public class LogicalBinaryOperatorsTest extends BaseProjectionTest {
         return result;
     }
 
-    private static List<Object[]> generateColConst(String col1Name, String col2Name, String operator) {
+    protected static List<Object[]> generateColConst(String col1Name, String col2Name, String operator) {
         Random random = getRandom();
         DataType<?> dataType1 = dataTypeOfColumn(col1Name);
         List<Object[]> col1DataList = Lists.newArrayList(
@@ -193,7 +212,7 @@ public class LogicalBinaryOperatorsTest extends BaseProjectionTest {
         return result;
     }
 
-    private static Object and(Object obj1, Object obj2) {
+    protected static Object and(Object obj1, Object obj2) {
         Optional<Boolean> b1 = toBigDecimal(obj1)
             .map(o -> o.compareTo(BigDecimal.ZERO) != 0);
 
@@ -219,7 +238,7 @@ public class LogicalBinaryOperatorsTest extends BaseProjectionTest {
         }
     }
 
-    private static Object or(Object obj1, Object obj2) {
+    protected static Object or(Object obj1, Object obj2) {
         Optional<Boolean> b1 = toBigDecimal(obj1)
             .map(o -> o.compareTo(BigDecimal.ZERO) != 0);
 

@@ -17,31 +17,31 @@
 package com.alibaba.polardbx.transaction.utils;
 
 import com.alibaba.polardbx.common.async.AsyncTaskUtils;
-import com.alibaba.polardbx.common.async.TimeInterval;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.BooleanConfigParam;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 
-import java.time.LocalTime;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_DEADLOCK_DETECTION_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_PURGE_TRANS_PARAM;
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_SYNC_POINT_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TIMER_TASK_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TRANSACTION_STATISTICS_PARAM;
 import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM;
-import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_DEADLOCK_DETECTION;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.DEADLOCK_DETECTION_INTERVAL;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_DEADLOCK_DETECTION;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_SYNC_POINT;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRANSACTION_STATISTICS;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.ENABLE_TRX_IDLE_TIMEOUT_TASK;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_BEFORE;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.PURGE_TRANS_START_TIME;
+import static com.alibaba.polardbx.common.properties.ConnectionProperties.SYNC_POINT_TASK_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.TRANSACTION_STATISTICS_TASK_INTERVAL;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.TRX_IDLE_TIMEOUT_TASK_INTERVAL;
 
@@ -143,6 +143,27 @@ public class ParamValidationUtils {
         throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown transaction statistics parameter " + parameter);
     }
 
+    public static void validateSyncPointParam(String parameter, String value) {
+        if (ENABLE_SYNC_POINT.equals(parameter)) {
+            final Boolean boolVal = GeneralUtil.convertStringToBoolean(value);
+            if (boolVal == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should be TRUE/FALSE");
+            }
+            return;
+        }
+        if (SYNC_POINT_TASK_INTERVAL.equals(parameter)) {
+            final int intVal = Integer.parseInt(value);
+            if (intVal < 1000) {
+                throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE,
+                    "invalid parameter: " + parameter + ", it should >= 1000(ms)");
+            }
+            return;
+        }
+
+        throw new TddlRuntimeException(ErrorCode.ERR_VALIDATE, "Unknown sync point task parameter " + parameter);
+    }
+
     public static boolean isIdentical(Map<String, String> newParam, Map<String, String> oldParam,
                                       Set<String> paramNames) {
         for (String paramName : paramNames) {
@@ -170,6 +191,10 @@ public class ParamValidationUtils {
 
         if (MODIFIABLE_TRX_IDLE_TIMEOUT_PARAM.contains(parameter)) {
             validateTransactionIdleTimeoutParam(parameter, value);
+        }
+
+        if (MODIFIABLE_SYNC_POINT_PARAM.contains(parameter)) {
+            validateSyncPointParam(parameter, value);
         }
 
         return false;

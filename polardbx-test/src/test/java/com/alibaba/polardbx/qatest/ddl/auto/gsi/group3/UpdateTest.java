@@ -546,7 +546,7 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
             gsiName, tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createGsiSql);
 
-        String sql = String.format("insert into %s values(1,null,-5),(1,null,5)", tableName);
+        String sql = String.format("insert into %s values(1,null,-5),(2,null,5)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         sql = String.format("update %s set b=1 where c=-5", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
@@ -568,7 +568,7 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
             gsiName, tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createGsiSql);
 
-        String sql = String.format("insert into %s values(1,null,null),(1,null,5)", tableName);
+        String sql = String.format("insert into %s values(1,null,null),(2,null,5)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         sql = String.format("update %s set b=1 where c is null", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
@@ -590,7 +590,7 @@ public class UpdateTest extends DDLBaseNewDBTestCase {
             gsiName, tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createGsiSql);
 
-        String sql = String.format("insert into %s values(1,null,null),(1,null,5)", tableName);
+        String sql = String.format("insert into %s values(1,null,null),(2,null,5)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         sql = String.format("update %s set c=-5 where c is null", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);

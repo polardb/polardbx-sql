@@ -1,0 +1,6 @@
+- sql: |
+    /*+TDDL: scan("test_table_a", real_table=("test_table_a_00000"))*/ select a.bigint_test from test_table_a a where a.pk in (1, 2, 3);
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="test_table_a[p1]", sql="select `a`.`bigint_test` as `bigint_test` from `test_table_a` as `a` where (`a`.`pk` in (?))")

@@ -30,6 +30,8 @@ public class DefaultAsExprValueTest extends AutoCrudBasedLockTestCase {
         + " `C11` DATE NOT NULL DEFAULT (CURRENT_DATE + INTERVAL 1 YEAR),"
         + " `C12` varchar(20) NOT NULL DEFAULT (LPAD(''string'', 5, ''0'')),"
         + " `C13` tinyint(1) NOT NULL DEFAULT (TRUE),"
+        + " `C14` binary(16) NOT NULL DEFAULT (uuid_to_bin(''e7fe4fc5-11ef-1739-accb-0242ac110012'')),"
+//        + " `C15` varchar(64) NOT NULL DEFAULT (bin_to_uuid(0xE7FE4FC511EF1739ACCB0242AC110012)),"
         + " PRIMARY KEY (`pk`)"
         + ") {0} ";
 

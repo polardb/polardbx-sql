@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.Session;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.BufferResult;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.LazyOutputBuffer;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBuffer;
@@ -37,9 +38,11 @@ import com.alibaba.polardbx.executor.mpp.operator.TaskStats;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.TaskMemoryPool;
+import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import com.alibaba.polardbx.optimizer.statis.SQLOperation;
 import com.alibaba.polardbx.optimizer.statis.TaskMemoryStatisticsGroup;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
@@ -108,6 +111,7 @@ public class SqlTask {
     private Session session;
     private volatile long trxId = -1;
     private String schema;
+    private ColumnarTracer columnarTracer;
 
     public SqlTask(
         String nodeId,
@@ -381,6 +385,7 @@ public class SqlTask {
                 outputBuffer.getInfo(),
                 ImmutableSet.of(),
                 taskStats,
+                columnarTracer,
                 needsPlan.get(),
                 taskStatus.getState().isDone(),
                 taskStats.getCompletedPipelineExecs(),
@@ -402,6 +407,7 @@ public class SqlTask {
                 outputBuffer.getInfo(),
                 ImmutableSet.of(),
                 null,
+                columnarTracer,
                 needsPlan.get(),
                 taskStatus.getState().isDone(),
                 taskStats.getCompletedPipelineExecs(),
@@ -429,6 +435,7 @@ public class SqlTask {
                 outputBuffer.getInfo(),
                 noMoreSplits,
                 taskStats,
+                columnarTracer,
                 needsPlan.get(),
                 taskStatus.getState().isDone(),
                 taskStats.getCompletedPipelineExecs(),
@@ -448,6 +455,7 @@ public class SqlTask {
                 outputBuffer.getInfo(),
                 noMoreSplits,
                 taskStats,
+                columnarTracer,
                 needsPlan.get(),
                 taskStatus.getState().isDone(),
                 taskStats.getCompletedPipelineExecs(),
@@ -473,6 +481,7 @@ public class SqlTask {
             outputBuffer.getInfo(),
             noMoreSplits,
             taskStats,
+            columnarTracer,
             needsPlan.get(),
             taskStatus.getState().isDone(),
             taskStats.getCompletedPipelineExecs(),
@@ -528,8 +537,13 @@ public class SqlTask {
 
                 if (session == null) {
                     schema = sessionRepresentation.getSchema();
+                    if (sessionRepresentation.isUseColumnar()) {
+                        InternalNodeManager manager = ServiceProvider.getInstance().getServer().getNodeManager();
+                        this.columnarTracer = new ColumnarTracer(manager.getCurrentNode().getHostPort());
+                    }
                     trxId = TrxIdGenerator.getInstance().nextId();
-                    session = sessionRepresentation.toSession(taskId, queryContext, trxId);
+                    //set columnarTracer to ExecutionContext
+                    session = sessionRepresentation.toSession(taskId, queryContext, trxId, columnarTracer);
                     queryContext.registerTaskMemoryPool(session.getClientContext().getMemoryPool());
 
                     isMPPMetricEnabled = isSQLMetricEnabled(

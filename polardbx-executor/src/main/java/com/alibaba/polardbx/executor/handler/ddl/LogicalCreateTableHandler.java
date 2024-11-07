@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
+
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -45,12 +46,19 @@ import com.alibaba.polardbx.executor.ddl.job.factory.PureCdcDdlMark4CreateTableJ
 import com.alibaba.polardbx.executor.ddl.job.factory.ReimportTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.CreatePartitionOssTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.CheckAndPrepareColumnarIndexPartDefTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.PrepareCleanupIntervalTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlJobContext;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlTaskSqlBuilder;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ForeignKeyValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
@@ -72,8 +80,8 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.DefaultExprUtil;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
@@ -90,13 +98,17 @@ import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.parse.visitor.FastSqlToCalciteNodeVisitor;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupUtils;
-import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
+import com.alibaba.polardbx.optimizer.ttl.TtlArchiveKind;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlMetaValidationUtil;
+import com.alibaba.polardbx.optimizer.ttl.TtlUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupUtils;
+import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCall;
@@ -166,7 +178,6 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             if (returnImmediately) {
                 return new TransientDdlJob();
             }
-
         }
 
         sqlCreateTable = (SqlCreateTable) logicalCreateTable.relDdl.sqlNode;
@@ -199,17 +210,41 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
 
         LikeTableInfo likeTableInfo = null;
         if (sqlCreateTable.getLikeTableName() != null) {
-            final String sourceCreateTableSql = generateCreateTableSqlForLike(sqlCreateTable, executionContext);
+
+            SqlCreateTable createTableLikeSqlAst = null;
+            PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
+
+            Boolean[] needConvertToCreateArcCciArr = new Boolean[1];
+            Boolean[] needIgnoreArchiveCciForCreateTableLikeArr = new Boolean[1];
+            needConvertToCreateArcCciArr[0] = false;
+            needIgnoreArchiveCciForCreateTableLikeArr[0] = false;
+            checkIfAllowedCreatingTableLikeTtlDefinedTable(sqlCreateTable, executionContext,
+                needConvertToCreateArcCciArr,
+                needIgnoreArchiveCciForCreateTableLikeArr);
+            boolean needConvertToCreateArcCci = needConvertToCreateArcCciArr[0];
+            boolean needIgnoreArchiveCciForCreateTableLike = needIgnoreArchiveCciForCreateTableLikeArr[0];
+            if (needConvertToCreateArcCci) {
+                return buildCreateColumnarIndexJobForArchiveTable(logicalCreateTable, executionContext,
+                    likeTableInfo);
+            }
+
+            String sourceCreateTableSql = generateCreateTableSqlForLike(sqlCreateTable, executionContext);
             MySqlCreateTableStatement stmt =
                 (MySqlCreateTableStatement) FastsqlUtils.parseSql(sourceCreateTableSql).get(0);
-            stmt.getTableSource().setSimpleName(SqlIdentifier.surroundWithBacktick(logicalCreateTable.getTableName()));
+
+            // remove arc cci of source ttl-table for new created tbl
+            if (needIgnoreArchiveCciForCreateTableLike) {
+                stmt.removeArchiveCciInfoForTtlDefinitionOptionIfNeed();
+            }
+            // change table name to new created tbl
+            stmt.getTableSource()
+                .setSimpleName(SqlIdentifier.surroundWithBacktick(logicalCreateTable.getTableName()));
+
+            // create table ast of target
             final String targetCreateTableSql = stmt.toString();
             final SqlCreateTable targetTableAst = (SqlCreateTable)
                 new FastsqlParser().parse(targetCreateTableSql, executionContext).get(0);
-
-            PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
-            SqlCreateTable createTableLikeSqlAst = (SqlCreateTable)
-                new FastsqlParser().parse(sourceCreateTableSql, executionContext).get(0);
+            createTableLikeSqlAst = targetTableAst;
             createTableLikeSqlAst.setSourceSql(targetTableAst.getSourceSql());
 
             // handle engine
@@ -231,9 +266,11 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                 createTableLikeSqlAst.setArchiveMode(archiveMode);
             }
 
-            if (!Engine.isFileStore(engine) && archiveMode != null) {
-                throw GeneralUtil.nestedException(
-                    "cannot create table using ARCHIVE_MODE if the engine of target table is INNODB.");
+            if (archiveMode != null) {
+                if (!Engine.isFileStore(engine)) {
+                    throw GeneralUtil.nestedException(
+                        "cannot create table using ARCHIVE_MODE if the engine of target table is INNODB.");
+                }
             }
 
             List<String> dictColumns;
@@ -283,6 +320,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                         createTableLikeSqlAst.setLoadTableName(
                             ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(1).getLastName());
                     } else if (((SqlIdentifier) sqlCreateTable.getLikeTableName()).names.size() == 1) {
+                        createTableLikeSqlAst.setLoadTableSchema(executionContext.getSchemaName());
                         createTableLikeSqlAst.setLoadTableName(
                             ((SqlIdentifier) sqlCreateTable.getLikeTableName()).getComponent(0).getLastName());
                     }
@@ -713,14 +751,17 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         DdlPhyPlanBuilder createTableBuilder =
             new CreatePartitionTableBuilder(logicalCreateTable.relDdl, createTablePreparedData, executionContext,
                 partitionTableType).build();
-        PhysicalPlanData physicalPlanData = createTableBuilder.genPhysicalPlanData();
 
+        buildTtlInfoIfNeed(logicalCreateTable, executionContext, createTableBuilder.getPartitionInfo(),
+            createTablePreparedData);
+
+        PhysicalPlanData physicalPlanData = createTableBuilder.genPhysicalPlanData();
         Engine tableEngine = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getEngine();
         ArchiveMode archiveMode = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getArchiveMode();
         List<String> dictColumns = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getDictColumns();
-
+        CreateTableJobFactory ret = null;
         if (Engine.isFileStore(tableEngine)) {
-            CreatePartitionOssTableJobFactory ret = new CreatePartitionOssTableJobFactory(
+            ret = new CreatePartitionOssTableJobFactory(
                 createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
                 createTablePreparedData.getSpecialDefaultValues(),
                 createTablePreparedData.getSpecialDefaultValueFlags(),
@@ -733,7 +774,6 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         }
 
         PartitionInfo partitionInfo = createTableBuilder.getPartitionInfo();
-
         if (logicalCreateTable.isReImportTable()) {
             return new ReimportTableJobFactory(createTablePreparedData.isAutoPartition(),
                 createTablePreparedData.isTimestampColumnDefault(),
@@ -743,7 +783,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                 physicalPlanData, executionContext, createTablePreparedData, partitionInfo).create();
 
         } else {
-            CreatePartitionTableJobFactory ret = new CreatePartitionTableJobFactory(
+            ret = new CreatePartitionTableJobFactory(
                 createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
                 createTablePreparedData.getSpecialDefaultValues(),
                 createTablePreparedData.getSpecialDefaultValueFlags(),
@@ -756,6 +796,18 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             logicalCreateTable.setAffectedRows(ret.getAffectRows());
             return ret.create();
         }
+    }
+
+    protected static void buildTtlInfoIfNeed(LogicalCreateTable logicalCreateTable,
+                                             ExecutionContext executionContext,
+                                             PartitionInfo logicalTablePartInfo,
+                                             CreateTablePreparedData primTablePreparedData) {
+        PartitionInfo partInfo = logicalTablePartInfo;
+        TableMeta tableMeta = primTablePreparedData.getTableMeta();
+        TtlDefinitionInfo ttlDefinitionInfo =
+            TtlUtil.createTtlDefinitionInfoBySqlCreateTable((SqlCreateTable) logicalCreateTable.relDdl.sqlNode,
+                tableMeta, partInfo, executionContext);
+        primTablePreparedData.setTtlDefinitionInfo(ttlDefinitionInfo);
     }
 
     private DdlJob buildCreateTableWithGsiJob(LogicalCreateTable logicalCreateTable,
@@ -783,15 +835,23 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         CreateTableWithGsiPreparedData createTableWithGsiPreparedData =
             logicalCreateTable.getCreateTableWithGsiPreparedData();
         createTableWithGsiPreparedData.getPrimaryTablePreparedData().setLikeTableInfo(likeTableInfo);
+
         CreatePartitionTableWithGsiJobFactory ret = new CreatePartitionTableWithGsiJobFactory(
             logicalCreateTable.relDdl,
             createTableWithGsiPreparedData,
             executionContext
         );
+
         if (createTableWithGsiPreparedData.getPrimaryTablePreparedData().getSelectSql() != null) {
             ret.setSelectSql(createTableWithGsiPreparedData.getPrimaryTablePreparedData().getSelectSql());
         }
         logicalCreateTable.setAffectedRows(ret.getAffectRows());
+
+        PartitionInfo primTblPartInfo =
+            ret.getCreatePartitionTableWithGsiBuilder().getPrimaryTableBuilder().getPartitionInfo();
+        CreateTablePreparedData primPrepData = createTableWithGsiPreparedData.getPrimaryTablePreparedData();
+        buildTtlInfoIfNeed(logicalCreateTable, executionContext, primTblPartInfo, primPrepData);
+
         return ret.create();
     }
 
@@ -1078,4 +1138,192 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             }
         }
     }
+
+    protected DdlJob buildCreateColumnarIndexJobForArchiveTable(LogicalCreateTable logicalCreateTable,
+                                                                ExecutionContext ec,
+                                                                LikeTableInfo likeTableInfo) {
+
+        SqlCreateTable sqlCreateTable = (SqlCreateTable) logicalCreateTable.relDdl.sqlNode;
+        SqlIdentifier sourceTableNameAst = (SqlIdentifier) sqlCreateTable.getLikeTableName();
+        String sourceTableSchema =
+            SQLUtils.normalizeNoTrim(
+                sourceTableNameAst.names.size() > 1 ? sourceTableNameAst.names.get(0) : ec.getSchemaName());
+        String sourceTableName = SQLUtils.normalizeNoTrim(sourceTableNameAst.getLastName());
+
+        String targetTableSchema = logicalCreateTable.getSchemaName();
+        String targetTableName = logicalCreateTable.getTableName();
+
+        TtlDefinitionInfo ttlInfo = TtlUtil.getTtlDefInfoBySchemaAndTable(sourceTableSchema, sourceTableName, ec);
+        TtlMetaValidationUtil.validateAllowedBoundingArchiveTable(ttlInfo, ec, true, targetTableSchema,
+            targetTableName);
+
+        String createViewSqlForArcTbl =
+            TtlTaskSqlBuilder.buildCreateViewSqlForArcTbl(targetTableSchema, targetTableName, ttlInfo);
+        String dropViewSqlForArcTbl =
+            TtlTaskSqlBuilder.buildDropViewSqlFroArcTbl(targetTableSchema, targetTableName, ttlInfo);
+
+        List<DdlTask> taskList = new ArrayList<>();
+
+        SubJobTask createViewSubJobTask =
+            new SubJobTask(targetTableSchema, createViewSqlForArcTbl, dropViewSqlForArcTbl);
+        createViewSubJobTask.setParentAcquireResource(true);
+
+        String ttlTblSchema = ttlInfo.getTtlInfoRecord().getTableSchema();
+        String ttlTblName = ttlInfo.getTtlInfoRecord().getTableName();
+        String modifyTtlBindArcTblSql =
+            TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, targetTableSchema,
+                targetTableName, TtlArchiveKind.COLUMNAR);
+        String modifyTtlBindArcTblSqlForRollback =
+            TtlTaskSqlBuilder.buildModifyTtlSqlForBindArcTbl(ttlTblSchema, ttlTblName, "", "",
+                TtlArchiveKind.UNDEFINED);
+        SubJobTask modifyTtlForBindArcTblSubTask =
+            new SubJobTask(sourceTableSchema, modifyTtlBindArcTblSql, modifyTtlBindArcTblSqlForRollback);
+        modifyTtlForBindArcTblSubTask.setParentAcquireResource(true);
+
+        TtlJobContext jobContext = TtlJobContext.buildFromTtlInfo(ttlInfo);
+        PrepareCleanupIntervalTask prepareClearIntervalTask =
+            new PrepareCleanupIntervalTask(sourceTableSchema, sourceTableName);
+        prepareClearIntervalTask.setJobContext(jobContext);
+
+        CheckAndPrepareColumnarIndexPartDefTask prepareCreateCiSqlTask =
+            new CheckAndPrepareColumnarIndexPartDefTask(sourceTableSchema, sourceTableName, targetTableSchema,
+                targetTableName);
+        String createCiSqlForArcTblSubJobName =
+            TtlTaskSqlBuilder.buildSubJobTaskNameForCreateColumnarIndexBySpecifySubjobStmt();
+        String dropCiSqlForArcTbl =
+            TtlTaskSqlBuilder.buildDropColumnarIndexSqlForArcTbl(ttlInfo, targetTableSchema, targetTableName);
+        SubJobTask createCiSubJobTask =
+            new SubJobTask(sourceTableSchema, createCiSqlForArcTblSubJobName, dropCiSqlForArcTbl);
+        createCiSubJobTask.setParentAcquireResource(true);
+
+        // taskList.add();
+        taskList.add(prepareClearIntervalTask);
+        taskList.add(prepareCreateCiSqlTask);
+        taskList.add(createCiSubJobTask);// create cci sql
+        taskList.add(createViewSubJobTask);// create view sql
+        taskList.add(modifyTtlForBindArcTblSubTask);// modify ttl setting
+
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        executableDdlJob.addSequentialTasks(taskList);
+        executableDdlJob.getExcludeResources().add(sourceTableSchema);
+        executableDdlJob.getExcludeResources().add(sourceTableName);
+        executableDdlJob.getExcludeResources().add(targetTableSchema);
+        executableDdlJob.getExcludeResources().add(targetTableName);
+
+        return executableDdlJob;
+    }
+
+    //    boolean needIgnoreArchiveCciForCreateTableLike = false;
+//    boolean needConvertToCreateArcCci = false;
+    protected void checkIfAllowedCreatingTableLikeTtlDefinedTable(
+        SqlCreateTable sqlCreateTable,
+        ExecutionContext executionContext,
+        Boolean[] needConvertToCreateArcCciOutput,
+        Boolean[] needIgnoreArchiveCciForCreateTableLikeOutput
+    ) {
+        boolean createTblLikeTtlDefinedTbl =
+            TtlUtil.checkIfCreateArcTblLikeRowLevelTtl(sqlCreateTable, executionContext);
+        boolean useArchiveMode = sqlCreateTable.getArchiveMode() == ArchiveMode.TTL;
+        boolean specifyColumnarEngine = sqlCreateTable.getEngine() == Engine.COLUMNAR;
+
+        boolean needConvertToCreateArcCci = false;
+        boolean needIgnoreArchiveCciForCreateTableLike = false;
+        if (createTblLikeTtlDefinedTbl) {
+
+            if (useArchiveMode && specifyColumnarEngine) {
+                /**
+                 * case 1:
+                 * Convert
+                 * "create table arc_tbl like ttl_tbl engine='columnar' archive_mode='ttl'"
+                 * to
+                 * "Create Cluster Columnar Index ci on ttl_tbl(ttl_col)"
+                 */
+                needConvertToCreateArcCci = true;
+            } else {
+                /**
+                 * case 2:
+                 * "create table normal_tbl like ttl_tbl engine='columnar'"
+                 * or
+                 * "create table normal_tbl like ttl_tbl archive_mode='ttl'"
+                 * or
+                 * "create table normal_tbl like ttl_tbl engine='oss' archive_mode='ttl'" (local partition)
+                 * or
+                 * "create table normal_tbl like ttl_tbl ..."
+                 */
+
+                if (useArchiveMode || specifyColumnarEngine) {
+                    /**
+                     * case 2-1:
+                     * "create table normal_tbl like ttl_tbl engine='columnar'"
+                     * or
+                     * case 2-2:
+                     * "create table normal_tbl like ttl_tbl archive_mode='ttl'"
+                     * case 2-3:
+                     * "create table normal_tbl like ttl_tbl engine='oss' archive_mode='ttl'" (local partition)
+                     */
+                    throw GeneralUtil.nestedException(
+                        String.format(
+                            "failed to create archive table for a ttl-defined table without specifying both engine=%s and archive_mode='%s'",
+                            Engine.COLUMNAR, ArchiveMode.TTL));
+                } else {
+                    /**
+                     * or
+                     * case 2-4:
+                     * "create table normal_tbl like ttl_tbl ..."
+                     */
+                    boolean allowCreateTblLikeIgnoreTtlDef = executionContext.getParamManager()
+                        .getBoolean(ConnectionParams.ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI);
+                    TtlDefinitionInfo ttlInfo =
+                        TtlUtil.fetchTtlInfoFromCreateTableLikeAst(sqlCreateTable, executionContext);
+                    if (ttlInfo.performArchiveByColumnarIndex()) {
+                        if (!allowCreateTblLikeIgnoreTtlDef) {
+                            throw GeneralUtil.nestedException(
+                                "cannot create table like a ttl-defined table, please use the hint /*TDDL:cmd_extra(ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI=true)*/ to do table creating");
+                        } else {
+                            needIgnoreArchiveCciForCreateTableLike = true;
+                        }
+                    }
+                }
+
+            }
+        } else {
+            /**
+             * case 4:
+             * "create table normal_tbl like non_ttl_tbl engine='columnar'"
+             * or
+             * "create table normal_tbl like non_ttl_tbl archive_mode='ttl'"
+             * or
+             * "create table normal_tbl like non_ttl_tbl engine='oss' archive_mode='ttl'" (local partition)
+             * or
+             * "create table normal_tbl like non_ttl_tbl ..."
+             */
+
+            if (specifyColumnarEngine) {
+                /**
+                 * case 3-1:
+                 * "create table normal_tbl like non_ttl_tbl engine='columnar' archive_mode='ttl'"
+                 * or
+                 * case 3-2:
+                 * "create table normal_tbl like non_ttl_tbl engine='columnar'"
+                 */
+                throw GeneralUtil.nestedException(
+                    String.format(
+                        "failed to create table like with engine='%s' archive_mode='%s' because the source table is not a ttl-defined table",
+                        Engine.COLUMNAR, ArchiveMode.TTL));
+            } else {
+                /**
+                 * Ignore handling
+                 */
+            }
+        }
+        if (needConvertToCreateArcCciOutput != null && needConvertToCreateArcCciOutput.length > 0) {
+            needConvertToCreateArcCciOutput[0] = needConvertToCreateArcCci;
+        }
+
+        if (needIgnoreArchiveCciForCreateTableLikeOutput != null
+            && needIgnoreArchiveCciForCreateTableLikeOutput.length > 0) {
+            needIgnoreArchiveCciForCreateTableLikeOutput[0] = needIgnoreArchiveCciForCreateTableLike;
+        }
+    }
+
 }

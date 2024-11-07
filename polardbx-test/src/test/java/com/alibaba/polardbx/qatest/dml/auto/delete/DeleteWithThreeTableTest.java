@@ -243,4 +243,33 @@ public class DeleteWithThreeTableTest extends AutoCrudBasedLockTestCase {
         }
     }
 
+    @Test
+    public void deleteWithForceIndex() throws Exception {
+        String tddlSql = String
+            .format(
+                "delete from %s.*, %s.*, a.* using %s force index(xxx,primary), %s force index(primary,xxx), %s as a force index(primary)  ",
+                baseOneTableName, baseTwoTableName,
+                baseOneTableName, baseTwoTableName, baseThreeTableName);
+
+        String mysqlSql = String
+            .format("delete from %s.*, %s.*, a.* using %s, %s, %s as a  ", baseOneTableName, baseTwoTableName,
+                baseOneTableName, baseTwoTableName, baseThreeTableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+
+        String sql = "select * from " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
+        sql = "select * from " + baseTwoTableName;
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
+        sql = "select * from " + baseThreeTableName;
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
+
+        assertBrocastTableSame(baseOneTableName);
+        assertBrocastTableSame(baseTwoTableName);
+        assertBrocastTableSame(baseThreeTableName);
+    }
+
 }

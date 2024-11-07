@@ -88,18 +88,21 @@ public abstract class AppLoader extends BaseAppLoader {
         ds.putConnectionProperties(ConnectionProperties.SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE,
             system.getDropOldDataBaseAfterSwitchDataSource());
 
-        ds.putConnectionProperties(
-            ConnectionProperties.ENABLE_COLUMNAR_OPTIMIZER, ConfigDataMode.isColumnarMode() ? true : false);
-        ds.putConnectionProperties(
-            ConnectionProperties.ENABLE_DIRECT_PLAN, ConfigDataMode.isColumnarMode() ? false : true);
+        if (ConfigDataMode.isColumnarMode()) {
+            ds.putConnectionProperties(ConnectionProperties.ENABLE_COLUMNAR_OPTIMIZER, true);
+        }
 
         if (system.getWorkloadType() != null) {
             ds.putConnectionProperties(ConnectionProperties.WORKLOAD_TYPE, system.getWorkloadType());
         }
 
-        ds.putConnectionProperties(ConnectionProperties.MPP_RPC_LOCAL_ENABLED, !system.isEnableRemoteRPC());
+        if (system.isEnableRemoteRPC()) {
+            ds.putConnectionProperties(ConnectionProperties.MPP_RPC_LOCAL_ENABLED, false);
+        }
 
-        ds.putConnectionProperties(ConnectionProperties.ENABLE_MASTER_MPP, system.isEnableMasterMpp());
+        if (system.isEnableMasterMpp()) {
+            ds.putConnectionProperties(ConnectionProperties.ENABLE_MASTER_MPP, true);
+        }
 
         // 共享一个线程池
         ds.setGlobalExecutorService(CobarServer.getInstance().getServerExecutor());
@@ -127,11 +130,11 @@ public abstract class AppLoader extends BaseAppLoader {
     protected synchronized void unLoadSchema(final String dbName, final String appName) {
         SchemaConfig schema = schemas.remove(dbName);
         if (schema != null) {
+            schema.setDropped(true);
             TDataSource dataSource = schema.getDataSource();
             if (dataSource != null) {
                 dataSource.destroy();
             }
-            schema.setDropped(true);
         }
     }
 

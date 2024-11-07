@@ -19,8 +19,6 @@ package com.alibaba.polardbx.common.utils.logger;
 import com.alibaba.polardbx.common.utils.logger.jcl.JclLoggerAdapter;
 import com.alibaba.polardbx.common.utils.logger.jcl.JclMDC;
 import com.alibaba.polardbx.common.utils.logger.jdk.JdkMDC;
-import com.alibaba.polardbx.common.utils.logger.log4j.Log4jLoggerAdapter;
-import com.alibaba.polardbx.common.utils.logger.log4j.Log4jMDC;
 import com.alibaba.polardbx.common.utils.logger.slf4j.Slf4jLoggerAdapter;
 import com.alibaba.polardbx.common.utils.logger.slf4j.Slf4jMDC;
 
@@ -41,8 +39,6 @@ public class MDC {
             mdcAdapter = new Slf4jMDC();
         } else if (logger instanceof JclLoggerAdapter) {
             mdcAdapter = new JclMDC();
-        } else if (logger instanceof Log4jLoggerAdapter) {
-            mdcAdapter = new Log4jMDC();
         } else {
             mdcAdapter = new JdkMDC();
         }

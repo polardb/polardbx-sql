@@ -28,6 +28,7 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +46,9 @@ public class ColumnarFileMappingAccessor extends AbstractAccessor {
     private static final String QUERY_BY_FILE_ID = "select * from " + COLUMNAR_FILE_MAPPING_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? and `logical_partition` = ? and `columnar_file_id` = ?";
 
+    private static final String QUERY_BY_FILE_ID_LIST = "select * from " + COLUMNAR_FILE_MAPPING_TABLE
+        + " where `columnar_file_id` in (%s) and `logical_schema` = '%s' and `logical_table` = %s";
+
     private static final String QUERY_BY_PARTITION = "select * from " + COLUMNAR_FILE_MAPPING_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? and `logical_partition` = ?";
 
@@ -59,6 +63,9 @@ public class ColumnarFileMappingAccessor extends AbstractAccessor {
 
     private static final String DELETE_BY_SCHEMA_AND_TABLE = "delete from " + COLUMNAR_FILE_MAPPING_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? ";
+
+    private static final String DELETE_BY_SCHEMA_AND_TABLE_LIMIT = "delete from " + COLUMNAR_FILE_MAPPING_TABLE
+        + " where `logical_schema` = ? and `logical_table` = ? limit ? ";
 
     private static final String DELETE_BY_SCHEMA_AND_TABLE_AND_PARTITION = "delete from " + COLUMNAR_FILE_MAPPING_TABLE
         + " where `logical_schema` = ? and `logical_table` = ? and `logical_partition` = ? ";
@@ -108,6 +115,21 @@ public class ColumnarFileMappingAccessor extends AbstractAccessor {
 
             return MetaDbUtil.query(QUERY_BY_FILE_ID, params, ColumnarFileMappingRecord.class,
                 connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + COLUMNAR_FILE_MAPPING_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                COLUMNAR_FILE_MAPPING_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public List<ColumnarFileMappingRecord> queryByFileIdList(Collection<String> columnarFileIds,
+                                                             String schema, long table) {
+        try {
+            String fileIds = String.join(",", columnarFileIds);
+            String sql = String.format(QUERY_BY_FILE_ID_LIST, fileIds, schema, table);
+            DdlMetaLogUtil.logSql(sql);
+            return MetaDbUtil.query(sql, null, ColumnarFileMappingRecord.class, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to query the system table " + COLUMNAR_FILE_MAPPING_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
@@ -176,6 +198,23 @@ public class ColumnarFileMappingAccessor extends AbstractAccessor {
 
             DdlMetaLogUtil.logSql(DELETE_BY_SCHEMA_AND_TABLE, params);
             return MetaDbUtil.delete(DELETE_BY_SCHEMA_AND_TABLE, params, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to delete from system table " + COLUMNAR_FILE_MAPPING_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",
+                COLUMNAR_FILE_MAPPING_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int deleteLimit(String logicalSchema, String tableId, long limit) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>(4);
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, logicalSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableId);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, limit);
+
+            DdlMetaLogUtil.logSql(DELETE_BY_SCHEMA_AND_TABLE_LIMIT, params);
+            return MetaDbUtil.delete(DELETE_BY_SCHEMA_AND_TABLE_LIMIT, params, connection);
         } catch (Exception e) {
             LOGGER.error("Failed to delete from system table " + COLUMNAR_FILE_MAPPING_TABLE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "delete",

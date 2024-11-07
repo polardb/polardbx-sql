@@ -19,6 +19,7 @@ package com.alibaba.polardbx.server.handler;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseSelect;
+import com.alibaba.polardbx.server.response.SelectColumnarFile;
 import com.alibaba.polardbx.server.response.SelectEncdbProcessMessage;
 import com.alibaba.polardbx.server.response.SelectCompatibilityLevel;
 import com.alibaba.polardbx.server.response.SelectPolardbVersion;
@@ -81,6 +82,8 @@ public final class SelectHandler {
                 return SelectCompatibilityLevel.execute(c, stmt);
             case ServerParseSelect.ENCDB_PROCESS_MESSAGE:
                 return SelectEncdbProcessMessage.response(c, hasMore, (String) exData[0]);
+            case ServerParseSelect.COLUMNAR_FILE:
+                return SelectColumnarFile.execute(c, hasMore, stmt);
             default:
                 recordSql = false;
                 return c.execute(stmt, hasMore);

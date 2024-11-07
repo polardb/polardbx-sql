@@ -23,7 +23,6 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVS
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -135,14 +134,14 @@ public class StatisticDataTableSource implements StatisticDataSource {
     @Override
     public void updateColumnCardinality(String schema, String tableName, String columnName, ExecutionContext ec,
                                         ThreadPoolExecutor sketchHllExecutor)
-        throws SQLException {
+        throws Exception {
         ndvSketch.updateAllShardParts(schema, tableName, columnName, ec, sketchHllExecutor);
     }
 
     @Override
     public void rebuildColumnCardinality(String schema, String tableName, String columnNames, ExecutionContext ec,
                                          ThreadPoolExecutor sketchHllExecutor)
-        throws SQLException {
+        throws Exception {
         ndvSketch.reBuildShardParts(schema, tableName, columnNames, ec, sketchHllExecutor);
     }
 

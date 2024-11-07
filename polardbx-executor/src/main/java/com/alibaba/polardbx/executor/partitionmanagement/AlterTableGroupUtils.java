@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.partitionmanagement;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -96,6 +97,7 @@ import org.apache.calcite.sql.SqlAlterTableGroupSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
+import org.apache.calcite.sql.SqlAlterTableOptimizePartition;
 import org.apache.calcite.sql.SqlAlterTableRenamePartition;
 import org.apache.calcite.sql.SqlAlterTableReorgPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartition;
@@ -206,6 +208,10 @@ public class AlterTableGroupUtils {
 
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
                 alterTableGroupTruncatePartitionCheck((SqlAlterTableTruncatePartition) alterSpecifications.get(0),
+                    tableGroupConfig, executionContext);
+
+            } else if (alterSpecifications.get(0) instanceof SqlAlterTableOptimizePartition) {
+                alterTableGroupOptimizePartitionCheck((SqlAlterTableOptimizePartition) alterSpecifications.get(0),
                     tableGroupConfig, executionContext);
 
             } else if (alterSpecifications.get(0) instanceof SqlAlterTableGroupSetPartitionsLocality) {
@@ -462,6 +468,9 @@ public class AlterTableGroupUtils {
                 partSpecAstParams.setSubPartSpec(false);
                 partSpecAstParams.setParentPartSpec(null);
                 partSpecAstParams.setPhySpecCounter(phyPartCounter);
+                partSpecAstParams.setPartEngine(tableMeta.isColumnar() ?
+                    TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+                    TablePartitionRecord.PARTITION_ENGINE_INNODB);
                 PartitionSpec newSpec = PartitionInfoBuilder.buildPartSpecByAstParams(partSpecAstParams);
 
 //                PartitionSpec newSpec = PartitionInfoBuilder
@@ -973,7 +982,7 @@ public class AlterTableGroupUtils {
 
         List<PartitionSpec> newPartSpecs =
             buildNewPartitionSpecsForCheck(partitionInfo, tableGroupConfig, partRexInfoCtx, newPartDefs, isSubPartition,
-                isAlterTableGroup, executionContext);
+                isAlterTableGroup, partitionInfo.isColumnar(), executionContext);
 
         if (strategy.isRange()) {
             PartitionSpec firstNewPartSpec = newPartSpecs.get(0);
@@ -1132,7 +1141,8 @@ public class AlterTableGroupUtils {
                     }
                     List<PartitionSpec> newSubPartSpecs =
                         buildNewPartitionSpecsForCheck(partitionInfo, tableGroupConfig, partRexInfoCtx,
-                            mockDefForNewSubPart, true, isAlterTableGroup, executionContext);
+                            mockDefForNewSubPart, true, isAlterTableGroup, partitionInfo.isColumnar(),
+                            executionContext);
                     newPartSpecs.get(i).getSubPartitions().addAll(newSubPartSpecs);
                 }
             }
@@ -1214,6 +1224,7 @@ public class AlterTableGroupUtils {
                                                                       List<SqlPartition> newPartDefs,
                                                                       boolean isSubPartition,
                                                                       boolean isAlterTableGroup,
+                                                                      boolean isColumnarIndex,
                                                                       ExecutionContext executionContext) {
         String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
         String tableGroupName = tableGroupConfig.getTableGroupRecord().getTg_name();
@@ -1294,6 +1305,9 @@ public class AlterTableGroupUtils {
             partSpecAstParams.setSubPartSpec(false);
             partSpecAstParams.setParentPartSpec(null);
             partSpecAstParams.setPhySpecCounter(phyPartCounter);
+            partSpecAstParams.setPartEngine(isColumnarIndex ?
+                TablePartitionRecord.PARTITION_ENGINE_COLUMNAR :
+                TablePartitionRecord.PARTITION_ENGINE_INNODB);
 
             PartitionSpec newPartSpec = PartitionInfoBuilder.buildPartSpecByAstParams(partSpecAstParams);
 
@@ -1714,9 +1728,28 @@ public class AlterTableGroupUtils {
                 "Don't allow to drop all the partitions");
         }
 
+        boolean listOrRangePartition = partByDef.getStrategy().isList() || partByDef.getStrategy().isRange();
+        if (sqlAlterTableDropPartition.isSubPartition() && !subPartByDef.isUseSubPartTemplate()
+            && !listOrRangePartition) {
+            Map<String, PartitionSpec> partitionSpecMap = partitionInfo.getPartitionBy().getPartNameToPhyPartMap();
+            HashMap<Long, List<String>> parentPartPositions = new HashMap<>();
+            for (String partName : droppingPartNames) {
+                PartitionSpec subPartSpec = partitionSpecMap.get(partName);
+                parentPartPositions.computeIfAbsent(subPartSpec.getParentPartPosi(), k -> new ArrayList<>());
+                parentPartPositions.get(subPartSpec.getParentPartPosi()).add(partName);
+            }
+            for (Map.Entry<Long, List<String>> entry : parentPartPositions.entrySet()) {
+                PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getNthPartition(entry.getKey().intValue());
+                if (partitionSpec.getSubPartitions().size() == entry.getValue().size()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        "Don't allow to drop all the subpartitions for " + partitionSpec.getName());
+                }
+            }
+        }
+
         for (String tableName : tableGroupConfig.getAllTables()) {
             TableMeta tbMeta = schemaManager.getTable(tableName);
-            if (tbMeta.withGsi() && !tbMeta.withCci()) {
+            if (tbMeta.withGsiExcludingPureCci()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                     String.format("it's not support to drop partition/subpartition when table[%s] with GSI",
                         tableName));
@@ -1726,6 +1759,7 @@ public class AlterTableGroupUtils {
                     String.format("it's not support to drop global index[%s]'s partition/subpartition",
                         tableName));
             }
+            checkAllDropTruncateCciPartition(executionContext, tbMeta, tableName);
         }
     }
 
@@ -1758,7 +1792,52 @@ public class AlterTableGroupUtils {
                     String.format("it's not support to truncate global index[%s]'s partition/subpartition",
                         tableName));
             }
+            checkAllDropTruncateCciPartition(executionContext, tbMeta, tableName);
         }
+    }
+
+    public static void checkAllDropTruncateCciPartition(ExecutionContext executionContext, TableMeta tbMeta,
+                                                        String tableName) {
+        boolean allDropTruncateCciPartition =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DROP_TRUNCATE_CCI_PARTITION);
+        if (tbMeta.withCci() && !allDropTruncateCciPartition) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                String.format("it's not support to drop partition/subpartition when table[%s] with CCI",
+                    tableName));
+        }
+        if (tbMeta.isColumnar() && !allDropTruncateCciPartition) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_DROP_PARTITION,
+                String.format("it's not support to drop columnar index[%s]'s partition/subpartition",
+                    tableName));
+        }
+    }
+
+    public static void alterTableGroupOptimizePartitionCheck(
+        SqlAlterTableOptimizePartition sqlAlterTableOptimizePartition, TableGroupConfig tableGroupConfig,
+        ExecutionContext executionContext) {
+//        String schemaName = tableGroupConfig.getTableGroupRecord().getSchema();
+//        final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
+//        String tableInCurrentGroup = tableGroupConfig.getAllTables().get(0);
+//        PartitionInfo partitionInfo = schemaManager.getTable(tableInCurrentGroup).getPartitionInfo();
+//        PartitionByDefinition subPartByDef = partitionInfo.getPartitionBy().getSubPartitionBy();
+//        if (subPartByDef == null) {
+//            // OPTIMIZE SUBPARTITION
+//            throw new TddlRuntimeException(ErrorCode.ERR_DROP_SUBPARTITION,
+//                "Don't allow to optimize subpartitions from one-level partitioned table");
+//        }
+//        for (String tableName : tableGroupConfig.getAllTables()) {
+//            TableMeta tbMeta = schemaManager.getTable(tableName);
+//            if (tbMeta.withGsi()) {
+//                throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+//                    String.format("it's not support to optimize partition/subpartition when table[%s] with GSI",
+//                        tableName));
+//            }
+//            if (tbMeta.isGsi()) {
+//                throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_DROP_PARTITION,
+//                    String.format("it's not support to optimize global index[%s]'s partition/subpartition",
+//                        tableName));
+//            }
+//        }
     }
 
     private static void alterTableModifyListPartitionValuesCheck(SqlAlterTableGroup sqlAlterTableGroup,
@@ -1914,7 +1993,23 @@ public class AlterTableGroupUtils {
                     throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE,
                         String.format("it's not support to drop value for global index[%s]", tableName));
                 }
+
+                checkAllModifyListCciPartition(executionContext, tbMeta, tableName);
             }
+        }
+    }
+
+    public static void checkAllModifyListCciPartition(ExecutionContext executionContext, TableMeta tbMeta,
+                                                      String tableName) {
+        boolean allDropTruncateCciPartition =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DROP_TRUNCATE_CCI_PARTITION);
+        if (tbMeta.withCci() && !allDropTruncateCciPartition) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                String.format("it's not support to drop value when table[%s] with CCI", tableName));
+        }
+        if (tbMeta.isColumnar() && !allDropTruncateCciPartition) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_MODIFY_PARTITION_DROP_VALUE,
+                String.format("it's not support to drop value for columnar index[%s]", tableName));
         }
     }
 

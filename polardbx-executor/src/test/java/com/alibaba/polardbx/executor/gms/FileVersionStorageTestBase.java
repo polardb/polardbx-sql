@@ -2,9 +2,11 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarFileMappingAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
@@ -12,6 +14,7 @@ import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Seekable;
@@ -47,17 +50,19 @@ public abstract class FileVersionStorageTestBase {
     protected final static Random R = new Random();
     protected final static String CSV_FILE_NAME = "6659a663977d.csv";
     protected final static int FIRST_CSV_PART_OVER_1000 = 40;
-    private final static int CSV_FILE_ID = 10;
-    private final static String DEL_FILE_NAME = "fb2604e133e6.del";
-    protected final static FileMeta FILE_META;
-    private static FileSystem FILESYSTEM;
+    protected final static int CSV_FILE_ID = 10;
+    protected final static String DEL_FILE_NAME = "fb2604e133e6.del";
+    public final static FileMeta FILE_META;
+    protected static FileSystem FILESYSTEM;
     protected FileVersionStorage fileVersionStorage;
-    private MockedConstruction<ColumnarAppendedFilesAccessor> mockCafCtor;
-    private MockedStatic<DynamicColumnarManager> mockCm;
-    private MockedStatic<FileSystemUtils> mockFsUtils;
-    private MockedStatic<MetaDbUtil> mockMetaDbUtil;
+    protected MockedConstruction<ColumnarAppendedFilesAccessor> mockCafCtor;
+    protected MockedConstruction<ColumnarFileMappingAccessor> mockCfmCtor;
+    protected MockedStatic<DynamicColumnarManager> mockCm;
+    protected MockedStatic<FileSystemUtils> mockFsUtils;
+    protected MockedStatic<MetaDbUtil> mockMetaDbUtil;
+    protected MockedStatic<FileSystemManager> mockFsManager;
 
-    final Answer<Void> mockFileReadAnswer = invocation -> {
+    protected final Answer<Void> mockFileReadAnswer = invocation -> {
         Object[] args = invocation.getArguments();
         String fileName = (String) args[0];
         int offset = (Integer) args[1];
@@ -66,6 +71,13 @@ public abstract class FileVersionStorageTestBase {
 
         readMockFile(fileName, offset, length, output);
         return null;
+    };
+
+    protected final Answer<FSDataInputStream> mockOpenFileAnswer = invocation -> {
+        Object[] args = invocation.getArguments();
+        String fileName = (String) args[0];
+
+        return openMockFile(fileName);
     };
 
     public static final MockAppendedFilesStatus[] CSV_STATUSES = {
@@ -254,6 +266,13 @@ public abstract class FileVersionStorageTestBase {
         ).thenAnswer(
             mockFileReadAnswer
         );
+        mockFsUtils.when(
+            () -> FileSystemUtils.openStreamFileWithBuffer(
+                anyString(), any(Engine.class), anyBoolean()
+            )
+        ).thenAnswer(
+            mockOpenFileAnswer
+        );
 
         mockMetaDbUtil = Mockito.mockStatic(MetaDbUtil.class);
         mockMetaDbUtil.when(MetaDbUtil::getConnection).thenReturn(null);
@@ -366,13 +385,19 @@ public abstract class FileVersionStorageTestBase {
         if (mockCafCtor != null) {
             mockCafCtor.close();
         }
+        if (mockFsManager != null) {
+            mockFsManager.close();
+        }
+        if (mockCfmCtor != null) {
+            mockCfmCtor.close();
+        }
     }
 
-    static class MockAppendedFilesStatus {
-        long checkpointTso;
-        long appendOffset;
-        long appendLength;
-        long totalRows;
+    public static class MockAppendedFilesStatus {
+        public long checkpointTso;
+        public long appendOffset;
+        public long appendLength;
+        public long totalRows;
 
         public MockAppendedFilesStatus(long checkpointTso, long appendOffset, long appendLength, long totalRows) {
             this.checkpointTso = checkpointTso;
@@ -394,10 +419,18 @@ public abstract class FileVersionStorageTestBase {
         }
     }
 
-    private static void readMockFile(String fileName, int offset, int length, byte[] output) {
+    public static void readMockFile(String fileName, int offset, int length, byte[] output) {
         try (InputStream in = FILESYSTEM.open(new Path(ClassLoader.getSystemResource(fileName).getPath()))) {
             ((Seekable) in).seek(offset);
             IOUtils.read(in, output, 0, length);
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public static FSDataInputStream openMockFile(String fileName) {
+        try {
+            return FILESYSTEM.open(new Path(ClassLoader.getSystemResource(fileName).getPath()));
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
         }

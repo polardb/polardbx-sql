@@ -66,6 +66,7 @@ public class LogicalTableDataMigrationBackfillTask extends BaseBackfillTask
         try {
             executionContext = executionContext.copy();
             executionContext.setBackfillId(getTaskId());
+            executionContext.setTaskId(getTaskId());
             executionContext.setSchemaName(schemaName);
             LogicalTableDataMigrationBackfill logicalTableDataMigrationBackfill =
                 LogicalTableDataMigrationBackfill.createLogicalTableDataMigrationBackfill(srcSchemaName, dstSchemaName,

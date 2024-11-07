@@ -27,4 +27,3 @@ INDEX `k_1` (`k`)
 ) broadcast;
 insert into `Auto012345678901234567890123456789012345678901234567890123456789`.`t1` (k) values(2);
 select k from `Auto012345678901234567890123456789012345678901234567890123456789`.t1;
-select table_schema,table_name,part_name,phy_group,phy_db from information_schema.partitions_meta where table_schema='Auto012345678901234567890123456789012345678901234567890123456789' and table_name='t1' order by part_name

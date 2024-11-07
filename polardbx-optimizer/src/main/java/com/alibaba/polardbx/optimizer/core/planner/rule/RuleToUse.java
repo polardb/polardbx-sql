@@ -27,6 +27,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalViewC
 import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalWindowToHashWindowRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLLogicalWindowToSortWindowRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLProjectJoinTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLSortJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MPPMaterializedViewConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppBKAJoinConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.MppCorrelateConvertRule;
@@ -380,6 +381,9 @@ public class RuleToUse {
 
     public static final ImmutableList<RelOptRule> OPTIMIZE_MODIFY = ImmutableList.of(
         OptimizeLogicalModifyRule.INSTANCE,
+        OptimizeModifyReturningRule.MODIFY_VIEW,
+        OptimizeModifyReturningRule.MODIFY_MERGESORT_VIEW,
+        OptimizeModifyReturningRule.MODIFY_SORT_VIEW,
         OptimizeLogicalInsertRule.INSTANCE
     );
 
@@ -553,7 +557,7 @@ public class RuleToUse {
         DrdsAggregateJoinTransposeRule.PROJECT_EXTENDED,
         new COLProjectJoinTransposeRule(3),
         // Sort Join Transpose
-        DrdsSortJoinTransposeRule.INSTANCE,
+        COLSortJoinTransposeRule.INSTANCE,
         DrdsSortProjectTransposeRule.INSTANCE,
         // Convert Sort
         COLLogicalSortToSortRule.INSTANCE,

@@ -4,6 +4,7 @@
       row(2,'name2'); 
 
   plan: |
+
     dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
 
 - sql: |
@@ -18,6 +19,7 @@
       t(id, name);
 
   plan: |
+
     dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
 
 - sql: |
@@ -30,6 +32,7 @@
       1
 
   plan: |
+
     topn(sort="column_0 asc", offset=0, fetch=1)
       dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
 
@@ -49,6 +52,7 @@
       t(id, name);
 
   plan: |
+
     topn(sort="column_0 asc", offset=0, fetch=1)
       dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
 
@@ -63,11 +67,11 @@
       row(5,'name5');
 
   plan: |
+
     hashagg(group="column_0,column_1")
       unionall(concurrent=true)
         dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
         dynamicvalues(tuples=[{ 3, 'name3' }, { 4, 'name4' }, { 5, 'name5' }])
-
 
 - sql: |
     select 
@@ -86,11 +90,12 @@
         t.id = test.id;
 
   plan: |
+
     bkajoin(condition="column_0 = id", type="inner")
       dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }])
       gather(concurrent=true)
-        logicalview(tables="test[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name` from `test` as `test` where (`id` in (...))")
-    
+        logicalview(tables="test[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `name` from `test` as `test` force index(`primary`) where (`id` in (...))")
+
 - sql: |
     select
       l_orderkey,
@@ -131,6 +136,7 @@
       o_orderdate;
     
   plan: |
+
     project(l_orderkey="l_orderkey", revenue="revenue", o_orderdate="o_orderdate", o_shippriority="o_shippriority")
       exchange(distribution=single, collation=[3 desc-nulls-last, 1 asc-nulls-first])
         memsort(sort="revenue desc,o_orderdate asc")
@@ -145,4 +151,4 @@
                         exchange(distribution=broadcast, collation=[])
                           topn(sort="column_0 asc", offset=0, fetch=2)
                             dynamicvalues(tuples=[{ 1, 'name1' }, { 2, 'name2' }, { 3, 'name3' }, { 4, 'name4' }])
-                    logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name` from `customer` as `customer` where ((`c_mktsegment` = 'building') and (((`c_custkey`, `c_name`)) in (...)))")
+                    logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_name` from `customer` as `customer` force index(`primary`) where ((`c_mktsegment` = 'building') and (((`c_custkey`, `c_name`)) in (...)))")

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.partition.datatype.function;
 
+import java.util.Set;
+
 /**
  * Represent the monotonicity info of the partition function.
  */
@@ -32,12 +34,15 @@ public enum Monotonicity {
      * But only for valid/real x and y
      */
     MONOTONIC_INCREASING_NOT_NULL,
+
     /**
      * F() is unary and (x < y) => (F(x) <  F(y))
      */
     MONOTONIC_STRICT_INCREASING,
+
     /**
      * But only for valid/real x and y
      */
-    MONOTONIC_STRICT_INCREASING_NOT_NULL
+    MONOTONIC_STRICT_INCREASING_NOT_NULL;
+
 }

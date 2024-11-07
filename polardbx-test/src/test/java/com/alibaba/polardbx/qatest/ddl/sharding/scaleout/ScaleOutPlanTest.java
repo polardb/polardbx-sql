@@ -42,13 +42,13 @@ import static org.hamcrest.Matchers.is;
 public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
     private static List<ComplexTaskMetaManager.ComplexTaskStatus> moveTableStatus =
-        Stream.of(
-            ComplexTaskMetaManager.ComplexTaskStatus.CREATING,
-            ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
-            ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
-            ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
-            ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
-            ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC).collect(Collectors.toList());
+            Stream.of(
+                    ComplexTaskMetaManager.ComplexTaskStatus.CREATING,
+                    ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
+                    ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
+                    ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
+                    ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
+                    ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC).collect(Collectors.toList());
     final ComplexTaskMetaManager.ComplexTaskStatus finalTableStatus;
     static boolean firstIn = true;
     static ComplexTaskMetaManager.ComplexTaskStatus currentStatus = ComplexTaskMetaManager.ComplexTaskStatus.CREATING;
@@ -57,7 +57,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
     public ScaleOutPlanTest(StatusInfo tableStatus) {
         super("ScaleOutPlanTest", "polardbx_meta_db_polardbx",
-            ImmutableList.of(tableStatus.getMoveTableStatus().toString()));
+                ImmutableList.of(tableStatus.getMoveTableStatus().toString()));
         finalTableStatus = tableStatus.getMoveTableStatus();
         isCache = tableStatus.isCache();
         if (!currentStatus.equals(finalTableStatus)) {
@@ -84,9 +84,9 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
     public static List<StatusInfo[]> prepareData() {
         List<StatusInfo[]> status = new ArrayList<>();
         moveTableStatus.stream().forEach(c -> {
-            status.add(new StatusInfo[] {new StatusInfo(c, false)});
-            status.add(new StatusInfo[] {new StatusInfo(c, true)});
-            status.add(new StatusInfo[] {new StatusInfo(c, null)});
+            status.add(new StatusInfo[]{new StatusInfo(c, false)});
+            status.add(new StatusInfo[]{new StatusInfo(c, true)});
+            status.add(new StatusInfo[]{new StatusInfo(c, null)});
         });
         return status;
     }
@@ -109,10 +109,10 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
         // shard on scaleout-group
         sql =
-            "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
         // shard on non-scale out-group, should be pushdown
         sql2 =
-            "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
 
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
@@ -154,10 +154,10 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
         // shard on scaleout-group
         sql =
-            "replace into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "replace into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
         // shard on non-scaleout-group, should be pushdown
         sql2 =
-            "replace into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "replace into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
 
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
@@ -198,10 +198,10 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql2 = "";
         executeDml(sql);
         String insert1 =
-            "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
         executeDml(insert1);
         String insert2 =
-            "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
         executeDml(insert2);
 
         // shard on scaleout-group
@@ -245,10 +245,10 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql2 = "";
         executeDml(sql);
         String insert1 =
-            "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456+4, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
         executeDml(insert1);
         String insert2 =
-            "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
+                "  insert ignore into `mdb_mtb_mk1` (pk, integer_test, varchar_test, datetime_test, timestamp_test) values (123456, 1, '1000', '2020-12-12 12:12:12', '2021-12-12 12:12:12');";
         executeDml(insert2);
 
         // shard on scaleout-group
@@ -282,12 +282,12 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "insert ignore into " + tableName
-            + "(a,b) values(1,1), (2,2), ((1+2), (2+1)), (4,4), (5,5),(6,6)";
-        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
+                + "(a,b) values(1,1), (2,2), ((1+2), (2+1)), (4,4), (5,5),(6,6)";
+        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         if (isCache == null) {
-            hintStr = "";
+            hintStr = " /*+TDDL:cmd_extra(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
         } else if (isCache.booleanValue()) {
-            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         }
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -295,29 +295,53 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
         int basePhyInsert = 6;
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            }
         } else {
             //push insert ignore
             Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert));
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b) values(1,1)";
+                    + "(a,b) values(1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = i * 2;
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = i;
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else {
                 Assert.assertThat(trace.toString(), trace.size(), is(1));
             }
@@ -335,12 +359,12 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + sourceTableName + " where 1=1";
         executeDml(sql);
         sql = "insert ignore into " + sourceTableName
-            + "(a,b) values(1,1), (2,2), (( 3),( 3)), (4,4), (5,5),(6,6)";
-        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false)*/ ";
+                + "(a,b) values(1,1), (2,2), (( 3),( 3)), (4,4), (5,5),(6,6)";
+        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         if (isCache == null) {
-            hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
         } else if (isCache.booleanValue()) {
-            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         }
         executeDml(hintStr + sql);
         sql = "insert ignore into " + tableName + "(a,b) select a,b+100 from " + sourceTableName;
@@ -350,32 +374,59 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
         int basePhyInsert = 6;
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size() + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size() + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size()));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            }
         } else {
             //select + push upsert
             Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b) select a,( 1+2-2) from " + sourceTableName + " where a = 1+1-1";
+                    + "(a,b) select a,( 1+2-2) from " + sourceTableName + " where a = 1";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = i * 2;
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select, 2:insert 1*2
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + 2));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select, 2:insert 1*2
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + 2));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = i;
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select, 1:insert
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + 1));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else {
                 //select + push upsert
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1));
+                Assert.assertThat(trace.toString(), trace.size(), is(3 + 1));
             }
             sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
             executeDml(sql);
@@ -388,7 +439,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "insert ignore into " + tableName
-            + "(a,b,c) values(1,1,1), (1+1,2,2), (3,1+1*2,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1), (1+1,2,2), (3,1+1*2,3), (4,4,4), (5,5,5),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -413,7 +464,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int scanForDuplicateCheck = 1;
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b,c) values(1,1,1)";
+                    + "(a,b,c) values(1,1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -449,10 +500,10 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false)*/ ";
         }
         sql = "insert ignore into " + sourceTableName
-            + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
         executeDml(sql);
         sql = "insert ignore into " + tableName
-            + "(a,b,c) select a+1-1,b,c from " + sourceTableName;
+                + "(a,b,c) select a+1-1,b,c from " + sourceTableName;
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         List<List<String>> trace = getTrace(tddlConnection);
@@ -471,20 +522,20 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int scanForDuplicateCheck = 1;
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b,c) select a,b+1-1,c from " + sourceTableName + " where a=(select 1) and b<>2+100";
+                    + "(a,b,c) select a,b+1-1,c from " + sourceTableName + " where a=(select 1) and b<>2+100";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = i * 2;
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(scanForDuplicateCheck + topology.size() + basePhyInsert));
+                        is(scanForDuplicateCheck + topology.size() + basePhyInsert));
             } else if (finalTableStatus.isReadyToPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 2));
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = i;
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(scanForDuplicateCheck + topology.size() + basePhyInsert));
+                        is(scanForDuplicateCheck + topology.size() + basePhyInsert));
             } else {
                 Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1));
             }
@@ -499,7 +550,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "insert ignore into " + tableName
-            + "(a,b) values(1,1), (1+1,2), (3,3), (2+2,4), (5,5),(6,6)";
+                + "(a,b) values(1,1), (1+1,2), (3,3), (2+2,4), (5,5),(6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -525,7 +576,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b) values(1+1-1,1)";
+                    + "(a,b) values(1+1-1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -557,7 +608,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert ignore into " + sourceTableName
-            + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
+                + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -566,7 +617,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         executeDml(hintStr + sql);
         sql = "insert ignore into " + tableName
-            + "(a,b) select a+1-1,b+20 from " + sourceTableName + " where a<> ( 1000)";
+                + "(a,b) select a+1-1,b+20 from " + sourceTableName + " where a<> ( 1000)";
         executeDml("trace " + hintStr + sql);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -588,7 +639,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b) select a+1-1,b+1 from " + sourceTableName + " where a=( 1)";
+                    + "(a,b) select a+1-1,b+1 from " + sourceTableName + " where a=( 1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -600,7 +651,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = i > 0 ? i * physicalDbCount : 0;
                 Assert
-                    .assertThat(trace.toString(), trace.size(), is(topology.size() + topology.size() + basePhyInsert));
+                        .assertThat(trace.toString(), trace.size(), is(topology.size() + topology.size() + basePhyInsert));
             } else if (finalTableStatus.isPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(), is(physicalDbCount + topology.size() + 1));
             } else {
@@ -618,7 +669,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "insert ignore into " + tableName
-            + "(a,b,c) values(1+1-1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,3+2+1-1+1)";
+                + "(a,b,c) values(1+1-1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,3+2+1-1+1)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -644,7 +695,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b,c) values(1,1,1)";
+                    + "(a,b,c) values(1,1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -675,7 +726,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert ignore into " + sourceTableName
-            + "(a,b,c) values( 1+1-1, 1, 1), (2,2,2), (3, 3,3), (4,4,4), (5,5,5),(3+6-3,6,6)";
+                + "(a,b,c) values( 1+1-1, 1, 1), (2,2,2), (3, 3,3), (4,4,4), (5,5,5),(3+6-3,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false)*/ ";
         if (isCache == null) {
             hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false)*/ ";
@@ -685,7 +736,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(hintStr + sql);
 
         sql = "insert ignore into " + tableName
-            + "(a,b,c) select a+1-1,b+1-1,c from " + sourceTableName + " where a<>2000 and b<1+2+2000";
+                + "(a,b,c) select a+1-1,b+1-1,c from " + sourceTableName + " where a<>2000 and b<1+2+2000";
         executeDml("trace " + hintStr + sql);
         int physicalDbCount = getDataSourceCount() - 1 - 1; //minus metaDb and scaleout target db
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -705,7 +756,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert ignore into " + tableName
-                + "(a,b,c) select a+1-1,b,c+1-1 from " + sourceTableName + " where a=1 and b<>1+9999+32";
+                    + "(a,b,c) select a+1-1,b,c+1-1 from " + sourceTableName + " where a=1 and b<>1+9999+32";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -716,7 +767,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
                 Assert.assertThat(trace.toString(), trace.size(), is(physicalDbCount + 1 + 1));
             } else if (finalTableStatus.isDeleteOnly()) {
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(topology.size() * 2 + (i == 0 ? 0 : physicalDbCount)));
+                        is(topology.size() * 2 + (i == 0 ? 0 : physicalDbCount)));
             } else if ((finalTableStatus.isPublic())) {
                 Assert.assertThat(trace.toString(), trace.size(), is(physicalDbCount + 2));
             } else {
@@ -733,12 +784,12 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "replace into " + tableName
-            + "(a,b) values(1+1-1,1), (2,2), (3,3), (4,4), (5,5),(6,6+8-8)";
-        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
+                + "(a,b) values(1+1-1,1), (2,2), (3,3), (4,4), (5,5),(6,6+8-8)";
+        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         if (isCache == null) {
-            hintStr = "";
+            hintStr = " /*+TDDL:cmd_extra(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
         } else if (isCache.booleanValue()) {
-            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         }
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -746,30 +797,54 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
         int basePhyInsert = 6;
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            }
         } else {
             //push replace
             Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert));
         }
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b) values(1+1-1,1)";
+                    + "(a,b) values(1+1-1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = (i == 0 ? 4 : 2); //4:(delete + insert) * 2
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isReadyToPublic()) {
                 basePhyInsert = 2; //(replace) * 2 or (insert) * 2
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = (i == 0 ? 3 : 1); //3:(delete + insert) + delete
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else {
                 //push replace
                 Assert.assertThat(trace.toString(), trace.size(), is(1));
@@ -780,18 +855,30 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b) values(1,2)";
+                + "(a,b) values(1,2)";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
         basePhyInsert = 4; //4:(delete + insert) * 2
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + 2));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + 2));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
             basePhyInsert = 3; //3:(delete + insert) + delete
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else {
             //push replace
             Assert.assertThat(trace.toString(), trace.size(), is(1));
@@ -809,17 +896,17 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "replace into " + sourceTableName
-            + "(a,b) values(1+1-1,1), (2,2+1-1), (3,3), (4,4), (5,5),(6,6+1-1)";
-        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false)*/ ";
+                + "(a,b) values(1+1-1,1), (2,2+1-1), (3,3), (4,4), (5,5),(6,6+1-1)";
+        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         if (isCache == null) {
-            hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
         } else if (isCache.booleanValue()) {
-            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         }
         executeDml(hintStr + sql);
 
         sql = "replace into " + tableName
-            + "(a,b) select a,b+20 from " + sourceTableName + " where b<>( 200+321)";
+                + "(a,b) select a,b+20 from " + sourceTableName + " where b<>( 200+321)";
         executeDml("trace " + hintStr + sql);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -827,55 +914,72 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
 
         int basePhyInsert = 6;
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size() + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size() + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
             //select + insert
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size()));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            }
         } else {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            }
         }
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b) select a+1-1,b from " + sourceTableName + " where a=1+1+2-3 and b<>( 1234+3456)";
+                    + "(a,b) select a+1-1,b from " + sourceTableName + " where a=1 and b<>( 1234+3456)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
-            basePhyInsert = (i == 0 ? 4 : 2); //4:(delete + insert) * 2
+            basePhyInsert = 2; //not delete
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + basePhyInsert));
+                } else {
+                    basePhyInsert = i == 0 ? 4 : 2;
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isReadyToPublic()) {
                 //basePhyInsert = 2; //(replace) * 2 or (insert) * 2
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + basePhyInsert));
+                } else {
+                    basePhyInsert = i == 0 ? 4 : 2;
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = (i == 0 ? 3 : 1); //3:(delete + insert) + delete
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select
+                    basePhyInsert = 1;//not delete
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else {
                 //push replace
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1));
+                Assert.assertThat(trace.toString(), trace.size(), is(3 + 1));
             }
             if (i == 0) {
                 sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
                 executeDml(sql);
             }
-        }
-        sql = "replace into " + tableName
-            + "(a,b) select a,b+1 from " + sourceTableName + " where a=1";
-        executeDml("trace " + hintStr + sql);
-        trace = getTrace(tddlConnection);
-
-        basePhyInsert = 4; //4:(delete + insert) * 2
-        if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + basePhyInsert));
-        } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + basePhyInsert));
-        } else if (finalTableStatus.isDeleteOnly()) {
-            basePhyInsert = 3; //3:(delete + insert) + delete
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + basePhyInsert));
-        } else {
-            //select + replace
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + 1));
         }
     }
 
@@ -885,7 +989,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "replace into " + tableName
-            + "(a,b,c) values(1+1-1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5+1-1),(6,6,6)";
+                + "(a,b,c) values(1+1-1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5+1-1),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -910,7 +1014,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int scanForDuplicateCheck = 1;
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b,c) values(1+1-1,1,1)";
+                    + "(a,b,c) values(1+1-1,1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -932,7 +1036,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b,c) values(1,1,3)";
+                + "(a,b,c) values(1,1,3)";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -960,7 +1064,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "replace into " + sourceTableName
-            + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false)*/ ";
         if (isCache == null) {
             hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false)*/ ";
@@ -970,8 +1074,8 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(hintStr + sql);
 
         sql = "replace into " + tableName
-            + "(a,b,c) select 3+a-3,b+1-1,c+2-2 from " + sourceTableName
-            + " where a<1000 and b<>( 1+3333+21-1*2)";
+                + "(a,b,c) select 3+a-3,b+1-1,c+2-2 from " + sourceTableName
+                + " where a<1000 and b<>( 1+3333+21-1*2)";
         executeDml("trace " + hintStr + sql);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -990,21 +1094,21 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int scanForDuplicateCheck = 1;
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b,c) select a+1*2-2,1+b-1,c+2-2 from " + sourceTableName + " where a=( 1)";
+                    + "(a,b,c) select a+1*2-2,1+b-1,c+2-2 from " + sourceTableName + " where a=( 1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = (i == 0 ? 4 : 2); //4:(delete + insert) * 2
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
+                        is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
             } else if (finalTableStatus.isReadyToPublic()) {
                 basePhyInsert = 2; //(replace) * 2
                 Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + basePhyInsert));
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = (i == 0 ? 3 : 1); //3:(delete + insert) + delete
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
+                        is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
             } else {
                 Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + 1));
             }
@@ -1014,21 +1118,21 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b,c) select a+1-1,b,c+2 from " + sourceTableName + " where a=(select 1) and c<>( 34567)";
+                + "(a,b,c) select a+1-1,b,c+2 from " + sourceTableName + " where a=(select 1) and c<>( 34567)";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
         basePhyInsert = 4; //4:(delete + insert) * 2
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
             Assert.assertThat(trace.toString(), trace.size(),
-                is(topology.size() + scanForDuplicateCheck + basePhyInsert));
+                    is(topology.size() + scanForDuplicateCheck + basePhyInsert));
         } else if (finalTableStatus.isReadyToPublic()) {
             //select + push replace
             Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1 + 1));
         } else if (finalTableStatus.isDeleteOnly()) {
             basePhyInsert = 3; //3:(delete + insert) + delete
             Assert.assertThat(trace.toString(), trace.size(),
-                is(topology.size() + scanForDuplicateCheck + basePhyInsert));
+                    is(topology.size() + scanForDuplicateCheck + basePhyInsert));
         } else {
             //select + push replace
             Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1));
@@ -1041,7 +1145,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "replace into " + tableName
-            + "(a,b) values(1,1), (2,2+1-1), (3,3), (4,4), (5,5),(6,6)";
+                + "(a,b) values(1,1), (2,2+1-1), (3,3), (4,4), (5,5),(6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -1067,7 +1171,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b) values(1,1)";
+                    + "(a,b) values(1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -1090,7 +1194,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b) values(1+1-1,2)";
+                + "(a,b) values(1+1-1,2)";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -1120,7 +1224,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "replace into " + sourceTableName
-            + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
+                + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -1130,7 +1234,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(hintStr + sql);
 
         sql = "replace into " + tableName
-            + "(a,b) select a+1-1,b+1-1 from " + sourceTableName + " where 1=1 and a<>1+23456";
+                + "(a,b) select a+1-1,b+1-1 from " + sourceTableName + " where 1=1 and a<>1+23456";
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         List<List<String>> trace = getTrace(tddlConnection);
@@ -1150,7 +1254,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b) select a,b from " + sourceTableName + " where 2=2 and a=1+1-1";
+                    + "(a,b) select a,b from " + sourceTableName + " where 2=2 and a=1+1-1";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -1173,7 +1277,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b) select a,b+1 from " + sourceTableName + " where a=1 and 2=2";
+                + "(a,b) select a,b+1 from " + sourceTableName + " where a=1 and 2=2";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -1198,7 +1302,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/ delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "replace into " + tableName
-            + "(a,b,c) values(1,1,1+1-1), (2,2,2), (3,3+1-1,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1+1-1), (2,2,2), (3,3+1-1,3), (4,4,4), (5,5,5),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -1224,7 +1328,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b,c) values(1+1-1,1,1)";
+                    + "(a,b,c) values(1+1-1,1,1)";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -1247,7 +1351,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b,c) values(1,1+1-1,2)";
+                + "(a,b,c) values(1,1+1-1,2)";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -1277,7 +1381,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "replace into " + sourceTableName
-            + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -1287,7 +1391,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml("trace " + hintStr + sql);
 
         sql = "replace into " + tableName
-            + "(a,b,c) select a+1-1,b+1-1,c+2-2 from " + sourceTableName + " where a<>1 or 1=1";
+                + "(a,b,c) select a+1-1,b+1-1,c+2-2 from " + sourceTableName + " where a<>1 or 1=1";
         executeDml("trace " + hintStr + sql);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -1308,7 +1412,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "replace into " + tableName
-                + "(a,b,c) select a,b,c from " + sourceTableName + " where a=1 and 2+1=3";
+                    + "(a,b,c) select a,b,c from " + sourceTableName + " where a=1 and 2+1=3";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -1331,7 +1435,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "replace into " + tableName
-            + "(a,b,c) select a,b,c+1 from " + sourceTableName + " where a=1 and (2=1 or 2=2)";
+                + "(a,b,c) select a,b,c+1 from " + sourceTableName + " where a=1 and (2=1 or 2=2)";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -1362,31 +1466,31 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         } else if (isCache.booleanValue()) {
             hint = " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "delete from " + tableName + " where 1=1",
-            "delete from " + tableName + " where a < 300",
-            "delete from " + tableName + " where a = 1",
-            "delete from " + tableName + " where b=1",
-            "delete from " + tableName + " where a = 1 and b=1",
-            "delete from " + tableName + " where 1=1 order by a limit 6",};
+        String[] sqlList = new String[]{
+                "delete from " + tableName + " where 1=1",
+                "delete from " + tableName + " where a < 300",
+                "delete from " + tableName + " where a = 1",
+                "delete from " + tableName + " where b=1",
+                "delete from " + tableName + " where a = 1 and b=1",
+                "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         int dbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb + singledb
-        int[] scans = new int[] {dbCount, dbCount, 1, dbCount, 1, dbCount};
+        int[] scans = new int[]{dbCount, dbCount, 1, dbCount, 1, dbCount};
         int[] writablePhysicalOperations =
-            new int[] {6, 6, 1, 1, 1, 6};
+                new int[]{6, 6, 1, 1, 1, 6};
         int[] readyToPublishPhysicalOperations =
-            new int[] {
-                dbCount + 6 + 1, dbCount + 6 + 1, 1 + 1 + 1, dbCount + 1 + 1, 1 + 1 + 1, dbCount + 6 + 1};
+                new int[]{
+                        dbCount + 6 + 1, dbCount + 6 + 1, 1 + 1 + 1, dbCount + 1 + 1, 1 + 1 + 1, dbCount + 6 + 1};
         int[] otherPhysicalOperations =
-            new int[] {topology.size(), topology.size(), 1 * 3, dbCount, 1, dbCount + 6};
+                new int[]{topology.size(), topology.size(), 1 * 3, dbCount, 1, dbCount + 6};
         int[] publishPhysicalOperations =
-            new int[] {topology.size(), topology.size(), 1 * 3, dbCount + 1, 1, dbCount + 1 + 6};
+                new int[]{topology.size(), topology.size(), 1 * 3, dbCount + 1, 1, dbCount + 1 + 6};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
+                    + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = writablePhysicalOperations[i];
@@ -1423,34 +1527,34 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         } else if (isCache.booleanValue()) {
             hint = " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "delete from " + tableName + " where 1=1",
-            "delete from " + tableName + " where a < 300",
-            "delete from " + tableName + " where a = 1",
-            "delete from " + tableName + " where b=1",
-            "delete from " + tableName + " where c=1",
-            "delete from " + tableName + " where a = 1 and b=1",
-            "delete from " + tableName + " where a = 1 and b=1 and c=1",
-            "delete from " + tableName + " where 1=1 order by a limit 6",};
+        String[] sqlList = new String[]{
+                "delete from " + tableName + " where 1=1",
+                "delete from " + tableName + " where a < 300",
+                "delete from " + tableName + " where a = 1",
+                "delete from " + tableName + " where b=1",
+                "delete from " + tableName + " where c=1",
+                "delete from " + tableName + " where a = 1 and b=1",
+                "delete from " + tableName + " where a = 1 and b=1 and c=1",
+                "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         int dbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb + singledb
-        int[] scans = new int[] {dbCount, dbCount, 1, dbCount, dbCount, 1, 1, dbCount};
+        int[] scans = new int[]{dbCount, dbCount, 1, dbCount, dbCount, 1, 1, dbCount};
         int[] writablePhysicalOperations =
-            new int[] {6, 6, 1, 1, 1, 1, 1, 6};
+                new int[]{6, 6, 1, 1, 1, 1, 1, 6};
         int[] readyToPublishPhysicalOperations =
-            new int[] {
-                dbCount + 6 + 1, dbCount + 6 + 1, 1 + 1 + 1, dbCount + 1 + 1, dbCount + 1 + 1,
-                1 + 1 + 1, 1 + 1 + 1, dbCount + 6 + 1};
+                new int[]{
+                        dbCount + 6 + 1, dbCount + 6 + 1, 1 + 1 + 1, dbCount + 1 + 1, dbCount + 1 + 1,
+                        1 + 1 + 1, 1 + 1 + 1, dbCount + 6 + 1};
         int[] otherPhysicalOperations =
-            new int[] {topology.size(), topology.size(), 1 * 3, dbCount, topology.size(), 1, 1, dbCount + 6};
+                new int[]{topology.size(), topology.size(), 1 * 3, dbCount, topology.size(), 1, 1, dbCount + 6};
         int[] publishPhysicalOperations =
-            new int[] {topology.size(), topology.size(), 1 * 3, dbCount + 1, topology.size(), 1, 1, dbCount + 1 + 6};
+                new int[]{topology.size(), topology.size(), 1 * 3, dbCount + 1, topology.size(), 1, 1, dbCount + 1 + 6};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                    + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = writablePhysicalOperations[i];
@@ -1487,23 +1591,23 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         } else if (isCache.booleanValue()) {
             hint = " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "delete from " + tableName + " where 1=1",
-            "delete from " + tableName + " where a < 300",
-            "delete from " + tableName + " where a = 2",
-            "delete from " + tableName + " where b=1",
-            "delete from " + tableName + " where a = 1 and b=1",
-            "delete from " + tableName + " where 1=1 order by a limit 6",};
+        String[] sqlList = new String[]{
+                "delete from " + tableName + " where 1=1",
+                "delete from " + tableName + " where a < 300",
+                "delete from " + tableName + " where a = 2",
+                "delete from " + tableName + " where b=1",
+                "delete from " + tableName + " where a = 1 and b=1",
+                "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
-        int[] scans = new int[] {1, 1, 1, 1, 1, 1, 1};
+        int[] scans = new int[]{1, 1, 1, 1, 1, 1, 1};
         int[] physicalOperations =
-            new int[] {brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount};
+                new int[]{brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
+                    + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = physicalOperations[i];
@@ -1538,25 +1642,25 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         } else if (isCache.booleanValue()) {
             hint = " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "delete from " + tableName + " where 1=1",
-            "delete from " + tableName + " where a < 300",
-            "delete from " + tableName + " where a = 2",
-            "delete from " + tableName + " where b=1",
-            "delete from " + tableName + " where c=1",
-            "delete from " + tableName + " where a = 1 and b=1",
-            "delete from " + tableName + " where a = 1 and b=1 and c=1",
-            "delete from " + tableName + " where 1=1 order by a limit 6",};
+        String[] sqlList = new String[]{
+                "delete from " + tableName + " where 1=1",
+                "delete from " + tableName + " where a < 300",
+                "delete from " + tableName + " where a = 2",
+                "delete from " + tableName + " where b=1",
+                "delete from " + tableName + " where c=1",
+                "delete from " + tableName + " where a = 1 and b=1",
+                "delete from " + tableName + " where a = 1 and b=1 and c=1",
+                "delete from " + tableName + " where 1=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
-        int[] scans = new int[] {1, 1, 1, 1, 1, 1, 1, 1};
+        int[] scans = new int[]{1, 1, 1, 1, 1, 1, 1, 1};
         int[] physicalOperations =
-            new int[] {brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount};
+                new int[]{brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                    + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = physicalOperations[i];
@@ -1586,77 +1690,77 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName;
         executeDml(sql);
         String hint =
-            "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
+                "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hint = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ ";
         } else if (isCache.booleanValue()) {
             hint =
-                " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
+                    " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
         }
 
-        String[] sqlList = new String[] {
-            "update " + tableName + " set k=k+1",
-            "update " + tableName + " set k=k+1 where a=1",
-            "update " + tableName + " set k=k+1 where a=1 and b=1",
-            "update " + tableName + " set k=k+1 where b=1",
-            "update " + tableName + " set a=a-1 where a<100",//5
-            "update " + tableName + " set b=b-1 where a<100",
-            "update " + tableName + " set b=b-1,a=a-1 where b<100",
-            "update " + tableName + " set a=a-1 where a=1",
-            "update " + tableName + " set b=b-1 where a=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
-            "update " + tableName + " set a=a-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
-            "update " + tableName + " set a=a-1 where b=1",
-            "update " + tableName + " set b=b-1 where b=1",//15
-            "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 order by a limit 6",
-            "update " + tableName + " set a=a-1 where a<>3 order by a limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",};
+        String[] sqlList = new String[]{
+                "update " + tableName + " set k=k+1",
+                "update " + tableName + " set k=k+1 where a=1",
+                "update " + tableName + " set k=k+1 where a=1 and b=1",
+                "update " + tableName + " set k=k+1 where b=1",
+                "update " + tableName + " set a=a-1 where a<100",//5
+                "update " + tableName + " set b=b-1 where a<100",
+                "update " + tableName + " set b=b-1,a=a-1 where b<100",
+                "update " + tableName + " set a=a-1 where a=1",
+                "update " + tableName + " set b=b-1 where a=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
+                "update " + tableName + " set a=a-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
+                "update " + tableName + " set a=a-1 where b=1",
+                "update " + tableName + " set b=b-1 where b=1",//15
+                "update " + tableName + " set b=b-1,a=a-1 where b=1",
+                "update " + tableName + " set k=k+1 order by a limit 6",
+                "update " + tableName + " set a=a-1 where a<>3 order by a limit 6",
+                "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",};
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         int dbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb + singledb
         int[] scans =
-            new int[] {
-                dbCount, 1, 1, dbCount, dbCount,
-                dbCount, dbCount, 1, 1, 1,
-                1, 1, 1, dbCount, dbCount,
-                dbCount, dbCount, dbCount, 1};
+                new int[]{
+                        dbCount, 1, 1, dbCount, dbCount,
+                        dbCount, dbCount, 1, 1, 1,
+                        1, 1, 1, dbCount, dbCount,
+                        dbCount, dbCount, dbCount, 1};
         int[] writablePhysicalOperations =
-            new int[] {
-                6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1 + 1,
-                6 * 2 + 1 + 1, 6 * 2 + 1 + 1, 1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1,
-                1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 2,
-                1 * 2 + 1, 6 + 1, 5 * 2 + 2, 1 + 1};
+                new int[]{
+                        6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1 + 1,
+                        6 * 2 + 1 + 1, 6 * 2 + 1 + 1, 1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1,
+                        1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 2,
+                        1 * 2 + 1, 6 + 1, 5 * 2 + 2, 1 + 1};
         int[] readyToPublishPhysicalOperations =
-            new int[] {
-                dbCount + 6 + 1, 1 + 1 + 1, 1 + 1 + 1, dbCount + 1 + 1, dbCount + 6 * 2 + 2,
-                dbCount + 6 * 2 + 2, dbCount + 6 * 2 + 2, 1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1,
-                1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1, dbCount + 1 * 2 + 1, dbCount + 1 * 2 + 2,
-                dbCount + 1 * 2 + 1, dbCount + 6 + 1, dbCount + 5 * 2 + 2, 1 + 1 + 1};
+                new int[]{
+                        dbCount + 6 + 1, 1 + 1 + 1, 1 + 1 + 1, dbCount + 1 + 1, dbCount + 6 * 2 + 2,
+                        dbCount + 6 * 2 + 2, dbCount + 6 * 2 + 2, 1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1,
+                        1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1, dbCount + 1 * 2 + 1, dbCount + 1 * 2 + 2,
+                        dbCount + 1 * 2 + 1, dbCount + 6 + 1, dbCount + 5 * 2 + 2, 1 + 1 + 1};
         int[] otherPhysicalOperations =
-            new int[] {
-                topology.size(), 3, 1, dbCount, dbCount + 6 * 2,
-                dbCount + 6 * 2, dbCount + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
-                1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 * 2, dbCount + 1 * 2,
-                dbCount + 1 * 2, dbCount + 6, dbCount + 5 * 2, 1};
+                new int[]{
+                        topology.size(), 3, 1, dbCount, dbCount + 6 * 2,
+                        dbCount + 6 * 2, dbCount + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
+                        1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 * 2, dbCount + 1 * 2,
+                        dbCount + 1 * 2, dbCount + 6, dbCount + 5 * 2, 1};
         int[] publishPhysicalOperations =
-            new int[] {
-                topology.size(), 3, 1, dbCount + 1, dbCount + 1 + 6 * 2,
-                dbCount + 1 + 6 * 2, dbCount + 1 + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
-                1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 + 1 * 2, dbCount + 1 + 1 * 2,
-                dbCount + 1 + 1 * 2, dbCount + 1 + 6, dbCount + 1 + 5 * 2, 1};
+                new int[]{
+                        topology.size(), 3, 1, dbCount + 1, dbCount + 1 + 6 * 2,
+                        dbCount + 1 + 6 * 2, dbCount + 1 + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
+                        1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 + 1 * 2, dbCount + 1 + 1 * 2,
+                        dbCount + 1 + 1 * 2, dbCount + 1 + 6, dbCount + 1 + 5 * 2, 1};
         int[] deleteOnlyPhysicalOperations =
-            new int[] {
-                6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1,
-                6 * 2 + 1, 6 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
-                1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
-                1 * 2 + 1, 6 + 1, 5 * 2 + 1, 1 + 1};
+                new int[]{
+                        6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1,
+                        6 * 2 + 1, 6 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
+                        1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
+                        1 * 2 + 1, 6 + 1, 5 * 2 + 1, 1 + 1};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b,k) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                    + "(a,b,k) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = writablePhysicalOperations[i];
@@ -1689,86 +1793,86 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName;
         executeDml(sql);
         String hint =
-            "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
+                "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hint = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ ";
         } else if (isCache.booleanValue()) {
             hint =
-                " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
+                    " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "update " + tableName + " set k=k+1",
-            "update " + tableName + " set k=k+1 where a=1",
-            "update " + tableName + " set k=k+1 where a=1 and b=1",
-            "update " + tableName + " set k=k+1 where b=1",
-            "update " + tableName + " set a=a-1 where a<100",//5
-            "update " + tableName + " set b=b-1 where a<100",
-            "update " + tableName + " set b=b-1,a=a-1 where b<100",
-            "update " + tableName + " set a=a-1 where a=1",
-            "update " + tableName + " set b=b-1 where a=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
-            "update " + tableName + " set a=a-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
-            "update " + tableName + " set a=a-1 where b=1",
-            "update " + tableName + " set b=b-1 where b=1",//15
-            "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 order by a limit 6",
-            "update " + tableName + " set a=a-1 where a<>3 order by a limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",
-            "update " + tableName + " set c=c-1 where b=1",
-            "update " + tableName + " set c=c-1 where a=1",
+        String[] sqlList = new String[]{
+                "update " + tableName + " set k=k+1",
+                "update " + tableName + " set k=k+1 where a=1",
+                "update " + tableName + " set k=k+1 where a=1 and b=1",
+                "update " + tableName + " set k=k+1 where b=1",
+                "update " + tableName + " set a=a-1 where a<100",//5
+                "update " + tableName + " set b=b-1 where a<100",
+                "update " + tableName + " set b=b-1,a=a-1 where b<100",
+                "update " + tableName + " set a=a-1 where a=1",
+                "update " + tableName + " set b=b-1 where a=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
+                "update " + tableName + " set a=a-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
+                "update " + tableName + " set a=a-1 where b=1",
+                "update " + tableName + " set b=b-1 where b=1",//15
+                "update " + tableName + " set b=b-1,a=a-1 where b=1",
+                "update " + tableName + " set k=k+1 order by a limit 6",
+                "update " + tableName + " set a=a-1 where a<>3 order by a limit 6",
+                "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",
+                "update " + tableName + " set c=c-1 where b=1",
+                "update " + tableName + " set c=c-1 where a=1",
         };
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         int dbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb + singledb
         int[] scans =
-            new int[] {
-                dbCount, 1, 1, dbCount, dbCount,
-                dbCount, dbCount, 1, 1, 1,
-                1, 1, 1, dbCount, dbCount,
-                dbCount, dbCount, dbCount, 1, dbCount,
-                1};
+                new int[]{
+                        dbCount, 1, 1, dbCount, dbCount,
+                        dbCount, dbCount, 1, 1, 1,
+                        1, 1, 1, dbCount, dbCount,
+                        dbCount, dbCount, dbCount, 1, dbCount,
+                        1};
         int[] writablePhysicalOperations =
-            new int[] {
-                6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1 + 1,
-                6 * 2 + 1 + 1, 6 * 2 + 1 + 1, 1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1,
-                1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 2,
-                1 * 2 + 1, 6 + 1, 5 * 2 + 2, 1 + 1, 1 + 1,
-                1 + 1};
+                new int[]{
+                        6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1 + 1,
+                        6 * 2 + 1 + 1, 6 * 2 + 1 + 1, 1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1,
+                        1 * 2 + 1, 1 * 2 + 2, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 2,
+                        1 * 2 + 1, 6 + 1, 5 * 2 + 2, 1 + 1, 1 + 1,
+                        1 + 1};
         int[] readyToPublishPhysicalOperations =
-            new int[] {
-                dbCount + 6 + 1, 1 + 1 + 1, 1 + 1 + 1, dbCount + 1 + 1, dbCount + 6 * 2 + 2,
-                dbCount + 6 * 2 + 2, dbCount + 6 * 2 + 2, 1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1,
-                1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1, dbCount + 1 * 2 + 1, dbCount + 1 * 2 + 2,
-                dbCount + 1 * 2 + 1, dbCount + 6 + 1, dbCount + 5 * 2 + 2, 1 + 1 + 1, dbCount + 1 + 1,
-                1 + 1 + 1};
+                new int[]{
+                        dbCount + 6 + 1, 1 + 1 + 1, 1 + 1 + 1, dbCount + 1 + 1, dbCount + 6 * 2 + 2,
+                        dbCount + 6 * 2 + 2, dbCount + 6 * 2 + 2, 1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1,
+                        1 + 1 * 2 + 1, 1 + 1 * 2 + 2, 1 + 1 * 2 + 1, dbCount + 1 * 2 + 1, dbCount + 1 * 2 + 2,
+                        dbCount + 1 * 2 + 1, dbCount + 6 + 1, dbCount + 5 * 2 + 2, 1 + 1 + 1, dbCount + 1 + 1,
+                        1 + 1 + 1};
         int[] otherPhysicalOperations =
-            new int[] {
-                topology.size(), 3, 1, dbCount, dbCount + 6 * 2,
-                dbCount + 6 * 2, dbCount + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
-                1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 * 2, dbCount + 1 * 2,
-                dbCount + 1 * 2, dbCount + 6, dbCount + 5 * 2, 1, dbCount,
-                3};
+                new int[]{
+                        topology.size(), 3, 1, dbCount, dbCount + 6 * 2,
+                        dbCount + 6 * 2, dbCount + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
+                        1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 * 2, dbCount + 1 * 2,
+                        dbCount + 1 * 2, dbCount + 6, dbCount + 5 * 2, 1, dbCount,
+                        3};
         int[] deleteOnlyPhysicalOperations =
-            new int[] {
-                6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1,
-                6 * 2 + 1, 6 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
-                1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
-                1 * 2 + 1, 6 + 1, 5 * 2 + 1, 1 + 1, 1 + 1,
-                1 + 1};
+                new int[]{
+                        6 + 1, 1 + 1, 1 + 1, 1 + 1, 6 * 2 + 1,
+                        6 * 2 + 1, 6 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
+                        1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1, 1 * 2 + 1,
+                        1 * 2 + 1, 6 + 1, 5 * 2 + 1, 1 + 1, 1 + 1,
+                        1 + 1};
         int[] publishPhysicalOperations =
-            new int[] {
-                topology.size(), 3, 1, dbCount + 1, dbCount + 1 + 6 * 2,
-                dbCount + 1 + 6 * 2, dbCount + 1 + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
-                1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 + 1 * 2, dbCount + 1 + 1 * 2,
-                dbCount + 1 + 1 * 2, dbCount + 1 + 6, dbCount + 1 + 5 * 2, 1, dbCount + 1,
-                3};
+                new int[]{
+                        topology.size(), 3, 1, dbCount + 1, dbCount + 1 + 6 * 2,
+                        dbCount + 1 + 6 * 2, dbCount + 1 + 6 * 2, 1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2,
+                        1 + 1 * 2, 1 + 1 * 2, 1 + 1 * 2, dbCount + 1 + 1 * 2, dbCount + 1 + 1 * 2,
+                        dbCount + 1 + 1 * 2, dbCount + 1 + 6, dbCount + 1 + 5 * 2, 1, dbCount + 1,
+                        3};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c,k) values(1,1,1,1), (2,2,2,2), (3,3,3,3), (4,4,4,4), (5,5,5,5),(6,6,6,6)";
+                    + "(a,b,c,k) values(1,1,1,1), (2,2,2,2), (3,3,3,3), (4,4,4,4), (5,5,5,5),(6,6,6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = writablePhysicalOperations[i];
@@ -1801,74 +1905,74 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName;
         executeDml(sql);
         String hint =
-            "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
+                "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hint = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ ";
         } else if (isCache.booleanValue()) {
             hint =
-                " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
+                    " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "update " + tableName + " set k=k+1",
-            "update " + tableName + " set k=k+1 where a=1",
-            "update " + tableName + " set k=k+1 where a=1 and b=1",
-            "update " + tableName + " set k=k+1 where b=1",
-            "update " + tableName + " set a=a-1 where a<100",//5
-            "update " + tableName + " set b=b-1 where a<100",
-            "update " + tableName + " set b=b-1,a=a-1 where b<100",
-            "update " + tableName + " set a=a-1 where a=1",
-            "update " + tableName + " set b=b-1 where a=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
-            "update " + tableName + " set a=a-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
-            "update " + tableName + " set a=a-1 where b=1",
-            "update " + tableName + " set b=b-1 where b=1",//15
-            "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 order by a limit 6",
-            "update " + tableName + " set a=a+10 where a<>3 order by a limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",};
+        String[] sqlList = new String[]{
+                "update " + tableName + " set k=k+1",
+                "update " + tableName + " set k=k+1 where a=1",
+                "update " + tableName + " set k=k+1 where a=1 and b=1",
+                "update " + tableName + " set k=k+1 where b=1",
+                "update " + tableName + " set a=a-1 where a<100",//5
+                "update " + tableName + " set b=b-1 where a<100",
+                "update " + tableName + " set b=b-1,a=a-1 where b<100",
+                "update " + tableName + " set a=a-1 where a=1",
+                "update " + tableName + " set b=b-1 where a=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
+                "update " + tableName + " set a=a-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
+                "update " + tableName + " set a=a-1 where b=1",
+                "update " + tableName + " set b=b-1 where b=1",//15
+                "update " + tableName + " set b=b-1,a=a-1 where b=1",
+                "update " + tableName + " set k=k+1 order by a limit 6",
+                "update " + tableName + " set a=a+10 where a<>3 order by a limit 6",
+                "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",};
         //{6, 2, 1, 1, 1, 1, 1}
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
         int scan = 1;
         int[] writablePhysicalOperations =
-            new int[] {
-                scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 2,
-                scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1};
+                new int[]{
+                        scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1};
         int[] readyToPublishPhysicalOperations =
-            new int[] {
-                scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 2,
-                scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1};
+                new int[]{
+                        scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1};
         int[] otherPhysicalOperations =
-            new int[] {
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount};
+                new int[]{
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount};
         int[] deleteOnlyPhysicalOperations =
-            new int[] {
-                scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 1,
-                scan + brdDbCount + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount + 1};
+                new int[]{
+                        scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount + 1};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b,k) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                    + "(a,b,k) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = brdDbCount;
@@ -1897,83 +2001,83 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName;
         executeDml(sql);
         String hint =
-            "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
+                "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hint = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE)*/ ";
         } else if (isCache.booleanValue()) {
             hint =
-                " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
+                    " /*+TDDL:cmd_extra(ENABLE_COMPLEX_DML_CROSS_DB=true,ENABLE_MODIFY_SHARDING_COLUMN=TRUE,PLAN_CACHE=true)*/ ";
         }
-        String[] sqlList = new String[] {
-            "update " + tableName + " set k=k+1",
-            "update " + tableName + " set k=k+1 where a=1",
-            "update " + tableName + " set k=k+1 where a=1 and b=1",
-            "update " + tableName + " set k=k+1 where b=1",
-            "update " + tableName + " set a=a-1 where a<100",//5
-            "update " + tableName + " set b=b-1 where a<100",
-            "update " + tableName + " set b=b-1,a=a-1 where b<100",
-            "update " + tableName + " set a=a-1 where a=1",
-            "update " + tableName + " set b=b-1 where a=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
-            "update " + tableName + " set a=a-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1 where a=1 and b=1",
-            "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
-            "update " + tableName + " set a=a-1 where b=1",
-            "update " + tableName + " set b=b-1 where b=1",//15
-            "update " + tableName + " set b=b-1,a=a-1 where b=1",
-            "update " + tableName + " set k=k+1 order by a limit 6",
-            "update " + tableName + " set a=a+10 where a<>3 order by a limit 6",
-            "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",
-            "update " + tableName + " set c=c-1 where b=1",//20
-            "update " + tableName + " set c=c-1 where a=1",
+        String[] sqlList = new String[]{
+                "update " + tableName + " set k=k+1",
+                "update " + tableName + " set k=k+1 where a=1",
+                "update " + tableName + " set k=k+1 where a=1 and b=1",
+                "update " + tableName + " set k=k+1 where b=1",
+                "update " + tableName + " set a=a-1 where a<100",//5
+                "update " + tableName + " set b=b-1 where a<100",
+                "update " + tableName + " set b=b-1,a=a-1 where b<100",
+                "update " + tableName + " set a=a-1 where a=1",
+                "update " + tableName + " set b=b-1 where a=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1",//10
+                "update " + tableName + " set a=a-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1 where a=1 and b=1",
+                "update " + tableName + " set b=b-1,a=a-1 where a=1 and b=1",
+                "update " + tableName + " set a=a-1 where b=1",
+                "update " + tableName + " set b=b-1 where b=1",//15
+                "update " + tableName + " set b=b-1,a=a-1 where b=1",
+                "update " + tableName + " set k=k+1 order by a limit 6",
+                "update " + tableName + " set a=a+10 where a<>3 order by a limit 6",
+                "update " + tableName + " set k=k-1 where a=1 and b=1 order by a limit 6",
+                "update " + tableName + " set c=c-1 where b=1",//20
+                "update " + tableName + " set c=c-1 where a=1",
         };
         List<List<String>> trace;
         int brdDbCount = getDataSourceCount() - 1 - 1;//minus metadb+scaleoutdb
         int scan = 1;
         int[] writablePhysicalOperations =
-            new int[] {
-                scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
-                scan + brdDbCount + 1,
-                scan + brdDbCount + 1};
+                new int[]{
+                        scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
+                        scan + brdDbCount + 1,
+                        scan + brdDbCount + 1};
         int[] readyToPublishPhysicalOperations =
-            new int[] {
-                scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
-                scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
-                scan + brdDbCount + 1,
-                scan + brdDbCount + 1};
+                new int[]{
+                        scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount * 2 + 2,
+                        scan + brdDbCount * 2 + 2, scan + brdDbCount + 1, scan + brdDbCount * 2 + 2, scan + brdDbCount + 1,
+                        scan + brdDbCount + 1,
+                        scan + brdDbCount + 1};
         int[] otherPhysicalOperations =
-            new int[] {
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
-                brdDbCount};
+                new int[]{
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount, brdDbCount, brdDbCount, brdDbCount, brdDbCount,
+                        brdDbCount};
         int[] deleteOnlyPhysicalOperations =
-            new int[] {
-                scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
-                scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
-                scan + brdDbCount * 2 + 1, scan + brdDbCount + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount + 1,
-                scan + brdDbCount + 1,
-                scan + brdDbCount + 1};
+                new int[]{
+                        scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount * 2 + 1,
+                        scan + brdDbCount * 2 + 1, scan + brdDbCount + 1, scan + brdDbCount * 2 + 1, scan + brdDbCount + 1,
+                        scan + brdDbCount + 1,
+                        scan + brdDbCount + 1};
 
         for (int i = 0; i < sqlList.length; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c,k) values(1,1,1,1), (2,2,2,2), (3,3,3,3), (4,4,4,4), (5,5,5,5),(6,6,6,6)";
+                    + "(a,b,c,k) values(1,1,1,1), (2,2,2,2), (3,3,3,3), (4,4,4,4), (5,5,5,5),(6,6,6,6)";
             executeDml(sql);
             sql = sqlList[i];
             int physicalOperation = brdDbCount;
@@ -2005,12 +2109,12 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert into " + tableName
-            + "(a,b) values(1,1), (2,2), (3,3), (4-2+2,4), (5,5),(9+6-9,6) on duplicate key update b=b+1+3";
-        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
+                + "(a,b) values(1,1), (2,2), (3,3), (4-2+2,4), (5,5),(9+6-9,6) on duplicate key update b=b+1+3";
+        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         if (isCache == null) {
-            hintStr = "";
+            hintStr = "/*+TDDL:cmd_extra(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/";
         } else if (isCache.booleanValue()) {
-            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         }
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -2019,32 +2123,69 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int shrdDbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb+singledb
         int basePhyInsert = 6;
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size() + 1));
+            }
+
         } else if (finalTableStatus.isDeleteOnly()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else {
             //select_for_duplicate + insert
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b) values(1,1+1-1) on duplicate key update b=b+1+3";
+                    + "(a,b) values(1,1+1-1) on duplicate key update b=b+1+3";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = i == 0 ? 4 : 2;
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isDeleteOnly()) {
-                // 3：2*delete + insert; 1: insert
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + (i == 0 ? 3 : 1)));
+                if (isCache == null) {
+                    // 3：2*delete + insert; 1: insert
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + (i == 0 ? 3 : 1)));
+                } else {
+                    // 3：2*delete + insert; 1: insert
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + (i == 0 ? 3 : 1)));
+                }
+
             } else {
                 //select_for_duplicate + insert
-                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + (i == 0 ? 2 : 1)));
+                if (isCache == null) {
+                    // 3：2*delete + insert; 1: insert
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + (i == 0 ? 2 : 1)));
+                } else {
+                    // 3：2*delete + insert; 1: insert
+                    Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + (i == 0 ? 2 : 1)));
+                }
             }
             if (i == 0) {
                 sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
@@ -2052,21 +2193,42 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "insert into " + tableName
-            + "(a,b) values(1+1-1,2) on duplicate key update a=a+" + String.valueOf(shrdDbCount) + "*20, b=b+2";
+                + "(a,b) values(1+1-1,2) on duplicate key update a=a+" + String.valueOf(shrdDbCount) + "*20, b=b+2";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
         basePhyInsert = 4; //4:(delete + insert) * 2
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                basePhyInsert = 2; //insert + insert
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                basePhyInsert = 2; //insert + insert
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
             basePhyInsert = 3; //3:(delete + insert) + delete
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            if (isCache == null) {
+                basePhyInsert = 1; //1: insert
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + basePhyInsert));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + basePhyInsert));
+            }
         } else {
             //select_for_duplicate + delete + insert
-            Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1 + 1));
+            if (isCache == null) {
+                //select_for_duplicate + insert
+                Assert.assertThat(trace.toString(), trace.size(), is(1 + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(topology.size() + 1 + 1));
+            }
+
         }
     }
 
@@ -2081,17 +2243,17 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert into " + sourceTableName
-            + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
-        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false)*/ ";
+                + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
+        String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         if (isCache == null) {
-            hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
         } else if (isCache.booleanValue()) {
-            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false)*/ ";
+            hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=true,MERGE_UNION=false, DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
         }
         executeDml(hintStr + sql);
 
         sql = "insert into " + tableName
-            + "(a,b) select a+1-1,b+1-1 from " + sourceTableName + " on duplicate key update b=b+1+3";
+                + "(a,b) select a+1-1,b+1-1 from " + sourceTableName + " on duplicate key update b=b+1+3";
         executeDml("trace " + hintStr + sql);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -2100,56 +2262,73 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int shrdDbCount = getDataSourceCount() - 1 - 1 - 1;//minus metadb+scaleoutdb+singledb
         int basePhyInsert = 6;
         if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size() + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            }
         } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size() + 1));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size() + 1));
+            }
         } else if (finalTableStatus.isDeleteOnly()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size()));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            }
         } else {
             //select + select_for_duplicate + insert
-            Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+            if (isCache == null) {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert * 2 + topology.size()));
+            } else {
+                Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert + 2 * topology.size()));
+            }
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b) select a+1-1,b from " + sourceTableName + " where a=1+1-1 on duplicate key update b=b+1+3";
+                    + "(a,b) select a+1-1,b from " + sourceTableName + " where a=1 on duplicate key update b=b+1+3";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = i == 0 ? 4 : 2;
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //1:select_for_update, 3:Select
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isReadyToPublic()) {
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + basePhyInsert));
+                if (isCache == null) {
+                    //2:select_for_update, 3:Select
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + basePhyInsert));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + basePhyInsert));
+                }
             } else if (finalTableStatus.isDeleteOnly()) {
                 // 3：2*delete + insert; 1: insert
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + (i == 0 ? 3 : 1)));
+                if (isCache == null) {
+                    //2:select_for_update, 3:Select
+                    Assert.assertThat(trace.toString(), trace.size(), is(1 + 3 + (i == 0 ? 3 : 1)));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + (i == 0 ? 3 : 1)));
+                }
             } else {
                 //0:select + select_for_duplicate + delete + insert
                 //1:select + select_for_duplicate + insert
-                Assert.assertThat(trace.toString(), trace.size(), is(2 * topology.size() + (i == 0 ? 2 : 1)));
+                if (isCache == null) {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + 1 + (i == 0 ? 2 : 1)));
+                } else {
+                    Assert.assertThat(trace.toString(), trace.size(), is(3 + topology.size() + (i == 0 ? 2 : 1)));
+                }
             }
             if (i == 0) {
                 sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
                 executeDml(sql);
             }
-        }
-        sql = "insert into " + tableName
-            + "(a,b) select a,b+1 from " + sourceTableName + " where a=1 on duplicate key update a=a+" + String
-            .valueOf(shrdDbCount) + "*20, b=b+2";
-        executeDml("trace " + hintStr + sql);
-        trace = getTrace(tddlConnection);
-
-        basePhyInsert = 4; //4:(delete + insert) * 2
-        if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + basePhyInsert));
-        } else if (finalTableStatus.isReadyToPublic()) {
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + basePhyInsert));
-        } else if (finalTableStatus.isDeleteOnly()) {
-            basePhyInsert = 3; //3:(delete + insert) + delete
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + basePhyInsert));
-        } else {
-            //select + select_for_duplicate + delete + insert
-            Assert.assertThat(trace.toString(), trace.size(), is(tbPartitions + topology.size() + 1 + 1));
         }
     }
 
@@ -2160,7 +2339,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert into " + tableName
-            + "(a,b,c) values(1,1,1), (2,2+1-1,2), (3,3,3), (4,4,4), (5,5+2-2,5),(6,6,6) on duplicate key update a=a+1";
+                + "(a,b,c) values(1,1,1), (2,2+1-1,2), (3,3,3), (4,4,4), (5,5+2-2,5),(6,6,6) on duplicate key update a=a+1";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -2187,7 +2366,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int scanForDuplicateCheck = 1;
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c) values(1,1+1-1,1) on duplicate key update b=b+1";
+                    + "(a,b,c) values(1,1+1-1,1) on duplicate key update b=b+1";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -2210,7 +2389,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "insert into " + tableName
-            + "(a,b,c) values(1+1-1,1,3) on duplicate key update b=b+1";
+                + "(a,b,c) values(1+1-1,1,3) on duplicate key update b=b+1";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -2239,7 +2418,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert into " + sourceTableName
-            + "(a,b,c) values(1,1,1), (2,2,2+1-1), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1), (2,2,2+1-1), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false, MERGE_UNION=false)*/ ";
         if (isCache == null) {
             hintStr = " /*+TDDL:cmd_extra(MERGE_UNION=false)*/ ";
@@ -2249,7 +2428,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(hintStr + sql);
 
         sql = "insert into " + tableName
-            + "(a,b,c) select a+1-1,b,c from " + sourceTableName + " where a<>2+12324 on duplicate key update a=a+1";
+                + "(a,b,c) select a+1-1,b,c from " + sourceTableName + " where a<>2+12324 on duplicate key update a=a+1";
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         List<List<String>> trace = getTrace(tddlConnection);
@@ -2269,22 +2448,22 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         int scanForDuplicateCheck = 1;
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c) select a,b+2-2,c from " + sourceTableName
-                + " where a=1 and 2=2 on duplicate key update b=b+2";
+                    + "(a,b,c) select a,b+2-2,c from " + sourceTableName
+                    + " where a=1 and 2=2 on duplicate key update b=b+2";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
             basePhyInsert = (i == 0 ? 4 : 2); //4:(delete + insert) * 2
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
+                        is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
             } else if (finalTableStatus.isReadyToPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
+                        is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
             } else if (finalTableStatus.isDeleteOnly()) {
                 basePhyInsert = (i == 0 ? 3 : 1); //3:(delete + insert) + delete
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
+                        is(tbPartitions + scanForDuplicateCheck + basePhyInsert));
             } else {
                 //0：select + select_for_duplicate + delete + insert
                 //1：select + select_for_duplicate + insert
@@ -2296,7 +2475,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "insert into " + tableName
-            + "(a,b,c) select a,b,c+2 from " + sourceTableName + " where a=1 on duplicate key update b=b+20";
+                + "(a,b,c) select a,b,c+2 from " + sourceTableName + " where a=1 on duplicate key update b=b+20";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -2320,7 +2499,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "insert into " + tableName
-            + "(a,b) values(1+1-1,1), (2,2+1-1), (3,3), (4,4), (5,5),(6,6) on duplicate key update b=b+20";
+                + "(a,b) values(1+1-1,1), (2,2+1-1), (3,3), (4,4), (5,5),(6,6) on duplicate key update b=b+20";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -2348,7 +2527,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b) values(1+2-2,1) on duplicate key update b=b+20";
+                    + "(a,b) values(1+2-2,1) on duplicate key update b=b+20";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -2360,7 +2539,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
                 Assert.assertThat(trace.toString(), trace.size(), is(basePhyInsert));
             } else if (finalTableStatus.isDeleteOnly()) {
                 Assert.assertThat(trace.toString(), trace.size(),
-                    is(topology.size() + (i == 0 ? basePhyInsert : physicalDbCount)));
+                        is(topology.size() + (i == 0 ? basePhyInsert : physicalDbCount)));
             } else if (finalTableStatus.isPublic()) {
                 Assert.assertThat(trace.toString(), trace.size(), is(physicalDbCount + 1));
             } else {
@@ -2373,7 +2552,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "insert into " + tableName
-            + "(a,b) values(1,2+1-1) on duplicate key update a=a+20";
+                + "(a,b) values(1,2+1-1) on duplicate key update a=a+20";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -2403,7 +2582,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert into " + sourceTableName
-            + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
+                + "(a,b) values(1,1), (2,2), (3,3), (4,4), (5,5),(6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -2413,8 +2592,8 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(hintStr + sql);
 
         sql = "insert into " + tableName
-            + "(a,b) select a,b+1-1 from " + sourceTableName
-            + " where 1=1 and a<>1+23456 on duplicate key update b=b+20";
+                + "(a,b) select a,b+1-1 from " + sourceTableName
+                + " where 1=1 and a<>1+23456 on duplicate key update b=b+20";
         executeDml("trace " + hintStr + sql);
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
         List<List<String>> trace = getTrace(tddlConnection);
@@ -2436,8 +2615,8 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b) select a+1-1,b from " + sourceTableName
-                + " where 2=2 and a=1+1-1 on duplicate key update b=b+20";
+                    + "(a,b) select a+1-1,b from " + sourceTableName
+                    + " where 2=2 and a=1+1-1 on duplicate key update b=b+20";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -2462,7 +2641,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "insert into " + tableName
-            + "(a,b) select a,b+1 from " + sourceTableName + " where a=1 and 2=2 on duplicate key update b=b+20";
+                + "(a,b) select a,b+1 from " + sourceTableName + " where a=1 and 2=2 on duplicate key update b=b+20";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -2488,7 +2667,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         String sql = "/*+TDDL:CMD_EXTRA(ENABLE_COMPLEX_DML_CROSS_DB=true)*/ delete from " + tableName + " where 1=1";
         executeDml(sql);
         sql = "insert into " + tableName
-            + "(a,b,c) values(1,1+1-1,1), (2+1-1,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6) on duplicate key update b=b+20";
+                + "(a,b,c) values(1,1+1-1,1), (2+1-1,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6) on duplicate key update b=b+20";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -2516,16 +2695,16 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         int scan = topology.size();
         int[] writablePhysicalOperations =
-            new int[] {scan + physicalDbCount * 2 + 2, scan + physicalDbCount + 1};
+                new int[]{scan + physicalDbCount * 2 + 2, scan + physicalDbCount + 1};
         int[] readyToPublishPhysicalOperations =
-            new int[] {physicalDbCount + 1, physicalDbCount + 1};
+                new int[]{physicalDbCount + 1, physicalDbCount + 1};
         int[] otherPhysicalOperations =
-            new int[] {physicalDbCount, physicalDbCount};
+                new int[]{physicalDbCount, physicalDbCount};
         int[] deleteOnlyPhysicalOperations =
-            new int[] {scan + physicalDbCount * 2 + 1, scan + physicalDbCount};
+                new int[]{scan + physicalDbCount * 2 + 1, scan + physicalDbCount};
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c) values(1,1+1-1,1) on duplicate key update b=b+20";
+                    + "(a,b,c) values(1,1+1-1,1) on duplicate key update b=b+20";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
 
@@ -2547,7 +2726,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
             }
         }
         sql = "insert into " + tableName
-            + "(a,b,c) values(1+1-1,1,2+1-1) on duplicate key update b=b+20";
+                + "(a,b,c) values(1+1-1,1,2+1-1) on duplicate key update b=b+20";
         executeDml("trace " + hintStr + sql);
         trace = getTrace(tddlConnection);
 
@@ -2577,7 +2756,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml(sql);
 
         sql = "insert into " + sourceTableName
-            + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
+                + "(a,b,c) values(1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5),(6,6,6)";
         String hintStr = " /*+TDDL:cmd_extra(PLAN_CACHE=false)*/ ";
         if (isCache == null) {
             hintStr = "";
@@ -2587,7 +2766,7 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         executeDml("trace " + hintStr + sql);
 
         sql = "insert into " + tableName
-            + "(a,b,c) select a,b,c+1-1 from " + sourceTableName + " where a<>1 or 1=1 on duplicate key update b=b+20";
+                + "(a,b,c) select a,b,c+1-1 from " + sourceTableName + " where a<>1 or 1=1 on duplicate key update b=b+20";
         executeDml("trace " + hintStr + sql);
 
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
@@ -2610,17 +2789,17 @@ public class ScaleOutPlanTest extends ScaleOutBaseTest {
         }
         int scan = topology.size();
         int[] writablePhysicalOperations =
-            new int[] {scan + 1 + physicalDbCount * 2 + 2, scan + 1 + physicalDbCount + 1};
+                new int[]{scan + 1 + physicalDbCount * 2 + 2, scan + 1 + physicalDbCount + 1};
         int[] readyToPublishPhysicalOperations =
-            new int[] {scan + physicalDbCount + 1, scan + physicalDbCount + 1};
+                new int[]{scan + physicalDbCount + 1, scan + physicalDbCount + 1};
         int[] otherPhysicalOperations =
-            new int[] {1 + physicalDbCount, 1 + physicalDbCount};
+                new int[]{1 + physicalDbCount, 1 + physicalDbCount};
         int[] deleteOnlyPhysicalOperations =
-            new int[] {scan + 1 + physicalDbCount * 2 + 1, scan + 1 + physicalDbCount};
+                new int[]{scan + 1 + physicalDbCount * 2 + 1, scan + 1 + physicalDbCount};
         for (int i = 0; i < 2; i++) {
             sql = "insert into " + tableName
-                + "(a,b,c) select a+1-1,b,c from " + sourceTableName
-                + " where a=1 and 2+1=3 on duplicate key update b=b+20";
+                    + "(a,b,c) select a+1-1,b,c from " + sourceTableName
+                    + " where a=1 and 2+1=3 on duplicate key update b=b+20";
             executeDml("trace " + hintStr + sql);
             trace = getTrace(tddlConnection);
             if (finalTableStatus.isWritable() && !finalTableStatus.isReadyToPublic()) {

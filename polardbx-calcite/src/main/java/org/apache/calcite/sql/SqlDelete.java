@@ -402,6 +402,46 @@ public SqlDelete(
     return aliases;
   }
 
+  /**
+   * get force index from sqlDelete
+   * @return SqlIdentifier
+   */
+  public SqlIdentifier getForceIndex() {
+    if (sourceSelect == null || sourceSelect.getFrom() == null || !(sourceSelect
+        .getFrom() instanceof SqlIdentifier)) {
+      return null;
+    }
+
+    SqlNodeList indexNodes = (SqlNodeList) ((SqlIdentifier) sourceSelect.getFrom()).indexNode;
+
+    if (indexNodes == null || indexNodes.size() == 0) {
+      return null;
+    }
+
+    // get first force index hint
+    SqlIndexHint sqlIndexHint = null;
+    for (SqlNode node : indexNodes) {
+      if (node instanceof SqlIndexHint && ((SqlIndexHint) node).forceIndex()) {
+        sqlIndexHint = (SqlIndexHint) node;
+        break;
+      }
+    }
+
+    if (sqlIndexHint == null) {
+      return null;
+    }
+
+    SqlNodeList indexList = sqlIndexHint.getIndexList();
+
+    if (indexList != null &&
+        indexList.size() > 0 &&
+        indexList.get(0) instanceof SqlIdentifier) {
+      return (SqlIdentifier) indexList.get(0);
+    }
+
+    return null;
+  }
+
   public void setWithTableAlias(boolean withTableAlias) {
     this.withTableAlias = withTableAlias;
   }
@@ -433,6 +473,7 @@ public SqlDelete(
        */
       writer.keyword("FROM");
       targetTable.unparse(writer, opLeft, opRight);
+
       if (alias != null) {
         writer.keyword("AS");
         alias.unparse(writer, opLeft, opRight);
@@ -508,7 +549,6 @@ public SqlDelete(
 
     return false;
   }
-
   public SqlNode getSourceTableNode() {
     if (fromUsing()) {
       return using;
@@ -583,6 +623,12 @@ public SqlDelete(
     this.aliases = new SqlNodeList(aliases, SqlParserPos.ZERO);
     this.subQueryTableMap = subQueryTableMap;
     this.withTableAlias = withAlias.get();
+
+    if (this.sourceTables.size() == 1 && this.getSourceSelect().getFrom() != null
+        && this.getSourceSelect().getFrom().getKind() == SqlKind.AS) {
+      // set this.withTableAlias = true when single table delete with force index
+      setWithTableAlias(true);
+    }
 
     this.sourceTableCollected = true;
 

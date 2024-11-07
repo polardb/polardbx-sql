@@ -32,6 +32,7 @@ package com.alibaba.polardbx.common.oss.filesystem.cache;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.properties.FileConfig;
+import com.alibaba.polardbx.common.utils.ConcurrentHashSet;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -50,7 +51,6 @@ import io.airlift.slice.DataSize;
 import io.airlift.slice.SizeOf;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.fs.Path;
-import org.eclipse.jetty.util.ConcurrentHashSet;
 
 import java.io.Closeable;
 import java.io.File;

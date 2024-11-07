@@ -47,6 +47,7 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupDropPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupReorgPartitionPreparedData;
@@ -181,6 +182,7 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
 
             DdlTask dropUselessTableTask = ComplexTaskFactory
                 .CreateDropUselessPhyTableTask(schemaName, entry.getKey(), sourceTablesTopology.get(entry.getKey()),
+                    targetTablesTopology.get(entry.getKey()),
                     executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
             executableDdlJob.labelAsTail(dropUselessTableTask);
@@ -312,46 +314,70 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
         executableDdlJob.appendTask(cdcAlterTableGroupFinalMarkTask);
     }
 
-    public Map<String, Set<String>> getTheDeletedPartitionsLocation(String schemaName, String tableName) {
+    public Map<String, Set<String>> getTheDeletedPartitionsLocation(
+        AlterTableGroupDropPartitionPreparedData preparedData,
+        String tableName) {
         Map<String, Set<String>> deletedPhyTables = new HashMap<>();
 
         PartitionInfo partitionInfo =
-            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
+            OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
+                .getPartitionInfo(tableName);
 
         PartitionByDefinition partByDef = partitionInfo.getPartitionBy();
         PartitionByDefinition subPartByDef = partByDef.getSubPartitionBy();
 
-        int num = 0;
-        List<String> outdatedPartitionNames = new ArrayList();
-
-        outdatedPartitionNames.addAll(preparedData.getOldPartitionNames());
-        outdatedPartitionNames.addAll(preparedData.getNewPartitionNames());
-
-        for (String oldPartitionName : outdatedPartitionNames) {
-            for (PartitionSpec partSpec : partByDef.getPartitions()) {
-                if (subPartByDef != null) {
-                    for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
-                        if (subPartSpec.getName().equalsIgnoreCase(oldPartitionName)) {
-                            PartitionLocation location = subPartSpec.getLocation();
-                            deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                                .add(location.getPhyTableName());
-                            num++;
-                            break;
+        for (String oldPartitionName : preparedData.getOldPartitionNames()) {
+            if (preparedData.isOperateOnSubPartition()) {
+                if (subPartByDef.isUseSubPartTemplate()) {
+                    for (PartitionSpec partSpec : partByDef.getPartitions()) {
+                        for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                            if (subPartSpec.getTemplateName().equalsIgnoreCase(oldPartitionName)) {
+                                PartitionLocation location = subPartSpec.getLocation();
+                                deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                    .add(location.getPhyTableName());
+                                break;
+                            }
                         }
                     }
                 } else {
+                    boolean isFound = false;
+                    for (PartitionSpec partSpec : partByDef.getPartitions()) {
+                        for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                            if (subPartSpec.getName().equalsIgnoreCase(oldPartitionName)) {
+                                PartitionLocation location = subPartSpec.getLocation();
+                                deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>()).add(
+                                    location.getPhyTableName());
+                                isFound = true;
+                                break;
+                            }
+                        }
+                        if (isFound) {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                for (PartitionSpec partSpec : partByDef.getPartitions()) {
                     if (partSpec.getName().equalsIgnoreCase(oldPartitionName)) {
-                        PartitionLocation location = partSpec.getLocation();
-                        deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
-                            .add(location.getPhyTableName());
-                        num++;
-                        break;
+                        if (subPartByDef != null) {
+                            if (partSpec.getName().equalsIgnoreCase(oldPartitionName)) {
+                                for (PartitionSpec subPartSpec : partSpec.getSubPartitions()) {
+                                    PartitionLocation location = subPartSpec.getLocation();
+                                    deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                        .add(location.getPhyTableName());
+                                }
+                                break;
+                            }
+                        } else {
+                            PartitionLocation location = partSpec.getLocation();
+                            deletedPhyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                                .add(location.getPhyTableName());
+                            break;
+                        }
                     }
                 }
             }
         }
-
-        assert num == preparedData.getOldPartitionNames().size() + preparedData.getNewPartitionNames().size();
 
         return deletedPhyTables;
     }

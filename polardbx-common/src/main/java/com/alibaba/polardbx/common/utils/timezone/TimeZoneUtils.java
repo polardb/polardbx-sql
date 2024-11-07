@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.utils.timezone;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 
@@ -30,18 +31,19 @@ import java.util.Calendar;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 
 public class TimeZoneUtils {
 
-    private static final Set<String> availableTimeZones = new HashSet<>();
+    private static final Set<String> availableTimeZones = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
     private static final Pattern timeZoneOffsetPattern = Pattern.compile("^([\\+|-])([0-1]?[0-9]):([0|3])0$");
 
     static {
         for (String id : TimeZone.getAvailableIDs()) {
-            availableTimeZones.add(id.toUpperCase());
+            availableTimeZones.add(id);
         }
     }
 
@@ -68,7 +70,8 @@ public class TimeZoneUtils {
                 throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TZ, timeZoneId);
             }
         } else if (availableTimeZones.contains(timeZoneId)) {
-            return InternalTimeZone.createTimeZone(timeZoneStr, TimeZone.getTimeZone(timeZoneId));
+            ZoneId zoneId = ZoneId.of(timeZoneStr);
+            return InternalTimeZone.createTimeZone(timeZoneStr, TimeZone.getTimeZone(zoneId));
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_TZ, timeZoneId);
         }

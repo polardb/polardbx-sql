@@ -174,20 +174,27 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         final String hint = buildCmdExtra(DML_EXECUTION_STRATEGY_LOGICAL, DISABLE_RETURNING);
         final String insert = hint + " insert ignore into " + tableName
             + "(id, c1, c5, c8) values(1, 1, 'a', '2020-06-16 06:49:32'), (2, 2, 'b', '2020-06-16 06:49:32'), (3, 3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size()));
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        Assert.assertThat(trace.size(), is(topology.size()));
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.lessThanOrEqualTo(3));
     }
 
     /**
@@ -264,19 +271,26 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ insert ignore into " + tableName
-            + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), is(topology.size() + 3));
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ ";
+        final String insert = "insert ignore into " + tableName
+            + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 3));
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -306,20 +320,26 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ insert ignore into " + tableName
-            + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), is(topology.size()));
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ ";
+        final String insert = "insert ignore into " + tableName
+            + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size()));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(1));
     }
 
     /**
@@ -515,24 +535,28 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         final String hint =
             buildCmdExtra(DML_EXECUTION_STRATEGY_LOGICAL, DISABLE_SKIP_DUPLICATE_CHECK_FOR_PK, DISABLE_RETURNING);
         final String insert = hint + "insert ignore into " + tableName
             + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (null, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName,
+            Matchers.is(topology.size() + 1));
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        Assert.assertThat(trace.size(), is(topology.size() + 1));
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 1));
     }
 
     /**
@@ -715,7 +739,10 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ insert ignore into " + tableName
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/ ";
+        final String insert = "insert ignore into " + tableName
             + "(c1, c2, c3, c5, c8) values"
             + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
             + "(null, 2, 3, 'b', '2020-06-16 06:49:32'), " // u_c2_c3 冲突, ignore
@@ -723,20 +750,33 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
             + "(1, 2, null, 'd', '2020-06-16 06:49:32')," // u_c1_c2 冲突, ignore
             + "(1, 2, 4, 'e', '2020-06-16 06:49:32')," // u_c1_c2 冲突，ignore
             + "(2, 2, 4, 'f', '2020-06-16 06:49:32')"; // u_c2_c3 上与上面一行冲突，但是上面一个行被 ignore，这行保留
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.is(topology.size() + 1));
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        final String insert1 = "insert ignore into " + tableName
+            + "(c1, c2, c3, c5, c8) values"
+            + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
+            // 非全表扫描检测冲突时，下面这条会被插入, 导致与mysql不一致
+            // + "(null, 2, 3, 'b', '2020-06-16 06:49:32'), " // u_c2_c3 冲突, ignore
+            + "(1, null, 3, 'c', '2020-06-16 06:49:32'), " // 不冲突
+            + "(1, 2, null, 'd', '2020-06-16 06:49:32')," // u_c1_c2 冲突, ignore
+            + "(1, 2, 4, 'e', '2020-06-16 06:49:32')," // u_c1_c2 冲突，ignore
+            + "(2, 2, 4, 'f', '2020-06-16 06:49:32')"; // u_c2_c3 上与上面一行冲突，但是上面一个行被 ignore，这行保留
 
-        Assert.assertThat(trace.size(), is(topology.size() + 1));
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert1,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.lessThanOrEqualTo(2 + 1));
     }
 
     /*
@@ -2953,14 +2993,9 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
-        final List<Pair<String, String>> gsiTopology =
-            JdbcUtil.getTopology(tddlConnection, getRealGsiName(tddlConnection, tableName, gsiName1));
 
         // primary (partition pruning: 3)  +  gsi(partition pruning: 1) + insert(primary + gsi: 2)
-        Assert.assertThat(trace.size(), is(3 + 1 + 2));
+        checkTraceRowCount(is(3 + 1 + 2));
 
         selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
             tddlConnection);
@@ -3454,7 +3489,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testLogicalInsertIgnore() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE)*/";
+        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/";
 
         testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl",
             " partition by hash(id) PARTITIONS 3", false,
@@ -3542,7 +3577,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
     @Test
     public void testLogicalInsertIgnoreUsingIn() throws SQLException {
         String hint =
-            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/";
 
         testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl",
             " partition by hash(id) PARTITIONS 3", false, true, true, REPLACE_PARAMS);
@@ -3556,6 +3591,41 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
             false, REPLACE_PARAMS);
         testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", true, true,
             false, REPLACE_PARAMS);
+    }
+
+    private static final String[][] INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN = new String[][] {
+        new String[] {
+            "(id,a,b)", "values (0,1,1),(1,2,2),(2,3,3),(100,101,101),(101,102,102)", "(id,a,b)",
+            "values (0,1,1),(1,2,2),(2,3,3),(100,101,101),(101,102,102)"},
+        new String[] {"(id)", "values (1)", "(id)", "values (1)"},
+        new String[] {"(id,a,b)", "values (4,0+2,0+2)", "(id,a,b)", "values (4,2,2)"},
+        new String[] {"(id,a,b)", "values (1,2,2),(2,3,3)", "(id,a,b)", "values (1,2,2),(2,3,3)"},
+        new String[] {
+            "(id,a,b)", String.format("select * from %s where id=100", SOURCE_TABLE_NAME), "(id,a,b)",
+            "values (100,101,101)"},
+        new String[] {
+            "(id,a,b)", String.format("select * from %s where id>100", SOURCE_TABLE_NAME), "(id,a,b)",
+            "values (101,102,102),(102,103,103)"}
+    };
+
+    @Test
+    public void testLogicalInsertIgnoreWithoutFullTableScan() throws SQLException {
+        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=FALSE)*/";
+
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl",
+            " partition by hash(id) PARTITIONS 3", false,
+            true, true, INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_brd", " broadcast", false, true,
+            false, INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", false, true,
+            false, INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl",
+            " partition by hash(id) PARTITIONS 3", true,
+            true, true, INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_brd", " broadcast", true, true,
+            false, INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN);
+        testComplexDmlInternal(hint + "insert ignore into", "insert_ignore_test_tbl_single", " single", true, true,
+            false, INSERT_IGNORE_PARAMS_WITHOUT_FULL_TABLE_SCAN);
     }
 
     @Test
@@ -3603,6 +3673,9 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testInsertIgnoreUGSI_returning() throws SQLException {
+        if (!supportReturning) {
+            return;
+        }
         final String tableName = "insert_ignore_returing_ugsi_tbl";
         final String indexName = tableName + "_gsi";
 
@@ -3638,6 +3711,9 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testInsertIgnoreUGSI1_returning() throws SQLException {
+        if (!supportReturning) {
+            return;
+        }
         final String tableName = "insert_ignore_returing_ugsi1_tbl";
         final String indexName = tableName + "_gsi";
 
@@ -3669,7 +3745,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
         final List<List<String>> trace = getTrace(tddlConnection);
-        Assert.assertThat(trace.size(), is(4));
+        Assert.assertThat(trace.size(), is(2));
 
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexName));
     }
@@ -4473,5 +4549,44 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeQuery(sql, tddlConnection);
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertFalse(trace.toString().toLowerCase().contains("ignore"));
+    }
+
+    @Test
+    public void testReturningPolicy() throws SQLException {
+        if (!supportReturning || useAffectedRows) {
+            return;
+        }
+        try (Connection connection = getPolardbxConnection()) {
+            final String createTable = "CREATE TABLE IF NOT EXISTS `testReturningPolicy` (\n"
+                + "        `id` bigint(20) NOT NULL AUTO_INCREMENT,\n"
+                + "        `order_id` bigint(20) NOT NULL,\n"
+                + "        `push_success` tinyint(4) NOT NULL DEFAULT '0',\n"
+                + "        `retry_times` int(11) NOT NULL DEFAULT '0',\n"
+                + "        `del` tinyint(4) NOT NULL DEFAULT '0',\n"
+                + "        PRIMARY KEY (`id`),\n"
+                + "        GLOBAL INDEX `gsi_id` (`id`) COVERING (`order_id`)\n"
+                + "                PARTITION BY KEY(`id`)\n"
+                + "                PARTITIONS 16,\n"
+                + "        UNIQUE KEY `uk_order_id` (`order_id`, `del`),\n"
+                + "        KEY `idx_del_push` (`del`, `push_success`)\n"
+                + ")\n"
+                + "PARTITION BY KEY(`order_id`)\n"
+                + "PARTITIONS 16 ";
+            JdbcUtil.executeUpdateSuccess(connection, createTable);
+            final String insertSql = "insert ignore into `testReturningPolicy` "
+                + " (`id`,`order_id`,`push_success`,`retry_times`,`del`) values"
+                + " ('16599','19609','1','0','0'),"
+                + " ('16600','19608','1','0','0')";
+            final String deleteSql = "delete from `testReturningPolicy` where 1=1";
+            JdbcUtil.executeUpdateSuccess(connection, "set SEQUENTIAL_CONCURRENT_POLICY = true");
+            JdbcUtil.executeUpdateSuccess(connection, insertSql);
+            JdbcUtil.executeUpdateSuccess(connection, insertSql);
+            JdbcUtil.executeUpdateSuccess(connection, insertSql);
+            JdbcUtil.executeUpdateSuccess(connection, deleteSql);
+            JdbcUtil.executeUpdateSuccess(connection, "set SEQUENTIAL_CONCURRENT_POLICY = false");
+            JdbcUtil.executeUpdateSuccess(connection, insertSql);
+            JdbcUtil.executeUpdateSuccess(connection, insertSql);
+            JdbcUtil.executeUpdateSuccess(connection, insertSql);
+        }
     }
 }

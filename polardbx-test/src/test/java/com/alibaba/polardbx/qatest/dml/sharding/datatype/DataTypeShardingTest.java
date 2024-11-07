@@ -21,6 +21,7 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.truth.Truth;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -29,11 +30,6 @@ import org.junit.runners.Parameterized;
 import java.sql.ResultSet;
 import java.util.Arrays;
 import java.util.List;
-
-import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
-import static com.alibaba.polardbx.qatest.validator.DataValidator.explainAllResultNotMatchAssert;
-import static com.alibaba.polardbx.qatest.validator.DataValidator.explainResultMatchAssert;
-import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderByNotPrimaryKeyAssert;
 
 /**
  * @author fangwu
@@ -75,15 +71,31 @@ public class DataTypeShardingTest extends CrudBasedLockTestCase {
         while (rs.next()) {
             groupName = rs.getString("GROUP_NAME");
         }
-
+        rs.close();
         Assert.assertTrue(!StringUtils.isEmpty(groupName));
-        String explainSql = "explain select 1 from " + tableName + " where c2=131313131331312";
-        explainResultMatchAssert(explainSql, null, tddlConnection, "[\\s\\S]*" + groupName + "[\\s\\S]*");
 
-        explainSql = "explain select 1 from " + tableName + " where c2 in(131313131331312)";
-        explainResultMatchAssert(explainSql, null, tddlConnection, "[\\s\\S]*" + groupName + "[\\s\\S]*");
+        String explainSql = "trace select 1 from " + tableName + " where c2=131313131331312";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, explainSql);
+        rs = JdbcUtil.executeQuery("show trace", tddlConnection);
+        while (rs.next()) {
+            Truth.assertWithMessage(explainSql).that(rs.getString("GROUP_NAME")).isEqualTo(groupName);
+        }
+        rs.close();
 
-        explainSql = "explain select 1 from " + tableName + " where c2 in('131313131331312')";
-        explainResultMatchAssert(explainSql, null, tddlConnection, "[\\s\\S]*" + groupName + "[\\s\\S]*");
+        explainSql = "trace select 1 from " + tableName + " where c2 in(131313131331312)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, explainSql);
+        rs = JdbcUtil.executeQuery("show trace", tddlConnection);
+        while (rs.next()) {
+            Truth.assertWithMessage(explainSql).that(rs.getString("GROUP_NAME")).isEqualTo(groupName);
+        }
+        rs.close();
+
+        explainSql = "trace select 1 from " + tableName + " where c2 in('131313131331312')";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, explainSql);
+        rs = JdbcUtil.executeQuery("show trace", tddlConnection);
+        while (rs.next()) {
+            Truth.assertWithMessage(explainSql).that(rs.getString("GROUP_NAME")).isEqualTo(groupName);
+        }
+        rs.close();
     }
 }

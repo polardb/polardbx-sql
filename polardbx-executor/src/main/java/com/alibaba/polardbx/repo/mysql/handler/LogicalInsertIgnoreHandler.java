@@ -566,9 +566,6 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
             final List<Cursor> inputCursors = new ArrayList<>(inputs.size());
             executeWithConcurrentPolicy(insertEc, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
 
-            // Increase physical sql id
-            executionContext.setPhySqlId(executionContext.getPhySqlId() + 1);
-
             final Map<String, List<List<Object>>> tableDistinctValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (Cursor cursor : inputCursors) {
                 if (cursor instanceof GroupConcurrentUnionCursor) {
@@ -629,6 +626,10 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
                         "unsupported cursor type " + cursor.getClass().getName());
                 }
             }
+
+            // Increase physical sql id
+            executionContext.setPhySqlId(executionContext.getPhySqlId() + 1);
+
             return tableDistinctValues;
         } finally {
             insertEc.setReturning(currentReturning);
@@ -837,12 +838,17 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
 
         final boolean singleOrBroadcast =
             Optional.ofNullable(oc.getRuleManager()).map(rule -> !rule.isShard(tableName)).orElse(true);
+        final boolean localUkOnly = !tableMeta.withGsiExcludingPureCci();
+        final boolean fullTableScanForLocalUk = executionContext.getParamManager()
+            .getBoolean(ConnectionParams.DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN);
+        final boolean everyUkContainsAllTablePartitionKey =
+            GlobalIndexMeta.isEveryUkContainsTablePartitionKey(tableMeta, currentUkSets);
+        final boolean checkLocalUkOnly = everyUkContainsAllTablePartitionKey
+            || (localUkOnly && !fullTableScanForLocalUk);
 
         // if lookUpPrimaryFromGsi is true, then there is no need to do fullTableScan since we have selected primary
         // sharding key in previous step
-        boolean fullTableScan =
-            singleOrBroadcast || (!GlobalIndexMeta.isEveryUkContainsTablePartitionKey(tableMeta, currentUkSets)
-                && !lookUpPrimaryFromGsi);
+        boolean fullTableScan = singleOrBroadcast || (!checkLocalUkOnly && !lookUpPrimaryFromGsi);
 
         List<RelNode> selects;
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.columnar;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalViewConvertRule;
@@ -31,7 +32,6 @@ import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
-import org.eclipse.jetty.util.StringUtil;
 
 import java.util.List;
 
@@ -72,7 +72,7 @@ public class COLLogicalViewConvertRule extends LogicalViewConvertRule {
             return;
         }
         String column = columns.get(0);
-        if (StringUtil.isEmpty(column)) {
+        if (StringUtils.isEmpty(column)) {
             basicOssTableScan(call, logicalView);
             return;
         }

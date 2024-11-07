@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest;
 
 import com.alibaba.polardbx.common.utils.ClassFinder;
+import com.alibaba.polardbx.qatest.ddl.auto.columnar.CreateCciTest;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.reflect.Modifier;
@@ -63,8 +64,11 @@ public class ClassHelper {
             synchronized (ClassHelper.class) {
                 if (columnarTestCases == null) {
                     columnarTestCases = ImmutableList.<Class>builder().addAll(fileStorageTestCases.stream()
-                        .filter(klass -> klass.getAnnotation(TestFileStorage.class) == null).collect(
-                            Collectors.toList())).addAll(getColumnarDqlCase()).build();
+                        .filter(klass -> klass.getAnnotation(TestFileStorage.class) == null)
+                        .collect(Collectors.toList()))
+                        .addAll(getColumnarDqlCase())
+                        .add(CreateCciTest.class)
+                        .build();
                 }
             }
         }

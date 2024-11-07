@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.executor.operator.scan.impl.LocalBlockDictionary;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
@@ -87,8 +88,26 @@ public class SliceBlockTest extends BaseBlockTest {
 
         for (int i = 0; i < CHUNK_SIZE; i++) {
             Assert.assertTrue(sliceBlock.equals(i, block, i));
+            Assert.assertEquals(sliceBlock.checksum(i), block.checksum(i));
+            Assert.assertEquals(sliceBlock.hashCode(i), block.hashCode(i));
+            Assert.assertEquals(sliceBlock.hashCodeUseXxhash(i), block.hashCodeUseXxhash(i));
         }
 
+    }
+
+    @Test
+    public void testDict() {
+        final int count = 10;
+        boolean[] nulls = new boolean[count];
+        Slice[] dict = new Slice[] {Slices.utf8Slice("a"), Slices.utf8Slice("b"), Slices.utf8Slice("c")};
+        int[] dictIds = new int[] {0, 1, 2, 0, 1, 2, 0, 1, 2, 0};
+        LocalBlockDictionary dictionary1 = new LocalBlockDictionary(dict);
+        SliceBlock sliceBlock1 = new SliceBlock(new SliceType(), 0, count,
+            nulls, dictionary1, dictIds, false);
+
+        for (int i = 0; i < dictIds.length; i++) {
+            Assert.assertEquals(1, sliceBlock1.equals(i, dict[dictIds[i]]));
+        }
     }
 
     @Test

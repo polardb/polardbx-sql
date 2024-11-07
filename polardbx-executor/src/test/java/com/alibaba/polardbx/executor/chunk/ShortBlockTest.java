@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.ShortType;
 import org.junit.Assert;
 import org.junit.Test;
@@ -87,5 +88,42 @@ public class ShortBlockTest extends BaseBlockTest {
             assertTrue(block.equals(i, anotherBuilder, i));
             assertEquals(block.hashCode(i), anotherBuilder.hashCode(i));
         }
+
+        ShortBlock shortBlock = (ShortBlock) block;
+        ShortBlock newBlock1 = new ShortBlock(DataTypes.ShortType, block.getPositionCount());
+        shortBlock.shallowCopyTo(newBlock1);
+        int[] hashCodes1 = block.hashCodeVector();
+        int[] hashCodes2 = new int[hashCodes1.length];
+        block.hashCodeVector(hashCodes2, hashCodes2.length);
+        for (int i = 0; i < newBlock1.positionCount; i++) {
+            assertEquals(block.hashCodeUseXxhash(i), newBlock1.hashCodeUseXxhash(i));
+            assertEquals(block.getObject(i), newBlock1.getObject(i));
+            assertEquals(hashCodes1[i], newBlock1.hashCode(i));
+            assertEquals(hashCodes2[i], newBlock1.hashCode(i));
+        }
+
+        int[] sel = new int[] {1, 2, 3};
+        ShortBlock newBlock2 = new ShortBlock(DataTypes.ShortType, block.getPositionCount());
+        shortBlock.copySelected(false, null, shortBlock.positionCount, newBlock2);
+        for (int i = 0; i < newBlock1.positionCount; i++) {
+            assertEquals(shortBlock.getObject(i), newBlock2.getObject(i));
+        }
+        ShortBlock newBlock3 = new ShortBlock(DataTypes.ShortType, block.getPositionCount());
+        shortBlock.copySelected(true, sel, sel.length, newBlock3);
+        for (int i = 0; i < sel.length; i++) {
+            int j = sel[i];
+            assertEquals(shortBlock.getObject(j), newBlock3.getObject(j));
+        }
+        IntegerBlock newBlock4 = new IntegerBlock(DataTypes.IntegerType, block.getPositionCount());
+        shortBlock.copySelected(true, sel, sel.length, newBlock4);
+        for (int i = 0; i < sel.length; i++) {
+            int j = sel[i];
+            assertEquals(shortBlock.getShort(j), newBlock4.getInt(j));
+        }
+
+        shortBlock.compact(null);
+        // compact should work
+        shortBlock.compact(sel);
+        Assert.assertEquals(sel.length, shortBlock.positionCount);
     }
 }

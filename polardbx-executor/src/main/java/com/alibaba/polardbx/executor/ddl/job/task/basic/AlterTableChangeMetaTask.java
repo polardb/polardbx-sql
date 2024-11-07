@@ -144,7 +144,7 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         // Change columnar table meta in same transaction
         // columnar_table_mapping, columnar_table_evolution, columnar_column_evolution
         TableMetaChanger.changeColumnarTableMeta(metaDbConnection, schemaName, logicalTableName, addedColumns,
-            droppedColumns, updatedColumns, changedColumns, versionId, jobId);
+            droppedColumns, updatedColumns, changedColumns, renamedIndexes, versionId, jobId);
 
         List<String> alterColumnList = new ArrayList<>();
         if (updatedColumns != null) {

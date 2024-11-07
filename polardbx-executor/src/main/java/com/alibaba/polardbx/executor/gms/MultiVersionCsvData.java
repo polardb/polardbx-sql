@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.columnar.CSVFileReader;
+import com.alibaba.polardbx.executor.columnar.CsvDataIterator;
 import com.alibaba.polardbx.executor.columnar.RawOrcTypeCsvReader;
 import com.alibaba.polardbx.executor.columnar.SimpleCSVFileReader;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
@@ -38,6 +39,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -128,7 +130,7 @@ public class MultiVersionCsvData implements Purgeable {
                     long newEndPosition = record.appendOffset + record.appendLength;
 
                     List<Chunk> results = new ArrayList<>();
-                    // It may cause OOM
+
                     Chunk result;
                     while ((result = csvFileReader.nextUntilPosition(newEndPosition)) != null) {
                         results.add(result);
@@ -153,54 +155,29 @@ public class MultiVersionCsvData implements Purgeable {
     /**
      * Never use any cache.
      */
-    public static List<Chunk> loadRawOrcTypeUntilTso(long tso,
-                                                     AtomicLong openedFileCount,
-                                                     String csvFileName,
-                                                     ExecutionContext context) {
-        // The latest tso which has already been loaded by version chain
-        long latestTso = Long.MIN_VALUE;
+    public static Iterator<Chunk> loadRawOrcTypeUntilTso(String csvFileName,
+                                                         ExecutionContext context,
+                                                         int start,
+                                                         int end) {
+        FileMeta fileMeta = ColumnarManager.getInstance().fileMetaOf(csvFileName);
+        Engine engine = fileMeta.getEngine();
+        List<ColumnMeta> columnMetas = fileMeta.getColumnMetas();
 
-        ColumnarAppendedFilesRecord record;
+        return new CsvDataIterator(new RawOrcTypeCsvReader(), csvFileName, start, end, context, columnMetas, engine);
+    }
 
-        try (Connection connection = MetaDbUtil.getConnection()) {
-            ColumnarAppendedFilesAccessor columnarAppendedFilesAccessor = new ColumnarAppendedFilesAccessor();
-            columnarAppendedFilesAccessor.setConnection(connection);
-            record = columnarAppendedFilesAccessor
-                .queryLatestByFileNameBetweenTso(csvFileName, latestTso, tso).get(0);
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
-                String.format("[RawOrcType]Failed to generate columnar snapshot of tso: %d", tso));
-        }
+    /**
+     * Load csv data with specified csv files and specified file positions.
+     */
+    public static Iterator<Chunk> loadSpecifiedCsvFile(String csvFileName,
+                                                       ExecutionContext context,
+                                                       int start,
+                                                       int end) {
+        FileMeta fileMeta = ColumnarManager.getInstance().fileMetaOf(csvFileName);
+        Engine engine = fileMeta.getEngine();
+        List<ColumnMeta> columnMetas = fileMeta.getColumnMetas();
 
-        if (null != record) {
-            FileMeta fileMeta = ColumnarManager.getInstance().fileMetaOf(csvFileName);
-            Engine engine = fileMeta.getEngine();
-            List<ColumnMeta> columnMetas = fileMeta.getColumnMetas();
-
-            long maxReadPosition = record.appendOffset + record.appendLength;
-            openedFileCount.incrementAndGet();
-            try (CSVFileReader csvFileReader = new RawOrcTypeCsvReader()) {
-                csvFileReader.open(context, columnMetas, FileVersionStorage.CSV_CHUNK_LIMIT, engine,
-                    csvFileName,
-                    0,
-                    (int) maxReadPosition);
-                List<Chunk> results = new ArrayList<>();
-                // It may cause OOM
-                Chunk result;
-                while ((result = csvFileReader.nextUntilPosition(maxReadPosition)) != null) {
-                    results.add(result);
-                }
-                return results;
-            } catch (Throwable t) {
-                throw new TddlRuntimeException(ErrorCode.ERR_LOAD_CSV_FILE, t,
-                    String.format("[RawOrcType]Failed to load read csv file, "
-                            + "file name: %s, last tso: %d, snapshot tso: %d",
-                        csvFileName, latestTso, tso));
-            } finally {
-                openedFileCount.decrementAndGet();
-            }
-        }
-        return null;
+        return new CsvDataIterator(new SimpleCSVFileReader(), csvFileName, start, end, context, columnMetas, engine);
     }
 
     public Lock getLock() {

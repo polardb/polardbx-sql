@@ -39,7 +39,7 @@ public interface LocationFactory {
 
     URI createRuntimeFilterLocation(String queryId);
 
-    URI createDdlFilterLocktion(String ddlJobId);
+    URI createDdlFilterLocation(String ddlJobId);
 
     URI createStageLocation(StageId stageId);
 

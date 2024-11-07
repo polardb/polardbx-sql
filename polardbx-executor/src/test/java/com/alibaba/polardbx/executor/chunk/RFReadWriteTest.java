@@ -1,6 +1,8 @@
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.utils.bloomfilter.BlockLongBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.ConcurrentIntBloomFilter;
 import com.alibaba.polardbx.common.utils.bloomfilter.RFBloomFilter;
 import org.junit.Assert;
 import org.junit.Test;
@@ -175,6 +177,113 @@ public class RFReadWriteTest {
             } else {
                 Assert.assertFalse(bitmap[i]);
             }
+        }
+    }
+
+    @Test
+    public void testULongBroadcastRF() {
+        // store 1 ~ 100
+        ULongBlockBuilder builder = new ULongBlockBuilder(4);
+        for (long i = 1; i <= 100; i++) {
+            builder.writeUInt64(UInt64.fromLong(i));
+        }
+        Block block = builder.build();
+
+        // global rf
+        RFBloomFilter bloomFilter = new BlockLongBloomFilter(BLOOM_FILTER_ELEMENT_COUNT);
+
+        // write into runtime filter
+        block.addLongToBloomFilter(bloomFilter);
+
+        // for rf checking
+        boolean[] bitmap = new boolean[CHUNK_LIMIT];
+        Arrays.fill(bitmap, false);
+
+        // check 0 ~ 999
+        builder = new ULongBlockBuilder(4);
+        for (long i = 0; i < 1000; i++) {
+            builder.writeUInt64(UInt64.fromLong(i));
+        }
+        block = builder.build();
+
+        int hitCount = block.mightContainsLong(bloomFilter, bitmap);
+        Assert.assertEquals(100, hitCount);
+        for (int i = 0; i < 1000; i++) {
+            if (i >= 1 && i <= 100) {
+                Assert.assertTrue(bitmap[i]);
+            } else {
+                Assert.assertFalse(bitmap[i]);
+            }
+        }
+    }
+
+    @Test
+    public void testIntBroadcastRF() {
+        // store 1 ~ 100
+        IntegerBlockBuilder builder = new IntegerBlockBuilder(4);
+        for (int i = 1; i <= 100; i++) {
+            builder.writeInt(i);
+        }
+        Block block = builder.build();
+
+        // global rf
+        RFBloomFilter bloomFilter = new BlockLongBloomFilter(BLOOM_FILTER_ELEMENT_COUNT);
+
+        // write into runtime filter
+        block.addLongToBloomFilter(bloomFilter);
+
+        // for rf checking
+        boolean[] bitmap = new boolean[CHUNK_LIMIT];
+        Arrays.fill(bitmap, false);
+
+        // check 0 ~ 999
+        builder = new IntegerBlockBuilder(4);
+        for (int i = 0; i < 1000; i++) {
+            builder.writeInt(i);
+        }
+        block = builder.build();
+
+        int hitCount = block.mightContainsLong(bloomFilter, bitmap);
+        Assert.assertEquals(100, hitCount);
+        for (int i = 0; i < 1000; i++) {
+            if (i >= 1 && i <= 100) {
+                Assert.assertTrue(bitmap[i]);
+            } else {
+                Assert.assertFalse(bitmap[i]);
+            }
+        }
+    }
+
+    @Test
+    public void testIntBroadcastRF2() {
+        // store 1 ~ 100
+        IntegerBlockBuilder builder = new IntegerBlockBuilder(4);
+        for (int i = 1; i <= 100; i++) {
+            builder.writeInt(i);
+        }
+        Block block = builder.build();
+
+        // global rf
+        RFBloomFilter bloomFilter = ConcurrentIntBloomFilter.create(BLOOM_FILTER_ELEMENT_COUNT);
+
+        // write into runtime filter
+        block.addIntToBloomFilter(bloomFilter);
+
+        // for rf checking
+        boolean[] bitmap = new boolean[CHUNK_LIMIT];
+        Arrays.fill(bitmap, false);
+
+        // check 0 ~ 999
+        builder = new IntegerBlockBuilder(4);
+        for (int i = 0; i < 1000; i++) {
+            builder.writeInt(i);
+        }
+        block = builder.build();
+
+        int hitCount = block.mightContainsInt(bloomFilter, bitmap);
+        Assert.assertTrue("hit count is higher than expected", hitCount < 110);
+        for (int i = 1; i < 100; i++) {
+            Assert.assertTrue(bitmap[i]);
         }
     }
 }

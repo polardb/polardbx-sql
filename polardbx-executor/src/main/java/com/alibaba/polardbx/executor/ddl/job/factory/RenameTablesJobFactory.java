@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesUpdateDataId
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesUpdateMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablesValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableListDataIdSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.RenameColumnarTablesMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -45,13 +46,17 @@ public class RenameTablesJobFactory extends DdlJobFactory {
     private final String schemaName;
     private final RenameTablesPreparedData preparedData;
     private final ExecutionContext executionContext;
+    // each tableName has a versionId
+    private final List<Long> versionIds;
 
     public RenameTablesJobFactory(String schemaName,
                                   RenameTablesPreparedData preparedData,
-                                  ExecutionContext executionContext) {
+                                  ExecutionContext executionContext,
+                                  List<Long> versionIds) {
         this.schemaName = schemaName;
         this.preparedData = preparedData;
         this.executionContext = executionContext;
+        this.versionIds = versionIds;
     }
 
     @Override
@@ -75,11 +80,13 @@ public class RenameTablesJobFactory extends DdlJobFactory {
         List<String> newNames = preparedData.getToTableNames();
         DdlTask validateTask = new RenameTablesValidateTask(schemaName, oldNames, newNames);
         RenameTablesUpdateMetaTask metaTask = new RenameTablesUpdateMetaTask(schemaName, oldNames, newNames);
+        RenameColumnarTablesMetaTask columnarTask =
+            new RenameColumnarTablesMetaTask(schemaName, oldNames, newNames, versionIds);
         RenameTablesCdcSyncTask cdcSyncTask =
             new RenameTablesCdcSyncTask(schemaName, preparedData.getDistinctNames(),
                 enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS,
                 oldNames, newNames, preparedData.getCollate(), preparedData.getCdcMetas(),
-                preparedData.getNewTableTopologies());
+                preparedData.getNewTableTopologies(), versionIds);
         RenameTablesUpdateDataIdTask dataIdTask = new RenameTablesUpdateDataIdTask(schemaName, oldNames, newNames);
         TableListDataIdSyncTask tableListDataIdSyncTask =
             new TableListDataIdSyncTask(schemaName, preparedData.getDistinctNames());
@@ -89,6 +96,7 @@ public class RenameTablesJobFactory extends DdlJobFactory {
         taskList.add(validateTask);
         taskList.add(tableListDataIdSyncTask0);
         taskList.add(metaTask);
+        taskList.add(columnarTask);
         // lock + cdc + sync + unlock
         taskList.add(cdcSyncTask);
         taskList.add(dataIdTask);

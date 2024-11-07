@@ -378,7 +378,7 @@ public class PredicateUtil {
      */
     public static void mergePushdownPredicates(JoinLabel joinLabel, List<RexNode> leftPreds, List<RexNode> rightPreds) {
         final Join join = joinLabel.getRel();
-        final JoinRelType joinType = join.getJoinType();
+        JoinRelType joinType = join.getJoinType();
 
         // Predicates belongs or push down to this label
         final Map<String, RexNode> top = Optional.ofNullable(joinLabel.getPushdown())
@@ -391,8 +391,18 @@ public class PredicateUtil {
         // Check null accept predicates
         final List<RexNode> topPredicates = pushThroughJoin(top.values(), join, new ArrayList<>());
 
+        if (!topPredicates.isEmpty() && joinType != JoinRelType.INNER && !(join instanceof SemiJoin)) {
+            ImmutableList<RexNode> topPredicatesList = ImmutableList.copyOf(topPredicates);
+            joinType = RelOptUtil.simplifyJoin(join, topPredicatesList, joinType);
+        }
+
         // Split top predicates to left and right
-        RelOptUtil.classifyFilters(join, topPredicates, joinType, false, true, true, null, leftPreds, rightPreds);
+        RelOptUtil.classifyFilters(
+            join, topPredicates, joinType,
+            false,
+            true,
+            true,
+            null, leftPreds, rightPreds);
 
         // Predicates pulled up from input labels
         if (null != leftPreds) {
@@ -421,7 +431,7 @@ public class PredicateUtil {
      */
     public static void mergePullUpPredicates(JoinLabel joinLabel, List<RexNode> leftPreds, List<RexNode> rightPreds) {
         final Join join = joinLabel.getRel();
-        final JoinRelType joinType = join.getJoinType();
+        JoinRelType joinType = join.getJoinType();
 
         // Predicates belongs to this label
         final Map<String, RexNode> topPredicates = pushDown(joinLabel.getPredicates());
@@ -429,6 +439,11 @@ public class PredicateUtil {
         // Predicates inferred from ON clause
         if (null != joinLabel.getValuePredicates()) {
             topPredicates.putAll(joinLabel.getValuePredicates().getDigests());
+        }
+
+        if (!topPredicates.isEmpty() && joinType != JoinRelType.INNER && !(join instanceof SemiJoin)) {
+            ImmutableList<RexNode> topPredicatesList = ImmutableList.copyOf(topPredicates.values());
+            joinType = RelOptUtil.simplifyJoin(join, topPredicatesList, joinType);
         }
 
         // Split predicates to left and right

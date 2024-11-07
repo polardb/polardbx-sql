@@ -30,6 +30,8 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -48,6 +50,20 @@ public class GeneralUtil {
     private static String lsnErrorMessage = "Variable 'read_lsn' can't be set to the value of";
     private static String followDelayMessage =
         "The follow exists delay, please use 'show storage' command to check latency";
+
+    public static String PRIMARY = "primary";
+
+    /**
+     * is this index primary
+     *
+     * @return is primary
+     */
+    public static boolean isPrimary(String indexName) {
+        if (StringUtils.isEmpty(indexName)) {
+            return false;
+        }
+        return PRIMARY.equals(indexName.trim().toLowerCase());
+    }
 
     public static boolean isEmpty(Map map) {
         return null == map || map.isEmpty();
@@ -197,6 +213,17 @@ public class GeneralUtil {
 
         first.setStackTrace(stes.toArray(new StackTraceElement[stes.size()]));
         return new TddlNestableRuntimeException(first);
+    }
+
+    public static boolean isWithinPercentage(long num1, long num2, double percentageThreshold) {
+        // Calculate the absolute difference between the two numbers
+        long diff = Math.abs(num1 - num2);
+
+        // Calculate the threshold value based on the larger number
+        long thresholdValue = (long) (Math.max(num1, num2) * (percentageThreshold / 100.0));
+
+        // Compare the difference with the threshold value
+        return diff <= thresholdValue;
     }
 
     public static InputStream getInputStream(String fileName) {
@@ -482,6 +509,17 @@ public class GeneralUtil {
         return r;
     }
 
+    public static String sampleString(float sampleRate) {
+        String sampleRateStr = (sampleRate + "").toLowerCase();
+        if (sampleRateStr.contains("e-")) {
+            int scale = Integer.parseInt(sampleRateStr.split("e-")[1]);
+            return new BigDecimal(sampleRate).setScale(scale, RoundingMode.HALF_UP).stripTrailingZeros()
+                .toPlainString();
+        } else {
+            return sampleRateStr;
+        }
+    }
+
     /**
      * decode statistic trace info, like :
      * Catalog:tpch_100g,lineitem,l_shipdate,null_1998-09-02
@@ -569,12 +607,48 @@ public class GeneralUtil {
     }
 
     /**
+     * Converts a floating-point number to a string, handling small values
+     * represented in scientific notation by converting them to a fixed-point
+     * decimal representation.
+     *
+     * @param sampleRate The sample rate, which may be represented in scientific notation
+     * @return The formatted string representation of the sample rate
+     */
+    public static String formatSampleRate(float sampleRate) {
+        // Convert the float to a string
+        String sampleRateStr = Float.toString(sampleRate).toLowerCase();
+
+        // Check if the string represents a small value in scientific notation
+        // Split the string to extract the exponent part
+        String[] parts = sampleRateStr.split("e-");
+        if (parts.length == 2) {
+            try {
+                // Parse the exponent as an integer
+                int scale = Integer.parseInt(parts[1]);
+                // Use BigDecimal for precise arithmetic
+                BigDecimal bigDecimalSampleRate = new BigDecimal(sampleRate);
+                // Set the scale and round the number
+                BigDecimal formattedSampleRate = bigDecimalSampleRate.setScale(scale, RoundingMode.HALF_UP);
+                // Remove trailing zeros
+                return formattedSampleRate.stripTrailingZeros().toPlainString();
+            } catch (NumberFormatException e) {
+                // Return the original string if parsing fails
+                return sampleRateStr;
+            }
+        } else {
+            // Return the string directly if it does not represent a small value or the format is incorrect
+            return sampleRateStr;
+        }
+    }
+
+    /**
      * remove the suffix of gsi name
      */
     public static String removeIdxSuffix(String source) {
         if (source.contains("_$")) {
             int targetIndex = source.indexOf("_$");
             int secondIndex = source.indexOf(",", targetIndex);
+            secondIndex = secondIndex == -1 ? source.indexOf("\n", targetIndex) : secondIndex;
             if (secondIndex != -1) {
                 return source.substring(0, targetIndex) + source.substring(secondIndex);
             } else {

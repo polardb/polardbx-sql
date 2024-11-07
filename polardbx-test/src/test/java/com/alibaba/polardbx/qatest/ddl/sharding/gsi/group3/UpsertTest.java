@@ -127,21 +127,29 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ insert into " + tableName
-                + "(id, c1, c5, c8) values(1, 1, 'a', '2020-06-16 06:49:32'), (2, 2, 'b', '2020-06-16 06:49:32'), (3, 3, 'c', '2020-06-16 06:49:32')"
-                + "on duplicate key update c3 = c3 + 1";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ ";
+        final String insert =
+            "insert into " + tableName
+                + "(id, c1, c5, c8) values(1, 1, 'a', '2020-06-16 06:49:32'), (2, 2, 'b', '2020-06-16 06:49:32'), (3, 3, 'c', '2020-06-16 06:49:32')"
+                + "on duplicate key update c3 = c3 + 1";
+        // equal when first insert
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 3));
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -172,20 +180,27 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ ";
         final String insert = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ insert into " + tableName
             + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (2, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
             + "on duplicate key update c3 = c3 + 1";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 3));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -215,23 +230,30 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ insert into " + tableName
-                + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
-                + "on duplicate key update c3 = c3 + 1";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        // VALUES 中有重复，affected rows 可能会比 MySQL 返回的小 1
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, false);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 1));
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ ";
+        final String insert = "insert into " + tableName
+                + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
+                + "on duplicate key update c3 = c3 + 1";
+        // equal when first insert
+        // VALUES 中有重复，affected rows 可能会比 MySQL 返回的小 1
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 1));
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(1 + 1));
     }
 
     /**
@@ -262,23 +284,27 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ insert into " + tableName
-                + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
-                + "on duplicate key update c3 = c3 + 1";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        // VALUES 中有重复，affected rows 可能会比 MySQL 返回的小 1
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, false);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size()));
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ ";
+        final String insert = "insert into " + tableName
+                + "(c1, c5, c8) values(3, 'a', '2020-06-16 06:49:32'), (3, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')"
+                + "on duplicate key update c3 = c3 + 1";
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size()));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(1));
     }
 
     /**
@@ -486,24 +512,27 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE,DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE)*/ insert into "
-                + tableName
-                + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (null, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')on duplicate key update c3 = c3 + 1";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
+        final String hint =
+            "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE,DML_SKIP_DUPLICATE_CHECK_FOR_PK=FALSE)*/ ";
+        final String insert = "insert into " + tableName
+                + "(c1, c5, c8) values(1, 'a', '2020-06-16 06:49:32'), (null, 'b', '2020-06-16 06:49:32'), (3, 'c', '2020-06-16 06:49:32')on duplicate key update c3 = c3 + 1";
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName,
+            Matchers.is(topology.size() + 3));
 
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -584,7 +613,10 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ insert into " + tableName
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ ";
+        final String insert = "insert into " + tableName
             + "(c1, c2, c3, c5, c8) values"
             + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
             + "(null, 2, 3, 'b', '2020-06-16 06:49:32'), " // u_c2_c3 冲突, update
@@ -598,15 +630,22 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeOnceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.is(topology.size() + 2));
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 2));
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeOnceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.lessThanOrEqualTo(2 + 2));
     }
 
     /**
@@ -639,7 +678,10 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ insert into " + tableName
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ ";
+        final String insert = "insert into " + tableName
             + "(c1, c2, c3, c5, c8) values"
             + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
             + "(null, 2, 3, 'b', '2020-06-16 06:49:32'), " // u_c2_c3 冲突, update
@@ -653,15 +695,22 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeOnceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.is(topology.size() + 2));
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 2));
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeOnceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.lessThanOrEqualTo(2 + 2));
     }
 
     /**
@@ -695,6 +744,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         final String insert = "insert into " + tableName
             + "(c1, c2, c3, c5, c8) values"
             + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
@@ -709,20 +760,24 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
-
         final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
-        final List<List<Object>> mysqlResult =
-            selectContentSameAssert("select " + String.join(",", columnNames) + " from " + tableName, null,
-                mysqlConnection, tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeOnceThenCheckDataAndTraceResultAndRouteCorrectness(
+            "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            columnNames,
+            tableName,
+            Matchers.is(topology.size() + 3));
 
-        JdbcUtil
-            .assertRouteCorrectness(hint, tableName, mysqlResult, columnNames, ImmutableList.of("c1"), tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeOnceThenCheckDataAndTraceResultAndRouteCorrectness(
+            "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            columnNames,
+            tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -756,6 +811,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         final String insert = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ insert into " + tableName
             + "(c1, c2, c3, c5, c8) values"
             + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
@@ -770,20 +827,24 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
 //            tddlConnection);
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 2));
-
         final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
-        final List<List<Object>> mysqlResult =
-            selectContentSameAssert("select " + String.join(",", columnNames) + " from " + tableName, null,
-                mysqlConnection, tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeOnceThenCheckDataAndTraceResultAndRouteCorrectness(
+            "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            columnNames,
+            tableName,
+            Matchers.is(topology.size() + 2));
 
-        JdbcUtil
-            .assertRouteCorrectness(hint, tableName, mysqlResult, columnNames, ImmutableList.of("c1"), tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeOnceThenCheckDataAndTraceResultAndRouteCorrectness(
+            "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            columnNames,
+            tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /*
@@ -2224,14 +2285,10 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
-
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
-        final List<Pair<String, String>> gsiTopology = JdbcUtil.getTopology(tddlConnection, gsiName);
         // primary (partition pruning: 3) + gsi(partition pruning: 1 + primary partition pruning: 2) + upsert(primary + gsi: 5)
-        Assert.assertThat(trace.size(), Matchers.is(3 + 1 + 2 + (1 + 2) * 2 - 1));
+        // gsi(partition pruning: 1 + primary partition pruning: 4) + upsert(primary + gsi: 5)
+        checkTraceRowCount(Matchers.is(1 + 4 + (1 + 2) * 2 - 1));
 
         selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
             tddlConnection);
@@ -2906,12 +2963,9 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             tddlConnection);
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
-        final List<Pair<String, String>> primaryTopology = JdbcUtil.getTopology(tddlConnection, tableName);
-        // final List<Pair<String, String>> gsiTopology = JdbcUtil.getTopology(tddlConnection, gsiName);
         // primary (3) + gsi(partition pruning: 1 + primary partition pruning: 2) + update(primary + gsi: 5)
-        Assert.assertThat(trace.size(), Matchers.is(3 + 1 + 2 + 5));
+        // gsi(partition pruning: 1 + primary partition pruning: 4) + update(primary + gsi: 5)
+        checkTraceRowCount(Matchers.is(3 + 1 + 2 + 5));
 
         selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
             tddlConnection);
@@ -3322,22 +3376,27 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
-        final String insert =
-            "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ insert into " + tableName
-                + "(id, c1, c5, c8) values(4, 1, 'a', '2020-06-16 06:49:32'), (5, 2, 'b', '2020-06-16 06:49:32'), (6, 3, 'c', '2020-06-16 06:49:32')"
-                + "on duplicate key update c1 = c1 + 3";
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
-
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
-
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
-
         final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE,DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ ";
+        final String insert = "insert into " + tableName
+                + "(id, c1, c5, c8) values(4, 1, 'a', '2020-06-16 06:49:32'), (5, 2, 'b', '2020-06-16 06:49:32'), (6, 3, 'c', '2020-06-16 06:49:32')"
+                + "on duplicate key update c1 = c1 + 3";
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.is(topology.size() + 3));
 
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeTwiceThenCheckDataAndTraceResult(
+            hint + "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            "select * from " + tableName,
+            Matchers.lessThanOrEqualTo(3 + 3));
     }
 
     /**
@@ -3415,6 +3474,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         final String insert = "/*+TDDL:CMD_EXTRA(DML_PUSH_DUPLICATE_CHECK=FALSE)*/ insert into " + tableName
             + "(c1, c2, c3, c5, c8) values"
             + "(1, 2, 3, 'a', '2020-06-16 06:49:32'), "
@@ -3425,15 +3486,22 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             + "(1, 2, 4, 'f', '2020-06-16 06:49:32')" // u_c1_c2 冲突，update
             + "on duplicate key update c2 = c2 + 1, c5 = values(c5)";
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8");
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        executeOnceThenCheckDataAndTraceResult(
+            "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.is(topology.size() + 2));
 
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
 
-        Assert.assertThat(trace.size(), Matchers.is(topology.size() + 2));
-
-        selectContentSameAssert("select c1,c2,c3,c4,c5,c6,c7,c8 from " + tableName, null, mysqlConnection,
-            tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        executeOnceThenCheckDataAndTraceResult(
+            "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ",
+            insert,
+            buildSqlCheckData(columnNames, tableName),
+            Matchers.lessThanOrEqualTo(2 + 2));
     }
 
     @Test
@@ -3664,6 +3732,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
 
+        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
+
         JdbcUtil.executeUpdate(tddlConnection, "set polardbx_server_id = 27149");
 
         final String insert = "insert into " + tableName
@@ -3676,22 +3746,51 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             + "(1, 2, 4, 'f', '2020-06-16 06:49:32')" // u_c1_c2 冲突，update
             + "on duplicate key update c1 = c1 + 1, c5 = values(c5)";
 
-        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + insert, null, true);
-        final List<List<String>> trace = getTrace(tddlConnection);
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        String tmpHint = "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + tmpHint + insert, null, true);
+        List<List<String>> trace = getTrace(tddlConnection);
 
         checkPhySqlId(trace);
-
-        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
         Assert.assertThat(trace.size(), Matchers.is(topology.size() + 3));
 
         final List<String> columnNames = ImmutableList.of("c1", "c2", "c3", "c4", "c5", "c6", "c7");
-        final List<List<Object>> mysqlResult =
-            selectContentSameAssert("select " + String.join(",", columnNames) + " from " + tableName, null,
-                mysqlConnection, tddlConnection);
+        List<List<Object>> mysqlResult = selectContentSameAssert(buildSqlCheckData(columnNames, tableName),
+            null,
+            mysqlConnection,
+            tddlConnection);
 
-        JdbcUtil
-            .assertRouteCorrectness(hint, tableName, mysqlResult, columnNames, ImmutableList.of("c1"), tddlConnection);
+        JdbcUtil.assertRouteCorrectness(hint,
+            tableName,
+            mysqlResult,
+            columnNames,
+            ImmutableList.of("c1"),
+            tddlConnection);
+
+        // Clear data
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "delete from " + tableName + " where 1=1", null, false);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        tmpHint = "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, "trace " + tmpHint + insert, null, true);
+        trace = getTrace(tddlConnection);
+
+        checkPhySqlId(trace);
+
+        Assert.assertThat(trace.size(), Matchers.lessThanOrEqualTo(3 + 3));
+
+        mysqlResult = selectContentSameAssert(buildSqlCheckData(columnNames, tableName),
+            null,
+            mysqlConnection,
+            tddlConnection);
+
+        JdbcUtil.assertRouteCorrectness(hint,
+            tableName,
+            mysqlResult,
+            columnNames,
+            ImmutableList.of("c1"),
+            tddlConnection);
     }
 
     /**
@@ -4108,7 +4207,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testLogicalUpsert() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL)*/";
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/";
 
         testComplexDmlInternal(hint + "insert into", "upsert_test_tbl", " dbpartition by hash(id)", false, true, true,
             UPSERT_PARAMS);
@@ -4191,7 +4291,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testLogicalUpsertUsingIn() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_GET_DUP_USING_IN=TRUE)*/";
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_GET_DUP_USING_IN=TRUE,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=TRUE)*/";
 
         testComplexDmlInternal(hint + "insert into", "upsert_test_tbl", " dbpartition by hash(id)", false, true, true,
             UPSERT_PARAMS);
@@ -4205,6 +4306,49 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             UPSERT_PARAMS);
         testComplexDmlInternal(hint + "insert into", "upsert_test_tbl_single", " single", true, true, false,
             UPSERT_PARAMS);
+    }
+
+    private static final String[][] UPSERT_PARAMS_1 = new String[][] {
+        new String[] {
+            "(id,a,b)", "values (1,2,2),(100,101,101),(101,102,102)", "(id,a,b)",
+            "values (1,2,2),(100,101,101),(101,102,102)"},
+        new String[] {
+            "(id,a,b)", "values (1,5,5),(2,3,3) on duplicate key update a=id+2,b=id+2", "(id,a,b)",
+            "values (1,5,5),(2,3,3) on duplicate key update a=id+2,b=id+2"},
+        new String[] {
+            "(id,a,b)", "values (1,5,5),(2,3,3) on duplicate key update a=values(a),b=values(a)", "(id,a,b)",
+            "values (1,5,5),(2,3,3) on duplicate key update a=values(a),b=values(a)"},
+        new String[] {
+            "(id,a,b)", "values (1,5,5),(2,3,3) on duplicate key update id=id+10", "(id,a,b)",
+            "values (1,5,5),(2,3,3) on duplicate key update id=id+10"},
+        new String[] {
+            "(id,a,b)",
+            String.format("select * from %s where id=100 ", SOURCE_TABLE_NAME) + "on duplicate key update id=id+10,a=a",
+            "(id,a,b)", "values (100,101,101) on duplicate key update id=id+10,a=a"},
+        new String[] {
+            "(id,a,b)",
+            String.format("select * from %s where id>100 order by id ", SOURCE_TABLE_NAME)
+                + "on duplicate key update id=id+10,a=b",
+            "(id,a,b)", "values (101,102,102),(102,103,103) on duplicate key update id=id+10,a=b"}
+    };
+
+    @Test
+    public void testLogicalUpsertWithoutFullTableScan() throws SQLException {
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=FALSE)*/";
+
+        testComplexDmlInternal(hint + "insert into", "upsert_test_tbl", " dbpartition by hash(id)", false, true, true,
+            UPSERT_PARAMS_1);
+        testComplexDmlInternal(hint + "insert into", "upsert_test_tbl_brd", " broadcast", false, true, false,
+            UPSERT_PARAMS_1);
+        testComplexDmlInternal(hint + "insert into", "upsert_test_tbl_single", " single", false, true, false,
+            UPSERT_PARAMS_1);
+        testComplexDmlInternal(hint + "insert into", "upsert_test_tbl", " dbpartition by hash(id)", true, true, true,
+            UPSERT_PARAMS_1);
+        testComplexDmlInternal(hint + "insert into", "upsert_test_tbl_brd", " broadcast", true, true, false,
+            UPSERT_PARAMS_1);
+        testComplexDmlInternal(hint + "insert into", "upsert_test_tbl_single", " single", true, true, false,
+            UPSERT_PARAMS_1);
     }
 
     @Test
@@ -4379,8 +4523,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
-    public void testUpsertSingleShardMultiSk() {
-        String tableName = "test_upsert_single_shard_pk_tbl";
+    public void testUpsertSingleShardMultiSk_fullTableScan() {
+        String tableName = "test_upsert_single_shard_pk_tbl_fts";
         String createSql = String.format("create table %s (a int primary key, b int, c int)", tableName);
         String partDef = "dbpartition by hash(a) tbpartition by hash(b) tbpartitions 2";
 
@@ -4389,72 +4533,229 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 
         List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = true
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=true)*/ ";
+
         // all after value, pushdown
         String upsertSql =
             String.format("insert into %s values (1,2,3) on duplicate key update a=values(a),b=values(b),c=c",
                 tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        List<List<String>> trace = getTrace(tddlConnection);
-        Assert.assertEquals(1, trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=2", null, mysqlConnection,
-            tddlConnection);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=2",
+            Matchers.is(1));
 
         // all before value, pushdown
         upsertSql = String.format("insert into %s values (1,2,4) on duplicate key update a=a,b=b,c=c", tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        trace = getTrace(tddlConnection);
-        Assert.assertEquals(1, trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=2", null, mysqlConnection,
-            tddlConnection);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=2",
+            Matchers.is(1));
 
         // after value and before value, do not pushdown
         upsertSql =
             String.format("insert into %s values (1,2,5) on duplicate key update a=values(a),b=b,c=c", tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        trace = getTrace(tddlConnection);
-        Assert.assertEquals(topology.size(), trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=2", null, mysqlConnection,
-            tddlConnection);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=2",
+            Matchers.is(topology.size()));
 
         // after value with different column, do not pushdown
         upsertSql = String.format("insert into %s values (1,2,6) on duplicate key update a=values(a),b=values(a),c=c",
             tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        trace = getTrace(tddlConnection);
-        Assert.assertEquals(topology.size() + 2, trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=1", null, mysqlConnection,
-            tddlConnection);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=1",
+            Matchers.is(topology.size() + 2));
 
         // before value with different column , do not pushdown
         upsertSql = String.format("insert into %s values (1,2,7) on duplicate key update a=a,b=a,c=c", tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        trace = getTrace(tddlConnection);
-        Assert.assertEquals(topology.size(), trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=1", null, mysqlConnection,
-            tddlConnection);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=1",
+            Matchers.is(topology.size()));
+
+        // part after value, can pushdown
+        // a is primary key, if duplicated happens, a.oldValue = a.newValue
+        // b is one of partition key, if duplicated happens, b.oldValue and b.newValue are at same partition, because we route upsert using b.newValue
+        upsertSql = String.format("insert into %s values (1,3,8) on duplicate key update b=values(b),c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=3",
+            Matchers.is(1));
 
         // part after value, do not pushdown
-        upsertSql = String.format("insert into %s values (1,3,8) on duplicate key update b=values(b),c=c", tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        trace = getTrace(tddlConnection);
-        Assert.assertEquals(topology.size() + 2, trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=3", null, mysqlConnection,
-            tddlConnection);
+        upsertSql = String.format("insert into %s values (1,2,8) on duplicate key update a=values(a),c=c+1", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=3",
+            Matchers.is(topology.size() + 1));
 
         // part before value, pushdown
-        upsertSql = String.format("insert into %s values (1,2,9) on duplicate key update b=b,c=c", tableName);
-        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
-        trace = getTrace(tddlConnection);
-        Assert.assertEquals(1, trace.size());
-        selectContentSameAssert("select * from " + tableName + " where a=1 and b=3", null, mysqlConnection,
-            tddlConnection);
+        upsertSql = String.format("insert into %s values (1,3,10) on duplicate key update b=b,c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=3",
+            Matchers.is(1));
+    }
+
+    @Test
+    public void testUpsertSingleShardMultiSk() {
+        String tableName = "test_upsert_single_shard_pk_tbl";
+        String createSql = String.format("create table %s (a int primary key, b int, c int)", tableName);
+        String partDef = "dbpartition by hash(a) tbpartition by hash(b) tbpartitions 2";
+
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql + partDef);
+
+        // DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN = false
+        final String hint = "/*+TDDL:CMD_EXTRA(DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN=false)*/ ";
+
+        // all after value, pushdown
+        String upsertSql =
+            String.format("insert into %s values (1,2,3) on duplicate key update a=values(a),b=values(b),c=c",
+                tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=2",
+            Matchers.is(1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 2 | 3 || 1 | 2 | 3 |
+         * +-----------++-----------+
+         */
+
+        // all before value, pushdown
+        upsertSql = String.format("insert into %s values (1,2,4) on duplicate key update a=a,b=b,c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=2",
+            Matchers.is(1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 2 | 3 || 1 | 2 | 3 |
+         * +-----------++-----------+
+         */
+
+        // after value and before value, do not pushdown
+        upsertSql =
+            String.format("insert into %s values (1,2,5) on duplicate key update a=values(a),b=b,c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=2",
+            Matchers.is(1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 2 | 3 || 1 | 2 | 3 |
+         * +-----------++-----------+
+         */
+
+        // after value with different column, do not pushdown
+        upsertSql = String.format("insert into %s values (1,2,6) on duplicate key update a=values(a),b=values(a),c=c",
+            tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=1",
+            Matchers.is(1 + 2));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 1 | 3 || 1 | 1 | 3 |
+         * +-----------++-----------+
+         */
+
+        // before value with different column , do not pushdown
+        upsertSql = String.format("insert into %s values (1,2,7) on duplicate key update a=a,b=a,c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=1",
+            Matchers.is(1 + 1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 1 | 3 || 1 | 1 | 3 |
+         * | 1 | 2 | 7 |+-----------+
+         * +-----------+
+         */
+
+        // part after value, can pushdown
+        // a is primary key, if duplicated happens, a.oldValue = a.newValue
+        // b is one of partition key, if duplicated happens, b.oldValue and b.newValue are at same partition, because we route upsert using b.newValue
+        upsertSql = String.format("insert into %s values (1,3,8) on duplicate key update b=values(b),c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=3",
+            Matchers.is(1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 3 | 3 || 1 | 3 | 3 |
+         * | 1 | 2 | 7 |+-----------+
+         * +-----------+
+         */
+
+        // part after value, do not pushdown
+        upsertSql = String.format("insert into %s values (1,3,8) on duplicate key update a=values(a),c=c+1", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=3",
+            Matchers.is(1 + 1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 3 | 4 || 1 | 3 | 4 |
+         * | 1 | 2 | 7 |+-----------+
+         * +-----------+
+         */
+
+        // part before value, pushdown
+        upsertSql = String.format("insert into %s values (1,2,10) on duplicate key update b=b,c=c", tableName);
+        executeOnceThenCheckDataAndTraceResult(hint,
+            upsertSql,
+            "select * from " + tableName + " where a=1 and b=3",
+            Matchers.is(1));
+
+        /*
+         * +-----------++-----------+
+         * | PolarDB-X ||   MySQL   |
+         * |-----------||-----------|
+         * | a | b | c || a | b | c |
+         * |---|---|---||---|---|---|
+         * | 1 | 3 | 4 || 1 | 3 | 4 |
+         * | 1 | 2 | 7 |+-----------+
+         * +-----------+
+         */
     }
 
     @Test

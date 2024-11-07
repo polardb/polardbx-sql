@@ -23,6 +23,8 @@ import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.google.protobuf.ByteString;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
@@ -164,6 +166,12 @@ public class PhyTableOpBuildParams {
 
     protected BytesSql bytesSql;
     protected Map<Integer, ParameterContext> dynamicParams;
+    /**
+     * Mapping from key of dynamicParams to index in RexDynamicParam
+     */
+    @Getter
+    @Setter
+    protected List<Integer> paramIndexMapping;
     protected List<Map<Integer, ParameterContext>> batchParameters;
 
     public PhyTableOpBuildParams() {

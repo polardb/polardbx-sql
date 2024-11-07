@@ -27,13 +27,43 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaAutoSpl
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclRuleHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCclTriggerHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCheckRoutinesHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlEngineResourceHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlSchedulerHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsCharsetHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnarIndexStatusHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnarStatusHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaFunctionCacheCapacityHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaFunctionCacheHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaJavaFunctionsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMetricHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaOptimizerAlertHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaParametersHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPartitionsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPartitionsMetaHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPolardbxTrxHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPreparedTrxBranchHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaProcedureCacheCapacityHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaProcedureCacheHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaPushedFunctionHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRebalanceProgressHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaReplicaStatHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRplSyncPointHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaShowHelpHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaStatementSummaryHistoryHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRoutinesHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsCharsetHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnStatisticsHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnarIndexStatusHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnarStatusHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaColumnsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCreateDatabaseAsBackFillHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCreateDatabaseHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlEngineResourceHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlPlanHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDdlSchedulerHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDnPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaDrdsPhysicalProcessInTrxHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaFileStorageFilesMetaHandler;
@@ -58,6 +88,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalPa
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalPartitionsScheduleHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaLocalityInfoHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMetadataLockHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMetricHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaModuleEventHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaModuleHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaMoveDatabaseHandler;
@@ -81,6 +112,7 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRebalan
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRebalanceProgressHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaReplicaStatHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRoutinesHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaRplSyncPointHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSPMHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaScheduleJobsHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaSchemaPrivilegesHandler;
@@ -105,6 +137,8 @@ import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTablesH
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTcpPerfHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTraceHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTriggerHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTtlInfoHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaTtlScheduleHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaUserPrivilegesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaVariablesHandler;
 import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaWorkloadHandler;
@@ -163,6 +197,7 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaColumnarStatusHandler(this));
         subHandler.add(new InformationSchemaMetadataLockHandler(this));
         subHandler.add(new InformationSchemaModuleHandler(this));
+        subHandler.add(new InformationSchemaMetricHandler(this));
         subHandler.add(new InformationSchemaModuleEventHandler(this));
         subHandler.add(new InformationSchemaUserPrivilegesHandler(this));
         subHandler.add(new InformationSchemaTablePrivilegesHandler(this));
@@ -170,8 +205,12 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaStorageHandler(this));
         subHandler.add(new InformationSchemaStorageStatusHandler(this));
         subHandler.add(new InformationSchemaTableGroupHandler(this));
+        subHandler.add(new InformationSchemaDdlSchedulerHandler(this));
+        subHandler.add(new InformationSchemaDdlEngineResourceHandler(this));
         subHandler.add(new InformationSchemaPartitionsMetaHandler(this));
         subHandler.add(new InformationSchemaPartitionsHandler(this));
+        subHandler.add(new InformationSchemaTtlInfoHandler(this));
+        subHandler.add(new InformationSchemaTtlScheduleHandler(this));
         subHandler.add(new InformationSchemaLocalPartitionsHandler(this));
         subHandler.add(new InformationSchemaLocalPartitionsScheduleHandler(this));
         subHandler.add(new InformationSchemaAutoSplitScheduleHandler(this));
@@ -231,6 +270,7 @@ public class VirtualViewHandler extends HandlerCommon {
         subHandler.add(new InformationSchemaOptimizerAlertHandler(this));
         subHandler.add(new InformationSchemaRebalanceProgressHandler(this));
         subHandler.add(new InformationSchemaShowHelpHandler(this));
+        subHandler.add(new InformationSchemaRplSyncPointHandler(this));
     }
 
     @Override

@@ -170,6 +170,18 @@ public abstract class LogicalCommonDdlHandler extends HandlerCommon {
      * Some special DDL command could override this method to generate its own result.
      */
     protected Cursor buildResultCursor(BaseDdlOperation baseDdl, DdlJob ddlJob, ExecutionContext ec) {
+        if (ec.getParamManager().getBoolean(ConnectionParams.RETURN_JOB_ID_ON_ASYNC_DDL_MODE)) {
+            ArrayResultCursor result = new ArrayResultCursor("Execution Plan");
+            result.addColumn("job_id", DataTypes.LongType);
+            result.initMeta();
+            long jobId = 0;
+            if (ec.getDdlContext() != null) {
+                jobId = ec.getDdlContext().getJobId();
+            }
+            result.addRow(new Long[] {jobId});
+            return result;
+        }
+
         // Always return 0 rows affected or throw an exception to report error messages.
         // SHOW DDL RESULT can provide more result details for the DDL execution.
         return new AffectRowCursor(new int[] {0});

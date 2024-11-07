@@ -17,8 +17,12 @@
 package com.alibaba.polardbx.executor.cursor.impl;
 
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatisticsExt;
+import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import org.apache.calcite.rel.RelNode;
+
+import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
 /**
  * @author chenghui.lch
@@ -43,5 +47,23 @@ public class MyPhysicalCursor extends AbstractCursor {
 
     public void setRelNode(RelNode relNode) {
         this.relNode = relNode;
+    }
+
+    /**
+     * For multi get, delay the initialization to next method. If
+     * GROUP_CONCURRENT_BLOCK is set, initialization should call at first.
+     */
+    protected boolean isDelayInit(ExecutionContext executionContext) {
+        QueryConcurrencyPolicy queryConcurrencyPolicy = getQueryConcurrencyPolicy(executionContext);
+
+        switch (queryConcurrencyPolicy) {
+        case GROUP_CONCURRENT_BLOCK:
+        case RELAXED_GROUP_CONCURRENT:
+        case CONCURRENT:
+        case FIRST_THEN_CONCURRENT:
+            return false;
+        default:
+            return true;
+        }
     }
 }

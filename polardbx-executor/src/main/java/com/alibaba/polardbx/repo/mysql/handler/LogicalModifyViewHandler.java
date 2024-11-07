@@ -16,15 +16,13 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.MetricLevel;
-import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
-import com.alibaba.polardbx.executor.gsi.UpdateDeleteIndexExecutor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -34,30 +32,36 @@ import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
+import com.alibaba.polardbx.optimizer.utils.PartitionUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.alibaba.polardbx.repo.mysql.spi.MyPhyTableModifyCursor;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Util;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_EXECUTOR;
 
 /**
  * @author lingce.ldm 2018-01-31 18:39
@@ -114,7 +118,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         // For functions that deterministic or cannot be pushed down, calculate
         // them. TODO: not only gsi, all UPDATE / DELETE should be checked
         ReplaceCallWithLiteralVisitor visitor = null;
-        if (!logicalModifyView.hasHint() && executionContext.getParams() != null
+        if (!logicalModifyView.hasTargetTableHint() && executionContext.getParams() != null
             && (needConsistency(logicalModifyView, executionContext)
             || ComplexTaskPlanUtils.canWrite(executionContext.getSchemaManager(logicalModifyView.getSchemaName())
             .getTable(logicalModifyView.getLogicalTableName())))) {
@@ -128,55 +132,106 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         }
         // Dynamic functions will be calculated in buildSqlTemplate()
         SqlNode sqlTemplate = logicalModifyView.getSqlTemplate(visitor, executionContext);
-        List<RelNode> inputs = logicalModifyView.getInput(sqlTemplate, executionContext);
+        List<RelNode> inputs = logicalModifyView.getInput(sqlTemplate,
+            logicalModifyView.optimizeModifyTopNByReturning(),
+            executionContext);
 
         if (!executionContext.isAutoCommit() && inputs.size() > 1) {
             executionContext.setNeedAutoSavepoint(true);
         }
 
-        if (!logicalModifyView.hasHint() && executionContext.getParams() != null
-            && GlobalIndexMeta.hasIndex(logicalModifyView.getLogicalTableName(), schemaName, executionContext)) {
-            // TODO add this back
-            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
-
-            // If target column does not occur in any GSI index columns,
-            // the index updating is not needed.
-            if (sqlTemplate.getKind() == SqlKind.UPDATE) {
-                if (!needUpdateGSI(logicalModifyView, (SqlUpdate) sqlTemplate, executionContext)) {
-                    return executePhysicalPlan(inputs, executionContext, isBroadcast, schemaName);
-                }
-            }
-            return executeIndex(logicalModifyView, inputs, sqlTemplate, executionContext, schemaName);
+        if (!logicalModifyView.hasTargetTableHint()
+            && executionContext.isModifyGsiTable()
+            && CheckModifyLimitation.checkModifyGsi(logicalTableModify, executionContext)) {
+            throw new TddlRuntimeException(ERR_EXECUTOR, "Should not use LogicalModifyView for table with gsi");
+        } else if (logicalModifyView.optimizeModifyTopNByReturning()) {
+            final ExecutionContext modifyEc = executionContext.copy();
+            return executeModifyTopN(executionContext, inputs, logicalModifyView, modifyEc);
         } else {
             return executePhysicalPlan(inputs, executionContext, isBroadcast, schemaName);
         }
     }
 
-    /**
-     * If UPDATE target column does not occur in any GSI index columns, the
-     * index updating is not needed.
-     */
-    private boolean needUpdateGSI(LogicalModifyView logicalModifyView, SqlUpdate sqlUpdate,
-                                  ExecutionContext executionContext) {
-        Map<String, List<TableMeta>> tableNameAndIndexMetas = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-        List<String> allTables = logicalModifyView.getTableModify().getTargetTableNames();
+    protected AffectRowCursor executeModifyTopN(ExecutionContext executionContext,
+                                                List<RelNode> inputs,
+                                                LogicalModifyView lmv,
+                                                ExecutionContext modifyEc) {
+        final String logicalSchemaName = lmv.getSchemaName();
+        final String logicalTableName = lmv.getLogicalTableName();
+        final RexDynamicParam fetch = lmv.getModifyTopNInfo().getFetch();
+        final int fetchIndex = fetch.getIndex();
+        final boolean isDesc = lmv.getModifyTopNInfo().isDesc();
 
-        for (int i = 0; i < sqlUpdate.getTargetColumnList().size(); i++) {
-            final SqlNode column = sqlUpdate.getTargetColumnList().get(i);
-            final String columName = ((SqlIdentifier) column).getLastName();
-            final String tableName = allTables.get(i);
-            List<TableMeta> indexMetas = tableNameAndIndexMetas.get(tableName);
-            if (indexMetas == null) {
-                indexMetas = GlobalIndexMeta.getIndex(tableName, logicalModifyView.getSchemaName(), executionContext);
-                tableNameAndIndexMetas.put(tableName, indexMetas);
-            }
-            for (TableMeta indexMeta : indexMetas) {
-                if (indexMeta.containsColumn(columName)) {
-                    return true;
+        // Cache current returning switch states
+        final String currentReturning = modifyEc.getReturning();
+
+        // Build returning columns and enable returning
+        modifyEc.setReturning(String.join(",", lmv.getModifyTopNInfo().getPkColumnNames()));
+
+        int affectedRows = 0;
+        boolean partialFinished = false;
+        try {
+            // Sort physical schema and tables by partition order
+            final List<Pair<String, String>> phySchemaAndPhyTables =
+                inputs.stream().map(input -> (PhyTableOperation) input)
+                    .map(pto -> Pair.of(pto.getDbIndex(), pto.getTableNames().get(0).get(0))).collect(
+                        Collectors.toList());
+            final List<Integer> partitions =
+                PartitionUtils.sortByPartitionOrder(logicalSchemaName, logicalTableName, phySchemaAndPhyTables, isDesc);
+
+            // Compute fetch size
+            final long fetchSize = CBOUtil.getRexParam(fetch, modifyEc.getParams().getCurrentParameter());
+
+            int inputIndex = 0;
+            while (inputIndex < inputs.size() && affectedRows < fetchSize) {
+                final PhyTableOperation currentRel = (PhyTableOperation) inputs.get(partitions.get(inputIndex++));
+
+                // compute new fetchSize
+                final long currentFetchSize = fetchSize - affectedRows;
+
+                // modify fetchSize in LogicalModifyView
+                final int fetchParamIndex = PhyTableOperationUtil.getPhysicalParamIndex(currentRel, fetchIndex);
+                currentRel.getParam().compute(fetchParamIndex, (k, v) -> {
+                    assert v != null;
+                    return PlannerUtils.changeParameterContextValue(v, currentFetchSize);
+                });
+
+                final List<Cursor> currentCursor = new ArrayList<>();
+                executeWithConcurrentPolicy(modifyEc,
+                    ImmutableList.of(currentRel),
+                    QueryConcurrencyPolicy.SEQUENTIAL,
+                    currentCursor,
+                    logicalSchemaName);
+
+                partialFinished |= currentRel.isSuccessExecuted();
+
+                final MyPhyTableModifyCursor modifyCursor = (MyPhyTableModifyCursor) currentCursor.get(0);
+                try {
+                    while (modifyCursor.next() != null) {
+                        affectedRows++;
+                    }
+                } catch (Exception e) {
+                    throw new TddlNestableRuntimeException(e);
+                } finally {
+                    modifyCursor.close(new ArrayList<>());
                 }
             }
+
+        } catch (Throwable t) {
+            if (!executionContext.isAutoCommit() && partialFinished) {
+                // In trx, if some plan is executed successfully,
+                // we should forbid the trx continuing,
+                // or rollback the statement by auto-savepoint.
+                executionContext.getTransaction()
+                    .setCrucialError(ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL, t.getMessage());
+            }
+            throw new TddlNestableRuntimeException(t);
+
+        } finally {
+            modifyEc.setReturning(currentReturning);
         }
-        return false;
+
+        return new AffectRowCursor(affectedRows);
     }
 
     /**
@@ -189,7 +244,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         String tableName = logicalModifyView.getLogicalTableName();
         TableMeta tableMeta =
             executionContext.getSchemaManager(schemaName).getTable(tableName);
-        return GlobalIndexMeta.hasIndex(tableName, schemaName, executionContext) ||
+        return GlobalIndexMeta.hasGsi(tableName, schemaName, executionContext) ||
             ComplexTaskPlanUtils.canWrite(tableMeta);
     }
 
@@ -218,36 +273,6 @@ public class LogicalModifyViewHandler extends HandlerCommon {
             throw t;
         }
 
-        return new AffectRowCursor(new int[] {affectRows});
-    }
-
-    /**
-     * Execute with global indexes.
-     *
-     * @param physicalPlan physical plans of logicalModifyView
-     * @param sqlNode sqlNode of logicalModifyView
-     */
-    private Cursor executeIndex(LogicalModifyView logicalModifyView, List<RelNode> physicalPlan,
-                                SqlNode sqlNode, ExecutionContext executionContext, String schemaName) {
-        UpdateDeleteIndexExecutor executor = new UpdateDeleteIndexExecutor((List<RelNode> inputs,
-                                                                            ExecutionContext executionContext1) -> {
-            QueryConcurrencyPolicy queryConcurrencyPolicy = ExecUtils.getQueryConcurrencyPolicy(executionContext1);
-            List<Cursor> inputCursors = new ArrayList<>(inputs.size());
-            executeWithConcurrentPolicy(executionContext1, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
-            return inputCursors;
-        }, schemaName);
-
-        try {
-            int affectRows = executor.execute(logicalModifyView.getLogicalTableName(),
-                sqlNode,
-                physicalPlan,
-                executionContext);
-            return new AffectRowCursor(new int[] {affectRows});
-        } catch (Throwable e) {
-            // Can't commit
-            executionContext.getTransaction()
-                .setCrucialError(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CONTINUE_AFTER_WRITE_FAIL, e.getMessage());
-            throw GeneralUtil.nestedException(e);
-        }
+        return new AffectRowCursor(affectRows);
     }
 }

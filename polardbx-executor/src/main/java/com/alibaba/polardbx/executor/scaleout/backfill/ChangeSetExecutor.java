@@ -351,7 +351,7 @@ public class ChangeSetExecutor extends Extractor {
             batchParams.clear();
         } while (!finished);
 
-        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
+//        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set(0);
         reporter.addBackfillCount(successRowCount);
 
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] Last backfill row for {1}[{2}][{3}]: {4}",
@@ -394,7 +394,7 @@ public class ChangeSetExecutor extends Extractor {
             throttle.feedback(new com.alibaba.polardbx.executor.backfill.Throttle.FeedbackStats(
                 System.currentTimeMillis() - start, start, lastBatch.size()));
         }
-        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
+//        DdlEngineStats.METRIC_BACKFILL_ROWS_SPEED.set((long) throttle.getActualRateLastCycle());
 
         if (rateLimiter != null) {
             // Limit rate.
@@ -405,10 +405,12 @@ public class ChangeSetExecutor extends Extractor {
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
                                    long speedMin, long speedLimit, long parallelism, boolean useBinary,
                                    List<String> modifyStringColumns, Map<String, Set<String>> sourcePhyTables,
-                                   ExecutionContext ec) {
+                                   boolean onlineModifyColumn, ExecutionContext ec) {
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, modifyStringColumns, ec);
 
-        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, false);
+        ExtractorInfo info =
+            Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, false, false,
+                onlineModifyColumn);
 
         SqlSelect.LockMode lockMode = SqlSelect.LockMode.UNDEF;
 

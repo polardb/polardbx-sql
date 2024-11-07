@@ -20,20 +20,20 @@
             nljoin(condition="name < name0", type="inner")
               logicalview(tables="optest_0000.nation", sql="select `name` from `nation` as `nation`")
               nljoin(condition="name <> name", type="inner")
-                logicalview(tables="optest_0001.car_2", sql="select `name` from `car` as `car` where (`id` = 2)")
-                logicalview(tables="optest_0001.apple_2", sql="select `name`, `size` from `apple` as `apple` where (`id` = 2)")
+                logicalview(tables="optest_0001.car_2", sql="select `name` from `car` as `car` force index(`primary`) where (`id` = 2)")
+                logicalview(tables="optest_0001.apple_2", sql="select `name`, `size` from `apple` as `apple` force index(`primary`) where (`id` = 2)")
           hashagg(count(*)="count()")
             filter(condition="$cor0.size < height")
-              logicalview(tables="optest_0001.boy_2", sql="select `height` from `boy` as `boy` where ((2 = `id`) and (`money` > 8))")
+              logicalview(tables="optest_0001.boy_2", sql="select `height` from `boy` as `boy` force index(`primary`) where ((2 = `id`) and (`money` > 8))")
     cache node:
 
     project(size="size")
       nljoin(condition="name < name0", type="inner")
         logicalview(tables="optest_0000.nation", sql="select `name` from `nation` as `nation`")
         nljoin(condition="name <> name", type="inner")
-          logicalview(tables="optest_0001.car_2", sql="select `name` from `car` as `car` where (`id` = 2)")
-          logicalview(tables="optest_0001.apple_2", sql="select `name`, `size` from `apple` as `apple` where (`id` = 2)")
-    logicalview(tables="optest_0001.boy_2", sql="select `height` from `boy` as `boy` where ((2 = `id`) and (`money` > 8))")
+          logicalview(tables="optest_0001.car_2", sql="select `name` from `car` as `car` force index(`primary`) where (`id` = 2)")
+          logicalview(tables="optest_0001.apple_2", sql="select `name`, `size` from `apple` as `apple` force index(`primary`) where (`id` = 2)")
+    logicalview(tables="optest_0001.boy_2", sql="select `height` from `boy` as `boy` force index(`primary`) where ((2 = `id`) and (`money` > 8))")
 
 - sql: |
     select count(*)
@@ -125,7 +125,8 @@
     from boy b where money = (select id from apple a where a.id = b.id and price = 12);
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7]", shardcount=8, sql="select `name` from (select `id`, `name`, `birth_date`, `birth_place`, `money`, `height` from `boy` as `boy` where (`money` = (((select `id` from `apple` as `apple` where ((`price` = 12) and (`id` = `boy`.`id`))))))) as `t1`")
+      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7]", shardcount=8, sql="select `name` from (select `id`, `name`, `birth_date`, `birth_place`, `money`, `height`, (((select `id` from `apple` as `apple` where ((`price` = 12) and (`id` = `boy`.`id`))))) as `id0` from `boy` as `boy`) as `t1` where (`money` = `id0`)")
+
 - sql: |
     select b.name, (select id from apple a where (id = b.id and exists (select * from car c where c.id = a.id and c.price < a.price)))
     from boy b where id<10;
@@ -200,7 +201,7 @@
     project(name="name")
       hashagg(group="pick_date", name="__first_value(name)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`pick_date`, `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`apple`.`price` in(12, 3, 4, 6))) where ((`boy`.`height` < some (select `size` from `car` as `car` where ((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`)))) and (`boy`.`money` > all (select `price` from `apple` as `apple0` where (`id` = `boy`.`id`))))")
+          logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`pick_date`, (`boy`.`name`) as `name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`apple`.`price` in(12, 3, 4, 6))) where ((`boy`.`height` < some (select `size` from `car` as `car` where ((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`)))) and (`boy`.`money` > all (select `price` from `apple` as `apple0` where (`id` = `boy`.`id`)))) group by `apple`.`pick_date`")
 - sql: |
     /*+TDDL:cmd_extra(enable_lv_subquery_unwrap=true)*/
     select b.height , a.size

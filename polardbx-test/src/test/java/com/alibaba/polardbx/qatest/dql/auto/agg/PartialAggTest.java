@@ -25,7 +25,7 @@ public class PartialAggTest extends PartitionTestBase {
 
     public void testPartialAgg(boolean enableLocalBuffer) {
         String sql =
-            "/*+TDDL:cmd_extra(PARTIAL_AGG_ONLY=true MPP_TASK_LOCAL_BUFFER_ENABLED = %s enable_master_mpp=false PARALLELISM=5 workload_type=ap enable_push_sort=false enable_push_agg=false enable_cbo_push_agg=false)*/ "
+            "/*+TDDL:cmd_extra(PREFER_PARTIAL_AGG=true MPP_TASK_LOCAL_BUFFER_ENABLED = %s enable_master_mpp=false PARALLELISM=5 workload_type=ap enable_push_sort=false enable_push_agg=false enable_cbo_push_agg=false)*/ "
                 + " select count(*), c1 from %s group by c1";
         JdbcUtil.executeSuccess(tddlConnection, "use " + DATABASE_1);
         checkPlanUsePartialAgg(String.format(sql, enableLocalBuffer, TABLE_NAME));
@@ -33,13 +33,13 @@ public class PartialAggTest extends PartitionTestBase {
     }
 
     @Test
-    @Ignore("wait for PARTIAL_AGG_ONLY work under row mode")
+    @Ignore("wait for PREFER_PARTIAL_AGG work under row mode")
     public void testDisableLocalBuffer() {
         testPartialAgg(false);
     }
 
     @Test
-    @Ignore("wait for PARTIAL_AGG_ONLY work under row mode")
+    @Ignore("wait for PREFER_PARTIAL_AGG work under row mode")
     public void testEnableLocalBuffer() {
         testPartialAgg(true);
     }

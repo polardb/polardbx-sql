@@ -404,16 +404,21 @@ public abstract class CalcRelSplitter {
 
     // For dynamic rex node (constant value), pull up its level to avoid project calculation.
     int maxLevel = Integer.MIN_VALUE;
+    int[] maxRefLevel = new int[exprLevels.length];
+    Arrays.fill(maxRefLevel, Integer.MAX_VALUE);
     for (int i = 0; i < exprLevels.length; i++) {
       maxLevel = Math.max(maxLevel, exprLevels[i]);
-    }
-    for (int i = 0; i < exprs.length; i++) {
-      RexNode rexNode = exprs[i];
-      if (rexNode instanceof RexDynamicParam) {
-        exprLevels[i] = maxLevel;
+      for (int j : RexUtil.LocalRefFinder.findAllLocalRefs(exprs[i])) {
+        maxRefLevel[j] = Math.min(maxRefLevel[j], exprLevels[i]);
       }
     }
 
+    for (int i = 0; i < exprs.length; i++) {
+      RexNode rexNode = exprs[i];
+      if (rexNode instanceof RexDynamicParam) {
+        exprLevels[i] = Math.min(maxRefLevel[i], maxLevel);
+      }
+    }
     return levelCount;
   }
 

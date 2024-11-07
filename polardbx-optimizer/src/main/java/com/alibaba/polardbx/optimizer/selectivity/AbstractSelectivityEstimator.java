@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.selectivity;
 
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.rel.metadata.RelMdUtil;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -29,11 +32,14 @@ public abstract class AbstractSelectivityEstimator extends RexVisitorImpl<Double
 
     public final RelMetadataQuery metadataQuery;
     private final RexBuilder rexBuilder;
+    protected PlannerContext plannerContext;
 
-    public AbstractSelectivityEstimator(RelMetadataQuery metadataQuery, RexBuilder rexBuilder) {
+    public AbstractSelectivityEstimator(RelMetadataQuery metadataQuery, RexBuilder rexBuilder,
+                                        PlannerContext plannerContext) {
         super(true);
         this.metadataQuery = metadataQuery;
         this.rexBuilder = rexBuilder;
+        this.plannerContext = plannerContext;
     }
 
     public static Double normalize(Double selectivity) {
@@ -50,25 +56,34 @@ public abstract class AbstractSelectivityEstimator extends RexVisitorImpl<Double
 
     public Double evaluate(RexNode predicate) {
         try {
-            if (predicate == null) {
-                return 1.0;
-            } else {
-                RexNode simplifiedPredicate =
-                    new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, true, RexUtil.EXECUTOR).simplify(predicate);
-                if (simplifiedPredicate.isAlwaysTrue()) {
-                    return 1.0;
-                } else if (simplifiedPredicate.isAlwaysFalse()) {
-                    return 0.0;
-                } else {
-                    Double value = simplifiedPredicate.accept(this);
-                    if (value == null) {
-                        return normalize(RelMdUtil.guessSelectivity(simplifiedPredicate));
-                    }
-                    return normalize(value);
-                }
-            }
+            return evaluateInside(predicate);
         } catch (Throwable e) {
+            OptimizerAlertUtil.selectivityAlert(getExecutionContext(), e);
             return null;
+        }
+    }
+
+    public ExecutionContext getExecutionContext() {
+        return plannerContext == null ? null : plannerContext.getExecutionContext();
+    }
+
+    public Double evaluateInside(RexNode predicate) {
+        if (predicate == null) {
+            return 1.0;
+        } else {
+            RexNode simplifiedPredicate =
+                new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, true, RexUtil.EXECUTOR).simplify(predicate);
+            if (simplifiedPredicate.isAlwaysTrue()) {
+                return 1.0;
+            } else if (simplifiedPredicate.isAlwaysFalse()) {
+                return 0.0;
+            } else {
+                Double value = simplifiedPredicate.accept(this);
+                if (value == null) {
+                    return normalize(RelMdUtil.guessSelectivity(simplifiedPredicate));
+                }
+                return normalize(value);
+            }
         }
     }
 }

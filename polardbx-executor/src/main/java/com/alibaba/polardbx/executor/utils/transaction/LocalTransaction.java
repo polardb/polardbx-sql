@@ -29,7 +29,7 @@ public class LocalTransaction {
     // We assume that each group has one and only one local transaction under the same global transaction
     private String group;
     private String state;
-    private String physicalSql;
+    private Object physicalSql;
     private String operationState;
     private Integer tablesInUse;
     private Integer tablesLocked;
@@ -54,7 +54,7 @@ public class LocalTransaction {
         return state;
     }
 
-    public String getPhysicalSql() {
+    public Object getPhysicalSql() {
         return physicalSql;
     }
 
@@ -104,7 +104,7 @@ public class LocalTransaction {
         this.state = state;
     }
 
-    public void setPhysicalSql(String physicalSql) {
+    public void setPhysicalSql(Object physicalSql) {
         this.physicalSql = physicalSql;
     }
 

@@ -19,22 +19,32 @@ package com.alibaba.polardbx.optimizer.core.rel;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
+import com.alibaba.polardbx.optimizer.utils.RelUtils.LogicalModifyViewBuilder;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import lombok.Data;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.prepare.Prepare;
+import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rel.logical.LogicalTableModify;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.OptimizerHint;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mapping;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,6 +87,14 @@ public class LogicalModify extends TableModify {
 
     private boolean modifyForeignKey = false;
 
+    @Getter
+    @Setter
+    protected ModifyTopNInfo modifyTopNInfo = ModifyTopNInfo.EMPTY;
+
+    @Getter
+    @Setter
+    protected LogicalMultiWriteInfo multiWriteInfo = LogicalMultiWriteInfo.EMPTY;
+
     public LogicalModify(TableModify modify) {
         this(modify.getCluster(),
             modify.getTraitSet(),
@@ -98,7 +116,10 @@ public class LogicalModify extends TableModify {
             modify instanceof LogicalModify ? ((LogicalModify) modify).getPrimaryModifyWriters() : ImmutableList.of(),
             modify instanceof LogicalModify ? ((LogicalModify) modify).getGsiModifyWriters() : ImmutableList.of(),
             modify instanceof LogicalModify ? ((LogicalModify) modify).isWithoutPk() : false,
-            modify instanceof LogicalModify ? ((LogicalModify) modify).isModifyForeignKey() : false);
+            modify instanceof LogicalModify ? ((LogicalModify) modify).isModifyForeignKey() : false,
+            modify instanceof LogicalModify ? ((LogicalModify) modify).getModifyTopNInfo() : ModifyTopNInfo.EMPTY,
+            modify instanceof LogicalModify ? ((LogicalModify) modify).getMultiWriteInfo() :
+                LogicalMultiWriteInfo.EMPTY);
     }
 
     public LogicalModify(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table,
@@ -137,7 +158,8 @@ public class LogicalModify extends TableModify {
                          List<String> keywords, SqlNodeList hints, OptimizerHint hintContext, TableInfo tableInfo,
                          List<RelOptTable> extraTargetTables, List<String> extraTargetColumns,
                          List<DistinctWriter> primaryModifyWriters, List<DistinctWriter> gsiModifyWriters,
-                         boolean withoutPk, boolean modifyForeignKey) {
+                         boolean withoutPk, boolean modifyForeignKey, ModifyTopNInfo modifyTopNInfo,
+                         LogicalMultiWriteInfo multiWriteInfo) {
         super(cluster,
             traitSet,
             table,
@@ -165,6 +187,8 @@ public class LogicalModify extends TableModify {
         this.setColumnTargetMappings = new HashMap<>();
         this.setColumnSourceMappings = new HashMap<>();
         this.setColumnMetas = new HashMap<>();
+        this.modifyTopNInfo = modifyTopNInfo;
+        this.multiWriteInfo = multiWriteInfo;
     }
 
     public List<String> getTableNames() {
@@ -217,6 +241,16 @@ public class LogicalModify extends TableModify {
                     .map(t -> String.join(".", t.getQualifiedName()))
                     .collect(Collectors.joining(", ")));
         }
+        if (isModifyTopN()) {
+            pw.item("isModifyTopN", true);
+        }
+        if (isMultiWriteCanBeOptimizedByReturning()) {
+            if (this.multiWriteInfo.isOptimizeByReturning()) {
+                pw.item("optimizeByReturning", true);
+            } else {
+                pw.item("canUseReturning", true);
+            }
+        }
         return pw;
     }
 
@@ -240,7 +274,9 @@ public class LogicalModify extends TableModify {
             getPrimaryModifyWriters(),
             getGsiModifyWriters(),
             isWithoutPk(),
-            isModifyForeignKey());
+            isModifyForeignKey(),
+            getModifyTopNInfo(),
+            getMultiWriteInfo());
         logicalModify.originalSqlNode = originalSqlNode;
         logicalModify.evalRowColumnMetas = evalRowColumnMetas;
         logicalModify.inputToEvalFieldMappings = inputToEvalFieldMappings;
@@ -362,5 +398,72 @@ public class LogicalModify extends TableModify {
 
     public boolean isModifyForeignKey() {
         return this.modifyForeignKey;
+    }
+
+    public boolean isModifyTopN() {
+        return null != this.modifyTopNInfo && ModifyTopNInfo.EMPTY != this.modifyTopNInfo;
+    }
+
+    public boolean isMultiWriteCanBeOptimizedByReturning() {
+        return null != this.multiWriteInfo
+            && !LogicalMultiWriteInfo.EMPTY.equals(this.multiWriteInfo);
+    }
+
+    @Data
+    @RequiredArgsConstructor
+    public static class ModifyTopNInfo {
+        public static ModifyTopNInfo EMPTY = new ModifyTopNInfo();
+
+        private final ImmutableList<String> pkColumnNames;
+        private final ImmutableList<RexNode> fieldExps;
+        private final RelCollation collation;
+        private final RexDynamicParam fetch;
+
+        @Accessors(chain = true)
+        private boolean optimizeByReturning = false;
+
+        private ModifyTopNInfo() {
+            this.pkColumnNames = ImmutableList.of();
+            this.fieldExps = ImmutableList.of();
+            this.collation = null;
+            this.fetch = null;
+        }
+
+        public boolean isDesc() {
+            return getCollation().getFieldCollations().get(0).direction.isDescending();
+        }
+
+        public static ModifyTopNInfo create(@NotNull List<String> pkColumnarNames,
+                                            @NotNull List<RexNode> fieldExps,
+                                            @NotNull RelCollation collation,
+                                            @NotNull RexDynamicParam fetch) {
+            Preconditions.checkArgument(fieldExps.size() == collation.getFieldCollations().size());
+            return new ModifyTopNInfo(ImmutableList.copyOf(pkColumnarNames), ImmutableList.copyOf(fieldExps), collation,
+                fetch);
+        }
+    }
+
+    @Data
+    @RequiredArgsConstructor
+    public static class LogicalMultiWriteInfo {
+        public static LogicalMultiWriteInfo EMPTY = new LogicalMultiWriteInfo();
+
+        private final boolean withOffset;
+        private final boolean withFetch;
+
+        @Accessors(chain = true)
+        private LogicalModifyViewBuilder lmvBuilder = null;
+
+        @Accessors(chain = true)
+        private boolean optimizeByReturning = false;
+
+        private LogicalMultiWriteInfo() {
+            this.withOffset = false;
+            this.withFetch = false;
+        }
+
+        public static LogicalMultiWriteInfo create(boolean withOffset, boolean withFetch) {
+            return new LogicalMultiWriteInfo(withOffset, withFetch);
+        }
     }
 }

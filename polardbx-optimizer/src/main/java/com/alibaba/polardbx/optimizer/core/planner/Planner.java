@@ -97,15 +97,17 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.OptimizeLogicalViewRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OptimizePhySqlRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OuterJoinAssocRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OuterJoinLAsscomRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.ProjectCorrelateTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PhyPushAggRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PhyTwoPhaseAggRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.ProjectSortTransitiveRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.PushCorrelateRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushFilterRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PushModifyRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushProjectRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushSortRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SQL_REWRITE_RULE_PHASE;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinSemiJoinTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.SubQueryToSemiJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLProjectHashJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalAggToHashAggRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToBKAJoinRule;
@@ -124,6 +126,7 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.SubQueryPlanEnumera
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.CollectorTableVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.CountVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
@@ -137,6 +140,7 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.RemoveFixedCostVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.RemoveIndexNodeVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.RemoveSchemaNameVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceDifferentDBSingleTblWithPhyTblVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor;
@@ -204,10 +208,8 @@ import org.apache.calcite.rel.logical.LogicalOutFile;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rules.AggregateProjectMergeRule;
-import org.apache.calcite.rel.rules.ProjectFilterTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
-import org.apache.calcite.rel.rules.ProjectWindowTransposeRule;
 import org.apache.calcite.rel.rules.SemiJoinProjectTransposeRule;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -253,6 +255,7 @@ import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdviso
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isSuitableForDirectMode;
+import static com.alibaba.polardbx.optimizer.utils.OptimizerUtils.hasDNHint;
 import static com.alibaba.polardbx.optimizer.utils.RelUtils.disableMpp;
 import static com.alibaba.polardbx.optimizer.workload.WorkloadUtil.determineWorkloadType;
 import static org.apache.calcite.sql.SqlKind.DDL;
@@ -371,6 +374,7 @@ public class Planner {
         }
 
         parameterized.setForPrepare(forPrepare);
+        executionContext.setSqlTemplateId(PlanManagerUtil.generateTemplateId(parameterized.getSql()));
 
         return doPlan(sqlType, parameterized, executionContext, sqlNodeList, forPrepare);
     }
@@ -780,6 +784,7 @@ public class Planner {
         }
 
         if (hintCollection.pushdownOriginSql() ||
+            hintCollection.directWithRealTableName() ||
             (StringUtils.isNotEmpty(ec.getPartitionHint()) &&
                 (ast.isA(DML) || ast.isA(QUERY)) &&
                 checkAst(ast) &&
@@ -902,19 +907,10 @@ public class Planner {
             }
         }
 
-        // set not pushdown DML condition.
-        plannerContext.getExecutionContext().setModifyShardingColumn(toDrdsRelVisitor.isModifyShardingColumn());
-        plannerContext.getExecutionContext().setModifyGsiTable(toDrdsRelVisitor.isModifyGsiTable());
-        plannerContext.getExecutionContext()
-            .setScaleoutWritableTable(toDrdsRelVisitor.isContainScaleOutWritableTable());
-        plannerContext.getExecutionContext()
-            .setModifyOnlineColumnTable(toDrdsRelVisitor.isContainOnlineModifyColumnTable());
-        plannerContext.getExecutionContext().setModifyBroadcastTable(toDrdsRelVisitor.isModifyBroadcastTable());
-        plannerContext.getExecutionContext().setModifyForeignKey(toDrdsRelVisitor.isModifyForeignKey());
-
         RelMetadataQuery mq = drdsRelNode.getCluster().getMetadataQuery();
         if (Boolean
             .parseBoolean(plannerContext.getParamManager().getProps().get(ConnectionProperties.PREPARE_OPTIMIZE))) {
+            // does not need to optimize plan in prepare mode
             return constructExecutionPlan(mq.getOriginalRowType(drdsRelNode), drdsRelNode, drdsRelNode,
                 ast, validatedNode,
                 converter,
@@ -941,9 +937,26 @@ public class Planner {
             if (directMode == ExecutionPlan.DirectMode.TABLE_DIRECT ||
                 directMode == ExecutionPlan.DirectMode.MULTI_DB_TABLE_DIRECT) {
                 optimizedNode = unoptimizedNode;
+                if (OptimizerUtils.enableColumnarOptimizer(plannerContext.getParamManager())
+                    && CollectionUtils.isNotEmpty(toDrdsRelVisitor.getTableNames())
+                    && toDrdsRelVisitor.isAllTableHaveColumnar()) {
+                    try {
+                        optimizedNode = optimize(unoptimizedNode, plannerContext);
+                        // columnar plan
+                        if (plannerContext.isUseColumnar()) {
+                            directMode = ExecutionPlan.DirectMode.NONE;
+                        } else {
+                            optimizedNode = unoptimizedNode;
+                        }
+                    } catch (NotSupportException e) {
+                        if (!e.getMessage().contains(SubQueryToSemiJoinRule.NOT_SUPPORT_SUBQUERY_IN_JOIN)) {
+                            throw e;
+                        }
+                    }
+                }
             } else {
                 optimizedNode = optimize(unoptimizedNode, plannerContext);
-                if (canDirectByShardingKey(optimizedNode)) {
+                if (canDirectByShardingKey(optimizedNode, plannerContext)) {
                     directMode = ExecutionPlan.DirectMode.SHARDING_KEY_DIRECT;
                 } else {
                     directMode = ExecutionPlan.DirectMode.NONE;
@@ -1096,7 +1109,15 @@ public class Planner {
     /**
      * 是否为分片键点查（主键）
      */
-    private boolean canDirectByShardingKey(RelNode optimizedNode) {
+    private boolean canDirectByShardingKey(RelNode optimizedNode, PlannerContext plannerContext) {
+        if (plannerContext.hasLocalIndexHint()) {
+            return false;
+        }
+
+        if (hasDNHint(plannerContext)) {
+            return false;
+        }
+
         if (!(optimizedNode instanceof LogicalView) || optimizedNode instanceof LogicalModifyView) {
             return false;
         }
@@ -1229,20 +1250,21 @@ public class Planner {
         CountVisitor countVisitor = new CountVisitor();
         input.accept(countVisitor);
 
-        // cbo config, e.g. pass_through
-        configureCBO(volcanoPlanner, countVisitor, paramManager, plannerContext);
+        ExchangeOptimizerType exchangeOptimizerType = determineWorkload(originInput, input, plannerContext, true);
+        RelNode output = input;
+        if (exchangeOptimizerType != ExchangeOptimizerType.COLUMNAR) {
+            // cbo config, e.g. pass_through
+            configureCBO(volcanoPlanner, countVisitor, paramManager, plannerContext);
+            // add rules used by cbo
+            addCBORule(volcanoPlanner, countVisitor, paramManager, plannerContext);
+            // optimize
+            output = optimizeByCBO(input, volcanoPlanner, plannerContext);
+            // optimize row plan after cbo, e.g. transform tableLookup to bka join
+            output = optimizeRowAfterCBO(output, plannerContext);
+            // determine workload of the query
+            exchangeOptimizerType = determineWorkload(originInput, output, plannerContext, false);
+        }
 
-        // add rules used by cbo
-        addCBORule(volcanoPlanner, countVisitor, paramManager, plannerContext);
-
-        // optimize
-        RelNode output = optimizeByCBO(input, volcanoPlanner, plannerContext);
-
-        // transform table lookup to bka join
-        output = optimizeByExpandTableLookup(output, plannerContext);
-
-        // determine workload of the query
-        ExchangeOptimizerType exchangeOptimizerType = determineWorkload(originInput, output, plannerContext);
         switch (exchangeOptimizerType) {
         case MPP:
             output = optimizeByMppPlan(output, plannerContext);
@@ -1329,8 +1351,8 @@ public class Planner {
             volcanoPlanner.clear();
             plannerContext.setRestrictCboPushJoin(false);
         }
-        if (plannerContext.getExecutionContext().isEnableRuleCounter()) {
-            plannerContext.getExecutionContext().setRuleCount(volcanoPlanner.getRuleCount());
+        if (plannerContext.isEnableRuleCounter()) {
+            plannerContext.setRuleCount(volcanoPlanner.getRuleCount());
         }
 
         if (plannerContext.getJoinCount() > 0) {
@@ -1348,53 +1370,35 @@ public class Planner {
      */
     private ExchangeOptimizerType determineWorkload(RelNode originInput,
                                                     RelNode input,
-                                                    PlannerContext plannerContext) {
+                                                    PlannerContext plannerContext,
+                                                    boolean ignoreRowCBO) {
         // determine TP or AP
-        String workloadType = plannerContext.getParamManager().getString(ConnectionParams.WORKLOAD_TYPE);
-        if (workloadType == null) {
-            plannerContext.setWorkloadType(determineWorkloadType(input, input.getCluster().getMetadataQuery()));
-        } else {
-            try {
-                plannerContext.setWorkloadType(WorkloadType.valueOf(workloadType.toUpperCase()));
-            } catch (Throwable t) {
-                // ignore
+        try {
+            plannerContext.setWorkloadType(WorkloadType.valueOf(
+                plannerContext.getParamManager().getString(ConnectionParams.WORKLOAD_TYPE).toUpperCase()));
+        } catch (Throwable t) {
+            // don't get workload type from cost if row cbo is not invoked yet
+            if (!ignoreRowCBO) {
+                plannerContext.setWorkloadType(determineWorkloadType(input, input.getCluster().getMetadataQuery()));
             }
         }
 
-        //use hint
+        // columnar mode
         if (ConfigDataMode.isColumnarMode()) {
-            if ((!MppPlanCheckers.supportsMppPlan(input, plannerContext, MppPlanCheckers.BASIC_CHECKERS))) {
-                return ExchangeOptimizerType.SMP;
-            } else {
-                if ((MppPlanCheckers.supportsMppPlan(input, plannerContext,
-                    MppPlanCheckers.SAMPLE_HINT_CHECKER,
-                    MppPlanCheckers.ENABLE_COLUMNAR_CHECKER,
-                    MppPlanCheckers.COLUMNAR_TRANSACTION_CHECKER,
-                    MppPlanCheckers.UPDATE_CHECKER) &&
-                    CBOUtil.allTablesHaveColumnar(originInput, plannerContext.getExecutionContext()))) {
-                    return ExchangeOptimizerType.COLUMNAR;
-                }
-                return ExchangeOptimizerType.SMP;
-            }
+            return determineOptimizerTypeForColumnarNode(originInput, input, plannerContext);
         } else {
-            ExchangeOptimizerType specificType = ExchangeOptimizerType.getType(
-                plannerContext.getParamManager().getString(ConnectionParams.OPTIMIZER_TYPE));
-            if (specificType != null) {
-                return specificType;
-            }
+            return determineOptimizerTypeForMasterNode(originInput, input, plannerContext);
+        }
+    }
 
-            // firstly, smp or columnar_smp
-            if ((WorkloadType.AP != plannerContext.getWorkloadType()) ||
-                (!MppPlanCheckers.supportsMppPlan(input, plannerContext, MppPlanCheckers.BASIC_CHECKERS))) {
-                if (CBOUtil.planWithColumnar(originInput) &&
-                    !MppPlanCheckers.supportsMppPlan(input, plannerContext, MppPlanCheckers.QUERY_CHECKER)) {
-                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Can't use columnar in SMP planner");
-                }
-                return ExchangeOptimizerType.SMP;
-            }
-
-            // secondly, columnar
-            if ((MppPlanCheckers.supportsMppPlan(input, plannerContext,
+    private ExchangeOptimizerType determineOptimizerTypeForColumnarNode(RelNode originInput,
+                                                                        RelNode input,
+                                                                        PlannerContext plannerContext) {
+        if ((!MppPlanCheckers.supportsMppPlan(input, plannerContext, plannerContext.getExecutionContext(),
+            MppPlanCheckers.BASIC_CHECKERS))) {
+            return ExchangeOptimizerType.SMP;
+        } else {
+            if ((MppPlanCheckers.supportsMppPlan(input, plannerContext, plannerContext.getExecutionContext(),
                 MppPlanCheckers.SAMPLE_HINT_CHECKER,
                 MppPlanCheckers.ENABLE_COLUMNAR_CHECKER,
                 MppPlanCheckers.COLUMNAR_TRANSACTION_CHECKER,
@@ -1402,10 +1406,39 @@ public class Planner {
                 CBOUtil.allTablesHaveColumnar(originInput, plannerContext.getExecutionContext()))) {
                 return ExchangeOptimizerType.COLUMNAR;
             }
-
-            // finally, mpp
-            return ExchangeOptimizerType.MPP;
+            return ExchangeOptimizerType.SMP;
         }
+    }
+
+    private ExchangeOptimizerType determineOptimizerTypeForMasterNode(RelNode originInput,
+                                                                      RelNode input,
+                                                                      PlannerContext plannerContext) {
+        ExchangeOptimizerType specificType = ExchangeOptimizerType.getType(
+            plannerContext.getParamManager().getString(ConnectionParams.OPTIMIZER_TYPE));
+        if (specificType != null) {
+            return specificType;
+        }
+
+        // firstly, smp or columnar_smp
+        if ((WorkloadType.AP != plannerContext.getWorkloadType()) ||
+            (!MppPlanCheckers.supportsMppPlan(input, plannerContext, plannerContext.getExecutionContext(),
+                MppPlanCheckers.BASIC_CHECKERS))) {
+            return ExchangeOptimizerType.SMP;
+        }
+
+        // secondly, columnar
+        if ((MppPlanCheckers.supportsMppPlan(input, plannerContext, plannerContext.getExecutionContext(),
+            MppPlanCheckers.SAMPLE_HINT_CHECKER,
+            MppPlanCheckers.ENABLE_COLUMNAR_CHECKER,
+            MppPlanCheckers.COLUMNAR_TRANSACTION_CHECKER,
+            MppPlanCheckers.UPDATE_CHECKER,
+            MppPlanCheckers.CORRELATE_CHECKER) &&
+            CBOUtil.allTablesHaveColumnar(originInput, plannerContext.getExecutionContext()))) {
+            return ExchangeOptimizerType.COLUMNAR;
+        }
+
+        // finally, mpp
+        return ExchangeOptimizerType.MPP;
     }
 
     private static RelNode getCheapestFractionalPlan(VolcanoPlanner volcanoPlanner) {
@@ -1566,10 +1599,15 @@ public class Planner {
     private RelNode optimizeByColumnarPlan(RelNode input,
                                            ParamManager paramManager,
                                            PlannerContext plannerContext) {
+        try {
+            plannerContext.setWorkloadType(WorkloadType.valueOf(
+                plannerContext.getParamManager().getString(ConnectionParams.WORKLOAD_TYPE).toUpperCase()));
+        } catch (Throwable t) {
+            plannerContext.setWorkloadType(WorkloadType.AP);
+        }
+
         RelNode columnarOutput = optimizeByColumnarRBO(input, paramManager, plannerContext);
-        CBOUtil.ColumnarShardFinder columnarShardFinder = new CBOUtil.ColumnarShardFinder();
-        columnarOutput.accept(columnarShardFinder);
-        plannerContext.setColumnarMaxShardCnt(columnarShardFinder.getMaxShard());
+        CBOUtil.assignColumnarMaxShardCnt(columnarOutput, plannerContext);
 
         // cbo
         plannerContext.getCalcitePlanOptimizerTrace()
@@ -1581,6 +1619,7 @@ public class Planner {
         columnarOutput.accept(countVisitor);
 
         addColumnarCBORule(volcanoPlanner, paramManager, countVisitor);
+        volcanoPlanner.setTopDownOpt(true);
         volcanoPlanner.setStartUpCostOpt(false);
         volcanoPlanner.setEnableColumnar(true);
         volcanoPlanner.setEnableBranchAndBound(
@@ -1588,7 +1627,6 @@ public class Planner {
                 && (!CheckJoinHint.useJoinHint(plannerContext)));
 
         plannerContext.setUseColumnar(true);
-        plannerContext.enableSPM(false);
 
         RelTraitSet newTraitSet = columnarOutput.getTraitSet().simplify().replace(DrdsConvention.INSTANCE);
         RelNode newInput = volcanoPlanner.changeTraits(columnarOutput, newTraitSet);
@@ -1603,12 +1641,6 @@ public class Planner {
         } finally {
             volcanoPlanner.clear();
             volcanoPlanner.setEnableColumnar(false);
-        }
-
-        // Don't use runtime filter in columnar mode if there is no hint for it.
-        if (plannerContext.getExtraCmds() != null
-            && plannerContext.getExtraCmds().containsKey(ConnectionProperties.ENABLE_RUNTIME_FILTER)) {
-            output = optimizeWithRuntimeFilter(output, plannerContext);
         }
 
         if (plannerContext.getParamManager().getBoolean(
@@ -1674,7 +1706,7 @@ public class Planner {
         plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_CORRELATE, false);
         plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_AGG, false);
         plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_SORT, false);
-        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_EXPAND_DISTINCTAGG, false);
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_EXPAND_DISTINCTAGG, true);
         plannerContext.getExtraCmds().put(ConnectionProperties.PUSH_CORRELATE_MATERIALIZED_LIMIT, 0);
         plannerContext.setShouldUseHeuOrder(false);
         return valueRecords;
@@ -1751,14 +1783,15 @@ public class Planner {
     }
 
     private RelNode optimizeWithRuntimeFilter(RelNode input, PlannerContext plannerContext) {
+        plannerContext.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("MPP RBO AFTER CBO", input, plannerContext));
         boolean enableRuntimeFilter = plannerContext.getParamManager().getBoolean(
             ConnectionParams.ENABLE_RUNTIME_FILTER);
         boolean pushRuntimeFilter = plannerContext.getParamManager().getBoolean(
             ConnectionParams.ENABLE_PUSH_RUNTIME_FILTER_SCAN);
 
-        RelNode output = input;
+        HepProgramBuilder builder = new HepProgramBuilder();
         if (enableRuntimeFilter) {
-            HepProgramBuilder builder = new HepProgramBuilder();
             builder.addGroupBegin();
             builder.addRuleCollection(RuleToUse.RUNTIME_FILTER);
             if (pushRuntimeFilter) {
@@ -1766,41 +1799,32 @@ public class Planner {
                 builder.addRuleInstance(PushBloomFilterRule.LOGICALVIEW);
             }
             builder.addGroupEnd();
-            HepPlanner planner = new HepPlanner(builder.build());
-            planner.stopOptimizerTrace();
-            planner.setRoot(input);
-            output = planner.findBestExp();
         }
 
-        return output;
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.setRoot(input);
+        return planner.findBestExp();
+
     }
 
     private RelNode optimizeColumnarAfterCBO(RelNode input, PlannerContext plannerContext) {
-        final int inputRefThreshold = plannerContext.getParamManager().getInt(
-            ConnectionParams.PUSH_PROJECT_INPUT_REF_THRESHOLD);
-
-        ImmutableList<RelOptRule> afterCBORules = ImmutableList.of(
-            // To prune the join keys.
-            JoinConditionPruningRule.INSTANCE,
-
-            // To transpose the project with join/project/agg
-            new COLProjectHashJoinTransposeRule(inputRefThreshold),
-            AggregateProjectMergeRule.INSTANCE,
-            ProjectCorrelateTransposeRule.INSTANCE,
-            ProjectFilterTransposeRule.INSTANCE,
-            ProjectWindowTransposeRule.INSTANCE,
-            ProjectSortTransitiveRule.INSTANCE,
-            PushProjectRule.INSTANCE,
-            PushCorrelateRule.INSTANCE,
-
-            // To merge and remove redundant projects.
-            ProjectMergeRule.INSTANCE,
-            ProjectRemoveRule.INSTANCE
-        );
-
+        plannerContext.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("Columnar RBO AFTER CBO", input, plannerContext));
         HepProgramBuilder builder = new HepProgramBuilder();
+        builder.addMatchOrder(HepMatchOrder.TOP_DOWN);
         builder.addGroupBegin();
-        builder.addRuleCollection(afterCBORules);
+        builder.addRuleInstance(PhyTwoPhaseAggRule.INSTANCE);
+        builder.addRuleInstance(PhyTwoPhaseAggRule.PROJECT);
+        builder.addGroupEnd();
+
+        builder.addMatchOrder(HepMatchOrder.TOP_DOWN);
+        builder.addGroupBegin();
+        builder.addRuleInstance(AggregateProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(JoinConditionPruningRule.INSTANCE);
+        builder.addRuleInstance(new COLProjectHashJoinTransposeRule(
+            plannerContext.getParamManager().getInt(ConnectionParams.PUSH_PROJECT_INPUT_REF_THRESHOLD)));
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectRemoveRule.INSTANCE);
         builder.addGroupEnd();
         HepPlanner planner = new HepPlanner(builder.build());
         planner.setRoot(input);
@@ -1850,6 +1874,7 @@ public class Planner {
         builder.addGroupEnd();
         builder.addGroupBegin();
         builder.addRuleCollection(RuleToUse.TDDL_SHARDING_RULE);
+        builder.addRuleInstance(PushModifyRule.OPTIMIZE_MODIFY_TOP_N_RULE);
         builder.addGroupEnd();
         HepPlanner hepPlanner = new HepPlanner(builder.build(), plannerContext);
         hepPlanner.setRoot(input);
@@ -1861,7 +1886,7 @@ public class Planner {
         return new PartitionWiseAssigner(input, joinKeepPartition).assign();
     }
 
-    private RelNode optimizeByExpandTableLookup(RelNode input, PlannerContext plannerContext) {
+    private RelNode optimizeRowAfterCBO(RelNode input, PlannerContext plannerContext) {
         HepProgramBuilder builder = new HepProgramBuilder();
         // expand table lookup
         builder.addGroupBegin();
@@ -1889,6 +1914,10 @@ public class Planner {
         builder.addRuleInstance(DrdsCorrelateConvertRule.SMP_INSTANCE);
         builder.addRuleInstance(DrdsOutFileConvertRule.INSTANCE);
         builder.addGroupEnd();
+        // push agg
+        builder.addGroupBegin();
+        builder.addRuleInstance(PhyPushAggRule.INSTANCE);
+        builder.addGroupEnd();
         builder.addGroupBegin();
         builder.addRuleInstance(OptimizeLogicalViewRule.INSTANCE);
         builder.addGroupEnd();
@@ -1905,15 +1934,29 @@ public class Planner {
     /**
      * 针对单表和广播表的direct转发
      */
-    private ExecutionPlan.DirectMode shouldDirectByTable(ToDrdsRelVisitor toDrdsRelVisitor, SqlNode sqlNode,
-                                                         PlannerContext plannerContext, RelNode unoptimizedNode) {
-        if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DIRECT_PLAN)) {
+    protected ExecutionPlan.DirectMode shouldDirectByTable(ToDrdsRelVisitor toDrdsRelVisitor, SqlNode sqlNode,
+                                                           PlannerContext plannerContext, RelNode unoptimizedNode) {
+        if (!plannerContext.getParamManager().getBoolean(ConnectionParams.ENABLE_DIRECT_PLAN) ||
+            plannerContext.isUseColumnar()) {
             return ExecutionPlan.DirectMode.NONE;
         }
+        if (plannerContext.hasLocalIndexHint()) {
+            return ExecutionPlan.DirectMode.NONE;
+        }
+
+        if (hasDNHint(plannerContext)) {
+            return ExecutionPlan.DirectMode.NONE;
+        }
+
         final ExecutionStrategy strategy = ExecutionStrategy.fromHint(plannerContext.getExecutionContext());
         if (ExecutionStrategy.LOGICAL == strategy) {
             return ExecutionPlan.DirectMode.NONE;
         }
+
+        if (toDrdsRelVisitor.isExistForceColumnar()) {
+            return ExecutionPlan.DirectMode.NONE;
+        }
+
         if (toDrdsRelVisitor.existsCannotPushDown()) {
             return ExecutionPlan.DirectMode.NONE;
         }
@@ -1964,7 +2007,7 @@ public class Planner {
             return ExecutionPlan.DirectMode.NONE;
         }
 
-        if (RelUtils.existUnPushableLastInsertId(unoptimizedNode)) {
+        if (RelUtils.existUnPushableLastInsertId(unoptimizedNode, toDrdsRelVisitor)) {
             return ExecutionPlan.DirectMode.NONE;
         }
 
@@ -1986,14 +2029,17 @@ public class Planner {
         boolean supportPushOnDifferDB = plannerContext.getParamManager().getBoolean(
             ConnectionParams.SUPPORT_PUSH_AMONG_DIFFERENT_DB);
 
-        if (plannerContext.getExecutionContext().isAutoCommit() &&
-            supportPushOnDifferDB && toDrdsRelVisitor.isDirectInDifferentDB()
+        if (plannerContext.getExecutionContext().isAutoCommit()
+            && supportPushOnDifferDB
+            && !sqlNode.isA(DML)
+            && toDrdsRelVisitor.isDirectInDifferentDB()
             && toDrdsRelVisitor.getSchemaNames().size() > 1
             && !toDrdsRelVisitor.isContainScaleOutWritableTable()
-            && !toDrdsRelVisitor.isContainReplicateWriableTable() &&
-            sqlNode.getKind() != SqlKind.CREATE_MATERIALIZED_VIEW
+            && !toDrdsRelVisitor.isContainReplicateWriableTable()
+            && sqlNode.getKind() != SqlKind.CREATE_MATERIALIZED_VIEW
             && sqlNode.getKind() != SqlKind.REFRESH_MATERIALIZED_VIEW
             && sqlNode.getKind() != SqlKind.DROP_MATERIALIZED_VIEW) {
+            //dml的单表跨库下推没有判断insert表,忽略
             return ExecutionPlan.DirectMode.MULTI_DB_TABLE_DIRECT;
         }
 
@@ -2110,6 +2156,12 @@ public class Planner {
         }
 
         result = new ExecutionPlan(validatedNode, optimizedNode, cursorMeta);
+        if (Boolean
+            .parseBoolean(plannerContext.getParamManager().getProps().get(ConnectionProperties.PREPARE_OPTIMIZE))) {
+            // only need cursorMeta in prepare mode
+            return result;
+        }
+
         result.setDirectShardingKey(directPlanMode == ExecutionPlan.DirectMode.SHARDING_KEY_DIRECT);
         if (direct) {
             // disable tp slow check in direct mode
@@ -2129,8 +2181,9 @@ public class Planner {
 
         // If this plan can be optimized but not yet optimized, set this flag to true.
         result.setCanOptByForcePrimary(plannerContext.isCanOptByForcePrimary() && !plannerContext.isAddForcePrimary());
-        result.setUseColumnar(plannerContext.isUseColumnar());
+        plannerContext.getExecutionContext().setUseColumnar(plannerContext.isUseColumnar());
 
+        plannerContext.setExecutionContext(plannerContext.getExecutionContext().copy());
         return result;
     }
 
@@ -2316,6 +2369,19 @@ public class Planner {
         CollectorTableVisitor collectorTableVisitor =
             new CollectorTableVisitor(logicalView.getSchemaName(), pc.getExecutionContext());
         List<String> tableName = collectorTableVisitor.getTableNames();
+
+        if (sqlNode.getKind() == SqlKind.DELETE) {
+            /**
+             * non-exist force index delete should not be pushed down
+             */
+            String tableNameForDelete = logicalView.getLogicalTableName();
+            String schemaName = logicalView.getSchemaName();
+            // check force index exist or not
+            final TableMeta tMeta = pc.getExecutionContext().getSchemaManager(schemaName).getTable(tableNameForDelete);
+            RemoveIndexNodeVisitor removeIndexNodeVisitor = new RemoveIndexNodeVisitor(tMeta);
+            sqlNode = sqlNode.accept(removeIndexNodeVisitor);
+        }
+
         sqlNode = sqlNode.accept(collectorTableVisitor);
         List<String> logTableNames = collectorTableVisitor.getTableNames();
         sqlNode = sqlNode.accept(new ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor(logicalView.getSchemaName(),
@@ -2718,9 +2784,8 @@ public class Planner {
         }
 
         PlannerContext plannerContext = PlannerContext.getPlannerContext(executionPlan.getPlan());
-        if (plannerContext.isUseColumnar()) {
-            executionContext.setColumnarMaxShard(plannerContext.getColumnarMaxShardCnt());
-        }
+        executionContext.setUseColumnar(plannerContext.isUseColumnar());
+        executionContext.setColumnarMaxShard(plannerContext.getColumnarMaxShardCnt());
 
         plannerContext.setExecutionContext(executionContext);
         executionContext.setFinalPlan(executionPlan);

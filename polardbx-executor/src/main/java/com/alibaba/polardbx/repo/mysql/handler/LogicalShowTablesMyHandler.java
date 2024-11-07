@@ -18,6 +18,7 @@ package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -41,6 +42,8 @@ import org.apache.calcite.sql.SqlShowTables;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -97,6 +100,8 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
         } else {
             LogicalInfoSchemaContext infoSchemaContext = new LogicalInfoSchemaContext(executionContext);
             infoSchemaContext.setTargetSchema(showNode.getSchemaName());
+            //DBeaver use show full table to fetch view, therefore we need to display view
+            infoSchemaContext.setWithView(true);
             infoSchemaContext.prepareContextAndRepository(repo);
             boolean needCache = executionContext.getParamManager().getBoolean(ConnectionParams.SHOW_TABLES_CACHE);
             if (needCache) {
@@ -128,8 +133,23 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
                         Planner.getInstance().plan(sqlBuilder.toString(), newExecutionContext);
                     viewCursor = ExecutorHelper.execute(executionPlan.getPlan(), newExecutionContext);
                     Row row;
+
+                    Set<String> tableNameOrViewNameSet = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+                    for (int i = 0; i < tables.size(); i++) {
+                        String tblName = (String) tables.get(i)[0];
+                        if (tableNameOrViewNameSet.contains(tblName)) {
+                            continue;
+                        }
+                        tableNameOrViewNameSet.add(tblName);
+                    }
+
+
                     while ((row = viewCursor.next()) != null) {
                         String viewName = row.getString(0);
+                        if (tableNameOrViewNameSet.contains(viewName)) {
+                            continue;
+                        }
+                        tableNameOrViewNameSet.add(viewName);
                         if (full) {
                             tables.add(new Object[] {viewName, "VIEW", "NO"});
                         } else {

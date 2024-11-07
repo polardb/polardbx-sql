@@ -9,11 +9,11 @@
         output partitioning: single [] parallelism: 1 
         hashagg(group="id")
       remotesource(sourcefragmentids=[0, 1], type=recordtype(integer id))
-    
+
     fragment 0 
         output partitioning: fixed [0] parallelism: 1 
         logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id` from `t_shard_id1` as `t_shard_id1`")
-    
+
     fragment 1 
         output partitioning: fixed [0] parallelism: 1 
         logicalview(tables="[0000-0003].t_shard_id2", shardcount=4, sql="select `id` from `t_shard_id2` as `t_shard_id2`")

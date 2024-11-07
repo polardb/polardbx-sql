@@ -176,11 +176,6 @@ public class TddlRuleManager extends AbstractLifecycle {
                 TargetDB target = new TargetDB();
                 target.setDbIndex(group);
                 target.addOneTable(tableNames.iterator().next());
-//                if (ConfigDataMode.isFastMock()) {
-//                    for (String tableName : target.getTableNames()) {
-//                        MockDataManager.phyTableToLogicalTableName.put(tableName, logicTable);
-//                    }
-//                }
                 return target;
             }
         }
@@ -601,6 +596,9 @@ public class TddlRuleManager extends AbstractLifecycle {
         return false;
     }
 
+    // ！！！！ATTENTION PLEASE!!!!
+    // if need to get the partitionInfo of latest version, use this interface,
+    // otherwise PLEASE get it from ExecutionContext, usage: executionContext.getSchemaManager(dbName).getTable(logTbName).getPartitionInfo()
     public PartitionInfoManager getPartitionInfoManager() {
         return partitionInfoManager;
     }

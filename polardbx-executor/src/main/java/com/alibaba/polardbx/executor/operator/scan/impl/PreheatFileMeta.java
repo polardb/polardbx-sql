@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.scan.impl;
 
-import org.apache.arrow.util.Preconditions;
+import com.google.common.base.Preconditions;
 import org.apache.hadoop.fs.Path;
 import org.apache.orc.OrcProto;
 import org.apache.orc.impl.OrcIndex;

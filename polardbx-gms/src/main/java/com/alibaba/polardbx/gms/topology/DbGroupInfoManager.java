@@ -59,12 +59,15 @@ public class DbGroupInfoManager extends AbstractLifecycle {
 
     @Override
     protected void doInit() {
+        if (!ConfigDataMode.isPolarDbX()) {
+            return;
+        }
         for (DbInfoRecord dbInfo : DbInfoManager.getInstance().getDbInfoList()) {
             reloadGroupsOfDb(dbInfo.dbName);
         }
     }
 
-    private void reloadGroupsOfDb(String schema) {
+    public void reloadGroupsOfDb(String schema) {
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
             dbGroupInfoAccessor.setConnection(conn);
@@ -126,7 +129,10 @@ public class DbGroupInfoManager extends AbstractLifecycle {
             dbName = dbName.toLowerCase();
             cache.remove(dbName);
         }
+    }
 
+    public void mockDbGroupInfo(String schema, Map<String, DbGroupInfoRecord> groupInfoRecordMap) {
+        cache.put(schema, groupInfoRecordMap);
     }
 
     public void onDbTopologyListener(String dataId) {

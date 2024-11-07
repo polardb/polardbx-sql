@@ -79,7 +79,7 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
         ManagedChannel channel = NettyChannelBuilder
             .forTarget(CdcTargetUtil.getDumperMasterTarget())
             .usePlaintext()
-            .flowControlWindow(1048576 * 500)
+            .flowControlWindow(1048576 * 5)
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
             .build();
         return CdcServiceGrpc.newStub(channel);
@@ -93,6 +93,7 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
             .forTarget(CdcTargetUtil.getDumperTarget(streamName))
             .usePlaintext()
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
+            .flowControlWindow(1048576 * 5)
             .build();
         return CdcServiceGrpc.newStub(channel);
     }

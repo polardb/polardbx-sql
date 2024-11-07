@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.type.TransactionType;
-import com.alibaba.polardbx.net.AbstractConnection;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.stats.CurrentTransactionStatistics;
 import com.alibaba.polardbx.stats.TransactionStatistics;
@@ -188,4 +187,8 @@ public interface ITransaction {
     long getIdleROTimeout();
 
     long getIdleRWTimeout();
+
+    default void clearFlashbackArea() {
+
+    }
 }

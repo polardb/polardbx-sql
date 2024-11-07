@@ -22,12 +22,14 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableTruncatePartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupTruncatePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
@@ -48,9 +50,12 @@ public class LogicalAlterTableTruncatePartitionHandler extends LogicalCommonDdlH
 
         logicalAlterTableTruncatePartition.prepareData();
 
+        AlterTableGroupTruncatePartitionPreparedData preparedData =
+            logicalAlterTableTruncatePartition.getPreparedData();
+        preparedData.setDdlVersionId(DdlUtils.generateVersionId(executionContext));
+
         return new AlterTableTruncatePartitionJobFactory(logicalAlterTableTruncatePartition.relDdl,
-            logicalAlterTableTruncatePartition.getPreparedData(),
-            executionContext).create();
+            preparedData, executionContext, preparedData.getDdlVersionId()).create();
     }
 
     @Override
@@ -74,7 +79,7 @@ public class LogicalAlterTableTruncatePartitionHandler extends LogicalCommonDdlH
                 "can't execute the truncate partition command in a non-auto mode database");
         }
 
-        TableValidator.validateTruncatePartition(schemaName, logicalTableName, sqlAlterTable);
+        TableValidator.validateTruncatePartition(schemaName, logicalTableName, sqlAlterTable, executionContext);
 
         TableValidator.validateTableNotReferenceFk(schemaName, logicalTableName, executionContext);
 

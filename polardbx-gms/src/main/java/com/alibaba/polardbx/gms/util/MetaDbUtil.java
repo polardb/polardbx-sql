@@ -21,11 +21,14 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigWithIndexNameRecord;
 import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.rpc.pool.XConnection;
 
@@ -468,6 +471,35 @@ public class MetaDbUtil {
         } catch (Exception e) {
             MetaDbLogUtil.META_DB_LOG.error("releaseLock error", e);
             return false;
+        }
+    }
+
+
+    /**
+     * Generate columnar config for all columnar indexes of a single logical table.
+     */
+    public static void generateColumnarConfig(String schemaName, String tableName,
+                                              Map<String, Map<String, String>> records,
+                                              Map<String, String> globalConfig) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            generateColumnarConfig(connection, schemaName, tableName, records, globalConfig);
+        } catch (Throwable t) {
+            MetaDbLogUtil.META_DB_LOG.error("Get columnar config error.", t);
+        }
+    }
+
+    public static void generateColumnarConfig(Connection connection, String schemaName, String tableName,
+                                              Map<String, Map<String, String>> records,
+                                              Map<String, String> globalConfig) {
+        ColumnarConfigAccessor accessor = new ColumnarConfigAccessor();
+        accessor.setConnection(connection);
+        for (ColumnarConfigWithIndexNameRecord record : accessor.query(schemaName, tableName)) {
+            if (0 == record.tableId) {
+                globalConfig.put(record.configKey.toUpperCase(), record.configValue);
+                continue;
+            }
+            records.computeIfAbsent(record.indexName, k -> new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER))
+                .put(record.configKey.toUpperCase(), record.configValue);
         }
     }
 }

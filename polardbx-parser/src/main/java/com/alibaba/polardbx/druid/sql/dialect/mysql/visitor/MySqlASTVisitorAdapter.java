@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.visitor;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntervalExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsArchivePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsInspectIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
@@ -66,6 +67,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeDDLJ
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeRuleVersionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarPartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarSnapshot;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckGlobalIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclTriggersStatement;
@@ -100,7 +102,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRecoverDDL
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRemoveDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsResumeRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRollbackDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDdlEngineStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsTerminateRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowChangeSet;
@@ -461,6 +466,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     }
 
     @Override
+    public boolean visit(DrdsShowDdlEngineStatus x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsShowDdlEngineStatus x) {
+
+    }
+
+    @Override
     public boolean visit(DrdsShowDDLJobs x) {
         return true;
     }
@@ -574,6 +589,17 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
     public boolean visit(DrdsTerminateRebalanceJob x) {
         return true;
     }
+
+    @Override
+    public void endVisit(DrdsResumeRebalanceJob x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsResumeRebalanceJob x) {
+        return true;
+    }
+
 
     @Override
     public void endVisit(DrdsSkipRebalanceSubjob x) {
@@ -757,6 +783,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public void endVisit(DrdsCheckColumnarIndex x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCheckColumnarSnapshot x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsCheckColumnarSnapshot x) {
 
     }
 
@@ -2797,6 +2833,16 @@ public class MySqlASTVisitorAdapter extends SQLASTVisitorAdapter implements MySq
 
     @Override
     public void endVisit(DrdsMovePartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsArchivePartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsArchivePartition x) {
 
     }
 

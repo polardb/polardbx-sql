@@ -24,15 +24,14 @@ import com.alibaba.polardbx.common.scheduler.FiredScheduledJobState;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
-import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.FIRED_SCHEDULED_JOBS;
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SCHEDULED_JOBS;
@@ -88,7 +87,7 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             "LEFT OUTER JOIN " + SCHEDULED_JOBS + " S " +
             "ON F.`schedule_id`=S.`schedule_id` " +
             "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
-            "AND F.`state` IN ('QUEUED') ";
+            "AND F.`state` IN ('QUEUED') ORDER BY fire_time ASC";
 
     private static final String GET_RUNNING_SCHEDULED_JOBS =
         "SELECT " +
@@ -117,6 +116,64 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             "ON F.`schedule_id`=S.`schedule_id` " +
             "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
             "AND F.`state` IN ('RUNNING') ";
+
+    private static final String GET_QUEUED_TTL_SCHEDULED_JOBS =
+        "SELECT " +
+            "S.`schedule_id`, " +
+            "S.`table_schema`, " +
+            "S.`table_name`, " +
+            "S.`table_group_name` as table_group_name, " +
+            "S.`schedule_name`, " +
+            "S.`schedule_comment`, " +
+            "S.`executor_type`, " +
+            "S.`schedule_context`, " +
+            "S.`executor_contents`, " +
+            "S.`status`, " +
+            "S.`schedule_type`, " +
+            "S.`schedule_expr`, " +
+            "S.`time_zone`, " +
+            "S.`schedule_policy`, " +
+            "F.`fire_time`, " +
+            "F.`start_time`, " +
+            "F.`finish_time`, " +
+            "F.`state`, " +
+            "F.`remark`, " +
+            "F.`result` " +
+            "FROM " + FIRED_SCHEDULED_JOBS + " F " +
+            "LEFT OUTER JOIN " + SCHEDULED_JOBS + " S " +
+            "ON F.`schedule_id`=S.`schedule_id` " +
+            "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
+            "AND S.executor_type='TTL_JOB' " +
+            "AND F.`state` IN ('QUEUED') ORDER BY fire_time ASC LIMIT 1000";
+
+    private static final String GET_RUNNING_TTL_SCHEDULED_JOBS =
+        "SELECT " +
+            "S.`schedule_id`, " +
+            "S.`table_schema`, " +
+            "S.`table_name`, " +
+            "S.`table_group_name` as table_group_name, " +
+            "S.`schedule_name`, " +
+            "S.`schedule_comment`, " +
+            "S.`executor_type`, " +
+            "S.`schedule_context`, " +
+            "S.`executor_contents`, " +
+            "S.`status`, " +
+            "S.`schedule_type`, " +
+            "S.`schedule_expr`, " +
+            "S.`time_zone`, " +
+            "S.`schedule_policy`, " +
+            "F.`fire_time`, " +
+            "F.`start_time`, " +
+            "F.`finish_time`, " +
+            "F.`state`, " +
+            "F.`remark`, " +
+            "F.`result` " +
+            "FROM " + FIRED_SCHEDULED_JOBS + " F " +
+            "LEFT OUTER JOIN " + SCHEDULED_JOBS + " S " +
+            "ON F.`schedule_id`=S.`schedule_id` " +
+            "WHERE F.`fire_time` <= UNIX_TIMESTAMP() " +
+            "AND S.executor_type='TTL_JOB' " +
+            "AND F.`state` IN ('RUNNING') ORDER BY fire_time ASC LIMIT 1000";
 
     private static final String QUERY_BY_SCHEDULED_ID =
         "SELECT " +
@@ -151,6 +208,22 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
     public List<ExecutableScheduledJob> getQueuedJobs() {
         try {
             return MetaDbUtil.query(GET_TABLE_FIRED_SCHEDULED_JOBS, ExecutableScheduledJob.class, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + FIRED_SCHEDULED_JOBS, "query", e);
+        }
+    }
+
+    public List<ExecutableScheduledJob> getQueuedTtlJobs() {
+        try {
+            return MetaDbUtil.query(GET_QUEUED_TTL_SCHEDULED_JOBS, ExecutableScheduledJob.class, connection);
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query " + FIRED_SCHEDULED_JOBS, "query", e);
+        }
+    }
+
+    public List<ExecutableScheduledJob> getRunningTtlJobs() {
+        try {
+            return MetaDbUtil.query(GET_RUNNING_TTL_SCHEDULED_JOBS, ExecutableScheduledJob.class, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to query " + FIRED_SCHEDULED_JOBS, "query", e);
         }
@@ -227,6 +300,23 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             "WHERE `state` = ? " +
             "AND `schedule_id` = ? " +
             "AND `fire_time` = ? ";
+
+    private static final String QUERY_LATEST_REMARK_BY_ID = "SELECT `remark` FROM " + FIRED_SCHEDULED_JOBS
+        + " WHERE `schedule_id` = ? AND `remark` is not null order by `fire_time` DESC LIMIT 1";
+
+    public String queryLatestRemarkById(long scheduleId) {
+        try (PreparedStatement statement = connection.prepareStatement(QUERY_LATEST_REMARK_BY_ID)) {
+            statement.setLong(1, scheduleId);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        } catch (Exception e) {
+            throw logAndThrow("Failed to query from " + FIRED_SCHEDULED_JOBS, "query from", e);
+        }
+        return null;
+    }
 
     public boolean updateState(long schedulerId,
                                long fireTime,
@@ -335,6 +425,9 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
 
     private static final String DELETE_BY_SCHEDULE_ID = "delete from " + FIRED_SCHEDULED_JOBS + WHERE_SCHEDULE_ID;
 
+    private static final String DELETE_QUEUED_JOBS_BY_SCHEDULE_ID =
+        "delete from " + FIRED_SCHEDULED_JOBS + " where `schedule_id` = ? and `state`='QUEUED'";
+
     public int deleteById(long scheduleId) {
         try {
             final Map<Integer, ParameterContext> params =
@@ -342,6 +435,18 @@ public class FiredScheduledJobsAccessor extends AbstractAccessor {
             return MetaDbUtil.delete(DELETE_BY_SCHEDULE_ID, params, connection);
         } catch (Exception e) {
             throw logAndThrow("Failed to delete from " + FIRED_SCHEDULED_JOBS + " for schedule_id: " + scheduleId,
+                "delete from", e);
+        }
+    }
+
+    public int deleteQueuedJobsById(long scheduleId) {
+        try {
+            final Map<Integer, ParameterContext> params =
+                MetaDbUtil.buildParameters(ParameterMethod.setLong, new Object[] {scheduleId});
+            return MetaDbUtil.delete(DELETE_QUEUED_JOBS_BY_SCHEDULE_ID, params, connection);
+        } catch (Exception e) {
+            throw logAndThrow(
+                "Failed to delete queued-state jobs from " + FIRED_SCHEDULED_JOBS + " for schedule_id: " + scheduleId,
                 "delete from", e);
         }
     }

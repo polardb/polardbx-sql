@@ -55,6 +55,10 @@ public class EquiJoinMockData {
         ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType);
     private static final List<DataType> LONG_LONG_INT_LONG_TYPES =
         ImmutableList.of(DataTypes.LongType, DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType);
+    private static final List<DataType> LONG_LONG_LONG_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.LongType, DataTypes.LongType);
+    private static final List<DataType> LONG_LONG_LONG_LONG_TYPES =
+        ImmutableList.of(DataTypes.LongType, DataTypes.LongType, DataTypes.LongType, DataTypes.LongType);
     private static final List<DataType> ANTI_INT_NOT_EQ_INT_INNER_TYPES =
         ImmutableList.of(DataTypes.LongType, DataTypes.IntegerType, DataTypes.LongType, DataTypes.IntegerType);
     private static final List<DataType> ANTI_INT_NOT_EQ_INT_OUTER_TYPES =
@@ -194,6 +198,34 @@ public class EquiJoinMockData {
         ImmutableList.of(0),
         ImmutableList.of(0));
 
+    public static EquiJoinMockData SEMI_LONG_NOT_EQ_LONG_CASE = new EquiJoinMockData(
+        LONG_LONG_LONG_LONG_TYPES,
+        new RowChunksBuilder(LONG_LONG_LONG_LONG_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(1L, 2L, 3L, 4L),
+                LongBlock.of(3L, 4L, 5L, 6L),
+                LongBlock.of(3L, 4L, 5L, 6L),
+                LongBlock.of(-1L, -2L, -3L, -4L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                LongBlock.of(7L, 8L, 9L, 10L),
+                LongBlock.of(6L, 7L, 8L, 9L),
+                LongBlock.of(-1L, -2L, -3L, -4L)))
+            .build(),
+        LONG_LONG_LONG_TYPES,
+        new RowChunksBuilder(LONG_LONG_LONG_TYPES)
+            .addChunk(new Chunk(
+                LongBlock.of(0L, 1L, 3L, 3L),
+                LongBlock.of(3L, 4L, 5L, 7L),
+                LongBlock.of(11L, 12L, 13L, 14L)))
+            .addChunk(new Chunk(
+                LongBlock.of(4L, 5L, 6L, 7L),
+                LongBlock.of(5L, 7L, 8L, 10L),
+                LongBlock.of(15L, 16L, 17L, 18L)))
+            .build(),
+        ImmutableList.of(0),
+        ImmutableList.of(0));
+
     public static EquiJoinMockData SEMI_INT_NOT_EQ_INT_CASE = new EquiJoinMockData(
         LONG_INT_INT_TYPES,
         new RowChunksBuilder(LONG_INT_INT_TYPES)
@@ -298,9 +330,9 @@ public class EquiJoinMockData {
         ImmutableList.of(0),
         ImmutableList.of(1));
 
-    private static List<DataType> SIMPLE_CASE_INNER_TYPES =
+    private static final List<DataType> SIMPLE_CASE_INNER_TYPES =
         ImmutableList.of(DataTypes.IntegerType, DataTypes.StringType);
-    private static List<DataType> SIMPLE_CASE_OUTER_TYPES =
+    private static final List<DataType> SIMPLE_CASE_OUTER_TYPES =
         ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
 
     public static EquiJoinMockData SIMPLE_CASE = new EquiJoinMockData(
@@ -327,9 +359,9 @@ public class EquiJoinMockData {
         ImmutableList.of(0),
         ImmutableList.of(1));
 
-    private static List<DataType> SINGLE_JOIN_CASE_INNER_TYPES =
+    private static final List<DataType> SINGLE_JOIN_CASE_INNER_TYPES =
         ImmutableList.of(DataTypes.StringType, DataTypes.IntegerType);
-    private static List<DataType> SINGLE_JOIN_CASE_OUTER_TYPES =
+    private static final List<DataType> SINGLE_JOIN_CASE_OUTER_TYPES =
         ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType);
 
     public static EquiJoinMockData SINGLE_JOIN_CASE = new EquiJoinMockData(
@@ -356,9 +388,9 @@ public class EquiJoinMockData {
         ImmutableList.of(1),
         ImmutableList.of(1));
 
-    private static List<DataType> MULTI_KEY_CASE_INNER_TYPES =
+    private static final List<DataType> MULTI_KEY_CASE_INNER_TYPES =
         ImmutableList.of(DataTypes.IntegerType, DataTypes.StringType, DataTypes.StringType);
-    private static List<DataType> MULTI_KEY_CASE_OUTER_TYPES =
+    private static final List<DataType> MULTI_KEY_CASE_OUTER_TYPES =
         ImmutableList.of(DataTypes.IntegerType, DataTypes.IntegerType, DataTypes.StringType);
 
     public static EquiJoinMockData MULTI_KEY_CASE = new EquiJoinMockData(
@@ -401,7 +433,7 @@ public class EquiJoinMockData {
     final List<Chunk> outerChunks;
     final List<Integer> innerKeyIndexes;
     final List<Integer> outerKeyIndexes;
-    boolean keyIsNullSafe[];
+    boolean[] keyIsNullSafe;
 
     public EquiJoinMockData(List<DataType> innerTypes, List<Chunk> innerChunks,
                             List<DataType> outerTypes, List<Chunk> outerChunks,

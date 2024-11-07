@@ -68,6 +68,8 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
                     .renameTableMeta(metaDbConnection, schemaName, tableName, newTableName, executionContext, false,
                         false);
             }
+            TableMetaChanger.renameTtlTableForTtlInfo(metaDbConnection, schemaName, tableName, schemaName,
+                newTableName);
             CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, tableName, newTableName);
         }
     }
@@ -90,6 +92,8 @@ public class RenameTablesUpdateMetaTask extends BaseGmsTask {
                 TableMetaChanger
                     .renameTableMeta(metaDbConnection, schemaName, tableName, newTableName, true, executionContext);
             }
+            TableMetaChanger.renameTtlTableForTtlInfo(metaDbConnection, schemaName, tableName, schemaName,
+                newTableName);
             CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, tableName, newTableName);
         }
     }

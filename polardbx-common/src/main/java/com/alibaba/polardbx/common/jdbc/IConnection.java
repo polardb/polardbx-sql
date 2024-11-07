@@ -19,6 +19,7 @@ package com.alibaba.polardbx.common.jdbc;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
@@ -113,4 +114,22 @@ public interface IConnection extends Connection {
     void discard(Throwable t);
 
     void kill() throws SQLException;
+
+    default IConnection enableFlashbackArea(boolean enable) throws SQLException {
+        if (enable) {
+            this.executeLater("SET query_via_flashback_area = 1");
+        }
+        return this;
+    }
+
+    default void disableFlashbackArea() throws SQLException {
+        try (Statement stmt = createStatement()) {
+            stmt.execute("SET query_via_flashback_area = 0");
+        } catch (Throwable t) {
+            // For safety, discard connection.
+            discard(t);
+            throw t;
+        }
+    }
+
 }

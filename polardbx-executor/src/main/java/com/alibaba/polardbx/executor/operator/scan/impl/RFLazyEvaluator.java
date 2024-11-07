@@ -99,7 +99,8 @@ public class RFLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
         }
 
         final int totalPartitionCount = manager.getTotalPartitionCount();
-        int selectedCount = chunk.getPositionCount();
+        final int initialSelectedCount = chunk.getPositionCount() - (int) cardinality;
+        int selectedCount = initialSelectedCount;
         for (int i = 0; i < itemSize; i++) {
             FragmentRFItem item = items[i];
             int filterChannel = item.getSourceFilterChannel();
@@ -143,7 +144,7 @@ public class RFLazyEvaluator implements LazyEvaluator<Chunk, BitSet> {
         }
 
         // statistics for filtered rows by runtime filter.
-        operatorStatistics.addRuntimeFilteredCount(chunk.getPositionCount() - selectedCount);
+        operatorStatistics.addRuntimeFilteredCount(initialSelectedCount - selectedCount);
 
         return selectedCount;
     }

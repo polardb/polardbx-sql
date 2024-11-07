@@ -69,7 +69,6 @@ public class MysqlDateTime implements Serializable {
     @Override
     public MysqlDateTime clone() {
         MysqlDateTime t = new MysqlDateTime();
-        t.sqlType = this.sqlType;
         t.year = this.year;
         t.month = this.month;
         t.day = this.day;

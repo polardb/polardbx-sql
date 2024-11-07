@@ -99,8 +99,7 @@ public class AutoPartitionCreateWithGSI extends BaseAutoPartitionNewPartition {
             + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4", showCreateTable(tddlConnection, TABLE_NAME));
         Assert.assertEquals("CREATE TABLE `i_auto_with_gsi_$` (\n"
                 + "\t`seller_id` varchar(20) DEFAULT NULL,\n"
-                + "\tUNIQUE KEY `auto_shard_key_seller_id` USING BTREE (`seller_id`),\n"
-                + "\tKEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)\n"
+                + "\tUNIQUE KEY `auto_shard_key_seller_id` USING BTREE (`seller_id`)\n"
                 + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
                 + "PARTITION BY KEY(`seller_id`)\n"
                 + "PARTITIONS 3",

@@ -9,16 +9,10 @@ partitions 8;
 explain select dt from hash_to_weeks where dt = '2021-12-25';
 Logical ExecutionPlan
 PhyTableOperation(tables="hash_to_weeks[p8]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` = ?)", params="2021-12-25")
-HitCache:false
-Source:PLAN_CACHE
-TemplateId: 10895681
 ## two-week
 explain select dt from hash_to_weeks where dt = '2021-12-26';
 Logical ExecutionPlan
 PhyTableOperation(tables="hash_to_weeks[p4]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` = ?)", params="2021-12-26")
-HitCache:true
-Source:PLAN_CACHE
-TemplateId: 10895681
 explain select dt from hash_to_weeks where dt = '2021-12-27';
 Logical ExecutionPlan
 PhyTableOperation(tables="hash_to_weeks[p4]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` = ?)", params="2021-12-27")
@@ -32,9 +26,6 @@ PhyTableOperation(tables="hash_to_weeks[p4]", sql="SELECT `hash_to_weeks`.`dt` A
 explain select dt from hash_to_weeks where dt = '2022-01-02';
 Logical ExecutionPlan
 PhyTableOperation(tables="hash_to_weeks[p7]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` = ?)", params="2022-01-02")
-HitCache:true
-Source:PLAN_CACHE
-TemplateId: 10895681
 explain select dt from hash_to_weeks where dt = '2022-01-03';
 Logical ExecutionPlan
 PhyTableOperation(tables="hash_to_weeks[p7]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` = ?)", params="2022-01-03")
@@ -43,7 +34,8 @@ Logical ExecutionPlan
 PhyTableOperation(tables="hash_to_weeks[p7]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` = ?)", params="2022-01-08")
 explain select dt from hash_to_weeks where dt between '2022-01-02' and '2022-01-08';
 Logical ExecutionPlan
-PhyTableOperation(tables="hash_to_weeks[p7]", sql="SELECT `hash_to_weeks`.`dt` AS `dt` FROM ? AS `hash_to_weeks` WHERE (`hash_to_weeks`.`dt` BETWEEN ? AND ?)", params="2022-01-08,2022-01-02")
+Gather(concurrent=true)
+  LogicalView(tables="hash_to_weeks[p7]", sql="SELECT `dt` FROM `hash_to_weeks` AS `hash_to_weeks` WHERE (`dt` BETWEEN ? AND ?)")
 explain select dt from hash_to_weeks where dt between '2022-01-01' and '2022-01-08';
 Logical ExecutionPlan
 Gather(concurrent=true)

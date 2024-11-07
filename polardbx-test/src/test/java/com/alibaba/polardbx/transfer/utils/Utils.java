@@ -39,7 +39,7 @@ public class Utils {
     // '${user_name}:${password}@tcp(${ip}:${port})/${db_name}'
     private static final String PATTERN = "(.*):(.*)@tcp\\((.*):(\\d+)\\)/(.*)";
 
-    public static Connection getConnection(String dsn) throws SQLException {
+    public static Connection getConnection(String dsn, String props) throws SQLException {
         Pattern regex = Pattern.compile(PATTERN);
         Matcher matcher = regex.matcher(dsn);
         if (matcher.find()) {
@@ -49,6 +49,9 @@ public class Utils {
             String port = matcher.group(4);
             String dbname = matcher.group(5);
             String url = "jdbc:mysql://" + host + ":" + port + "/" + dbname;
+            if (null != props) {
+                url += "?" + props;
+            }
             return DriverManager.getConnection(url, username, password);
         }
         throw new RuntimeException("Invalid dsn format, " +
@@ -69,6 +72,7 @@ public class Utils {
 
     private static void prepareTransferTest(Toml config) throws SQLException {
         String dsn = config.getString("dsn");
+        String props = config.getString("conn_properties");
         int rowCount = Math.toIntExact(config.getLong("row_count"));
         long initBalance = config.getLong("initial_balance");
         assert dsn != null;
@@ -76,7 +80,7 @@ public class Utils {
         assert initBalance > 0;
 
         String suffix = config.getString("create_table_suffix", "");
-        try (Connection conn = getConnection(dsn);
+        try (Connection conn = getConnection(dsn, props);
             Statement stmt = conn.createStatement()) {
             // create table
             String createSql = "CREATE TABLE IF NOT EXISTS accounts ("
@@ -124,16 +128,14 @@ public class Utils {
 
     private static void prepareAllTypesTest(Toml config) throws Exception {
         String dsn = config.getString("dsn");
+        String props = config.getString("conn_properties");
         int rowCount = Math.toIntExact(config.getLong("row_count"));
         long threads = config.getLong("threads", 1L);
-        boolean bigColumn = config.getBoolean("big_column", false);
         final List<String> allColumns = new ArrayList<>(AllTypesTestUtils.getColumns());
-        if (bigColumn) {
-            allColumns.addAll(AllTypesTestUtils.getBigColumns());
-        }
+        allColumns.addAll(AllTypesTestUtils.getBigColumns());
 
         String suffix = config.getString("create_table_suffix", "");
-        try (Connection conn = getConnection(dsn);
+        try (Connection conn = getConnection(dsn, props);
             Statement stmt = conn.createStatement()) {
             // Create table.
             String createSql = AllTypesTestUtils.FULL_TYPE_TABLE_TEMPLATE + suffix;
@@ -150,12 +152,12 @@ public class Utils {
         Callable<Boolean> batchInsert = () -> {
             long rows = Thread.currentThread().getId() == threadId ? rowsLastThread : rowsEachThread;
             String sql = null;
-            try (Connection conn = getConnection(dsn);
+            try (Connection conn = getConnection(dsn, props);
                 Statement stmt = conn.createStatement()) {
                 stmt.execute("set sql_mode=''");
                 while (rows > 0) {
                     int currentBatch = (int) Math.min(batch, rows);
-                    sql = AllTypesTestUtils.buildInsertSql(currentBatch, allColumns);
+                    sql = AllTypesTestUtils.buildInsertSql(currentBatch, allColumns, false);
                     stmt.execute(sql);
                     rows -= currentBatch;
                 }
@@ -316,12 +318,13 @@ public class Utils {
         return accounts;
     }
 
-    public static void findIncorrectColumns(Toml config) throws Exception {
-        String dsn = config.getString("dsn");
-        try (Connection conn = getConnection(dsn);
+    public static void findIncorrectColumns() throws Exception {
+        String dsn = "";
+        String props = "";
+        try (Connection conn = getConnection(dsn, props);
             Statement stmt = conn.createStatement()) {
             Collection<String> columns = AllTypesTestUtils.getColumns();
-            String sql = "select check_sum_v2(%s) from full_type";
+            String sql = "select check_sum_v2(%s) from full_types";
             String hint =
                 "/*+TDDL:WORKLOAD_TYPE=AP ENABLE_MPP=true ENABLE_MASTER_MPP=true ENABLE_COLUMNAR_OPTIMIZER=true OPTIMIZER_TYPE='columnar' ENABLE_HTAP=true */";
             for (String column : columns) {
@@ -341,5 +344,9 @@ public class Utils {
                 }
             }
         }
+    }
+
+    public static void main(String[] args) throws Exception {
+        findIncorrectColumns();
     }
 }

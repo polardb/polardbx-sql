@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.accumulator;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
@@ -36,7 +37,8 @@ public abstract class AccumulatorBuilders {
             }
         } else if (aggregator.getSqlKind() == SqlKind.SUM) {
             if (clazz == Decimal.class) {
-                return new DecimalSumAccumulator(capacity, aggValueType);
+                boolean useFastDecimal = context.getParamManager().getBoolean(ConnectionParams.ENABLE_DECIMAL_FAST_VEC);
+                return new DecimalSumAccumulator(capacity, aggValueType, useFastDecimal);
             } else if (clazz == Long.class) {
                 return new LongSumAccumulator(capacity);
             } else if (clazz == Double.class) {

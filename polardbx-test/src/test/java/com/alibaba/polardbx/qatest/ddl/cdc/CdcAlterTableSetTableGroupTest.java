@@ -144,6 +144,14 @@ public class CdcAlterTableSetTableGroupTest extends CdcBaseTest {
                 + "  PARTITION p33 VALUES LESS THAN(200)\n"
                 + ")");
 
+        stmt.executeUpdate(
+            "CREATE TABLE tb9(a int) PARTITION BY RANGE(a)\n"
+                + " (\n"
+                + "  PARTITION p11 VALUES LESS THAN(20),\n"
+                + "  PARTITION p22 VALUES LESS THAN(100),\n"
+                + "  PARTITION p33 VALUES LESS THAN(200)\n"
+                + ")");
+
         // 创建表组
         executeAndCheck(schemaName, stmt, "create tablegroup mytg1", "mytg1", false, null, null);
 
@@ -342,6 +350,9 @@ public class CdcAlterTableSetTableGroupTest extends CdcBaseTest {
                     item.listAfter1.get(1).getVisibility());
             }
         );
+
+        executeAndCheck(schemaName, stmt, "alter table tb9 set tablegroup = ''", "tb9", false,
+            "ALTER_TABLE_SET_TABLEGROUP", null, true);
     }
 
     private void testAlterTableSetTableGroup_ForBroadcast(String schemaName) {
@@ -871,7 +882,13 @@ public class CdcAlterTableSetTableGroupTest extends CdcBaseTest {
 
     private void executeAndCheck(String schemaName, Statement stmt, String sql, String tableName, boolean hasTopology,
                                  String sqlKind,
-                                 Consumer<Item> consumer)
+                                 Consumer<Item> consumer) throws SQLException {
+        executeAndCheck(schemaName, stmt, sql, tableName, hasTopology, sqlKind, consumer, false);
+    }
+
+    private void executeAndCheck(String schemaName, Statement stmt, String sql, String tableName, boolean hasTopology,
+                                 String sqlKind,
+                                 Consumer<Item> consumer, boolean skipCheckSqlText)
         throws SQLException {
         int countBefore1 = getDdlRecordInfoList(schemaName, tableName).size();
         int countBefore2 = getDdlRecordInfoList(schemaName, null).size();
@@ -892,7 +909,11 @@ public class CdcAlterTableSetTableGroupTest extends CdcBaseTest {
         } else {
             Assert.assertEquals(countBefore1 + 1, listAfter1.size());
             Assert.assertEquals(countBefore2 + 1, listAfter2.size());
-            Assert.assertEquals(sql, listAfter1.get(0).getDdlSql());
+            if (!skipCheckSqlText) {
+                Assert.assertEquals(sql, listAfter1.get(0).getDdlSql());
+            } else {
+                Assert.assertTrue(listAfter1.get(0).getDdlSql().toLowerCase().indexOf("implicit") != -1);
+            }
             if (StringUtils.isNotBlank(sqlKind)) {
                 Assert.assertEquals(sqlKind, listAfter1.get(0).getSqlKind());
             }

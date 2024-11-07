@@ -85,12 +85,12 @@ a,b
 begin;
 explain select * from tbl_with_gsi1 partition(p2) where a=21;
 Logical ExecutionPlan
-LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_with_gsi1[p3]", sql="SELECT `tbl_with_gsi1`.`a`, `tbl_with_gsi1`.`b`, `tbl_with_gsi1`.`c`, `tbl_with_gsi1`.`d` FROM ? AS `tbl_with_gsi1` WHERE (`tbl_with_gsi1`.`a` = ?)", params="21")
 select * from tbl_with_gsi1 partition(p2) where a=21;
 a,b,c,d
 explain select * from tbl_with_gsi1 partition(p2) where a=11;
 Logical ExecutionPlan
-LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_with_gsi1[p2]", sql="SELECT `tbl_with_gsi1`.`a`, `tbl_with_gsi1`.`b`, `tbl_with_gsi1`.`c`, `tbl_with_gsi1`.`d` FROM ? AS `tbl_with_gsi1` WHERE (`tbl_with_gsi1`.`a` = ?)", params="11")
 select * from tbl_with_gsi1 partition(p2) where a=11;
 a,b,c,d
 rollback;
@@ -98,7 +98,8 @@ rollback;
 begin;
 explain select * from tbl_with_gsi1 partition(p2) t1 inner join tbl_with_gsi2 partition(p2) t2 on t1.a=t2.a where t1.a=11;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_with_gsi1[p2],tbl_with_gsi2[p2]", sql="SELECT `t1`.`a`, `t1`.`b`, `t1`.`c`, `t1`.`d`, `t2`.`a`, `t2`.`b`, `t2`.`c`, `t2`.`d` FROM ? AS `t1` INNER JOIN ? AS `t2` ON (`t1`.`a` = `t2`.`a`) WHERE (`t1`.`a` = ?)", params="11")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_with_gsi1[p2],tbl_with_gsi2[p2]", sql="SELECT `tbl_with_gsi1`.`a`, `tbl_with_gsi1`.`b`, `tbl_with_gsi1`.`c`, `tbl_with_gsi1`.`d`, `tbl_with_gsi2`.`a` AS `a0`, `tbl_with_gsi2`.`b` AS `b0`, `tbl_with_gsi2`.`c` AS `c0`, `tbl_with_gsi2`.`d` AS `d0` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` INNER JOIN `tbl_with_gsi2` AS `tbl_with_gsi2` ON ((`tbl_with_gsi2`.`a` = ?) AND (`tbl_with_gsi1`.`a` = `tbl_with_gsi2`.`a`) AND (`tbl_with_gsi1`.`a` = ?))")
 select * from tbl_with_gsi1 partition(p2) t1 inner join tbl_with_gsi2 partition(p2) t2 on t1.a=t2.a where t1.a=11;
 a,b,c,d,a,b,c,d
 explain select * from tbl_with_gsi1 partition(p4,p2,p3) t1 inner join tbl_with_gsi2 partition(p2,p3,p3) t2 on t1.a=t2.a where t1.a=11;
@@ -133,10 +134,8 @@ a,b,c,d
 explain select * from tbl_with_gsi1 partition(p2) where exists (select a from tbl_with_gsi2 partition(p2));
 Logical ExecutionPlan
 SemiNLJoin(condition="true", type="semi")
-  Gather(concurrent=true)
-    LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1`")
-  Gather(concurrent=true)
-    LogicalView(tables="tbl_with_gsi2[p2]", sql="SELECT `a` FROM `tbl_with_gsi2` AS `tbl_with_gsi2`")
+  LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1`")
+  LogicalView(tables="tbl_with_gsi2[p2]", sql="SELECT `a` FROM `tbl_with_gsi2` AS `tbl_with_gsi2`")
 select * from tbl_with_gsi1 partition(p2) where exists (select a from tbl_with_gsi2 partition(p2));
 a,b,c,d
 rollback;
@@ -147,18 +146,16 @@ Logical ExecutionPlan
 Project(a="a", b="b", c="c", d="d")
   Filter(condition="APPLY_BOOLEAN")
     CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
-      Gather(concurrent=true)
-        LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1`")
+      LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1`")
       TopN(sort="$f0 ASC", offset=0, fetch=?0)
         Project($f0="a")
           Filter(condition="$cor0.b = b")
-            Gather(concurrent=true)
-              LogicalView(tables="tbl_with_gsi2[p2]", sql="SELECT `a`, `b` FROM `tbl_with_gsi2` AS `tbl_with_gsi2`")
+            LogicalView(tables="tbl_with_gsi2[p2]", sql="SELECT `a`, `b` FROM `tbl_with_gsi2` AS `tbl_with_gsi2`")
 HitCache:false
 Source:PLAN_CACHE
 cache node:
-Gather.DRDS.[].single(input=LogicalView#distribution=single)
-Gather.DRDS.[].single(input=LogicalView#distribution=single)
+LogicalView.DRDS.[].any.[](table=[test_select_part_439576952, tbl_with_gsi1],tableNames=[tbl_with_gsi1],pushDownOpt=com.alibaba.polardbx.optimizer.core.rel.PushDownOpt@3983ad9,schemaName=test_select_part_439576952,partitions=[p2],flashback=null)
+LogicalView.DRDS.[].any.[](table=[test_select_part_439576952, tbl_with_gsi2],tableNames=[tbl_with_gsi2],pushDownOpt=com.alibaba.polardbx.optimizer.core.rel.PushDownOpt@4dc9b00b,schemaName=test_select_part_439576952,partitions=[p2],flashback=null)
 select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
 a,b,c,d
 explain select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2,p4) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
@@ -166,8 +163,7 @@ Logical ExecutionPlan
 Project(a="a", b="b", c="c", d="d")
   Filter(condition="APPLY_BOOLEAN")
     CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=EQUALS, type=SEMI)
-      Gather(concurrent=true)
-        LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1`")
+      LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d` FROM `tbl_with_gsi1` AS `tbl_with_gsi1`")
       TopN(sort="$f0 ASC", offset=0, fetch=?0)
         Project($f0="a")
           Filter(condition="$cor0.b = b")
@@ -176,8 +172,8 @@ Project(a="a", b="b", c="c", d="d")
 HitCache:false
 Source:PLAN_CACHE
 cache node:
-Gather.DRDS.[].single(input=LogicalView#distribution=single)
-Gather.DRDS.[].single(input=LogicalView#distribution=single)
+LogicalView.DRDS.[].any.[](table=[test_select_part_439576952, tbl_with_gsi1],tableNames=[tbl_with_gsi1],pushDownOpt=com.alibaba.polardbx.optimizer.core.rel.PushDownOpt@6d2f4d0c,schemaName=test_select_part_439576952,partitions=[p2],flashback=null)
+Gather.DRDS.[].single.[](input=LogicalView#distribution=single)
 select * from tbl_with_gsi1 partition(p2) where a in (select a from tbl_with_gsi2 partition(p2,p4) where tbl_with_gsi1.b=tbl_with_gsi2.b order by a limit 5);
 a,b,c,d
 rollback;
@@ -204,16 +200,14 @@ a,b,c,d
 explain update tbl_with_gsi1 partition(p2) set d=999;
 Logical ExecutionPlan
 LogicalRelocate(TYPE=UPDATE, SET="tbl_with_gsi1.d=?0", RELOCATE="idxd_$", UPDATE="tbl_with_gsi1")
-  Gather(concurrent=true)
-    LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_`, ? FROM `tbl_with_gsi1` AS `tbl_with_gsi1` FOR UPDATE")
+  LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_`, ? FROM `tbl_with_gsi1` AS `tbl_with_gsi1` FOR UPDATE")
 update tbl_with_gsi1 partition(p2) set d=999;
 select * from tbl_with_gsi1 order by a;
 a,b,c,d
 explain update tbl_with_gsi1 partition(p2) set b=100, d=999;
 Logical ExecutionPlan
 LogicalRelocate(TYPE=UPDATE, SET="tbl_with_gsi1.b=?0, tbl_with_gsi1.d=?1", RELOCATE="idxb_$, idxd_$", UPDATE="tbl_with_gsi1")
-  Gather(concurrent=true)
-    LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_`, ?, ? AS `GEN$1` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` FOR UPDATE")
+  LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_`, ?, ? AS `GEN$1` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` FOR UPDATE")
 select * from tbl_with_gsi1 order by a;
 a,b,c,d
 rollback;
@@ -304,12 +298,11 @@ a,b,c,d
 explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3) set tbl_with_gsi1.d=9999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
 Logical ExecutionPlan
 LogicalRelocate(TYPE=UPDATE, SET="tbl_with_gsi1.d=?0, tbl_with_gsi2.d=?1", RELOCATE="idxd_$, idxd_$", UPDATE="tbl_with_gsi1, tbl_with_gsi2")
-  Project(a="a", b="b", c="c", d="d", _drds_implicit_id_="_drds_implicit_id_", a0="a0", b0="b0", c0="c0", d0="d0", _drds_implicit_id_0="_drds_implicit_id_0", GEN$0="?0", GEN$1="?1")
+  Project(a="a0", b="b0", c="c0", d="d0", _drds_implicit_id_="_drds_implicit_id_0", a0="a", b0="b", c0="c", d0="d", _drds_implicit_id_0="_drds_implicit_id_", GEN$0="?0", GEN$1="?1")
     BKAJoin(condition="a = a", type="inner")
       Gather(concurrent=true)
-        LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` FOR UPDATE")
-      Gather(concurrent=true)
-        LogicalView(tables="tbl_with_gsi2[p2,p3]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi2` AS `tbl_with_gsi2` WHERE (`a` IN (...)) FOR UPDATE")
+        LogicalView(tables="tbl_with_gsi2[p2,p3]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi2` AS `tbl_with_gsi2` FOR UPDATE")
+      LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` WHERE (`a` IN (...)) FOR UPDATE")
 update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3) set tbl_with_gsi1.d=999, tbl_with_gsi2.d=999 where tbl_with_gsi1.a=tbl_with_gsi2.a;
 select * from tbl_with_gsi1 order by a;
 a,b,c,d
@@ -339,15 +332,14 @@ a,b,c,d
 explain update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3),tbl_with_gsi3 partition(p3,p3,p4,p2) set tbl_with_gsi1.d=9999, tbl_with_gsi2.d=9999,tbl_with_gsi3.d=9999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi2.a=tbl_with_gsi3.a;
 Logical ExecutionPlan
 LogicalRelocate(TYPE=UPDATE, SET="tbl_with_gsi1.d=?0, tbl_with_gsi2.d=?1, tbl_with_gsi3.d=?2", RELOCATE="idxd_$, idxd_$, idxd_$", UPDATE="tbl_with_gsi1, tbl_with_gsi2, tbl_with_gsi3")
-  Project(a="a", b="b", c="c", d="d", _drds_implicit_id_="_drds_implicit_id_", a0="a0", b0="b0", c0="c0", d0="d0", _drds_implicit_id_0="_drds_implicit_id_0", a1="a1", b1="b1", c1="c1", d1="d1", _drds_implicit_id_1="_drds_implicit_id_1", GEN$0="?0", GEN$1="?1", GEN$2="?2")
+  Project(a="a1", b="b1", c="c1", d="d1", _drds_implicit_id_="_drds_implicit_id_1", a0="a", b0="b", c0="c", d0="d", _drds_implicit_id_0="_drds_implicit_id_", a1="a0", b1="b0", c1="c0", d1="d0", _drds_implicit_id_1="_drds_implicit_id_0", GEN$0="?0", GEN$1="?1", GEN$2="?2")
     BKAJoin(condition="a0 = a AND a = a", type="inner")
       BKAJoin(condition="a = a", type="inner")
         Gather(concurrent=true)
-          LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` FOR UPDATE")
+          LogicalView(tables="tbl_with_gsi2[p2,p3]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi2` AS `tbl_with_gsi2` FOR UPDATE")
         Gather(concurrent=true)
-          LogicalView(tables="tbl_with_gsi2[p2,p3]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi2` AS `tbl_with_gsi2` WHERE (`a` IN (...)) FOR UPDATE")
-      Gather(concurrent=true)
-        LogicalView(tables="tbl_with_gsi3[p2,p3,p4]", shardCount=3, sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi3` AS `tbl_with_gsi3` WHERE (`a` IN (...)) FOR UPDATE")
+          LogicalView(tables="tbl_with_gsi3[p2,p3,p4]", shardCount=3, sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi3` AS `tbl_with_gsi3` WHERE (`a` IN (...)) FOR UPDATE")
+      LogicalView(tables="tbl_with_gsi1[p2]", sql="SELECT `a`, `b`, `c`, `d`, `_drds_implicit_id_` FROM `tbl_with_gsi1` AS `tbl_with_gsi1` WHERE (`a` IN (...)) FOR UPDATE")
 update tbl_with_gsi1 partition(p2),tbl_with_gsi2 partition(p2,p3),tbl_with_gsi3 partition(p3,p3,p4,p2) set tbl_with_gsi1.d=9999, tbl_with_gsi2.d=9999,tbl_with_gsi3.d=9999 where tbl_with_gsi1.a=tbl_with_gsi2.a and tbl_with_gsi2.a=tbl_with_gsi3.a;
 select * from tbl_with_gsi1 order by a;
 a,b,c,d

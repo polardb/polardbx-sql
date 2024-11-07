@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.gsi.fastchecker;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
@@ -56,9 +55,7 @@ public class GsiFastChecker extends FastChecker {
             planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
     }
 
-    public static FastChecker create(String schemaName, String tableName, String indexName,
-                                     Map<String, String> srcColumnMap, Map<String, String> tarColumnMap,
-                                     ExecutionContext ec) {
+    public static FastChecker create(String schemaName, String tableName, String indexName, ExecutionContext ec) {
         // Build select plan
         final SchemaManager sm = ec.getSchemaManager(schemaName);
         final TableMeta indexTableMeta = sm.getTable(indexName);
@@ -71,29 +68,17 @@ public class GsiFastChecker extends FastChecker {
         }
         final TableMeta baseTableMeta = sm.getTable(tableName);
 
-        if (null == baseTableMeta || !baseTableMeta.withGsi() || !indexTableMeta.isGsi()
-            || !baseTableMeta.getGsiTableMetaBean().indexMap.containsKey(indexName)) {
+        if (null == baseTableMeta) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER, "Incorrect GSI relationship.");
         }
 
-        // for rebuild table
-        final List<String> indexColumns = new ArrayList<>();
-        final List<String> baseTableColumns = new ArrayList<>();
-        for (ColumnMeta columnMeta : indexTableMeta.getAllColumns()) {
-            if (columnMeta.getMappingName() != null) {
-                if (!columnMeta.getMappingName().isEmpty()) {
-                    baseTableColumns.add(columnMeta.getMappingName());
-                    indexColumns.add(columnMeta.getName());
-                }
-            } else {
-                baseTableColumns.add(columnMeta.getName());
-                indexColumns.add(columnMeta.getName());
-            }
-        }
+        final List<String> indexColumns =
+            indexTableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
+        final List<String> baseTableColumns = new ArrayList<>(indexColumns);
 
         // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!
-        final List<String> baseTablePks = FastChecker.getorderedPrimaryKeys(baseTableMeta);
-        final List<String> indexTablePks = FastChecker.getorderedPrimaryKeys(indexTableMeta);
+        final List<String> baseTablePks = FastChecker.getOrderedPrimaryKeys(baseTableMeta);
+        final List<String> indexTablePks = FastChecker.getOrderedPrimaryKeys(indexTableMeta);
 
         final Map<String, Set<String>> srcPhyDbAndTables = GsiUtils.getPhyTables(schemaName, tableName);
         final Map<String, Set<String>> dstPhyDbAndTables = GsiUtils.getPhyTables(schemaName, indexName);
@@ -102,14 +87,10 @@ public class GsiFastChecker extends FastChecker {
 
         return new GsiFastChecker(schemaName, tableName, indexName, srcPhyDbAndTables, dstPhyDbAndTables,
             baseTableColumns, indexColumns, baseTablePks, indexTablePks,
-            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, srcColumnMap, baseTablePks,
-                false, false),
-            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, srcColumnMap, baseTablePks,
-                false, true),
-            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, srcColumnMap, baseTablePks,
-                true, false),
-            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, srcColumnMap, baseTablePks,
-                true, true),
+            builder.buildSelectHashCheckForChecker(baseTableMeta, baseTableColumns, baseTablePks, false, false),
+            builder.buildSelectHashCheckForChecker(baseTableMeta, baseTableColumns, baseTablePks, false, true),
+            builder.buildSelectHashCheckForChecker(baseTableMeta, baseTableColumns, baseTablePks, true, false),
+            builder.buildSelectHashCheckForChecker(baseTableMeta, baseTableColumns, baseTablePks, true, true),
 
             builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns, indexTablePks, false, false),
             builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns, indexTablePks, false, true),

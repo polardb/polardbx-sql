@@ -458,7 +458,7 @@ public class GroupByTestBase extends BaseExecTest {
                         Decimal result = sum.divide(Decimal.fromLong(count));
                         Decimal round = new Decimal();
                         FastDecimalUtils.round(result.getDecimalStructure(), round.getDecimalStructure(),
-                            DecimalTypeBase.DEFAULT_DIV_PRECISION_INCREMENT, DecimalRoundMod.HALF_UP);
+                            DecimalTypeBase.getDefaultDivPrecisionIncrement(), DecimalRoundMod.HALF_UP);
 
                         ((List) aggResult[1]).set(finalAggIndex, round);
                     });

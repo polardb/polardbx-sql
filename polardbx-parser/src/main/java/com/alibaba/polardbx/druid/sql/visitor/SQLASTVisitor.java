@@ -103,15 +103,20 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLSizeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLSmallIntExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLSomeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveDefinitionExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveJobExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTinyIntExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableCleanupExpiredData;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsArchivePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
@@ -373,9 +378,11 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterStoragePoolStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableRemoveTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelComponentStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityPolicyStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableModifyTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateStoragePoolStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelComponentStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelStatement;
@@ -931,6 +938,10 @@ public interface SQLASTVisitor {
 
     boolean visit(SQLUnionQueryTableSource x);
 
+    void endVisit(SQLTimeToLiveDefinitionExpr x);
+
+    boolean visit(SQLTimeToLiveDefinitionExpr x);
+
     void endVisit(SQLTimestampExpr x);
 
     boolean visit(SQLTimestampExpr x);
@@ -946,6 +957,14 @@ public interface SQLASTVisitor {
     void endVisit(SQLFloatExpr x);
 
     boolean visit(SQLFloatExpr x);
+
+    boolean visit(SQLTimeToLiveExpr x);
+
+    void endVisit(SQLTimeToLiveExpr x);
+
+    boolean visit(SQLTimeToLiveJobExpr x);
+
+    void endVisit(SQLTimeToLiveJobExpr x);
 
     void endVisit(SQLRevokeStatement x);
 
@@ -1842,6 +1861,10 @@ public interface SQLASTVisitor {
 
     boolean visit(DrdsMovePartition x);
 
+    void endVisit(DrdsArchivePartition x);
+
+    boolean visit(DrdsArchivePartition x);
+
     void endVisit(DrdsExtractHotKey x);
 
     boolean visit(DrdsExtractHotKey x);
@@ -1857,6 +1880,14 @@ public interface SQLASTVisitor {
     void endVisit(SQLAlterTableModifySubPartitionValues x);
 
     boolean visit(SQLAlterTableModifySubPartitionValues x);
+
+    void endVisit(DrdsAlterTableModifyTtlOptions x);
+
+    boolean visit(DrdsAlterTableModifyTtlOptions x);
+
+    void endVisit(DrdsAlterTableRemoveTtlOptions x);
+
+    boolean visit(DrdsAlterTableRemoveTtlOptions x);
 
     void endVisit(DrdsRenamePartition x);
 
@@ -1889,6 +1920,10 @@ public interface SQLASTVisitor {
     void endVisit(DrdsAlterTableExpireLocalPartition x);
 
     boolean visit(DrdsAlterTableExpireLocalPartition x);
+
+    void endVisit(DrdsAlterTableCleanupExpiredData x);
+
+    boolean visit(DrdsAlterTableCleanupExpiredData x);
 
     void endVisit(DrdsRefreshTopology x);
 

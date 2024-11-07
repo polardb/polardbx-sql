@@ -22,6 +22,7 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -333,7 +334,10 @@ public class DirectedAcyclicGraph {
     public synchronized String visualize() {
         StringBuilder dag = new StringBuilder();
         dag.append("digraph G {\n");
-        for (Vertex v : vertexes) {
+        List<Vertex> vertexList =
+            vertexes.stream().sorted(Comparator.comparing(vertex -> vertex.getObject().getRankHint()))
+                .collect(Collectors.toList());
+        for (Vertex v : vertexList) {
             dag.append(v.object.nodeInfo() + "\n");
         }
         for (Edge e : edges) {

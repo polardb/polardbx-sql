@@ -94,3 +94,10 @@ tt:
   `c2` int(11) DEFAULT NULL,
   KEY `auto_shard_key_c1` USING BTREE (`c1`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c1`);
+
+tt_broadcast:
+  CREATE TABLE `tt_broadcast` (
+  `c1` int(11) DEFAULT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  broadcast;

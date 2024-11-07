@@ -88,7 +88,7 @@ public class PartitionUtils {
                                          ExecutionContext ec) {
         TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
         if (DbInfoManager.getInstance().isNewPartitionDb(schemaName) && tableMeta.isGsi() && !tableMeta.isClustered()
-            && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
+            && !tableMeta.isHasPrimaryKey() && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
             final MySqlCreateTableStatement tableStatement =
                 (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(primaryTableDefinition,
                         JdbcConstants.MYSQL)

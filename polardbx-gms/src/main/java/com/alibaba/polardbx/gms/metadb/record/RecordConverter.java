@@ -16,16 +16,18 @@
 
 package com.alibaba.polardbx.gms.metadb.record;
 
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
-import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexesInfoSchemaRecord;
+import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +81,12 @@ public class RecordConverter {
             record.characterOctetLength = infoSchemaRecord.characterOctetLength;
             record.numericPrecision = infoSchemaRecord.numericPrecision;
             record.numericScale = infoSchemaRecord.numericScale;
+            if (infoSchemaRecord.numericScaleNull && (infoSchemaRecord.dataType.equalsIgnoreCase("float")
+                || infoSchemaRecord.dataType.equalsIgnoreCase("double"))) {
+                // 对于 ColumnMeta 中的 float 和 double 数据，存储其精度数据，scale 来自 information_schema columns 中
+                // 没有指定精度时，存储为 DECIMAL_NOT_SPECIFIED(31)，作为 magic number
+                record.numericScale = XResultUtil.DECIMAL_NOT_SPECIFIED;
+            }
             record.datetimePrecision = infoSchemaRecord.datetimePrecision;
             record.characterSetName = infoSchemaRecord.characterSetName;
             record.collationName = infoSchemaRecord.collationName;
@@ -112,6 +120,10 @@ public class RecordConverter {
             record.indexName = infoSchemaRecord.indexName;
             record.seqInIndex = infoSchemaRecord.seqInIndex;
             record.columnName = infoSchemaRecord.columnName;
+            if (InstanceVersion.isMYSQL80() && infoSchemaRecord.columnName == null) {
+                //mysql 80 函数索引列名为null，这里mock一下
+                record.columnName = "null";
+            }
             record.collation = infoSchemaRecord.collation;
             record.cardinality = infoSchemaRecord.cardinality;
             record.subPart = infoSchemaRecord.subPart;

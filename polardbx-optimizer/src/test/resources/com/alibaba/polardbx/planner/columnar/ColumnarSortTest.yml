@@ -1,0 +1,113 @@
+SQL:
+  - sql: |
+      select * from t_order order by order_id limit 10;
+    plan: |
+      topn(sort="order_id asc", offset=0, fetch=?0)
+        exchange(distribution=single, collation=[1 asc-nulls-first])
+          topn(sort="order_id asc", fetch=+(?0, 0))
+            osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_TOPN=false)*/select * from t_order order by order_id limit 10;
+    plan: |
+      limit(offset=0, fetch=?0)
+        exchange(distribution=single, collation=[1 asc-nulls-first])
+          memsort(sort="order_id asc")
+            osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_TOPN=false ENABLE_PARTIAL_LIMIT=false)*/select * from t_order order by order_id limit 10;
+    plan: |
+      limit(offset=0, fetch=?0)
+        exchange(distribution=single, collation=[1 asc-nulls-first])
+          memsort(sort="order_id asc")
+            osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_PARTIAL_LIMIT=false)*/select * from t_order limit 10;
+    plan: |
+      limit(offset=0, fetch=?0)
+        exchange(distribution=single, collation=[])
+          osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+     /*+TDDL:cmd_extra(ENABLE_TOPN=false ENABLE_LIMIT=false)*/select * from t_order limit 10;
+    plan: |
+      columnar sql could not be implemented
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_LIMIT=false)*/select * from t_order limit 10;
+    plan: |
+      columnar sql could not be implemented
+  - sql: |
+      select * from (select * from t_order order by order_id) limit 10;
+    plan: |
+      limit(offset=0, fetch=?0)
+        exchange(distribution=single, collation=[])
+          limit(fetch=+(?0, 0))
+            osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      select * from (select * from t_order order by order_id)  order by id limit 10;
+    plan: |
+      topn(sort="id asc", offset=0, fetch=?0)
+        exchange(distribution=single, collation=[0 asc-nulls-first])
+          topn(sort="id asc", fetch=+(?0, 0))
+            osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      select * from (select * from t_order order by order_id limit 20 )  order by id limit 10;
+    plan: |
+      limit(offset=0, fetch=?1)
+        memsort(sort="id asc")
+          topn(sort="order_id asc", offset=0, fetch=?0)
+            exchange(distribution=single, collation=[1 asc-nulls-first])
+              topn(sort="order_id asc", fetch=+(?0, 0))
+                osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      select * from (select * from t_order limit 20 )  order by id limit 10;
+    plan: |
+      limit(offset=0, fetch=?1)
+        memsort(sort="id asc")
+          limit(offset=0, fetch=?0)
+            exchange(distribution=single, collation=[])
+              limit(fetch=+(?0, 0))
+                osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      select * from (select * from t_order order by order_id limit 20 ) limit 10;
+    plan: |
+      limit(offset=0, fetch=?1)
+        topn(sort="order_id asc", offset=0, fetch=?0)
+          exchange(distribution=single, collation=[1 asc-nulls-first])
+            topn(sort="order_id asc", fetch=+(?0, 0))
+              osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+  - sql: |
+      select * from (select * from t_order order by order_id limit 20 ) order by id;
+    plan: |
+      memsort(sort="id asc")
+        topn(sort="order_id asc", offset=0, fetch=?0)
+          exchange(distribution=single, collation=[1 asc-nulls-first])
+            topn(sort="order_id asc", fetch=+(?0, 0))
+              osstablescan(tables="cc_i_seller[p1,p2,p3,...p16]", shardcount=16, sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot`, `order_detail` from `cc_i_seller` as `cc_i_seller`")
+DDL:
+  t_order:
+    CREATE TABLE `t_order` (
+    `id` bigint(11) NOT NULL AUTO_INCREMENT,
+    `order_id` varchar(20) DEFAULT NULL,
+    `buyer_id` varchar(20) DEFAULT NULL,
+    `seller_id` varchar(20) DEFAULT NULL,
+    `order_snapshot` longtext,
+    `order_detail` longtext,
+    PRIMARY KEY (`id`),
+    KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+    GLOBAL INDEX `g_i_buyer`(`buyer_id`) COVERING (`id`, `order_id`, `seller_id`, `order_snapshot`) PARTITION BY HASH(`buyer_id`) PARTITIONS 3,
+    UNIQUE GLOBAL KEY `g_i_seller` (`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`) PARTITION BY HASH(`seller_id`) PARTITIONS 3，
+    CLUSTERED COLUMNAR INDEX `cc_i_seller` ON t_order (`seller_id`) partition by hash(`order_id`) partitions 16
+    ) ENGINE = InnoDB AUTO_INCREMENT = 2300006 DEFAULT CHARSET = latin1 partition by hash(`order_id`) PARTITIONS 3
+STATISTICS:
+  t_order:
+    100000000
+CONFIG:
+  WORKLOAD_TYPE:
+    ap
+  ENABLE_COLUMNAR_OPTIMIZER:
+    true
+  ENABLE_MPP:
+    true
+  defaltxxAPPName.isNew:
+    true
+
+

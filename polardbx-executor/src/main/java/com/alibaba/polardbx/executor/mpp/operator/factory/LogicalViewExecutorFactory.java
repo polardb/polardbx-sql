@@ -32,21 +32,26 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
+import com.alibaba.polardbx.executor.mpp.operator.RangeScanMode;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItem;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFItemKey;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFManager;
 import com.alibaba.polardbx.executor.mpp.planner.PipelineFragment;
 import com.alibaba.polardbx.executor.operator.AbstractOSSTableScanExec;
-import com.alibaba.polardbx.executor.operator.ColumnarDeletedScanExec;
+import com.alibaba.polardbx.executor.operator.AdaptiveRangeScanClient;
 import com.alibaba.polardbx.executor.operator.ColumnarScanExec;
+import com.alibaba.polardbx.executor.operator.ColumnarSpecifiedScanExec;
 import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanExec;
 import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanSortExec;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.LookupTableScanExec;
 import com.alibaba.polardbx.executor.operator.MergeSortTableScanClient;
 import com.alibaba.polardbx.executor.operator.MergeSortWithBufferTableScanClient;
+import com.alibaba.polardbx.executor.operator.NormalRangeScanClient;
+import com.alibaba.polardbx.executor.operator.RangeScanSortExec;
 import com.alibaba.polardbx.executor.operator.ResumeTableScanExec;
 import com.alibaba.polardbx.executor.operator.ResumeTableScanSortExec;
+import com.alibaba.polardbx.executor.operator.SerializeRangeScanClient;
 import com.alibaba.polardbx.executor.operator.TableScanClient;
 import com.alibaba.polardbx.executor.operator.TableScanExec;
 import com.alibaba.polardbx.executor.operator.TableScanSortExec;
@@ -114,11 +119,13 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
     private List<DataType> dataTypeList;
     private boolean randomSplits;
 
+    private RangeScanMode rangeScanMode;
+
     public LogicalViewExecutorFactory(
         PipelineFragment fragment, LogicalView logicalView,
         int totalPrefetch, int parallelism, long maxRowCount, boolean bSort, Sort sort,
         long fetch, long skip, SpillerFactory spillerFactory, Map<Integer, BloomFilterExpression> bloomFilters,
-        boolean enableRuntimeFilter, boolean randomSplits) {
+        boolean enableRuntimeFilter, boolean randomSplits, RangeScanMode rangeScanMode) {
         this.fragment = fragment;
         this.logicalView = logicalView;
         this.totalPrefetch = totalPrefetch;
@@ -131,6 +138,7 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
         this.skip = skip;
         this.spillerFactory = spillerFactory;
         this.randomSplits = randomSplits;
+        this.rangeScanMode = rangeScanMode;
 
         if (logicalView.getJoin() != null) {
             Join join = logicalView.getJoin();
@@ -180,13 +188,31 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
             boolean useTransactionConnection = ExecUtils.useExplicitTransaction(context);
 
             if (bSort) {
-                long limit = context.getParamManager().getLong(ConnectionParams.MERGE_SORT_BUFFER_SIZE);
-                if (limit > 0 && logicalView.pushedRelNodeIsSort()) {
-                    this.scanClient = new MergeSortWithBufferTableScanClient(
-                        context, meta, useTransactionConnection, totalPrefetch);
+                if (rangeScanMode != null) {
+                    if (rangeScanMode == RangeScanMode.SERIALIZE) {
+                        if (totalPrefetch != 1) {
+                            MPP_LOGGER.warn(String.format(
+                                "prefetch under serialize mode should be 1, but was %s, and trace id is %s",
+                                totalPrefetch, context.getTraceId()));
+                        }
+                        this.scanClient = new SerializeRangeScanClient(context, meta, useTransactionConnection);
+                    } else if (rangeScanMode == RangeScanMode.NORMAL) {
+                        this.scanClient =
+                            new NormalRangeScanClient(context, meta, useTransactionConnection, totalPrefetch,
+                                RangeScanMode.NORMAL);
+                    } else {
+                        this.scanClient =
+                            new AdaptiveRangeScanClient(context, meta, useTransactionConnection, totalPrefetch);
+                    }
                 } else {
-                    this.scanClient = new MergeSortTableScanClient(
-                        context, meta, useTransactionConnection, totalPrefetch);
+                    long limit = context.getParamManager().getLong(ConnectionParams.MERGE_SORT_BUFFER_SIZE);
+                    if (limit > 0 && logicalView.pushedRelNodeIsSort()) {
+                        this.scanClient = new MergeSortWithBufferTableScanClient(
+                            context, meta, useTransactionConnection, totalPrefetch);
+                    } else {
+                        this.scanClient = new MergeSortTableScanClient(
+                            context, meta, useTransactionConnection, totalPrefetch);
+                    }
                 }
             } else if (useTransactionConnection || enablePassiveResume || enableDrivingResume) {
                 int prefetch = calculatePrefetchNum(counter.incrementAndGet(), parallelism);
@@ -228,10 +254,14 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
     private Executor buildOSSTableScanExec(ExecutionContext context) {
         OSSTableScan ossTableScan = (OSSTableScan) logicalView;
 
-        if (context.isEnableOrcDeletedScan()) {
+        if (context.isEnableOrcDeletedScan()
+            || context.isCciIncrementalCheck()
+            || context.isReadCsvOnly()
+            || context.isReadOrcOnly()
+            || context.isReadSpecifiedColumnarFiles()) {
             // Special path for check cci consistency.
             // Normal oss read should not get here.
-            Executor exec = new ColumnarDeletedScanExec(ossTableScan, context, dataTypeList);
+            Executor exec = new ColumnarSpecifiedScanExec(ossTableScan, context, dataTypeList);
             registerRuntimeStat(exec, logicalView, context);
             return exec;
         }
@@ -351,9 +381,15 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
             }
         } else {
             if (bSort) {
-                return new TableScanSortExec(
-                    logicalView, context, scanClient.incrementSourceExec(), maxRowCount, skip, fetch,
-                    spillerFactory, dataTypeList);
+                if (rangeScanMode != null) {
+                    return new RangeScanSortExec(
+                        logicalView, context, scanClient.incrementSourceExec(), maxRowCount, skip, fetch,
+                        spillerFactory, dataTypeList);
+                } else {
+                    return new TableScanSortExec(
+                        logicalView, context, scanClient.incrementSourceExec(), maxRowCount, skip, fetch,
+                        spillerFactory, dataTypeList);
+                }
             } else {
                 return new TableScanExec(logicalView, context, scanClient.incrementSourceExec(),
                     maxRowCount,

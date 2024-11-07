@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.polardbx.common.MergedStorageInfo;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
@@ -41,16 +42,17 @@ public class StoragePropertiesSyncAction implements ISyncAction {
 
         Optional.ofNullable(ExecutorContext.getContext("polardbx")).ifPresent(context -> {
             final StorageInfoManager manager = context.getStorageInfoManager();
+            final MergedStorageInfo mergedStorageInfo = manager.getMergedStorageInfo();
 
             // Get all boolean member variable of StorageInfoManager.
-            Class<?> clazz = manager.getClass();
+            Class<?> clazz = mergedStorageInfo.getClass();
             Field[] fields = clazz.getDeclaredFields();
             for (Field field : fields) {
                 if (field.getType().equals(boolean.class)) {
                     field.setAccessible(true);
                     boolean value = false;
                     try {
-                        value = field.getBoolean(manager);
+                        value = field.getBoolean(mergedStorageInfo);
                     } catch (IllegalAccessException e) {
                         // Ignore this value.
                         continue;

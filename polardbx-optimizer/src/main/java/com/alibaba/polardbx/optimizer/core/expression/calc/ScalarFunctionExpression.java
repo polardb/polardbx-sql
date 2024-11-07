@@ -18,11 +18,13 @@ package com.alibaba.polardbx.optimizer.core.expression.calc;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.core.function.calc.IScalarFunction;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -49,7 +51,10 @@ public class ScalarFunctionExpression extends AbstractExpression {
             for (int i = 0; i < args.size(); i++) {
                 actualArgs[i] = args.get(i).eval(row, ec);
             }
-            return function.compute(actualArgs, ec);
+//            function.setArgs(Arrays.asList(actualArgs));
+            Object result = function.compute(actualArgs, ec);
+            DataType returnType = function.getReturnType();
+            return returnType.convertFrom(result);
         } else {
             GeneralUtil.nestedException("invoke function of null");
         }

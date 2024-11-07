@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -30,6 +31,7 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.collect.Maps;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -97,6 +99,10 @@ public class ServerInfoAccessor extends AbstractAccessor {
     private static final String SELECT_HTAP_LEADRNER_INSTS =
         "select distinct inst_id from " + SERVER_INFO_TABLE + " where status!=2 and inst_type="
             + ServerInfoRecord.INST_TYPE_HTAP_SLAVE;
+
+    private static final String SELECT_COLUMNAR_INSTS =
+        "select distinct inst_id from " + SERVER_INFO_TABLE + " where status!=2 and inst_type="
+            + ServerInfoRecord.INST_TYPE_COLUMNAR_SLAVE;
 
     private static final String DELETE_REMOVED_RO_SERVER_INFOS =
         "delete from `" + SERVER_INFO_TABLE + "` where status=2 and inst_type!=0 and inst_id = ?";
@@ -189,6 +195,29 @@ public class ServerInfoAccessor extends AbstractAccessor {
             throw GeneralUtil.nestedException(ex);
         }
         return allHtapInstIdList;
+    }
+
+    public synchronized Set<String> loadColumnarInstIdAndUpdate(Connection connection) {
+        Set<String> allColumnarInstIds = new HashSet<>();
+        try {
+            Set<String> allColumnarInstIdList = new HashSet<>();
+            try (PreparedStatement ps = connection.prepareStatement(SELECT_COLUMNAR_INSTS)) {
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String instId = rs.getString(1);
+                        allColumnarInstIdList.add(instId);
+                    }
+                }
+            } catch (Throwable ex) {
+                MetaDbLogUtil.META_DB_LOG.error(ex);
+                throw GeneralUtil.nestedException(ex);
+            }
+            return allColumnarInstIdList;
+        } finally {
+            if (allColumnarInstIds.size() == 0) {
+                DynamicConfig.getInstance().existColumnarNodes(false);
+            }
+        }
     }
 
     public List<String> getAllRemovedColumnarReadOnlyInstIdList() {

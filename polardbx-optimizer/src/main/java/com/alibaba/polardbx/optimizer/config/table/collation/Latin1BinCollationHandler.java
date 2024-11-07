@@ -18,13 +18,39 @@ package com.alibaba.polardbx.optimizer.config.table.collation;
 
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
+import io.airlift.slice.JvmUtils;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceInput;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+
+import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 
+import static sun.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET;
+
 public class Latin1BinCollationHandler extends AbstractCollationHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(Latin1BinCollationHandler.class);
+    private static boolean useNativeMethod = true;
+    private static MethodHandle latin1IndexOfHandle = null;
+
+    static {
+        try {
+            Class<?> clazz = Class.forName("java.lang.StringLatin1");
+            MethodHandles.Lookup lookup = JvmUtils.trustedLookup(String.class);
+            MethodType methodType = MethodType.methodType(int.class, byte[].class, int.class, byte[].class,
+                int.class, int.class);
+            latin1IndexOfHandle = lookup.findStatic(clazz, "indexOf", methodType);
+        } catch (Throwable t) {
+            logger.error(t.getMessage(), t);
+        }
+    }
+
     public Latin1BinCollationHandler(CharsetHandler charsetHandler) {
         super(charsetHandler);
     }
@@ -153,32 +179,107 @@ public class Latin1BinCollationHandler extends AbstractCollationHandler {
         return doWildCompare(slice, 0, wildCard, 0) == 0;
     }
 
-    @Override
-    public boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
+    public boolean contains(Slice slice, byte[] wildCard) {
         if (wildCard == null || wildCard.length == 0) {
             // like '%%' always match
             return true;
         }
-        int length = slice.length();
-        int i = 0;
-        int j = 0;
 
-        while (i < length) {
-            if (wildCard[j] == slice.getByteUnchecked(i)) {
-                i++;
-                j++;
-            }
-            if (j == wildCard.length) {
-                return true;
-            } else if (i < length && wildCard[j] != slice.getByteUnchecked(i)) {
-                if (j != 0) {
-                    j = lps[j - 1];
-                } else {
-                    i++;
+        if (latin1IndexOfHandle != null && useNativeMethod) {
+            Object base = slice.getBase();
+            if (base instanceof byte[]) {
+                try {
+                    int offset = (int) (slice.getAddress() - ARRAY_BYTE_BASE_OFFSET);
+                    // should follow the rules inside the intrinsic method
+                    int result = (int) latin1IndexOfHandle.invokeExact((byte[]) base, slice.length() + offset,
+                        wildCard, wildCard.length, offset);
+                    return result >= 0;
+                } catch (Throwable t) {
+                    // unexpected exception occurs in invocation
+                    // set useNativeMethod to false to avoid repeated errors
+                    logger.error(t.getMessage(), t);
+                    useNativeMethod = false;
                 }
             }
         }
+
+        byte first = wildCard[0];
+        int max = slice.length() - wildCard.length;
+        for (int i = 0; i <= max; i++) {
+            if (slice.getByteUnchecked(i) != first) {
+                while (++i <= max && slice.getByteUnchecked(i) != first) {
+                    // move on until first byte matches
+                }
+            }
+            if (i <= max) {
+                int j = i + 1;
+                int end = j + wildCard.length - 1;
+                for (int k = 1; j < end && slice.getByteUnchecked(j) == wildCard[k]; j++, k++) {
+                    // stop when not matching
+                }
+                if (j == end) {
+                    return true;
+                }
+            }
+        }
+
         return false;
+    }
+
+    public boolean startsWith(Slice slice, byte[] wildCard) {
+        int len = slice.length();
+        if (len < wildCard.length) {
+            return false;
+        }
+        if (wildCard.length == 0) {
+            return true;
+        }
+        Object base = slice.getBase();
+        if (base instanceof byte[]) {
+            byte[] bytes = (byte[]) base;
+            int offset = (int) (slice.getAddress() - ARRAY_BYTE_BASE_OFFSET);
+            for (int i = 0; i < wildCard.length; i++) {
+                // be careful with this unchecked behavior
+                if (bytes[i + offset] != wildCard[i]) {
+                    return false;
+                }
+            }
+        } else {
+            for (int i = 0; i < wildCard.length; i++) {
+                if (slice.getByteUnchecked(i) != wildCard[i]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    public boolean endsWith(Slice slice, byte[] wildCard) {
+        int len = slice.length();
+        if (len < wildCard.length) {
+            return false;
+        }
+        if (wildCard.length == 0) {
+            return true;
+        }
+        Object base = slice.getBase();
+        if (base instanceof byte[]) {
+            byte[] bytes = (byte[]) base;
+            int offset = (int) (slice.getAddress() - ARRAY_BYTE_BASE_OFFSET);
+            for (int i = wildCard.length - 1, j = len - 1; i >= 0; i--, j--) {
+                // be careful with this unchecked behavior
+                if (bytes[j + offset] != wildCard[i]) {
+                    return false;
+                }
+            }
+        } else {
+            for (int i = wildCard.length - 1, j = len - 1; i >= 0; i--, j--) {
+                if (slice.getByteUnchecked(j) != wildCard[i]) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
@@ -258,7 +359,7 @@ public class Latin1BinCollationHandler extends AbstractCollationHandler {
                     if (tmp <= 0) {
                         return tmp;
                     }
-                } while (strIdx != strEnd && wildstr.getByte(wildstrIdx) != WILD_MANY);
+                } while (strIdx != strEnd);
 
                 return -1;
             }

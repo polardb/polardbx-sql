@@ -21,6 +21,39 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class TransactionAttribute {
+    public enum FormatId {
+        NORMAL(1),
+        RECOVER(2),
+        ARCHIVE(3),
+        IGNORE_BINLOG(4),
+        TSO_OPT_SR(5),
+        TSO_OPT(6),
+        ASYNC_COMMIT(7);
+
+        private final int id;
+
+        FormatId(int id) {
+            this.id = id;
+        }
+
+        public int id() {
+            return id;
+        }
+
+        public static FormatId fromId(int id) {
+            for (FormatId formatId : FormatId.values()) {
+                if (formatId.id == id) {
+                    return formatId;
+                }
+            }
+            return null;
+        }
+
+        public static boolean isUserTransaction(int id) {
+            return id == NORMAL.id || id == ARCHIVE.id || id == IGNORE_BINLOG.id || id == TSO_OPT_SR.id
+                || id == TSO_OPT.id || id == ASYNC_COMMIT.id;
+        }
+    }
 
     public static final IsolationLevel DEFAULT_ISOLATION_LEVEL = IsolationLevel.READ_COMMITTED;
 
@@ -32,6 +65,15 @@ public class TransactionAttribute {
 
     public static final ITransactionPolicy DEFAULT_TRANSACTION_POLICY_MYSQL56 = ITransactionPolicy.ALLOW_READ_CROSS_DB;
 
+    /**
+     * Default Transaction Policy for PolarDB-X Instances CDC to ignore all binlog events
+     */
+    public static final ITransactionPolicy DEFAULT_IGNORE_BINLOG_TRANSACTION =
+        ITransactionPolicy.IGNORE_BINLOG_TRANSACTION;
+
+    /**
+     * DRDS 事务策略
+     */
     public static final String DRDS_TRANSACTION_POLICY = "drds_transaction_policy";
 
     public static final String SHARE_READ_VIEW = "share_read_view";
@@ -83,7 +125,7 @@ public class TransactionAttribute {
     public static final int DEFAULT_COLUMNAR_TSO_PURGE_INTERVAL = 60000;
 
     /**
-     * Default Columnar TSO update Interval in milliseconds: 10 seconds
+     * Default Columnar TSO update Interval in milliseconds: 3 seconds
      */
     public static final int DEFAULT_COLUMNAR_TSO_UPDATE_INTERVAL = 3000;
 

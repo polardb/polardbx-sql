@@ -32,8 +32,10 @@ import com.alibaba.polardbx.executor.PlanExecutor;
 import com.alibaba.polardbx.executor.Xprotocol.XRowSet;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.planner.PlanUtils;
+import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.build.InputRefTypeChecker;
@@ -80,6 +82,7 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
+import com.alibaba.polardbx.optimizer.planmanager.LogicalViewFinder;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.rule.Partitioner;
@@ -143,6 +146,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -158,6 +162,7 @@ import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimi
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainPipeline;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSimple;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSnapshot;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainVec;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isPhysicalFragment;
@@ -218,6 +223,8 @@ public class ExplainExecutorUtil {
             return ExplainExecutorUtil.handleExplainVec(executionContext, executionPlan, explain.explainMode);
         } else if (isExplainPipeline(explain)) {
             return ExplainExecutorUtil.handleExplainPipeline(executionContext, executionPlan);
+        } else if (isExplainSnapshot(explain)) {
+            return ExplainExecutorUtil.handleExplainSnapshot(executionContext, executionPlan);
         } else if (executionPlan.getPlan() instanceof BaseDdlOperation) {
             return handleDdl(executionContext, executionPlan);
         } else {
@@ -875,6 +882,87 @@ public class ExplainExecutorUtil {
             for (Object[] driverInfo : allDriverInfo) {
                 result.addRow(driverInfo);
             }
+        }
+
+        return result;
+    }
+
+    private static ResultCursor handleExplainSnapshot(ExecutionContext executionContext, ExecutionPlan executionPlan) {
+        ArrayResultCursor result = new ArrayResultCursor("ColumnarSnapshot");
+        result.addColumn("INDEX_NAME", DataTypes.StringType);
+        result.addColumn("SNAPSHOT_TSO", DataTypes.LongType);
+        result.addColumn("SNAPSHOT_INFO", DataTypes.StringType);
+        result.initMeta();
+
+        final RelNode plan = executionPlan.getPlan();
+        final String schemaName = executionContext.getSchemaName();
+        final Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
+        LogicalViewFinder finder = new LogicalViewFinder();
+        plan.accept(finder);
+
+        Long tsoFromGms = null;
+        for (LogicalView lv : finder.getResult()) {
+            StringBuilder snapshotInfoBuilder = new StringBuilder();
+            boolean isFirstElement = true;
+            if (!(lv instanceof OSSTableScan)) {
+                continue;
+            }
+
+            OSSTableScan ossTableScan = (OSSTableScan) lv;
+            Long tso = ossTableScan.getFlashbackQueryTso(executionContext);
+            if (ossTableScan.isColumnarIndex()) {
+                if (tso == null) {
+                    if (tsoFromGms == null) {
+                        tsoFromGms = ColumnarManager.getInstance().latestTso();
+                    }
+                    tso = tsoFromGms;
+                }
+            }
+
+            List<RelNode> inputs = ExecUtils.getInputs(ossTableScan, executionContext, false);
+            for (RelNode input : inputs) {
+                List<OssSplit> splits = OssSplit.getFileConcurrencySplit(ossTableScan, input, executionContext, tso);
+
+                if (ossTableScan.isColumnarIndex()) {
+                    for (OssSplit split : splits) {
+                        if (!CollectionUtils.isEmpty(split.getDesignatedFile())) {
+                            // ORC files
+                            String fileName = split.getDesignatedFile().get(0);
+                            if (!isFirstElement) {
+                                snapshotInfoBuilder.append(",");
+                            }
+                            snapshotInfoBuilder.append(fileName);
+                            isFirstElement = false;
+                        } else {
+                            // CSV files
+                            Optional<List<String>> csvFiles =
+                                split.getDeltaReadOption().getAllCsvFiles().values().stream().findFirst();
+                            if (!csvFiles.isPresent() || csvFiles.get().isEmpty()) {
+                                continue;
+                            }
+                            String fileName = csvFiles.get().get(0);
+                            if (!isFirstElement) {
+                                snapshotInfoBuilder.append(",");
+                            }
+                            snapshotInfoBuilder.append(fileName);
+                            isFirstElement = false;
+                        }
+                    }
+                } else {
+                    for (OssSplit split : splits) {
+                        List<String> orcFileNames = split.getPrunedOrcFiles(ossTableScan, executionContext);
+                        for (String orcFileName : orcFileNames) {
+                            if (!isFirstElement) {
+                                snapshotInfoBuilder.append(",");
+                            }
+                            snapshotInfoBuilder.append(orcFileName);
+                            isFirstElement = false;
+                        }
+                    }
+                }
+                // TODO(siyun): delete bitmap
+            }
+            result.addRow(new Object[] {ossTableScan.getTableNames().get(0), tso, snapshotInfoBuilder.toString()});
         }
 
         return result;

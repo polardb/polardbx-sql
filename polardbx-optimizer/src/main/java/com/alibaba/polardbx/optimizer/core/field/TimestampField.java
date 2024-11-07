@@ -138,6 +138,9 @@ public class TimestampField extends AbstractTemporalField {
                 // store value from chunk executor as mysql datetime.
                 OriginalTemporalValue temporalValue = (OriginalTemporalValue) value;
                 MysqlDateTime mysqlDateTime = temporalValue.getMysqlDateTime();
+                if (mysqlDateTime != null) {
+                    mysqlDateTime = mysqlDateTime.clone();
+                }
                 return storeTemporal(mysqlDateTime, sessionProperties, mysqlDateTime.getSqlType());
             } else if (value instanceof Timestamp) {
                 // Bad case: Use jdbc-style temporal value (java.sql.Timestamp)

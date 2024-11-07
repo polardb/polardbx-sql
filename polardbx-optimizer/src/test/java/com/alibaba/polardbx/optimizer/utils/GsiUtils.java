@@ -112,7 +112,7 @@ public class GsiUtils {
             indexStatus));
 
         final GsiMetaManager.TableRecord tableRecord =
-            buildTableRecord(tableRule, catalog, schemaName, indexTableName, indexComment);
+            buildTableRecord(tableRule, catalog, schemaName, indexTableName, indexComment, indexDef.isColumnar());
 
         tableRecords.add(tableRecord);
     }
@@ -150,7 +150,7 @@ public class GsiUtils {
                 indexComment,
                 seqInIndex,
                 column,
-                indexDef.isClustered()));
+                indexDef.isClustered(), indexDef.isColumnar()));
             seqInIndex++;
         }
 
@@ -227,7 +227,7 @@ public class GsiUtils {
                 indexComment,
                 seqInIndex,
                 column,
-                createIndex.createClusteredIndex()));
+                createIndex.createClusteredIndex(), createIndex.createCci()));
             seqInIndex++;
         }
 
@@ -253,7 +253,8 @@ public class GsiUtils {
 
         if (createIndex != null && createIndex.getPartitioning() == null) {
             final GsiMetaManager.TableRecord
-                tableRecord = buildTableRecord(tableRule, catalog, schema, indexTableName, indexComment);
+                tableRecord =
+                buildTableRecord(tableRule, catalog, schema, indexTableName, indexComment, createIndex.createCci());
 
             tableRecords.add(tableRecord);
         }
@@ -350,7 +351,8 @@ public class GsiUtils {
     }
 
     private static GsiMetaManager.TableRecord buildTableRecord(TableRule tableRule, String catalog, String schema,
-                                                               String indexTableName, String comment) {
+                                                               String indexTableName, String comment,
+                                                               boolean columnar) {
         String dbPartitionPolicy = null;
         String tbPartitionPolicy = null;
 
@@ -359,7 +361,7 @@ public class GsiUtils {
                 catalog,
                 schema,
                 indexTableName,
-                GsiMetaManager.TableType.GSI.getValue(),
+                columnar ? GsiMetaManager.TableType.COLUMNAR.getValue() : GsiMetaManager.TableType.GSI.getValue(),
                 "",
                 "",
                 null,
@@ -410,7 +412,7 @@ public class GsiUtils {
             catalog,
             schema,
             indexTableName,
-            GsiMetaManager.TableType.GSI.getValue(),
+            columnar ? GsiMetaManager.TableType.COLUMNAR.getValue() : GsiMetaManager.TableType.GSI.getValue(),
             dbPartitionKey,
             dbPartitionPolicy,
             dbCount,
@@ -599,12 +601,17 @@ public class GsiUtils {
                                                                 String indexType, int indexLocation,
                                                                 IndexStatus indexStatus,
                                                                 long version, String indexComment, int seqInIndex,
-                                                                SqlIndexColumnName column, boolean clusteredIndex) {
+                                                                SqlIndexColumnName column, boolean clusteredIndex,
+                                                                boolean cci) {
         final String columnName = column.getColumnNameStr();
         final String collation = null == column.isAsc() ? null : (column.isAsc() ? "A" : "D");
         final Long subPart = null == column.getLength() ? null : (RelUtils.longValue(column.getLength()));
         final String packed = null;
         final String comment = "INDEX";
+        long flag = 0L;
+        flag |= (clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L);
+        flag |= (cci ? IndexesRecord.FLAG_COLUMNAR : 0L);
+
         return new GsiMetaManager.IndexRecord(-1,
             catalog,
             schema,
@@ -627,7 +634,7 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L,
+            flag,
             IndexVisibility.VISIBLE.getValue());
     }
 

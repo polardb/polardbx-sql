@@ -169,6 +169,7 @@ public class InformationSchemaPartitionsMetaHandler extends BaseVirtualViewSubCl
                 record.partName,
                 record.partPosi,
                 record.partDesc,
+                record.partArcStateName,
 
                 record.subPartMethod,
                 record.subPartCol,
@@ -178,6 +179,7 @@ public class InformationSchemaPartitionsMetaHandler extends BaseVirtualViewSubCl
                 record.subPartTempName,
                 record.subPartPosi,
                 record.subPartDesc,
+                record.subPartArcStateName,
 
                 record.pgName,
                 record.phyDbGroup,

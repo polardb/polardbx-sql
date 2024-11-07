@@ -24,7 +24,6 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
-import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -38,6 +37,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.AUTO_COMMIT_SINGLE_SHARD;
+import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.COLUMNAR_READ_ONLY_TRANSACTION;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
 import static com.alibaba.polardbx.util.MoreObjects.toStringHelper;
 
@@ -121,35 +121,43 @@ public final class Session {
     }
 
     public void generateTsoInfo() throws SQLException {
-        if (ExecutorContext.getContext(
-            getSchema()).getStorageInfoManager().supportTso() &&
-            clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ) &&
-            !getSchema().equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME) &&
-            (ExecUtils.existMppOnlyInstanceNode() || clientContext.getParamManager()
-                .getBoolean(ConnectionParams.ENABLE_MASTER_MPP))
-        ) {
-            ITransaction iTransaction = clientContext.getTransaction();
-            if (iTransaction.getTransactionClass().isA(TSO_TRANSACTION)) {
-                if (iTransaction.getTransactionClass() == AUTO_COMMIT_SINGLE_SHARD) {
-                    final StorageInfoManager storageInfoManager =
-                        ExecutorContext.getContext(getSchema()).getStorageInfoManager();
-                    this.lizard1PC = storageInfoManager.supportLizard1PCTransaction();
-                    this.omitTso = storageInfoManager.supportCtsTransaction() || this.lizard1PC;
-                }
-                if (!omitTso) {
-                    long externalTso = clientContext.getSnapshotTs();
-                    this.tsoTime = externalTso > 0 ? externalTso :
-                        ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
-                        });
-                }
 
-                for (Map.Entry<String, String> group : groups.entrySet()) {
-                    GroupingFetchLSN.getInstance()
-                        .fetchLSN(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
-                            group.getKey(), dnLsns, this.tsoTime);
+        ITransaction iTransaction = clientContext.getTransaction();
+        if (iTransaction.getTransactionClass() == COLUMNAR_READ_ONLY_TRANSACTION) {
+            long externalTso = clientContext.getSnapshotTs();
+            this.tsoTime = externalTso > 0 ? externalTso :
+                ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
+                });
+        } else {
+            if (ExecutorContext.getContext(
+                getSchema()).getStorageInfoManager().supportTso() &&
+                clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ) &&
+                !getSchema().equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME)
+            ) {
+
+                if (iTransaction.getTransactionClass().isA(TSO_TRANSACTION)) {
+                    if (iTransaction.getTransactionClass() == AUTO_COMMIT_SINGLE_SHARD) {
+                        final StorageInfoManager storageInfoManager =
+                            ExecutorContext.getContext(getSchema()).getStorageInfoManager();
+                        this.lizard1PC = storageInfoManager.supportLizard1PCTransaction();
+                        this.omitTso = storageInfoManager.supportCtsTransaction() || this.lizard1PC;
+                    }
+                    if (!omitTso) {
+                        long externalTso = clientContext.getSnapshotTs();
+                        this.tsoTime = externalTso > 0 ? externalTso :
+                            ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
+                            });
+                    }
+
+                    for (Map.Entry<String, String> group : groups.entrySet()) {
+                        GroupingFetchLSN.getInstance()
+                            .fetchLSN(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
+                                group.getKey(), dnLsns, this.tsoTime);
+                    }
                 }
             }
         }
+
     }
 
     public SessionRepresentation toSessionRepresentation() {
@@ -232,11 +240,11 @@ public final class Session {
             clientContext.getConnection().getLastInsertId(),
             clientContext.getTimeZone(),
             tsoTime,
-            clientContext.getFinalPlan().isUseColumnar(),
+            clientContext.isUseColumnar(),
             dnLsns,
             omitTso,
             lizard1PC,
-            clientContext.getColumnarTracer(),
+            clientContext.getUseColumnarTracer(),
             clientContext.getWorkloadType(),
             extraServerVariables);
     }
@@ -272,5 +280,9 @@ public final class Session {
 
     public void setIgnoreSplitInfo(boolean ignoreSplitInfo) {
         this.ignoreSplitInfo = ignoreSplitInfo;
+    }
+
+    public long getTsoTime() {
+        return tsoTime;
     }
 }

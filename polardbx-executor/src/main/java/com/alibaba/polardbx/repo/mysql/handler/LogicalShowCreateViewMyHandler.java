@@ -56,8 +56,12 @@ public class LogicalShowCreateViewMyHandler extends HandlerCommon {
         final LogicalShow show = (LogicalShow) logicalPlan;
         final SqlShowCreateView showCreateView = (SqlShowCreateView) show.getNativeSqlNode();
         final String viewName = RelUtils.lastStringValue(showCreateView.getTableName());
-        final String schemaName = executionContext.getSchemaName();
-
+        //DBeaver use SHOW CREATE VIEW db_name.view_name to fetch view information
+        //we need to fetch schemaName by LogicalShow instead of ExecutionContext
+        String schemaName = show.getSchemaName();
+        if (schemaName == null) {
+            schemaName = executionContext.getSchemaName();
+        }
         ViewManager viewManager;
         if (InformationSchema.NAME.equalsIgnoreCase(schemaName)) {
             viewManager = InformationSchemaViewManager.getInstance();

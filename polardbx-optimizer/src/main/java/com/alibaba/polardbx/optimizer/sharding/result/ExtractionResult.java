@@ -67,7 +67,11 @@ public class ExtractionResult {
     }
 
     public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec) {
-        return allPartPruneSteps(ec, (t) -> conditionOf(t).intersect());
+        return allPartPruneSteps(ec, (t) -> conditionOf(t).intersect(), null);
+    }
+
+    public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec, PartitionInfo cciPartInfo) {
+        return allPartPruneSteps(ec, (t) -> conditionOf(t).intersect(), cciPartInfo);
     }
 
     public Map<String, PartitionPruneStep> allPartPruneStepsWithScalarFunctionReplaced(AtomicInteger maxParamIndex,
@@ -76,7 +80,8 @@ public class ExtractionResult {
             ec,
             (t) -> conditionOf(t)
                 .intersect()
-                .convertScalarFunction2RexCallParam(maxParamIndex, ec));
+                .convertScalarFunction2RexCallParam(maxParamIndex, ec),
+            null);
     }
 
     /**
@@ -87,7 +92,8 @@ public class ExtractionResult {
      * </pre>
      */
     public Map<String, PartitionPruneStep> allPartPruneSteps(ExecutionContext ec,
-                                                             Function<RelOptTable, ConditionResult> conditionBuilder) {
+                                                             Function<RelOptTable, ConditionResult> conditionBuilder,
+                                                             PartitionInfo cciPartInfo) {
         Map<String, PartitionPruneStep> allTblPruneStepInfo = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
         for (RelOptTable t : getLogicalTables()) {
@@ -100,13 +106,13 @@ public class ExtractionResult {
             final String tableName = Util.last(qualifiedName);
             if (condRs instanceof NormalConditionResult) {
                 NormalConditionResult normalCondRs = (NormalConditionResult) condRs;
-                PartitionPruneStep stepInfo = normalCondRs.toPartPruneStep(ec);
+                PartitionPruneStep stepInfo = normalCondRs.toPartPruneStep(ec, cciPartInfo);
                 if (stepInfo != null) {
                     allTblPruneStepInfo.put(tableName, stepInfo);
                 }
             } else if (condRs instanceof EmptyConditionResult) {
-                PartitionInfo partInfo =
-                    ec.getSchemaManager(schema).getTable(tableName).getPartitionInfo();
+                PartitionInfo partInfo = cciPartInfo == null ?
+                    ec.getSchemaManager(schema).getTable(tableName).getPartitionInfo() : cciPartInfo;
                 allTblPruneStepInfo
                     .put(tableName, PartitionPruner.generatePartitionPrueStepInfo(partInfo, null, null, ec));
             }

@@ -61,7 +61,7 @@ public class CdcManagerHelper {
         Long jobId = job == null ? null : job.getId();
         DdlType ddlType = job == null ? null : typeTransfer(job.getType());
         CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, null,
-            ddlType, false, extendParams, job, false, null, null);
+            ddlType, false, extendParams, job, false, null, null, null, null, false);
 
         cdcManager.notifyDdl(context);
     }
@@ -73,7 +73,17 @@ public class CdcManagerHelper {
                              CdcDdlMarkVisibility visibility,
                              Map<String, Object> extendParams) {
         CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId,
-            ddlType, true, extendParams, null, false, null, null);
+            ddlType, true, extendParams, null, false, null, null, null, null, false);
+        cdcManager.notifyDdl(context);
+    }
+
+    public void notifySequenceDdl(String schemaName, String tableName, String sqlKind, String ddlSql, DdlType ddlType,
+                                  Long jobId,
+                                  Long taskId,
+                                  CdcDdlMarkVisibility visibility,
+                                  Map<String, Object> extendParams) {
+        CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId,
+            ddlType, true, extendParams, null, false, null, null, null, null, true);
         cdcManager.notifyDdl(context);
     }
 
@@ -132,7 +142,7 @@ public class CdcManagerHelper {
                              Long jobId, Long taskId, CdcDdlMarkVisibility visibility, Map<String, Object> extendParams,
                              boolean isRefreshTableMetaInfo, Map<String, Set<String>> newTableTopology) {
         CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId,
-            ddlType, true, extendParams, null, isRefreshTableMetaInfo, newTableTopology, null);
+            ddlType, true, extendParams, null, isRefreshTableMetaInfo, newTableTopology, null, null, null, false);
         cdcManager.notifyDdl(context);
     }
 
@@ -142,7 +152,8 @@ public class CdcManagerHelper {
                              boolean isRefreshTableMetaInfo, Map<String, Set<String>> newTableTopology,
                              Pair<String, TablesExtInfo> cdcMetaPair) {
         CdcDDLContext context = new CdcDDLContext(schemaName, tableName, sqlKind, ddlSql, visibility, jobId, taskId,
-            ddlType, true, extendParams, null, isRefreshTableMetaInfo, newTableTopology, cdcMetaPair);
+            ddlType, true, extendParams, null, isRefreshTableMetaInfo, newTableTopology, cdcMetaPair, null, null,
+            false);
         cdcManager.notifyDdl(context);
     }
 

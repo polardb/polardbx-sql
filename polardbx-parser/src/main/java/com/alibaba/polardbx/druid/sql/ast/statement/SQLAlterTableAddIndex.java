@@ -29,6 +29,10 @@ import java.util.List;
 
 public class SQLAlterTableAddIndex extends SQLObjectImpl implements SQLAlterTableItem, SQLIndex {
 
+    public void setIndexDefinition(SQLIndexDefinition indexDefinition) {
+        this.indexDefinition = indexDefinition;
+    }
+
     private SQLIndexDefinition indexDefinition = new SQLIndexDefinition();
 
     public SQLAlterTableAddIndex() {
@@ -281,5 +285,13 @@ public class SQLAlterTableAddIndex extends SQLObjectImpl implements SQLAlterTabl
     @Override
     public List<SQLSelectOrderByItem> getColumns() {
         return indexDefinition.getColumns();
+    }
+
+    @Override
+    public SQLAlterTableAddIndex clone() {
+        SQLAlterTableAddIndex x = new SQLAlterTableAddIndex();
+        x.setIndexDefinition(indexDefinition);
+        x.setParent(parent);
+        return x;
     }
 }

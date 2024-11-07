@@ -117,7 +117,9 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
         }
         conn = sendLsn(conn, schemaName, group, masterSlave, this::getSnapshotSeq);
         sendSnapshotSeq(conn);
-        return conn;
+
+        boolean needSetFlashbackArea = executionContext.isFlashbackArea() && rw == ITransaction.RW.READ;
+        return conn.enableFlashbackArea(needSetFlashbackArea);
     }
 
     @Override

@@ -64,14 +64,17 @@ public interface ICdcManager {
 
     String CDC_ORIGINAL_DDL = "original_ddl";
     String CDC_IS_GSI = "CDC_IS_GSI";
+    String CDC_IS_CCI = "CDC_IS_CCI";
     String CDC_GSI_PRIMARY_TABLE = "CDC_GSI_PRIMARY_TABLE";
     String CDC_GROUP_NAME = "cdc_group_name";
     String CDC_ACTUAL_ALTER_TABLE_GROUP_FLAG = "cdc_actual_alter_table_group_flag";
     String CDC_TABLE_GROUP_MANUAL_CREATE_FLAG = "cdc_table_group_manual_create_flag";
     String CDC_DDL_SCOPE = "cdc_ddl_scope";
     String POLARDBX_SERVER_ID = "polardbx_server_id";
+    String SQL_LOG_BIN = "sql_log_bin";
     String DDL_ID = "DDL_ID";
     String EXCHANGE_NAMES_MAPPING = "EXCHANGE_NAMES_MAPPING";
+    String CDC_MARK_RECORD_COMMIT_TSO = "cdc_mark_record_commit_tso";
 
     /**
      * 发送Cdc通用指令

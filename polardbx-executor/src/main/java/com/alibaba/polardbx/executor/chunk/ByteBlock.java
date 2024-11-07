@@ -62,6 +62,12 @@ public class ByteBlock extends AbstractBlock {
     }
 
     @Override
+    public long getLong(int position) {
+        checkReadablePosition(position);
+        return values[position + arrayOffset];
+    }
+
+    @Override
     public Object getObject(int position) {
         return isNull(position) ? null : getByte(position);
     }

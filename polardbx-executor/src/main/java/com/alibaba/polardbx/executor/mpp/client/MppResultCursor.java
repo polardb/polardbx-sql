@@ -46,12 +46,17 @@ public class MppResultCursor extends AbstractCursor {
     private int nextPos;
     private boolean bWaitQueryInfo;
     private CursorMeta cursorMeta;
+    private Runnable closeListenable;
 
     public MppResultCursor(LocalStatementClient client, ExecutionContext executionContext, CursorMeta cursorMeta) {
         super(false);
         this.client = client;
         this.ec = executionContext;
         this.cursorMeta = cursorMeta;
+    }
+
+    public void addCloseListenable(Runnable closeListenable) {
+        this.closeListenable = closeListenable;
     }
 
     @Override
@@ -94,6 +99,14 @@ public class MppResultCursor extends AbstractCursor {
 
     @Override
     public List<Throwable> doClose(List<Throwable> exceptions) {
+        if (closeListenable != null) {
+            try {
+                closeListenable.run();
+            } catch (Throwable t) {
+                // ignore
+            }
+        }
+
         if (exceptions == null || exceptions.size() == 0) {
             if (ec.getRuntimeStatistics() != null && bWaitQueryInfo) {
                 //analyze the sql

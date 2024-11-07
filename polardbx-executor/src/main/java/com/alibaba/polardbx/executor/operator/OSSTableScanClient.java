@@ -33,6 +33,7 @@ import com.alibaba.polardbx.executor.archive.reader.UnPushableORCReaderTask;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.IntegerBlock;
+import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.gms.ColumnarStoreUtils;
 import com.alibaba.polardbx.executor.gms.DynamicColumnarManager;
@@ -58,9 +59,11 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.UserMetadataUtil;
 import org.apache.orc.impl.OrcTail;
+import org.jetbrains.annotations.VisibleForTesting;
 
 import java.io.Closeable;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -146,6 +149,11 @@ public class OSSTableScanClient implements Closeable {
         //use server thread pool to submit all prefetch tasks.
         ServiceProvider.getInstance().getServerExecutor().submit(context.getSchemaName(),
             context.getTraceId(), -1, prefetchThread, null, context.getRuntimeStatistics());
+    }
+
+    @VisibleForTesting
+    public PrefetchThread getPrefetchThread() {
+        return prefetchThread;
     }
 
     public void addSplit(OssSplit split) {
@@ -288,7 +296,7 @@ public class OSSTableScanClient implements Closeable {
         }
     }
 
-    private class PrefetchThread implements Callable<Object> {
+    class PrefetchThread implements Callable<Object> {
         private volatile boolean isCancelled;
 
         PrefetchThread() {
@@ -350,38 +358,31 @@ public class OSSTableScanClient implements Closeable {
             return null;
         }
 
-        private void foreachDeltaFile(String csvFile, long tso, ColumnarManager columnarManager,
-                                      List<Integer> projectColumnIndexes) {
-            List<Chunk> chunkList = columnarManager.csvData(tso, csvFile);
-            int chunkIndex = 0;
-            while (!isCancelled) {
+        void foreachDeltaFile(String csvFile, long tso, ColumnarManager columnarManager,
+                              List<Integer> projectColumnIndexes) {
+            Iterator<Chunk> chunkIterator = columnarManager.csvData(tso, csvFile);
+            while (!isCancelled && chunkIterator.hasNext()) {
                 try {
-                    if (chunkIndex < chunkList.size()) {
-                        Chunk chunk = chunkList.get(chunkIndex);
+                    Chunk chunk = chunkIterator.next();
 
-                        // fill selection array in columnar store mode.
-                        int[] selection = new int[chunk.getPositionCount()];
-                        IntegerBlock integerBlock =
-                            chunk.getBlock(ColumnarStoreUtils.POSITION_COLUMN_INDEX).cast(
-                                IntegerBlock.class);
-                        int selSize = columnarManager.fillSelection(csvFile, tso, selection, integerBlock);
+                    // fill selection array in columnar store mode.
+                    int[] selection = new int[chunk.getPositionCount()];
+                    LongBlock longBlock =
+                        chunk.getBlock(ColumnarStoreUtils.POSITION_COLUMN_INDEX).cast(
+                            LongBlock.class);
+                    int selSize = columnarManager.fillSelection(csvFile, tso, selection, longBlock);
 
-                        // project columns at given index.
-                        Block[] projectBlocks = projectColumnIndexes.stream()
-                            .map(chunk::getBlock).collect(Collectors.toList()).toArray(new Block[0]);
-                        Chunk result = new Chunk(projectBlocks);
+                    // project columns at given index.
+                    Block[] projectBlocks = projectColumnIndexes.stream()
+                        .map(chunk::getBlock).collect(Collectors.toList()).toArray(new Block[0]);
+                    Chunk result = new Chunk(projectBlocks);
 
-                        ResultFromOSS resultFromOSS = new ResultFromOSS(result, true);
-                        resultFromOSS.setSelSize(selSize);
-                        resultFromOSS.setSelection(selection);
-                        results.add(resultFromOSS);
+                    ResultFromOSS resultFromOSS = new ResultFromOSS(result, true);
+                    resultFromOSS.setSelSize(selSize);
+                    resultFromOSS.setSelection(selection);
+                    results.add(resultFromOSS);
 
-                        chunkIndex++;
-                        notifyBlockedCallers();
-                    } else {
-                        // no more chunks
-                        return;
-                    }
+                    notifyBlockedCallers();
                 } catch (Throwable t) {
                     setException(new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, t, t.getMessage()));
                 }

@@ -17,11 +17,27 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BasePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import lombok.Getter;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.CN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.CN_NETWORK;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_CPU;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_IO;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_NETWORK;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_STORAGE;
+import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils.DN_SYSTEM_LOCK;
 
 @Getter
 @TaskName(name = "DiscardTableSpaceDdlTask")
@@ -29,14 +45,70 @@ public class DiscardTableSpaceDdlTask extends BasePhyDdlTask {
 
     private String logicalTableName;
 
+    private String storageInst;
+
     @JSONCreator
-    public DiscardTableSpaceDdlTask(String schemaName, String logicalTableName, PhysicalPlanData physicalPlanData) {
+    public DiscardTableSpaceDdlTask(String schemaName, String logicalTableName, String storageInst,
+                                    PhysicalPlanData physicalPlanData) {
         super(schemaName, physicalPlanData);
         this.logicalTableName = logicalTableName;
+        this.storageInst = storageInst;
+        setResourceAcquired(buildResourceRequired(storageInst));
         onExceptionTryRecoveryThenRollback();
+    }
+
+    DdlEngineResources buildResourceRequired(String storageInst) {
+        DdlEngineResources resourceRequired = new DdlEngineResources();
+        String owner = "DiscardTableSpace:" + logicalTableName + ":" + storageInst;
+        resourceRequired.request(storageInst + DN_SYSTEM_LOCK, 80L, owner);
+        return resourceRequired;
     }
 
     public void executeImpl(ExecutionContext executionContext) {
         super.executeImpl(executionContext);
+    }
+
+    @Override
+    protected QueryConcurrencyPolicy getConcurrencyPolicy(ExecutionContext executionContext) {
+        boolean useGroupConcurrent = executionContext.getParamManager()
+            .getBoolean(ConnectionParams.DISCARD_TABLESPACE_USE_GROUP_CONCURRENT_BLOCK);
+        if (useGroupConcurrent) {
+            return QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
+        } else {
+            return super.getConcurrencyPolicy(executionContext);
+        }
+    }
+
+    @Override
+    public String remark() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("|discard tablespace detail: ");
+        sb.append("table_schema [");
+        sb.append(schemaName);
+        sb.append("] ");
+        sb.append("table [");
+        sb.append(logicalTableName);
+        sb.append("] ");
+        sb.append("target physical table info [");
+        int j = 0;
+        for (Map.Entry<String, List<List<String>>> entry : physicalPlanData.getTableTopology().entrySet()) {
+            if (j > 0) {
+                sb.append(", ");
+            }
+            j++;
+            sb.append("(");
+            sb.append(entry.getKey()).append(":");
+            int i = 0;
+            for (List<String> tbNames : entry.getValue()) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(tbNames.get(0));
+                i++;
+            }
+            sb.append(")");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 }

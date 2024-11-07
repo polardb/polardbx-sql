@@ -44,17 +44,8 @@ public class DirectJsonColumnReader extends DirectVarcharColumnReader {
         this.charset = Charset.forName(dataType.getCharsetName().getJavaCharset());
     }
 
-    private String readJsonString(long length) throws IOException {
-        byte[] bytes = new byte[(int) length];
-        int num = dataStream.read(bytes);
-        if (num < length) {
-            throw new IOException("Failed to read string with length: " + length);
-        }
-        return new String(bytes, charset);
-    }
-
     @Override
-    public void next(RandomAccessBlock randomAccessBlock, int positionCount) throws IOException {
+    public void next(RandomAccessBlock randomAccessBlock, final int positionCount) throws IOException {
         Preconditions.checkArgument(isOpened.get());
         Preconditions.checkArgument(!openFailed.get());
         Preconditions.checkArgument(randomAccessBlock instanceof StringBlock);
@@ -120,6 +111,21 @@ public class DirectJsonColumnReader extends DirectVarcharColumnReader {
         }
         Slice data = sliceOutput.slice();
         block.setData(data.toStringUtf8().toCharArray());
+
+        // Replace the offset with string's.
+        int totalStringLength = 0;
+        int[] newOffsets = new int[positionCount];
+        for (int i = 0; i < positionCount; i++) {
+            if (!nulls[i]) {
+                int beginOffset = i > 0 ? offsets[i - 1] : 0;
+                int endOffset = offsets[i];
+                int lengthOfStr = data.slice(beginOffset, endOffset - beginOffset).toStringUtf8().length();
+                totalStringLength += lengthOfStr;
+                newOffsets[i] = totalStringLength;
+            }
+            newOffsets[i] = totalStringLength;
+        }
+        block.setOffsets(newOffsets);
 
         // metrics
         if (enableMetrics) {

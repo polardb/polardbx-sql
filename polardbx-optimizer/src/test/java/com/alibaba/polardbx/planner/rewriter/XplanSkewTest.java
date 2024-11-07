@@ -48,6 +48,7 @@ public class XplanSkewTest extends PlanTestCommon {
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
         executionContext.setUsingPhySqlCache(true);
+        executionContext.getExtraCmds().putAll(configMaps);
 
         final HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean(appName, executionContext.getExtraCmds(),
             executionContext.getGroupHint());

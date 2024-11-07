@@ -23,6 +23,15 @@ public class BackfillExtraFieldJSON {
     public String approximateRowCount;
     public String splitLevel;
     public String testCaseName;
+    public Boolean logical = false;
+
+    public Boolean getLogical() {
+        return logical;
+    }
+
+    public void setLogical(Boolean logical) {
+        this.logical = logical;
+    }
 
     public BackfillExtraFieldJSON() {
     }

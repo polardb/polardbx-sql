@@ -11,7 +11,7 @@ PRIMARY KEY (x)
 show create table `t_order_0`;
 Table,Create Table
 t_order_0,CREATE TABLE `t_order_0` (
-	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`x` int NOT NULL AUTO_INCREMENT,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`)
@@ -19,13 +19,13 @@ t_order_0,CREATE TABLE `t_order_0` (
 show full create table `t_order_0`;
 Table,Create Table
 t_order_0,CREATE PARTITION TABLE `t_order_0` (
-	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`x` int NOT NULL AUTO_INCREMENT,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 CREATE TABLE `t_order_1` (
 `x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -35,7 +35,7 @@ CREATE TABLE `t_order_1` (
 show create table `t_order_1`;
 Table,Create Table
 t_order_1,CREATE TABLE `t_order_1` (
-	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`x` int NOT NULL AUTO_INCREMENT,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`)
@@ -43,13 +43,13 @@ t_order_1,CREATE TABLE `t_order_1` (
 show full create table `t_order_1`;
 Table,Create Table
 t_order_1,CREATE PARTITION TABLE `t_order_1` (
-	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`x` int NOT NULL AUTO_INCREMENT,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 CREATE TABLE `t_order_2` (
 `x` int NOT NULL,
@@ -59,21 +59,21 @@ CREATE TABLE `t_order_2` (
 show create table `t_order_2`;
 Table,Create Table
 t_order_2,CREATE TABLE `t_order_2` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 show full create table `t_order_2`;
 Table,Create Table
 t_order_2,CREATE PARTITION TABLE `t_order_2` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 # now generated three types of base table.
 create index `agsi_0` on `t_order_0`(`order_id`);
@@ -99,30 +99,30 @@ alter table `t_order_2` add global unique index `agsi_9b` using btree (`order_id
 show full create table agsi_0;
 Table,Create Table
 agsi_0_$,CREATE TABLE `agsi_0_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_1;
 Table,Create Table
 agsi_1_$,CREATE TABLE `agsi_1_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`seller_id`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_2;
 Table,Create Table
 agsi_2_$,CREATE TABLE `agsi_2_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
@@ -133,10 +133,10 @@ PARTITIONS 2
 show full create table agsi_3;
 Table,Create Table
 agsi_3_$,CREATE TABLE `agsi_3_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -145,9 +145,9 @@ show full create table agsi_4;
 Table,Create Table
 agsi_4_$,CREATE TABLE `agsi_4_$` (
 	`order_id` varchar(20) DEFAULT NULL,
-	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	`_drds_implicit_id_` bigint NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -155,30 +155,30 @@ PARTITIONS 2
 show full create table agsi_5;
 Table,Create Table
 agsi_5_$,CREATE TABLE `agsi_5_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_6;
 Table,Create Table
 agsi_6_$,CREATE TABLE `agsi_6_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`seller_id`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_7;
 Table,Create Table
 agsi_7_$,CREATE TABLE `agsi_7_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
@@ -189,10 +189,10 @@ PARTITIONS 2
 show full create table agsi_8;
 Table,Create Table
 agsi_8_$,CREATE TABLE `agsi_8_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -201,9 +201,9 @@ show full create table agsi_9;
 Table,Create Table
 agsi_9_$,CREATE TABLE `agsi_9_$` (
 	`order_id` varchar(20) DEFAULT NULL,
-	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	`_drds_implicit_id_` bigint NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -211,30 +211,30 @@ PARTITIONS 2
 show full create table agsi_0b;
 Table,Create Table
 agsi_0b_$,CREATE TABLE `agsi_0b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_1b;
 Table,Create Table
 agsi_1b_$,CREATE TABLE `agsi_1b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`seller_id`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_2b;
 Table,Create Table
 agsi_2b_$,CREATE TABLE `agsi_2b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
@@ -245,10 +245,10 @@ PARTITIONS 2
 show full create table agsi_3b;
 Table,Create Table
 agsi_3b_$,CREATE TABLE `agsi_3b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -257,9 +257,9 @@ show full create table agsi_4b;
 Table,Create Table
 agsi_4b_$,CREATE TABLE `agsi_4b_$` (
 	`order_id` varchar(20) DEFAULT NULL,
-	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	`_drds_implicit_id_` bigint NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -267,30 +267,30 @@ PARTITIONS 2
 show full create table agsi_5b;
 Table,Create Table
 agsi_5b_$,CREATE TABLE `agsi_5b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_6b;
 Table,Create Table
 agsi_6b_$,CREATE TABLE `agsi_6b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id_seller_id` USING BTREE (`order_id`, `seller_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`,`seller_id`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table agsi_7b;
 Table,Create Table
 agsi_7b_$,CREATE TABLE `agsi_7b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
@@ -301,10 +301,10 @@ PARTITIONS 2
 show full create table agsi_8b;
 Table,Create Table
 agsi_8b_$,CREATE TABLE `agsi_8b_$` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`x`)
+	PRIMARY KEY (`x`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -313,9 +313,9 @@ show full create table agsi_9b;
 Table,Create Table
 agsi_9b_$,CREATE TABLE `agsi_9b_$` (
 	`order_id` varchar(20) DEFAULT NULL,
-	`_drds_implicit_id_` bigint(20) NOT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`_drds_implicit_id_`)
+	`_drds_implicit_id_` bigint NOT NULL,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	UNIQUE LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS 2
@@ -328,34 +328,34 @@ Table 'agsi_0' not found and multiple GSI table found
 show full create table `t_order_0`;
 Table,Create Table
 t_order_0,CREATE PARTITION TABLE `t_order_0` (
-	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`x` int NOT NULL AUTO_INCREMENT,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
 	GLOBAL INDEX /* agsi_0b_$ */ `agsi_0b` USING BTREE (`order_id`)
 		PARTITION BY KEY(`order_id`,`x`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	GLOBAL INDEX /* agsi_0_$ */ `agsi_0` (`order_id`)
 		PARTITION BY KEY(`order_id`,`x`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	UNIQUE GLOBAL INDEX /* agsi_1b_$ */ `agsi_1b` USING BTREE (`order_id`, `seller_id`)
 		PARTITION BY KEY(`order_id`,`seller_id`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	UNIQUE GLOBAL INDEX /* agsi_1_$ */ `agsi_1` (`order_id`, `seller_id`)
 		PARTITION BY KEY(`order_id`,`seller_id`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	GLOBAL INDEX /* agsi_5b_$ */ `agsi_5b` USING BTREE (`order_id`)
 		PARTITION BY KEY(`order_id`,`x`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	GLOBAL INDEX /* agsi_5_$ */ `agsi_5` (`order_id`)
 		PARTITION BY KEY(`order_id`,`x`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	UNIQUE GLOBAL INDEX /* agsi_6b_$ */ `agsi_6b` USING BTREE (`order_id`, `seller_id`)
 		PARTITION BY KEY(`order_id`,`seller_id`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	UNIQUE GLOBAL INDEX /* agsi_6_$ */ `agsi_6` (`order_id`, `seller_id`)
 		PARTITION BY KEY(`order_id`,`seller_id`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	UNIQUE LOCAL KEY `_local_agsi_1` (`order_id`, `seller_id`),
 	UNIQUE LOCAL KEY `_local_agsi_1b` USING BTREE (`order_id`, `seller_id`),
 	UNIQUE LOCAL KEY `_local_agsi_6` (`order_id`, `seller_id`),
@@ -366,12 +366,12 @@ t_order_0,CREATE PARTITION TABLE `t_order_0` (
 	LOCAL KEY `_local_agsi_5b` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table `t_order_1`;
 Table,Create Table
 t_order_1,CREATE PARTITION TABLE `t_order_1` (
-	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`x` int NOT NULL AUTO_INCREMENT,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`x`),
@@ -409,19 +409,19 @@ t_order_1,CREATE PARTITION TABLE `t_order_1` (
 	LOCAL KEY `_local_agsi_7b` USING BTREE (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 show full create table `t_order_2`;
 Table,Create Table
 t_order_2,CREATE PARTITION TABLE `t_order_2` (
-	`x` int(11) NOT NULL,
+	`x` int NOT NULL,
 	`order_id` varchar(20) DEFAULT NULL,
 	`seller_id` varchar(20) DEFAULT NULL,
-	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	`_drds_implicit_id_` bigint NOT NULL AUTO_INCREMENT,
 	PRIMARY KEY (`_drds_implicit_id_`),
 	GLOBAL INDEX /* agsi_0_$ */ `agsi_0` (`order_id`)
 		PARTITION BY KEY(`order_id`,`_drds_implicit_id_`)
-		PARTITIONS #@#,
+		PARTITIONS 3,
 	UNIQUE GLOBAL INDEX /* agsi_4b_$ */ `agsi_4b` USING BTREE (`order_id`)
 		PARTITION BY KEY(`order_id`)
 		PARTITIONS 2,
@@ -441,7 +441,7 @@ t_order_2,CREATE PARTITION TABLE `t_order_2` (
 	LOCAL KEY `_local_agsi_0` (`order_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`_drds_implicit_id_`)
-PARTITIONS #@#
+PARTITIONS 3
 /* tablegroup = `tg` */
 drop table if exists `t_order_0`;
 drop table if exists `t_order_1`;

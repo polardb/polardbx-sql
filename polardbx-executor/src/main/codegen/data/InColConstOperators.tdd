@@ -3,801 +3,601 @@
         {
             operandCount: 1
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 2
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 3
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 4
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 5
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 6
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 7
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 8
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 9
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 10
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 11
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 12
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 13
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 14
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 15
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 16
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 17
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 18
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 19
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 20
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 21
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 22
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 23
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 24
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 25
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 26
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 27
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 28
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 29
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 30
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 31
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 32
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 33
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 34
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 35
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 36
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 37
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 38
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 39
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 40
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 41
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 42
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 43
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 44
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 45
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 46
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 47
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 48
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 49
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 50
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 51
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 52
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 53
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 54
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 55
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 56
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 57
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 58
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 59
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 60
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 61
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 62
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 63
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 64
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 65
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 66
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 67
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 68
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 69
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 70
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 71
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 72
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 73
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 74
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 75
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 76
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 77
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 78
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 79
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 80
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 81
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 82
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 83
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 84
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 85
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 86
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 87
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 88
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 89
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 90
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 91
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 92
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 93
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 94
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 95
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 96
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 97
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 98
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 99
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         },
         {
             operandCount: 100
             types: [
-                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"},
-                {leftType: "Integer", rightType: "Long", abstractClass: "AbstractInIntegerColLongConstVectorizedExpression"},
-                {leftType: "Long", rightType: "Long", abstractClass: "AbstractInLongColLongConstVectorizedExpression"}
+                {leftType: "Varchar", rightType: "Char", abstractClass: "AbstractInVarcharColCharConstVectorizedExpression"}
             ]
         }
     ]

@@ -56,7 +56,7 @@ import java.util.stream.Collectors;
 import static org.apache.calcite.sql.type.SqlTypeName.BIGINT;
 
 public class ScanWorkTest extends ScanTestBase {
-    private final static ExecutorService SCAN_WORK_EXECUTOR = Executors.newFixedThreadPool(4);
+    protected final static ExecutorService SCAN_WORK_EXECUTOR = Executors.newFixedThreadPool(4);
 
     private final static RelDataTypeFactory TYPE_FACTORY =
         new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
@@ -65,16 +65,16 @@ public class ScanWorkTest extends ScanTestBase {
     public static final double RATIO = .3D;
 
     // need trace_id or other session-level parameters.
-    private ExecutionContext context;
+    protected ExecutionContext context;
 
     // partial cache
-    private BlockCacheManager<Block> blockCacheManager;
+    protected BlockCacheManager<Block> blockCacheManager;
 
     // NOTE: The inputRefs in RexNode must be in consistent with inputRefForFilter.
     private RexNode predicate;
-    private List<Integer> inputRefsForFilter;
-    private LazyEvaluator<Chunk, BitSet> evaluator;
-    private RoaringBitmap deletionBitmap;
+    protected List<Integer> inputRefsForFilter;
+    protected LazyEvaluator<Chunk, BitSet> evaluator;
+    protected RoaringBitmap deletionBitmap;
 
     @Before
     public void prepare() throws IOException {

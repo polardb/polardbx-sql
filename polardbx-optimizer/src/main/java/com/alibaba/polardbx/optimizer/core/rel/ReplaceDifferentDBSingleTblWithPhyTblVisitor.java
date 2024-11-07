@@ -90,7 +90,7 @@ public class ReplaceDifferentDBSingleTblWithPhyTblVisitor extends ReplaceTableNa
                 physicalDBName = schemaName;
                 physicalTableName = logicalTableName;
             } else {
-                physicalDBName = tableRule.getDbNamePattern();
+                physicalDBName = GroupInfoUtil.buildPhysicalDbNameFromGroupName(tableRule.getDbNamePattern());
                 physicalTableName = tableRule.getTbNamePattern();
             }
         }

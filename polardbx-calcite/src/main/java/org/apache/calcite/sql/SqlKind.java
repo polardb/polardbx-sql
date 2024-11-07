@@ -1023,6 +1023,20 @@ public enum SqlKind {
     SINGLE_VALUE,
 
     /**
+     * The {@code JSON_OBJECTAGG} aggregate function.
+     */
+    JSON_OBJECTAGG,
+
+    JSON_OBJECT_GLOBALAGG,
+
+    /**
+     * The {@code JSON_ARRAYAGG} aggregate function.
+     */
+    JSON_ARRAYAGG,
+
+    JSON_ARRAY_GLOBALAGG,
+
+    /**
      * The {code __FIRST_VALUE} internal aggregate function.
      */
     __FIRST_VALUE,
@@ -1596,6 +1610,8 @@ public enum SqlKind {
 
     SHOW_DDL_JOBS,
 
+    SHOW_DDL_ENGINE,
+
     SHOW_DDL_RESULTS,
 
     SHOW_SCHEDULE_RESULTS,
@@ -1696,6 +1712,8 @@ public enum SqlKind {
 
     CHECK_COLUMNAR_PARTITION,
 
+    CHECK_COLUMNAR_SNAPSHOT,
+
     CHECK_COLUMNAR_INDEX, // As a special DDL.
 
     CHECK_GLOBAL_INDEX, // As a special DDL.
@@ -1749,6 +1767,8 @@ public enum SqlKind {
     ROLLBACK_DDL_JOB,
 
     TERMINATE_REBALANCE_JOB,
+
+    RESUME_REBALANCE_JOB,
 
     SKIP_REBALANCE_SUBJOB,
 
@@ -1832,6 +1852,11 @@ public enum SqlKind {
     EXCHANGE_PARTITION,
 
     /**
+     * partition management: optimize partition.
+     */
+    OPTIMIZE_PARTITION,
+
+    /**
      * partition management: alter table group split into partitions xxx by hot value(xxx[,..,xxx])
      */
     SPLIT_HOT_VALUE,
@@ -1840,6 +1865,10 @@ public enum SqlKind {
      * subpartition management: modify subpartition
      */
     MODIFY_SUBPARTITION,
+
+    MODIFY_TTL,
+
+    REMOVE_TTL,
 
     /**
      * partition management: create new tablegroup
@@ -1931,6 +1960,11 @@ public enum SqlKind {
      * REPARTITION_LOCAL_PARTITION
      */
     REPARTITION_LOCAL_PARTITION,
+
+    /**
+     * expire local partition
+     */
+    CLEANUP_EXPIRED_DATA,
 
     LOCAL_PARTITION,
 
@@ -2071,6 +2105,7 @@ public enum SqlKind {
         SHOW_DDL_STATUS,
         SHOW_REBALANCE_BACKFILL,
         SHOW_DDL_JOBS,
+        SHOW_DDL_ENGINE,
         SHOW_DDL_RESULTS,
         SHOW_SCHEDULE_RESULTS,
         SHOW_LOCALITY_INFO,
@@ -2123,6 +2158,7 @@ public enum SqlKind {
         CHECK_GLOBAL_INDEX,
         CHECK_COLUMNAR_INDEX,
         CHECK_COLUMNAR_PARTITION,
+        CHECK_COLUMNAR_SNAPSHOT,
         ANALYZE_TABLE,
         OPTIMIZE_TABLE);
 
@@ -2134,6 +2170,7 @@ public enum SqlKind {
         PAUSE_REBALANCE_JOB,
         ROLLBACK_DDL_JOB,
         TERMINATE_REBALANCE_JOB,
+        RESUME_REBALANCE_JOB,
         SKIP_REBALANCE_SUBJOB,
         REMOVE_DDL_JOB,
         INSPECT_DDL_JOB_CACHE,

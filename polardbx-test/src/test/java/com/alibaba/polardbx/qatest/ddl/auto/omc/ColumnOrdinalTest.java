@@ -243,8 +243,8 @@ public class ColumnOrdinalTest extends DDLBaseNewDBTestCase {
     private DDLExtInfo getDdlExtInfo(String sql) throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery(
-                "select ext from __cdc__." + CDC_DDL_RECORD_TABLE + " where ddl_sql = '" + sql
-                    + "' order by id desc limit 1")) {
+                "select ext from __cdc__." + CDC_DDL_RECORD_TABLE + " where ddl_sql like '%" + sql
+                    + "%' order by id desc limit 1")) {
                 while (resultSet.next()) {
                     String extStr = resultSet.getString(1);
                     if (StringUtils.isNotBlank(extStr)) {

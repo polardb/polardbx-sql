@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupTruncatePartition;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupTruncatePartitionPreparedData;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 
 public class LogicalAlterTableGroupTruncatePartitionHandler extends LogicalCommonDdlHandler {
@@ -39,13 +40,16 @@ public class LogicalAlterTableGroupTruncatePartitionHandler extends LogicalCommo
 
         logicalAlterTableGroupTruncatePartition.prepareData(executionContext);
 
-        String dbName = logicalAlterTableGroupTruncatePartition.getPreparedData().getSchemaName();
-        String tgName = logicalAlterTableGroupTruncatePartition.getPreparedData().getTableGroupName();
+        AlterTableGroupTruncatePartitionPreparedData preparedData =
+            logicalAlterTableGroupTruncatePartition.getPreparedData();
+
+        String dbName = preparedData.getSchemaName();
+        String tgName = preparedData.getTableGroupName();
 
         CheckOSSArchiveUtil.checkTableGroupWithoutOSS(dbName, tgName);
 
         return new AlterTableGroupTruncatePartitionJobFactory(logicalAlterTableGroupTruncatePartition.relDdl,
-            logicalAlterTableGroupTruncatePartition.getPreparedData(), executionContext).create();
+            preparedData, executionContext, preparedData.getDdlVersionId()).create();
     }
 
     @Override

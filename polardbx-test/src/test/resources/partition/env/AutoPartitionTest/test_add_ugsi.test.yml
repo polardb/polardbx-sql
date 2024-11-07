@@ -1,0 +1,60 @@
+drop table if exists `tb1`;
+drop table if exists `tb2`;
+
+create table `tb1` (
+  a int,
+  b int,
+  c int
+);
+
+create table `tb2` (
+  a int,
+  b int,
+  c int,
+  d int,
+  primary key(a,b)
+);
+
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=false)*/alter table tb1 add unique key u1(a,b);
+
+show create table u1;
+
+show full create table u1;
+
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=true)*/alter table tb1 add unique key u2(b,c);
+
+show create table u2;
+
+show full create table u2;
+
+show full create table tb1;
+
+alter table tb1 modify column a bigint;
+
+show full create table u1;
+
+show full create table u2;
+
+show full create table tb1;
+
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=false)*/alter table tb2 add unique key u3(a,b);
+
+show create table u3;
+
+show full create table u3;
+
+/*+TDDL:cmd_extra(UNIQUE_GSI_WITH_PRIMARY_KEY=true)*/alter table tb2 add unique key u4(b,c);
+
+show create table u4;
+
+show full create table u4;
+
+show full create table tb2;
+
+alter table tb2 modify column a bigint;
+
+show full create table u3;
+
+show full create table u4;
+
+show full create table tb2;

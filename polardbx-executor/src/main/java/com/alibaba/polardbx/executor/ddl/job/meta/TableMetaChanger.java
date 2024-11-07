@@ -56,6 +56,7 @@ import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
+import com.alibaba.polardbx.gms.ttl.TtlInfoRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -211,6 +212,7 @@ public class TableMetaChanger {
                                                List<String> droppedColumns,
                                                List<String> updateColumns,
                                                List<Pair<String, String>> changeColumns,
+                                               List<Pair<String, String>> renamedIndexes,
                                                long versionId,
                                                long ddlJobId) {
 
@@ -222,28 +224,19 @@ public class TableMetaChanger {
             return;
         }
 
-        // ADD COLUMN
-        if (GeneralUtil.isNotEmpty(addedColumns)) {
+        boolean isAlterTable =
+            GeneralUtil.isNotEmpty(addedColumns) || GeneralUtil.isNotEmpty(droppedColumns) || GeneralUtil.isNotEmpty(
+                updateColumns) || GeneralUtil.isNotEmpty(changeColumns);
+
+        if (isAlterTable) {
             tableInfoManager.alterColumnarTableColumns(schemaName, primaryTableName, indexes, versionId, ddlJobId,
-                DdlType.ALTER_TABLE_ADD_COLUMN, new ArrayList<>());
+                DdlType.ALTER_TABLE, changeColumns, droppedColumns);
         }
 
-        // DROP COLUMN
-        if (GeneralUtil.isNotEmpty(droppedColumns)) {
-            tableInfoManager.dropColumnarTableColumns(schemaName, primaryTableName, indexes, droppedColumns,
-                versionId, ddlJobId);
-        }
-
-        // MODIFY COLUMN
-        if (GeneralUtil.isNotEmpty(updateColumns)) {
-            tableInfoManager.alterColumnarTableColumns(schemaName, primaryTableName, indexes, versionId, ddlJobId,
-                DdlType.ALTER_TABLE_MODIFY_COLUMN, new ArrayList<>());
-        }
-
-        // CHANGE COLUMN
-        if (GeneralUtil.isNotEmpty(changeColumns)) {
-            tableInfoManager.alterColumnarTableColumns(schemaName, primaryTableName, indexes, versionId, ddlJobId,
-                DdlType.ALTER_TABLE_CHANGE_COLUMN, changeColumns);
+        boolean isRenameIndex = GeneralUtil.isNotEmpty(renamedIndexes);
+        if (isRenameIndex) {
+            tableInfoManager.renameColumnarTable(schemaName, primaryTableName, indexes, renamedIndexes, versionId,
+                ddlJobId);
         }
     }
 
@@ -302,10 +295,46 @@ public class TableMetaChanger {
         tableInfoManager.removeColumnarTable(schemaName, columnarTableName);
     }
 
+    public static void truncateColumnarTable(Connection metaDbConnection,
+                                             String schemaName,
+                                             String primaryTableName,
+                                             long versionId,
+                                             long ddlJobId) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        Set<Pair<Long, String>> indexes = tableInfoManager.queryCci(schemaName, primaryTableName);
+        if (GeneralUtil.isEmpty(indexes)) {
+            return;
+        }
+        tableInfoManager.truncateColumnarTable(schemaName, primaryTableName, indexes, versionId, ddlJobId,
+            DdlType.TRUNCATE_TABLE);
+    }
+
+    public static void renameColumnarTablesMeta(Connection metaDbConn, String schemaName,
+                                                List<String> oldTableNames, List<String> newTableNames,
+                                                List<Long> versionIds, long ddlJobId) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+
+        List<Pair<String, String>> tableRenameMap = new ArrayList<>();
+
+        for (int i = 0; i < oldTableNames.size(); i++) {
+            tableRenameMap.add(new Pair<>(oldTableNames.get(i), newTableNames.get(i)));
+        }
+
+        tableInfoManager.renameColumnarTables(schemaName, tableRenameMap, versionIds, ddlJobId);
+    }
+
     public static void renameColumnarTableMeta(Connection metaDbConn, String schemaName, String primaryTableName,
                                                String newPrimaryTableName, long versionId, long ddlJobId) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
+
+        Set<Pair<Long, String>> indexes = tableInfoManager.queryCci(schemaName, primaryTableName);
+        if (GeneralUtil.isEmpty(indexes)) {
+            return;
+        }
+
         tableInfoManager.renameColumnarTable(schemaName, primaryTableName, newPrimaryTableName, versionId, ddlJobId);
     }
 
@@ -348,12 +377,6 @@ public class TableMetaChanger {
         tableInfoManager.addOssFile(tableSchema, tableName, filesRecord);
     }
 
-    public static void addOssFileWithTso(Connection metaDbConn, String tableSchema, String tableName,
-                                         FilesRecord filesRecord) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConn);
-        tableInfoManager.addOssFileWithTso(tableSchema, tableName, filesRecord);
-    }
 
     public static void changeOssFile(Connection metaDbConn, Long primaryKey, Long fileSize) {
         changeOssFile(metaDbConn, primaryKey, new byte[] {}, fileSize, 0L);
@@ -422,14 +445,6 @@ public class TableMetaChanger {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
         tableInfoManager.validOSSColumnsMeta(taskId, tableSchema, tableName);
-    }
-
-    public static void updateArchiveTable(Connection metaDbConnection,
-                                          String schemaName, String tableName,
-                                          String archiveTableSchema, String archiveTableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConnection);
-        tableInfoManager.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
     }
 
     public static PhyInfoSchemaContext buildPhyInfoSchemaContext(String schemaName, String logicalTableName,
@@ -584,6 +599,7 @@ public class TableMetaChanger {
         if (sequenceRecord != null) {
             SequenceManagerProxy.getInstance().invalidate(schemaName, sequenceBean.getName());
         }
+
     }
 
     public static void removeTableMetaWithoutNotify(Connection metaDbConnection, String schemaName,
@@ -1043,7 +1059,7 @@ public class TableMetaChanger {
         if (GeneralUtil.isNotEmpty(indexes)) {
             // columns, indexes
             changeCciRelatedMeta(metaDbConnection, tableInfoManager, schemaName, logicalTableName, phyInfoSchemaContext,
-                addedColumns, droppedColumns, changedColumns);
+                addedColumns, droppedColumns, changedColumns, renamedIndexes);
         }
     }
 
@@ -1053,7 +1069,8 @@ public class TableMetaChanger {
                                             PhyInfoSchemaContext context,
                                             List<String> addedColumns,
                                             List<String> droppedColumns,
-                                            List<Pair<String, String>> changeColumns) {
+                                            List<Pair<String, String>> changeColumns,
+                                            List<Pair<String, String>> renamedIndexes) {
         Set<Pair<Long, String>> columnarIndexes = tableInfoManager.queryCci(schemaName, logicalTableName);
         List<String> indexNames = columnarIndexes.stream().map(Pair::getValue).collect(Collectors.toList());
 
@@ -1111,7 +1128,18 @@ public class TableMetaChanger {
         }
 
         // CHANGE COLUMNS TABLE
-        tableInfoManager.changeColumnarIndexTableColumns(indexNames, schemaName, logicalTableName, changeColumns);
+        tableInfoManager.changeColumnarIndexTableColumns(indexNames, schemaName, logicalTableName);
+
+        // RENAME CCI
+        if (GeneralUtil.isNotEmpty(renamedIndexes)) {
+            for (Pair<String, String> renamedIndex : renamedIndexes) {
+                String oldIndexName = renamedIndex.getValue();
+                String newIndexName = renamedIndex.getKey();
+                if (indexNames.stream().anyMatch(indexName -> indexName.equalsIgnoreCase(oldIndexName))) {
+                    tableInfoManager.renameColumnarTable(schemaName, oldIndexName, newIndexName);
+                }
+            }
+        }
     }
 
     public static void changeForeignKeyRefIndex(Connection metaDbConnection, TableInfoManager tableInfoManager,
@@ -1701,11 +1729,6 @@ public class TableMetaChanger {
     public static void truncateTableWithRecycleBin(String schemaName, String tableName, String binTableName,
                                                    String tmpTableName, Connection metaDbConn,
                                                    ExecutionContext executionContext) {
-        String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
-        String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, tableName);
-        String binTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, binTableName);
-        String tmpTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, tmpTableName);
-
         TableRule tableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName);
         TableRule tmpTableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tmpTableName);
         String tbNamePattern = tableRule.getTbNamePattern();
@@ -1713,10 +1736,19 @@ public class TableMetaChanger {
 
         // Rename sequence if exists.
         SequenceBaseRecord sequenceRecord = null;
+        SequenceBaseRecord sequenceRecordTmp = null;
+        // for seq rename primary to bin table name
         SequenceBean sequenceBean =
             SequenceMetaChanger.renameSequenceIfExists(metaDbConn, schemaName, tableName, binTableName);
         if (sequenceBean != null) {
             sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
+        }
+
+        // for seq rename tmp to primary table name
+        SequenceBean sequenceBeanTmp =
+            SequenceMetaChanger.renameSequenceIfExists(metaDbConn, schemaName, tmpTableName, tableName);
+        if (sequenceBeanTmp != null) {
+            sequenceRecordTmp = SequenceUtil.convert(sequenceBeanTmp, schemaName, executionContext);
         }
 
         TableInfoManager tableInfoManager = new TableInfoManager();
@@ -1724,22 +1756,7 @@ public class TableMetaChanger {
 
         // Switch the tables.
         tableInfoManager.renameTable(schemaName, tableName, binTableName, tbNamePattern, sequenceRecord);
-        tableInfoManager.renameTable(schemaName, tmpTableName, tableName, tmpTbNamePattern, null);
-
-        CONFIG_MANAGER.unregister(tmpTableDataId, metaDbConn);
-        CONFIG_MANAGER.register(binTableDataId, metaDbConn);
-
-        try {
-            TableInfoManager.updateTableVersion(schemaName, tableName, metaDbConn);
-            TableInfoManager.updateTableVersion(schemaName, binTableName, metaDbConn);
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, e.getMessage());
-        }
-
-        CONFIG_MANAGER.notify(tableDataId, metaDbConn);
-        CONFIG_MANAGER.notify(binTableDataId, metaDbConn);
-
-        CONFIG_MANAGER.notify(tableListDataId, metaDbConn);
+        tableInfoManager.renameTable(schemaName, tmpTableName, tableName, tmpTbNamePattern, sequenceRecordTmp);
     }
 
     public static void afterTruncatingTableWithRecycleBin(String schemaName, String tableName, String binTableName) {
@@ -1833,6 +1850,49 @@ public class TableMetaChanger {
         tableInfoManager.addLocalPartitionRecord(localPartitionRecord);
     }
 
+    public static void addTtlInfoMeta(Connection metaDbConnection,
+                                      TtlInfoRecord ttlInfoRecord) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.insertTtlInfoRecord(ttlInfoRecord);
+    }
+
+    public static void alterTtlInfoMeta(Connection metaDbConnection,
+                                        TtlInfoRecord ttlInfoRecord,
+                                        String tblSchema, String tblName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.updateTtlInfoRecord(ttlInfoRecord, tblSchema, tblName);
+    }
+
+    public static void updateArchiveTable(Connection metaDbConnection,
+                                          String ttlSchemaName, String ttlTableName,
+                                          String archiveTableSchema, String archiveTableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.updateArchiveTable(ttlSchemaName, ttlTableName, archiveTableSchema, archiveTableName);
+    }
+
+    public static void renameTtlTableForTtlInfo(Connection metaDbConnection,
+                                                String oldTtlSchemaName, String oldTtlTableName,
+                                                String newTtlSchemaName, String newTtlTableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.renameTtlTableForTtlInfo(newTtlSchemaName, newTtlTableName, oldTtlSchemaName, oldTtlTableName);
+    }
+
+    public static void updateArchiveTableForTtlInfo(Connection metaDbConnection,
+                                                    Integer arcKind,
+                                                    String ttlSchemaName, String ttlTableName,
+                                                    String archiveTableSchema, String archiveTableName,
+                                                    String arcTmpTblSchemaName, String arcTmpTblName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.updateArchiveTableForTtlInfo(arcKind, archiveTableSchema, archiveTableName,
+            arcTmpTblSchemaName, arcTmpTblName, ttlSchemaName,
+            ttlTableName);
+    }
+
     public static void addScheduledJob(Connection metaDbConnection,
                                        ScheduledJobsRecord scheduledJobsRecord) {
         TableInfoManager tableInfoManager = new TableInfoManager();
@@ -1840,11 +1900,11 @@ public class TableMetaChanger {
         tableInfoManager.addScheduledJob(scheduledJobsRecord);
     }
 
-    public static void replaceScheduledJob(Connection metaDbConnection,
-                                           ScheduledJobsRecord scheduledJobsRecord) {
+    public static void updateScheduledJob(Connection metaDbConnection,
+                                          ScheduledJobsRecord scheduledJobsRecord) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
-        tableInfoManager.replaceScheduledJob(scheduledJobsRecord);
+        tableInfoManager.updateScheduledJobsRecordByScheduleId(scheduledJobsRecord);
     }
 
     public static void removeLocalPartitionMeta(Connection metaDbConnection,
@@ -1855,12 +1915,28 @@ public class TableMetaChanger {
         tableInfoManager.removeLocalPartitionRecord(schemaName, tableName);
     }
 
+    public static void removeTtlInfoMeta(Connection metaDbConnection,
+                                         String schemaName,
+                                         String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.removeTtlInfoRecord(schemaName, tableName);
+    }
+
     public static void removeScheduledJobs(Connection metaDbConnection,
                                            String schemaName,
                                            String tableName) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
         tableInfoManager.removeScheduledJobRecord(schemaName, tableName);
+    }
+
+    public static void removeTtlFiredScheduledJobs(Connection metaDbConnection,
+                                                   String schemaName,
+                                                   String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.removeTtlFiredScheduledJobRecords(schemaName, tableName);
     }
 
     public static void endAlterColumnDefaultValue(Connection metaDbConn, String schema, String table, String column) {

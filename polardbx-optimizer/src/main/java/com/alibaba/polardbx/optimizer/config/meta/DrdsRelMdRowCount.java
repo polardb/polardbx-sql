@@ -50,6 +50,8 @@ import org.apache.calcite.util.ImmutableBitSet;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.alibaba.polardbx.optimizer.utils.OptimizerUtils.getParametersMapForOptimizer;
+
 public class DrdsRelMdRowCount extends RelMdRowCount {
 
     public static final RelMetadataProvider SOURCE =
@@ -76,13 +78,12 @@ public class DrdsRelMdRowCount extends RelMdRowCount {
 
     @Override
     public Double getRowCount(Sort rel, RelMetadataQuery mq) {
-        PlannerContext plannerContext = PlannerContext.getPlannerContext(rel);
         Double rowCount = mq.getRowCount(rel.getInput());
         if (rowCount == null) {
             return null;
         }
 
-        Map<Integer, ParameterContext> params = plannerContext.getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> params = getParametersMapForOptimizer(rel);
 
         long offset = 0;
         if (rel.offset != null) {
@@ -172,8 +173,8 @@ public class DrdsRelMdRowCount extends RelMdRowCount {
             if (index < 0) {
                 return super.getRowCount(rel, mq);
             }
-            Parameters parameters = PlannerContext.getPlannerContext(rel).getParams();
-            Object arg = Optional.ofNullable(parameters.getCurrentParameter()).map(params -> params.get(index + 1)).map(
+            Map<Integer, ParameterContext> params = getParametersMapForOptimizer(rel);
+            Object arg = Optional.ofNullable(params).map(map -> map.get(index + 1)).map(
                 ParameterContext::getValue).orElse(null);
             if (arg instanceof RawString) {
                 return (double) ((RawString) arg).size();

@@ -16,7 +16,10 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.TypeReference;
+import com.alibaba.polardbx.common.ddl.Job;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
@@ -118,33 +121,37 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
 
             //handle fastchecker info
             Map<Long, FastCheckerThreadPool.FastCheckerInfo> mergedResult = new TreeMap<>();
+            //we expect this to happen, sync only to master is acceptable.
             FastCheckerInfoSyncAction syncAction = new FastCheckerInfoSyncAction(ddlJobIds);
-            GmsSyncManagerHelper.sync(syncAction, executionContext.getSchemaName(), SyncScope.MASTER_ONLY, results -> {
-                if (results == null) {
-                    return;
-                }
-
-                for (Pair<GmsNodeManager.GmsNode, List<Map<String, Object>>> result : results) {
-                    if (CollectionUtils.isEmpty(result.getValue())) {
-                        continue;
+            GmsSyncManagerHelper.sync(syncAction, executionContext.getSchemaName(), SyncScope.MASTER_ONLY,
+                results -> {
+                    if (results == null) {
+                        return;
                     }
-                    for (Map<String, Object> row : result.getValue()) {
-                        long jobId = DataTypes.LongType.convertFrom(row.get("DDL_JOB_ID"));
-                        long taskSum = DataTypes.LongType.convertFrom(row.get("TASK_SUM"));
-                        long taskFinished = DataTypes.LongType.convertFrom(row.get("TASK_FINISHED"));
 
-                        mergedResult.putIfAbsent(jobId, new FastCheckerThreadPool.FastCheckerInfo());
-                        mergedResult.get(jobId).getPhyTaskSum().addAndGet((int) taskSum);
-                        mergedResult.get(jobId).getPhyTaskFinished().addAndGet((int) taskFinished);
+                    for (Pair<GmsNodeManager.GmsNode, List<Map<String, Object>>> result : results) {
+                        if (CollectionUtils.isEmpty(result.getValue())) {
+                            continue;
+                        }
+                        for (Map<String, Object> row : result.getValue()) {
+                            long jobId = DataTypes.LongType.convertFrom(row.get("DDL_JOB_ID"));
+                            long taskSum = DataTypes.LongType.convertFrom(row.get("TASK_SUM"));
+                            long taskFinished = DataTypes.LongType.convertFrom(row.get("TASK_FINISHED"));
+
+                            mergedResult.putIfAbsent(jobId, new FastCheckerThreadPool.FastCheckerInfo());
+                            mergedResult.get(jobId).getPhyTaskSum().addAndGet((int) taskSum);
+                            mergedResult.get(jobId).getPhyTaskFinished().addAndGet((int) taskFinished);
+                        }
                     }
                 }
-            });
+            );
 
             // If the jobs on new DDL engine, then show them.
             for (DdlEngineRecord record : records) {
-                if (!isFull && record.isSubJob()) {
-                    continue;
-                }
+                // show ddl will also show subjob
+//                if (!isFull && record.isSubJob()) {
+//                    continue;
+//                }
 
                 FastCheckerThreadPool.FastCheckerInfo fcInfo = Optional.ofNullable(mergedResult.get(record.jobId))
                     .orElse(new FastCheckerThreadPool.FastCheckerInfo());
@@ -207,9 +214,22 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         if (phyProcess != null && phyProcess != StringUtils.EMPTY) {
             phyProcess = phyProcess.substring(0, Math.min(phyProcess.length(), MAX_SHOW_LEN));
         }
-        Pair<String, String> taskAndBackfillProgress = getTaskAndBackfillProgress(record.jobId);
-        String totalProgress = taskAndBackfillProgress.getKey();
-        String backfillProgress = taskAndBackfillProgress.getValue();
+        // for total progress
+        // fetch all the task is too heavy for large scale job.
+        Pair<String, String> taskAndBackfillProgress = new Pair<>("-", "-");
+        String totalProgress = "-";
+        String backfillProgress = "-";
+        if (isFull) {
+            taskAndBackfillProgress = getTaskAndBackfillProgress(record.jobId);
+            totalProgress = taskAndBackfillProgress.getKey();
+            backfillProgress = taskAndBackfillProgress.getValue();
+        } else {
+            int successTaskCount = getSuccessTaskCount(record.jobId);
+            int totalTaskCount = JSON.parseObject(record.taskGraph, new TypeReference<Map<Long, List<Long>>>() {
+            }).size();
+            int progress = successTaskCount * 100 / totalTaskCount;
+            totalProgress = progress + PERCENTAGE;
+        }
         String cancelable = Boolean.valueOf(record.isSupportCancel()).toString();
 
         String gmtCreated = DdlHelper.convertTimestamp(record.gmtCreated);
@@ -447,6 +467,11 @@ public class DdlEngineShowJobsHandler extends DdlEngineJobsHandler {
         final String taskProgress = getTaskProgress(jobId, taskRecordList);
         final String backfillProgress = getBackfillProgress(jobId, taskRecordList);
         return Pair.of(taskProgress, backfillProgress);
+    }
+
+    private int getSuccessTaskCount(long jobId) {
+        int successTaskCount = ddlJobManager.querySuccessTaskCount(jobId);
+        return successTaskCount;
     }
 
     private String getTaskProgress(long jobId, List<DdlEngineTaskRecord> taskRecordList) {

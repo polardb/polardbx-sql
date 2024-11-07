@@ -50,10 +50,14 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumberExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLQueryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveDefinitionExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveJobExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsArchivePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsInspectIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
@@ -146,8 +150,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlignToTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableAsOfTimeStamp;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableBroadcast;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableModifyTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePartition;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTablePurgeBeforeTimeStamp;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableRemoveTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableSingle;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsBaselineStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCancelDDLJob;
@@ -156,6 +162,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeDDLJ
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeRuleVersionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarPartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarSnapshot;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckGlobalIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclTriggersStatement;
@@ -186,7 +193,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRecoverDDL
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRemoveDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsResumeRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRollbackDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDdlEngineStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsTerminateRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowChangeSet;
@@ -928,12 +938,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         }
 
         print('(');
-        for (int i = 0, size = x.getColumns().size(); i < size; ++i) {
-            if (i != 0) {
-                print0(", ");
-            }
-            x.getColumns().get(i).accept(this);
-        }
+        printIndexColumn(x.getColumns());
         print(')');
 
         if (x.getAnalyzerName() != null) {
@@ -1093,13 +1098,7 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         }
 
         print0(" (");
-
-        for (int i = 0, size = x.getColumns().size(); i < size; ++i) {
-            if (i != 0) {
-                print0(", ");
-            }
-            x.getColumns().get(i).accept(this);
-        }
+        printIndexColumn(x.getColumns());
         print(')');
 
         if (x.isWithImplicitTablegroup()) {
@@ -1108,10 +1107,8 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             print0(ucase ? " IMPLICIT" : " implicit");
         }
 
-        SQLExpr comment = x.getComment();
-        if (comment != null) {
-            print0(ucase ? " COMMENT " : " comment ");
-            printExpr(comment);
+        if (x.getIndexDefinition().hasOptions()) {
+            x.getIndexDefinition().getOptions().accept(this);
         }
 
         return false;
@@ -2270,6 +2267,22 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     }
 
     @Override
+    public void endVisit(DrdsShowDdlEngineStatus x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowDdlEngineStatus x) {
+        print0(ucase ? "SHOW " : "show ");
+        if (x.isFull()) {
+            print0(ucase ? "FULL " : "full ");
+        }
+        print0(ucase ? "DDL" : "ddl");
+        boolean first = true;
+        return false;
+    }
+
+    @Override
     public void endVisit(DrdsShowDDLResults x) {
 
     }
@@ -2523,6 +2536,31 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     @Override
     public boolean visit(DrdsTerminateRebalanceJob x) {
         print0(ucase ? "ROLLBACK REBALANCE" : "rollback rebalance");
+        if (x.isAllJobs()) {
+            print0(ucase ? " ALL" : " all");
+        } else {
+            boolean first = true;
+            for (Long id : x.getJobIds()) {
+                if (first) {
+                    first = false;
+                    print0(" ");
+                } else {
+                    print0(", ");
+                }
+                print(id);
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsResumeRebalanceJob x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsResumeRebalanceJob x) {
+        print0(ucase ? "RESUME REBALANCE" : "resume rebalance");
         if (x.isAllJobs()) {
             print0(ucase ? " ALL" : " all");
         } else {
@@ -2834,6 +2872,18 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
     @Override
     public void endVisit(DrdsCheckColumnarIndex x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCheckColumnarSnapshot x) {
+        print0(ucase ? "CHECK COLUMNAR SNAPSHOT " : "check columnar snapshot ");
+        printExpr(x.getTableName(), parameterized);
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsCheckColumnarSnapshot x) {
 
     }
 
@@ -5579,6 +5629,12 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             print0(ucase ? "UPGRADE PARTITIONING" : "upgrade partitioning");
         }
 
+        if (x.getLocalPartition() != null) {
+            println();
+            print0(ucase ? " LOCAL PARTITION BY " : " local partition by ");
+            x.getLocalPartition().accept(this);
+        }
+
         if (x.getTableOptions().size() > 0) {
             if (x.getItems().size() > 0) {
                 print(',');
@@ -5633,9 +5689,10 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
         for (int pos = 0; pos < x.getIndexTableGroupPair().size(); pos++) {
             print0(", ");
             print0(ucase ? "INDEX " : "index ");
-            x.getIndexTableGroupPair().get(pos).getKey().accept(this);
+
+            printTableSourceExpr(x.getIndexTableGroupPair().get(pos).getKey());
             print0(ucase ? " WITH TABLEGROUP=" : " with tablegroup=");
-            x.getIndexTableGroupPair().get(pos).getValue().accept(this);
+            printTableSourceExpr(x.getIndexTableGroupPair().get(pos).getValue());
             print0(ucase ? " IMPLICIT" : " implicit");
         }
         DrdsAlignToTableGroup alignToTableGroup = x.getAlignToTableGroup();
@@ -8625,6 +8682,28 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     }
 
     @Override
+    public boolean visit(DrdsArchivePartition x) {
+        final String clause = "ARCHIVE " + (x.isSubPartitionsArchive() ? "SUBPARTITIONS " : "PARTITIONS ");
+        print0(ucase ? clause : clause.toLowerCase());
+
+        int i = 0;
+        List<SQLName> partitions = x.getPartitions();
+        for (SQLName partition : partitions) {
+            if (i > 0) {
+                print0(", ");
+            }
+            partition.accept(this);
+            i++;
+        }
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsArchivePartition x) {
+
+    }
+
+    @Override
     public boolean visit(DrdsExtractHotKey x) {
         print0(ucase ? "EXTRACT TO PARTITION " : "extract to partition ");
         if (x.getHotKeyPartitionName() != null) {
@@ -8677,6 +8756,87 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
             i++;
         }
         print0(")");
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableModifyTtlOptions x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableModifyTtlOptions x) {
+
+        print0(ucase ? "MODIFY TTL " : "modify ttl ");
+        print0(ucase ? "SET " : "set ");
+        SQLExpr ttlEnableAst = x.getTtlEnable();
+        SQLExpr ttlExprAst = x.getTtlExpr();
+        SQLExpr ttlJobAst = x.getTtlJob();
+
+        SQLExpr arcTblSchema = x.getArchiveTableSchema();
+        SQLExpr arcTblName = x.getArchiveTableName();
+
+        SQLExpr arcKind = x.getArchiveKind();
+        SQLExpr arcPreAllocate = x.getArcPreAllocate();
+        SQLExpr arcPostAllocate = x.getArcPostAllocate();
+
+        if (ttlEnableAst != null) {
+            print0(ucase ? "TTL_ENABLE " : "ttl_enable ");
+            print0(" = ");
+            ttlEnableAst.accept(this);
+        }
+
+        if (ttlExprAst != null) {
+            print0(ucase ? " TTL_EXPR " : " ttl_expr ");
+            print0(" = ");
+            ttlExprAst.accept(this);
+        }
+
+        if (ttlJobAst != null) {
+            print0(ucase ? " TTL_JOB " : " ttl_job ");
+            print0(" = ");
+            ttlJobAst.accept(this);
+        }
+
+        if (arcPreAllocate != null) {
+            print0(ucase ? " ARCHIVE_TABLE_PRE_ALLOCATE " : " archive_table_pre_allocate ");
+            print0(" = ");
+            arcPreAllocate.accept(this);
+        }
+
+        if (arcPostAllocate != null) {
+            print0(ucase ? " ARCHIVE_TABLE_POST_ALLOCATE " : " archive_table_post_allocate ");
+            print0(" = ");
+            arcPostAllocate.accept(this);
+        }
+
+        if (arcKind != null) {
+            print0(ucase ? " ARCHIVE_TYPE " : " archive_type ");
+            print0(" = ");
+            arcKind.accept(this);
+        }
+
+        if (arcTblSchema != null) {
+            print0(ucase ? " ARCHIVE_TABLE_SCHEMA " : " archive_table_schema ");
+            print0(" = ");
+            arcTblSchema.accept(this);
+        }
+
+        if (arcTblName != null) {
+            print0(ucase ? " ARCHIVE_TABLE_NAME " : " archive_table_name ");
+            print0(" = ");
+            arcTblName.accept(this);
+        }
+
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableRemoveTtlOptions x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableRemoveTtlOptions x) {
+        print0(ucase ? "REMOVE TTL " : "remove ttl ");
         return false;
     }
 
@@ -9084,4 +9244,144 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
     public void endVisit(MySqlFlushLogsStatement x) {
     }
 
+    @Override
+    public boolean visit(SQLTimeToLiveDefinitionExpr x) {
+        SQLExpr ttlEnableExpr = x.getTtlEnableExpr();
+        SQLExpr ttlExpr = x.getTtlExpr();
+        SQLExpr ttlJobExpr = x.getTtlJobExpr();
+        SQLExpr ttlFilterExpr = x.getTtlFilterExpr();
+        SQLExpr archiveTypeExpr = x.getArchiveTypeExpr();
+        SQLExpr archiveTableSchemaExpr = x.getArchiveTableSchemaExpr();
+        SQLExpr archiveTableNameExpr = x.getArchiveTableNameExpr();
+        SQLExpr archiveTablePreAllocate = x.getArchiveTablePreAllocateExpr();
+        SQLExpr archiveTablePostAllocate = x.getArchiveTablePostAllocateExpr();
+
+        print0(ucase ? "TTL_DEFINITION" : "ttl_definition");
+        print0("(");
+
+        if (ttlEnableExpr != null) {
+            print0(ucase ? " TTL_ENABLE" : "ttl_enable");
+            print0(" = ");
+            ttlEnableExpr.accept(this);
+        }
+
+        if (ttlExpr != null) {
+            print0(",");
+            print0(ucase ? " TTL_EXPR" : "ttl_expr");
+            print0(" = ");
+            ttlExpr.accept(this);
+        }
+
+        if (ttlJobExpr != null) {
+            print0(",");
+            print0(ucase ? " TTL_JOB" : " ttl_job");
+            print0(" = ");
+            ttlJobExpr.accept(this);
+        }
+
+        if (ttlFilterExpr != null) {
+            print0(",");
+            print0(ucase ? " TTL_FILTER" : " ttl_filter");
+            print0(" = ");
+            ttlFilterExpr.accept(this);
+        }
+
+        if (archiveTypeExpr != null) {
+            print0(",");
+            print0(ucase ? " ARCHIVE_TYPE" : " archive_type");
+            print0(" = ");
+            archiveTypeExpr.accept(this);
+        }
+
+        if (archiveTableSchemaExpr != null) {
+            print0(",");
+            print0(ucase ? " ARCHIVE_TABLE_SCHEMA" : " archive_table_schema");
+            print0(" = ");
+            archiveTableSchemaExpr.accept(this);
+        }
+
+        if (archiveTableNameExpr != null) {
+            print0(",");
+            print0(ucase ? " ARCHIVE_TABLE_NAME" : " archive_table_name");
+            print0(" = ");
+            archiveTableNameExpr.accept(this);
+        }
+
+        if (archiveTablePreAllocate != null) {
+            print0(",");
+            print0(ucase ? " ARCHIVE_TABLE_PRE_ALLOCATE" : " archive_table_pre_allocate");
+            print0(" = ");
+            archiveTablePreAllocate.accept(this);
+
+        }
+
+        if (archiveTablePostAllocate != null) {
+            print0(",");
+            print0(ucase ? " ARCHIVE_TABLE_POST_ALLOCATE" : " archive_table_post_allocate");
+            print0(" = ");
+            archiveTablePostAllocate.accept(this);
+        }
+
+        print0(" )");
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLTimeToLiveDefinitionExpr x) {
+    }
+
+    @Override
+    public boolean visit(SQLTimeToLiveExpr x) {
+
+        SQLExpr column = x.getColumn();
+        SQLExpr expireAfter = x.getExpireAfter();
+        SQLExpr unit = x.getUnit();
+        SQLExpr timezone = x.getTimezone();
+
+        column.accept(this);
+        if (expireAfter != null) {
+            print0(" ");
+            print0(ucase ? "EXPIRE AFTER " : "expire after ");
+            expireAfter.accept(this);
+            if (unit != null) {
+                print0(" ");
+                unit.accept(this);
+            }
+        }
+
+        if (timezone != null) {
+            print0(" ");
+            print0(ucase ? "TIMEZONE " : "timezone ");
+            timezone.accept(this);
+        }
+
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLTimeToLiveExpr x) {
+    }
+
+    @Override
+    public boolean visit(SQLTimeToLiveJobExpr x) {
+
+        SQLExpr cron = x.getCron();
+        SQLExpr timezone = x.getTimezone();
+        if (cron != null) {
+            print0(ucase ? "CRON " : "cron ");
+            cron.accept(this);
+        }
+
+        if (timezone != null) {
+            print0(" ");
+            print0(ucase ? "TIMEZONE " : "timezone ");
+            timezone.accept(this);
+        }
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLTimeToLiveJobExpr x) {
+
+    }
 } //

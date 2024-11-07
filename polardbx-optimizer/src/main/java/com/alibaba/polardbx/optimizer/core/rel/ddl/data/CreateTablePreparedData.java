@@ -22,6 +22,7 @@ import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import lombok.Data;
 import org.apache.calcite.rex.RexNode;
@@ -73,6 +74,9 @@ public class CreateTablePreparedData extends DdlPreparedData {
     private PartitionInfo partitionInfo;
     private LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
 
+    private SqlNode ttlDefinitionExpr;
+    private TtlDefinitionInfo ttlDefinitionInfo;
+
     private String selectSql;
 
     /**
@@ -80,10 +84,48 @@ public class CreateTablePreparedData extends DdlPreparedData {
      */
     private LocalityDesc locality;
 
+    /**
+     * The schemaName of ttl table
+     */
     private String loadTableSchema;
+    /**
+     * The tableName of ttl table
+     */
     private String loadTableName;
 
+    /**
+     * The schemaName of ttl-tmp table
+     */
+    private String archiveTmpTableSchema;
+
+    /**
+     * The tableName of ttl-tmp table
+     */
+    private String archiveTmpTableName;
+
+    /**
+     * The schemaName of oss table
+     */
+    private String archiveTableSchema;
+
+    /**
+     * The tableName of oss table
+     */
     private String archiveTableName;
+
+    /**
+     * The real source schemaName of oss table, the schemaName of ttl table
+     */
+    private String archiveActualSourceTableSchema;
+    /**
+     * The real source tableName of oss table, the tableName of ttl table
+     */
+    private String archiveActualSourceTableName;
+
+    /**
+     * Label if curr table is a ttl-tmp table
+     */
+    private boolean ttlTemporary;
 
     /**
      * if Create gsi table

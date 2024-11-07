@@ -234,6 +234,11 @@ public class LogicalRowGroupImpl implements LogicalRowGroup<Block, ColumnStatist
                             encoding, columnReader, cacheReader, blockCacheManager, context, useBlockCache,
                             enableColumnReaderLock, chunkLimit, loadTimer, memoryCounter,
                             onlyCachePrimaryKey, enableSkipCompression);
+                    } else if (context.isCciIncrementalCheck()) {
+                        loader = new NoCacheBlockLoader(logicalRowGroup, colId, currentPosition, chunkRows,
+                            encoding, columnReader, cacheReader, blockCacheManager, context, useBlockCache,
+                            enableColumnReaderLock, chunkLimit, loadTimer, memoryCounter,
+                            onlyCachePrimaryKey, enableSkipCompression);
                     } else {
                         // build block loader for specify position range.
                         loader = new ReactiveBlockLoader(logicalRowGroup, colId, currentPosition, chunkRows,

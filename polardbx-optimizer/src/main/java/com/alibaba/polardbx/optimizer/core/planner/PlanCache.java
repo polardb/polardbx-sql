@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -46,15 +45,17 @@ import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
-import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.alibaba.polardbx.optimizer.planmanager.hotevolution.HotGsiCapture;
+import com.alibaba.polardbx.optimizer.planmanager.hotevolution.HotGsiEvolution;
 import com.alibaba.polardbx.optimizer.statis.XplanStat;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
+import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Maps;
@@ -64,8 +65,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.SqlSelect;
-import org.apache.calcite.sql.SqlWith;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -209,11 +208,12 @@ public final class PlanCache {
         return super.clone();
     }
 
-    private ExecutionPlan getFromCache(String schema, SqlParameterized sqlParameterized, final List<?> params,
-                                       final ExecutionContext ec,
-                                       boolean testMode) throws ExecutionException {
-        final AtomicBoolean beCached = new AtomicBoolean(true);
-        CacheKey cacheKey = getCacheKey(schema, sqlParameterized, ec, testMode);
+    Callable<ExecutionPlan> getCacheLoader(String schema,
+                                           SqlParameterized sqlParameterized,
+                                           final List<?> params,
+                                           final ExecutionContext ec,
+                                           boolean testMode, AtomicBoolean beCached,
+                                           CacheKey cacheKey) {
         final Callable<ExecutionPlan> valueLoader = () -> {
             ContextParameters contextParameters = new ContextParameters(testMode);
             SqlNodeList astList = new FastsqlParser()
@@ -272,16 +272,25 @@ public final class PlanCache {
                     executionPlan.setPrivilegeVerifyItems(pc.getPrivilegeVerifyItems());
                     pc.setPrivilegeVerifyItems(null);
                 }
+                HotGsiCapture.capture(
+                    sqlParameterized,
+                    ec,
+                    executionPlan,
+                    HotGsiEvolution.getInstance(),
+                    cacheKey.getTemplateId());
 
-                // alert if plan cache is full
-                OptimizerAlertUtil.plancacheAlert(ec);
+                executionPlan.setFlashbackArea(ec.isFlashbackArea());
+
                 return executionPlan;
             }
         };
+        return valueLoader;
+    }
 
-        ExecutionPlan plan;
+    protected ExecutionPlan getPlanWithLoader(CacheKey cacheKey, Callable<ExecutionPlan> valueLoader)
+        throws ExecutionException {
         try {
-            plan = cache.get(cacheKey, valueLoader);
+            return cache.get(cacheKey, valueLoader);
         } catch (UncheckedExecutionException ex) {
             if (ErrorCode.match(ex.getMessage())) {
                 if (ex.getCause() instanceof TddlRuntimeException) {
@@ -294,20 +303,105 @@ public final class PlanCache {
                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, ex, ex.getMessage());
             }
         }
+    }
 
-        if (plan.isUseColumnar()) {
-            if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_PLAN_CACHE)) {
-                return beCached.get() ? null : plan;
-            }
+    ExecutionPlan getFromCache(String schema, SqlParameterized sqlParameterized, final List<?> params,
+                               final ExecutionContext ec,
+                               boolean testMode) throws ExecutionException {
+        final AtomicBoolean beCached = new AtomicBoolean(true);
+        CacheKey cacheKey = getCacheKey(schema, sqlParameterized, ec, testMode);
+        final Callable<ExecutionPlan> valueLoader = getCacheLoader(
+            schema, sqlParameterized, params, ec, testMode, beCached, cacheKey);
+
+        if (ec != null) {
+            ec.setColumnarPlanCache(DynamicConfig.getInstance().colPlanCache());
+        }
+        ExecutionPlan plan = getPlanWithLoader(cacheKey, valueLoader);
+        if (plan.getPlan() == null || PlannerContext.getPlannerContext(plan.getPlan()) == null) {
+            return savePlanCachedKey(ec, plan, cacheKey, beCached);
+        }
+        PlannerContext pc = PlannerContext.getPlannerContext(plan.getPlan());
+
+        // row plan
+        if (!pc.isUseColumnar()) {
+            return savePlanCachedKey(ec, plan, cacheKey, beCached);
         }
 
-        if (beCached.get()) {
-            plan.getHitCount().incrementAndGet();
+        // check whether columnar optimizer closed
+        ExecutionPlan newPlan = checkColumnarDisable(pc, ec, cacheKey, beCached, valueLoader);
+        if (newPlan != null) {
+            return newPlan;
         }
-        plan.setHitCache(beCached.get());
-        savePlanCachedKey(ec, plan, cacheKey);
 
-        return plan;
+        // check whether columnar plan cache closed
+        plan = checkColumnarPlanCache(pc, ec, cacheKey, beCached, valueLoader, plan);
+
+        if (plan.getPlan() == null || PlannerContext.getPlannerContext(plan.getPlan()) == null) {
+            return savePlanCachedKey(ec, plan, cacheKey, beCached);
+        }
+        pc = PlannerContext.getPlannerContext(plan.getPlan());
+        if (pc.isUseColumnar() && !pc.isUseColumnarPlanCache()) {
+            return beCached.get() ? null : plan;
+        }
+        return savePlanCachedKey(ec, plan, cacheKey, beCached);
+    }
+
+    /**
+     * generate new plan if cache plan is columnar, while ColumnarOptimizer is disabled
+     *
+     * @param pc PlannerContext of current plan
+     * @param ec context of current query
+     * @param cacheKey cache key of current query
+     * @param beCached cache state of current query
+     * @param valueLoader cache loader
+     * @return plan generated, none otherwise
+     */
+    ExecutionPlan checkColumnarDisable(PlannerContext pc,
+                                       ExecutionContext ec,
+                                       CacheKey cacheKey,
+                                       AtomicBoolean beCached,
+                                       Callable<ExecutionPlan> valueLoader) throws ExecutionException {
+        // row plan
+        if (!pc.isUseColumnar()) {
+            return null;
+        }
+        // columnar node
+        if (ConfigDataMode.isColumnarMode()) {
+            return null;
+        }
+        // columnar optimizer disabled
+        if (OptimizerUtils.enableColumnarOptimizer(ec.getParamManager())) {
+            return null;
+        }
+        // invalidate col plan cache if columnar optimizer closed
+        beCached.set(true);
+        invalidateByCacheKey(cacheKey);
+        if (ec != null) {
+            ec.setColumnarPlanCache(DynamicConfig.getInstance().colPlanCache());
+        }
+        // optimize again
+        return savePlanCachedKey(ec, getPlanWithLoader(cacheKey, valueLoader), cacheKey, beCached);
+    }
+
+    ExecutionPlan checkColumnarPlanCache(PlannerContext pc,
+                                         ExecutionContext ec,
+                                         CacheKey cacheKey,
+                                         AtomicBoolean beCached,
+                                         Callable<ExecutionPlan> valueLoader,
+                                         ExecutionPlan plan) throws ExecutionException {
+
+        // setting doesn't change
+        if (pc.isUseColumnarPlanCache() == DynamicConfig.getInstance().colPlanCache()) {
+            return plan;
+        }
+        // invalidate col plan cache if setting changed
+        beCached.set(true);
+        invalidateByCacheKey(cacheKey);
+        if (ec != null) {
+            ec.setColumnarPlanCache(DynamicConfig.getInstance().colPlanCache());
+        }
+        // optimize again
+        return getPlanWithLoader(cacheKey, valueLoader);
     }
 
     private boolean ensureValid(CacheKey cacheKey, ExecutionPlan executionPlan) {
@@ -396,6 +490,10 @@ public final class PlanCache {
                 }
             }
         }
+    }
+
+    public void invalidateByCacheKey(CacheKey cacheKey) {
+        cache.invalidate(cacheKey);
     }
 
     /**
@@ -590,8 +688,7 @@ public final class PlanCache {
         return false;
     }
 
-    public void feedBack(ExecutionPlan executionPlan, ExecutionContext ec, Throwable ex) {
-
+    public void xplanFeedBack(ExecutionPlan executionPlan, ExecutionContext ec) {
         CacheKey cacheKey = executionPlan.getCacheKey();
         if (cacheKey == null) {
             return;
@@ -608,6 +705,14 @@ public final class PlanCache {
                 }
             }
         }
+    }
+
+    public void feedBack(ExecutionPlan executionPlan, ExecutionContext ec, Throwable ex) {
+        xplanFeedBack(executionPlan, ec);
+        CacheKey cacheKey = executionPlan.getCacheKey();
+        if (cacheKey == null) {
+            return;
+        }
 
         if (ex == null) {
             return;
@@ -619,11 +724,14 @@ public final class PlanCache {
         }
     }
 
-    public static void savePlanCachedKey(ExecutionContext ec, ExecutionPlan plan, CacheKey cacheKey) {
-        plan.saveCacheState(plan.getTableSet(), plan.getTableSetHashCode(), cacheKey, plan.getTableMetaSnapshots());
-        if (ec != null) {
-            ec.setSqlTemplateId(cacheKey.getTemplateId());
+    public ExecutionPlan savePlanCachedKey(ExecutionContext ec, ExecutionPlan plan, CacheKey cacheKey,
+                                           AtomicBoolean beCached) {
+        if (beCached.get()) {
+            plan.getHitCount().incrementAndGet();
         }
+        plan.setHitCache(beCached.get());
+        plan.saveCacheState(plan.getTableSet(), plan.getTableSetHashCode(), cacheKey, plan.getTableMetaSnapshots());
+        return plan;
     }
 
     public void putCachePlan(CacheKey cacheKey, ExecutionPlan plan) {

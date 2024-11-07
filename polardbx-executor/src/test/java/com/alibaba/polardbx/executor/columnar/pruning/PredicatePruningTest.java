@@ -7,6 +7,7 @@ import com.alibaba.polardbx.executor.columnar.pruning.index.IndexPruner;
 import com.alibaba.polardbx.executor.columnar.pruning.predicate.ColumnPredicatePruningInf;
 import com.alibaba.polardbx.executor.columnar.pruning.predicate.ColumnarPredicatePruningVisitor;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.collect.Lists;
 import org.apache.calcite.adapter.java.JavaTypeFactory;
 import org.apache.calcite.adapter.java.ReflectiveSchema;
@@ -52,13 +53,22 @@ public class PredicatePruningTest extends ColumnarPruneTest {
         }
         List<Object[]> params = Lists.newArrayList();
 
+        // ship_instructions <= string 'abcdefg'
+        params.add(buildPredicateCase((rexBuilder, scan) -> {
+                final String d = new String("abcdefg");
+                return rexBuilder.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                    rexBuilder.makeInputRef(scan, 14),
+                    rexBuilder.makeLiteral(d));
+            }, mockPruner(DataTypes.VarcharType), -1L, new Parameters(),
+            "shipInstructions_14 LESS_THAN_OR_EQUAL abcdefg"));
+
         //  l_shipdate <= date '1998-09-01'
         params.add(buildPredicateCase((rexBuilder, scan) -> {
             final DateString d = new DateString(1998, 9, 1);
             return rexBuilder.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
                 rexBuilder.makeInputRef(scan, 11),
                 rexBuilder.makeDateLiteral(d));
-        }, mockPruner(), -1L, new Parameters(), "shipDate_11 LESS_THAN_OR_EQUAL 1998-09-01"));
+        }, mockPruner(DataTypes.DateType), -1L, new Parameters(), "shipDate_11 LESS_THAN_OR_EQUAL 1998-09-01"));
 
         // date '1998-09-01' >=  l_shipdate
         params.add(buildPredicateCase((rexBuilder, scan) -> {
@@ -66,7 +76,7 @@ public class PredicatePruningTest extends ColumnarPruneTest {
             return rexBuilder.makeCall(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
                 rexBuilder.makeDateLiteral(d),
                 rexBuilder.makeInputRef(scan, 11));
-        }, mockPruner(), -1L, new Parameters(), "shipDate_11 LESS_THAN_OR_EQUAL 1998-09-01"));
+        }, mockPruner(DataTypes.DateType), -1L, new Parameters(), "shipDate_11 LESS_THAN_OR_EQUAL 1998-09-01"));
 
         // date '1998-09-01' = l_shipdate
         params.add(buildPredicateCase((rexBuilder, scan) -> {
@@ -74,7 +84,7 @@ public class PredicatePruningTest extends ColumnarPruneTest {
             return rexBuilder.makeCall(SqlStdOperatorTable.EQUALS,
                 rexBuilder.makeDateLiteral(d),
                 rexBuilder.makeInputRef(scan, 11));
-        }, mockPruner(), -1L, new Parameters(), "shipDate_11 EQUALS 1998-09-01"));
+        }, mockPruner(DataTypes.DateType), -1L, new Parameters(), "shipDate_11 EQUALS 1998-09-01"));
 
         // l_shipdate > date '1998-09-01'
         params.add(buildPredicateCase((rexBuilder, scan) -> {
@@ -82,7 +92,7 @@ public class PredicatePruningTest extends ColumnarPruneTest {
             return rexBuilder.makeCall(SqlStdOperatorTable.GREATER_THAN,
                 rexBuilder.makeInputRef(scan, 11),
                 rexBuilder.makeDateLiteral(d));
-        }, mockPruner(), -1L, new Parameters(), "shipDate_11 GREATER_THAN 1998-09-01"));
+        }, mockPruner(DataTypes.DateType), -1L, new Parameters(), "shipDate_11 GREATER_THAN 1998-09-01"));
 
         // date '1998-09-01' > l_shipdate
         params.add(buildPredicateCase((rexBuilder, scan) -> {
@@ -90,7 +100,7 @@ public class PredicatePruningTest extends ColumnarPruneTest {
             return rexBuilder.makeCall(SqlStdOperatorTable.GREATER_THAN,
                 rexBuilder.makeDateLiteral(d),
                 rexBuilder.makeInputRef(scan, 11));
-        }, mockPruner(), -1L, new Parameters(), "shipDate_11 LESS_THAN 1998-09-01"));
+        }, mockPruner(DataTypes.DateType), -1L, new Parameters(), "shipDate_11 LESS_THAN 1998-09-01"));
         return params;
     }
 

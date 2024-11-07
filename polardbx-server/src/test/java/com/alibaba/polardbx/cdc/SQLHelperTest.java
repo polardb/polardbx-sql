@@ -155,10 +155,10 @@ public class SQLHelperTest {
 
     @Test
     public void testRewriteWithTableGroupImplicit() {
-        String sql = "alter table `t7` with tablegroup=single_tg468 implicit";
+        String sql = "alter table `t``7` with tablegroup=single_tg468 implicit";
         SQLStatement statement =
             SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, SQL_PARSE_FEATURES).parseStatementList().get(0);
-        Assert.assertEquals("ALTER TABLE `t7`\n"
+        Assert.assertEquals("ALTER TABLE `t``7`\n"
             + "\tSET tablegroup = single_tg468 IMPLICIT FORCE", statement.toString());
     }
 
@@ -199,7 +199,12 @@ public class SQLHelperTest {
             + "\t`c_timestamp_6` timestamp(6) DEFAULT '2000-01-01 00:00:00',\n"
             + "\t`gmt_modified` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "\tPRIMARY KEY (`id`, `gmt_modified`)\n"
-            + ") SINGLE";
+            + ") SINGLE\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + " INTERVAL 1 MONTH\n"
+            + " EXPIRE AFTER 6\n"
+            + " PRE ALLOCATE 6\n"
+            + " PIVOTDATE NOW()";
         Assert.assertEquals(expectSql, statement.toString());
     }
 

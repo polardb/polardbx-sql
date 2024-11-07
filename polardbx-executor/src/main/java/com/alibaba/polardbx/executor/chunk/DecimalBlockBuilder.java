@@ -233,6 +233,11 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder implements Segment
     }
 
     @Override
+    public int getScale() {
+        return scale;
+    }
+
+    @Override
     public Object getObject(int position) {
         return isNull(position) ? null : getDecimal(position);
     }

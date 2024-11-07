@@ -75,6 +75,15 @@ public class CreateDbInfo {
      */
     protected GroupLocator groupLocator;
 
+    protected List<CreatedDbHookFunc> createdDbHookFuncList = new ArrayList<>();
+
+    /**
+     * The hook function callback to refresh memory only alter finishing creating db
+     */
+    public interface CreatedDbHookFunc {
+        void handle(Long newAddedDbInfoId);
+    }
+
     public CreateDbInfo() {
     }
 
@@ -200,5 +209,14 @@ public class CreateDbInfo {
 
     public void setDefaultSingle(Boolean defaultSingle) {
         this.defaultSingle = defaultSingle;
+    }
+
+    public List<CreatedDbHookFunc> getCreatedDbHookFuncList() {
+        return createdDbHookFuncList;
+    }
+
+    public void setCreatedDbHookFuncList(
+        List<CreatedDbHookFunc> createdDbHookFuncList) {
+        this.createdDbHookFuncList = createdDbHookFuncList;
     }
 }

@@ -4,13 +4,11 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
-import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
@@ -18,10 +16,6 @@ import com.google.common.collect.Sets;
 import org.apache.calcite.plan.ConventionTraitDef;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
-import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.Sample;
-import org.apache.calcite.rel.core.TableScan;
-import org.apache.calcite.rel.logical.LogicalDummy;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.rex.RexBuilder;
@@ -105,6 +99,29 @@ public class BaselineInfoTest {
         Assert.assertTrue(b2.getFixPlans().size() == 12 && b2.getAcceptedPlans().size() == 12);
     }
 
+    @Test
+    public void testMergeHotEvolution() {
+        BaselineInfo b1 = new BaselineInfo("test sql", Collections.emptySet());
+        BaselineInfo b2 = new BaselineInfo("test sql", Collections.emptySet());
+
+        b1.setHotEvolution(true);
+        b2.merge("test", b1);
+        Assert.assertTrue(b2.isHotEvolution());
+
+        b1 = new BaselineInfo("test sql", Collections.emptySet());
+        b2 = new BaselineInfo("test sql", Collections.emptySet());
+
+        b2.setHotEvolution(true);
+        b2.merge("test", b1);
+        Assert.assertTrue(b2.isHotEvolution());
+
+        b1 = new BaselineInfo("test sql", Collections.emptySet());
+        b2 = new BaselineInfo("test sql", Collections.emptySet());
+
+        b2.merge("test", b1);
+        Assert.assertTrue(!b2.isHotEvolution());
+    }
+
     @Ignore
     public void testMergeExpiredPlan() {
         BaselineInfo b1 = new BaselineInfo("test sql", Collections.emptySet());
@@ -152,10 +169,29 @@ public class BaselineInfoTest {
         b1.setHint(hint);
         b1.setRebuildAtLoad(true);
         b1.setUsePostPlanner(true);
+        b1.setHotEvolution(true);
         Assert.assertTrue(b1.isRebuildAtLoad());
         String json = BaselineInfo.serializeToJson(b1, false);
         BaselineInfo b2 = BaselineInfo.deserializeFromJson(json);
         Assert.assertTrue(b2.isRebuildAtLoad() && StringUtils.isNotEmpty(b2.getHint()) && b2.isUsePostPlanner());
+        Assert.assertTrue(b2.isHotEvolution());
+    }
+
+    /**
+     * test RebuildAtLoad baseline serialize
+     */
+    @Test
+    public void testRebuildAtLoadBaselineHotEvolutionSerialized() {
+        BaselineInfo b1 = new BaselineInfo("test sql", Collections.emptySet());
+        b1.setHotEvolution(true);
+        String json = BaselineInfo.serializeToJson(b1, false);
+        BaselineInfo b2 = BaselineInfo.deserializeFromJson(json);
+        Assert.assertTrue(b2.isHotEvolution());
+
+        b1 = new BaselineInfo("test sql", Collections.emptySet());
+        json = BaselineInfo.serializeToJson(b1, false);
+        b2 = BaselineInfo.deserializeFromJson(json);
+        Assert.assertTrue(!b2.isHotEvolution());
     }
 
     @Test

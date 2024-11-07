@@ -1,0 +1,488 @@
+## DISABLE_FAST_SQL_PARSER
+  ## l_h_tp
+drop table if exists l_h_tp1;
+drop table if exists l_h_tp2;
+create table if not exists l_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+create table if not exists l_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+alter table l_h_tp1 drop partition p1;
+alter table l_h_tp2 drop partition p1;
+show full create table l_h_tp1;
+show full create table l_h_tp2;
+
+  ## l_k_tp
+drop table if exists l_k_tp1;
+drop table if exists l_k_tp2;
+create table if not exists l_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+create table if not exists l_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+alter table l_k_tp1 drop partition p1;
+alter table l_k_tp2 drop partition p2;
+show full create table l_k_tp1;
+show full create table l_k_tp2;
+
+  ## l_r_tp
+drop table if exists l_r_tp1;
+drop table if exists l_r_tp2;
+create table if not exists l_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+create table if not exists l_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+alter table l_r_tp1 drop partition p1;
+alter table l_r_tp1 drop subpartition sp1;
+alter table l_r_tp2 drop subpartition sp2;
+alter table l_r_tp2 drop partition p2;
+show full create table l_r_tp1;
+show full create table l_r_tp2;
+
+  ## l_rc_tp
+drop table if exists l_rc_tp1;
+drop table if exists l_rc_tp2;
+create table if not exists l_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+create table if not exists l_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+alter table l_rc_tp1 drop partition p1;
+alter table l_rc_tp1 drop subpartition sp1;
+alter table l_rc_tp2 drop subpartition sp1;
+alter table l_rc_tp2 drop partition p1;
+show full create table l_rc_tp1;
+show full create table l_rc_tp2;
+
+  ## l_l_tp
+drop table if exists l_l_tp1;
+drop table if exists l_l_tp2;
+create table if not exists l_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+create table if not exists l_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+alter table l_l_tp1 drop partition p1;
+alter table l_l_tp1 drop subpartition sp1;
+alter table l_l_tp2 drop subpartition sp1;
+alter table l_l_tp2 drop partition p1;
+show full create table l_l_tp1;
+show full create table l_l_tp2;
+
+  ## l_lc_tp
+drop table if exists l_lc_tp1;
+drop table if exists l_lc_tp2;
+create table if not exists l_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+create table if not exists l_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+alter table l_lc_tp1 drop partition p1;
+alter table l_lc_tp1 drop subpartition sp1;
+alter table l_lc_tp2 drop subpartition sp1;
+alter table l_lc_tp2 drop partition p1;
+show full create table l_lc_tp1;
+show full create table l_lc_tp2;
+
+  ## lc_h_tp
+drop table if exists lc_h_tp1;
+drop table if exists lc_h_tp2;
+create table if not exists lc_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+create table if not exists lc_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+alter table lc_h_tp1 drop partition p1;
+alter table lc_h_tp2 drop partition p1;
+show full create table lc_h_tp1;
+show full create table lc_h_tp2;
+
+  ## lc_k_tp
+drop table if exists lc_k_tp1;
+drop table if exists lc_k_tp2;
+create table if not exists lc_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+alter table lc_k_tp1 drop partition p1;
+alter table lc_k_tp2 drop partition p2;
+show full create table lc_k_tp1;
+show full create table lc_k_tp2;
+
+  ## lc_r_tp
+drop table if exists lc_r_tp1;
+drop table if exists lc_r_tp2;
+create table if not exists lc_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+create table if not exists lc_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+alter table lc_r_tp1 drop partition p1;
+alter table lc_r_tp1 drop subpartition sp1;
+alter table lc_r_tp2 drop subpartition sp1;
+alter table lc_r_tp2 drop partition p1;
+show full create table lc_r_tp1;
+show full create table lc_r_tp2;
+
+  ## lc_rc_tp
+drop table if exists lc_rc_tp1;
+drop table if exists lc_rc_tp2;
+create table if not exists lc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+create table if not exists lc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+alter table lc_rc_tp1 drop partition p1;
+alter table lc_rc_tp1 drop subpartition sp1;
+alter table lc_rc_tp2 drop subpartition sp2;
+alter table lc_rc_tp2 drop partition p1;
+show full create table lc_rc_tp1;
+show full create table lc_rc_tp2;
+
+  ## lc_l_tp
+drop table if exists lc_l_tp1;
+drop table if exists lc_l_tp2;
+create table if not exists lc_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+create table if not exists lc_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+alter table lc_l_tp1 drop partition p1;
+alter table lc_l_tp1 drop subpartition sp1;
+alter table lc_l_tp2 drop subpartition sp1;
+alter table lc_l_tp2 drop partition p1;
+show full create table lc_l_tp1;
+show full create table lc_l_tp2;
+
+  ## lc_lc_tp
+drop table if exists lc_lc_tp1;
+drop table if exists lc_lc_tp2;
+create table if not exists lc_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+create table if not exists lc_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+alter table lc_lc_tp1 drop partition p1;
+alter table lc_lc_tp1 drop subpartition sp1;
+alter table lc_lc_tp2 drop subpartition sp1;
+alter table lc_lc_tp2 drop partition p1;
+show full create table lc_lc_tp1;
+show full create table lc_lc_tp2;

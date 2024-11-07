@@ -21,6 +21,7 @@ import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Date;
+import java.util.Objects;
 
 /**
  * @author chenghui.lch
@@ -42,8 +43,10 @@ public class TablePartitionRecord implements SystemTableRecord {
     public final static int SUBPARTITION_TEMPLATE_UNUSED = 0;
     public final static int SUBPARTITION_TEMPLATE_NOT_EXISTED = -1;
 
+    public final static int PARTITION_STATUS_PARTITION_OFFLINE = -1;
+
     /**
-     * Flags for auto-balance
+     * Flags for auto-balance, use the variable of auto_flag
      */
     public final static int PARTITION_AUTO_BALANCE_DISABLE = 0;
     public final static int PARTITION_AUTO_BALANCE_ENABLE_ALL = 1;
@@ -132,10 +135,11 @@ public class TablePartitionRecord implements SystemTableRecord {
     public String phyTable;
 
     /**
-     * General flags.
+     * flags values for part_flags
      */
     public final static long FLAG_LOCK = 0x1;
-    public final static long FLAG_AUTO_PARTITION = 0x2;
+    public final static long FLAG_AUTO_PARTITION = 0x2;// label if a part-table is auto-partitioned table
+    public final static long FLAG_TTL_TEMPORARY_TABLE = 0x4; // label if a part-table is a ttl-tmp table
 
     @Override
     public TablePartitionRecord fill(ResultSet rs) throws SQLException {
@@ -372,6 +376,18 @@ public class TablePartitionRecord implements SystemTableRecord {
         this.partFlags &= ~FLAG_AUTO_PARTITION;
     }
 
+    public boolean isTtlTemporary() {
+        return (this.partFlags & FLAG_TTL_TEMPORARY_TABLE) != 0L;
+    }
+
+    public void setTtlTemporary() {
+        this.partFlags |= FLAG_TTL_TEMPORARY_TABLE;
+    }
+
+    public void clearTtlTemporary() {
+        this.partFlags &= ~FLAG_TTL_TEMPORARY_TABLE;
+    }
+
     public String getPhyTable() {
         return phyTable;
     }
@@ -439,5 +455,29 @@ public class TablePartitionRecord implements SystemTableRecord {
             ", partFlags=" + partFlags +
             ", phyTable='" + phyTable + '\'' +
             '}';
+    }
+
+    public static boolean isPartitionRecordEqual(TablePartitionRecord record1, TablePartitionRecord record2) {
+        return Objects.equals(record1.parentId, record2.parentId) &&
+            Objects.equals(record1.tableSchema, record2.tableSchema) &&
+            Objects.equals(record1.tableName, record2.tableName) &&
+            Objects.equals(record1.spTempFlag, record2.spTempFlag) &&
+            Objects.equals(record1.groupId, record2.groupId) &&
+            Objects.equals(record1.metaVersion, record2.metaVersion) &&
+            Objects.equals(record1.autoFlag, record2.autoFlag) &&
+            Objects.equals(record1.tblType, record2.tblType) &&
+            Objects.equals(record1.partName, record2.partName) &&
+            Objects.equals(record1.partTempName, record2.partTempName) &&
+            Objects.equals(record1.partLevel, record2.partLevel) &&
+            Objects.equals(record1.nextLevel, record2.nextLevel) &&
+            Objects.equals(record1.partStatus, record2.partStatus) &&
+            Objects.equals(record1.partPosition, record2.partPosition) &&
+            Objects.equals(record1.partMethod, record2.partMethod) &&
+            Objects.equals(record1.partExpr, record2.partExpr) &&
+            Objects.equals(record1.partDesc, record2.partDesc) &&
+            Objects.equals(record1.partComment, record2.partComment) &&
+            Objects.equals(record1.partEngine, record2.partEngine) &&
+            Objects.equals(record1.partFlags, record2.partFlags) &&
+            Objects.equals(record1.phyTable, record2.phyTable);
     }
 }

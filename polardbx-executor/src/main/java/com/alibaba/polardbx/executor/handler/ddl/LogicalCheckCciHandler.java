@@ -20,7 +20,9 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciIncrementTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciSnapshotTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciStartTask;
 import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ClearCheckReportTask;
@@ -74,6 +76,24 @@ public class LogicalCheckCciHandler extends LogicalCommonDdlHandler {
 
             job = new ExecutableDdlJob();
             job.addSequentialTasks(ImmutableList.of(checkCciMetaTask));
+        } else if (prepareData.isIncrement()) {
+            // CHECK COLUMNAR INDEX INCREMENT tsoV0 tsoV1
+            CheckCciStartTask checkCciStartTask =
+                new CheckCciStartTask(prepareData.getSchemaName(), prepareData.getTableName(),
+                    prepareData.getIndexName());
+            CheckCciIncrementTask checkTask = CheckCciIncrementTask.create(prepareData);
+
+            job = new ExecutableDdlJob();
+            job.addSequentialTasks(ImmutableList.of(checkCciStartTask, checkTask));
+        } else if (prepareData.isSnapshot()) {
+            // CHECK COLUMNAR INDEX SNAPSHOT tso
+            CheckCciStartTask checkCciStartTask =
+                new CheckCciStartTask(prepareData.getSchemaName(), prepareData.getTableName(),
+                    prepareData.getIndexName());
+            CheckCciSnapshotTask checkTask = CheckCciSnapshotTask.create(prepareData);
+
+            job = new ExecutableDdlJob();
+            job.addSequentialTasks(ImmutableList.of(checkCciStartTask, checkTask));
         }
 
         final String fullTableName =

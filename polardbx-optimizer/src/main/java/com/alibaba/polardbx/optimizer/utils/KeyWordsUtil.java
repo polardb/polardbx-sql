@@ -32,9 +32,6 @@ public class KeyWordsUtil {
 
     static {
         invalidKeyWords.addAll(MySQLKeywords.DEFAULT_KEYWORDS.getKeywords().keySet());
-        invalidKeyWords.add(SystemDbHelper.DEFAULT_DB_NAME);
-        invalidKeyWords.add(SystemDbHelper.CDC_DB_NAME);
-//        invalidKeyWords.add(SystemDbHelper.COLUMNAR_DB_NAME);
         for (Token token : Token.values()) {
             if (!invalidKeyWords.contains(token.name())) {
                 invalidKeyWords.add(token.name());

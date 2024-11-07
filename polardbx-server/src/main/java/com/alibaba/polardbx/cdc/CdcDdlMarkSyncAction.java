@@ -21,9 +21,11 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.server.conn.InnerConnection;
 import lombok.Data;
 import lombok.SneakyThrows;
@@ -48,10 +50,11 @@ public class CdcDdlMarkSyncAction implements ISyncAction {
     String metaInfo;
     CdcDdlMarkVisibility visibility;
     String ext;
+    boolean recordCommitTso;
 
     public CdcDdlMarkSyncAction(Long jobId, String sqlKind, String schema, String tableName, String ddlSql,
                                 String metaInfo,
-                                CdcDdlMarkVisibility visibility, String ext) {
+                                CdcDdlMarkVisibility visibility, String ext, boolean recordCommitTso) {
         this.jobId = jobId;
         this.sqlKind = sqlKind;
         this.schema = schema;
@@ -60,25 +63,39 @@ public class CdcDdlMarkSyncAction implements ISyncAction {
         this.metaInfo = metaInfo;
         this.visibility = visibility;
         this.ext = ext;
+        this.recordCommitTso = recordCommitTso;
     }
 
     @SneakyThrows
     @Override
     public ResultCursor sync() {
+        ResultCursor resultCursor = null;
         if (ConfigDataMode.isPolarDbX() && ConfigDataMode.isMasterMode() && ExecUtils.hasLeadership(null)) {
-            try (Connection connection = new InnerConnection(SystemDbHelper.CDC_DB_NAME)) {
-                doSync(connection);
+            try (Connection connection = new InnerConnection(SystemDbHelper.CDC_DB_NAME, recordCommitTso)) {
+                long tso = doSync(connection);
+                if (recordCommitTso) {
+                    return buildReturnCursor(tso);
+                }
             }
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_SYNC_PRIVILEGE_FAILED,
                 "current node is not leader, can`t do cdc ddl mark Action, with sql " + ddlSql);
         }
-        return null;
+        return resultCursor;
+    }
+
+    public ResultCursor buildReturnCursor(long tso) {
+        //如果需要记录commit tso，返回结果
+        ArrayResultCursor result = new ArrayResultCursor("cdc_mark_result");
+        result.addColumn("COMMIT_TSO", DataTypes.LongType);
+        result.initMeta();
+        result.addRow(new Object[] {tso});
+        return result;
     }
 
     @SneakyThrows
-    public void doSync(Connection connection) {
-        CdcTableUtil.getInstance()
+    public long doSync(Connection connection) {
+        return CdcTableUtil.getInstance()
             .insertDdlRecord(connection, jobId, sqlKind, schema, tableName, ddlSql, metaInfo, visibility, ext);
     }
 }

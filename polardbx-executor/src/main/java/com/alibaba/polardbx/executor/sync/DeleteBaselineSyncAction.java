@@ -17,7 +17,14 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.LogPattern;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+
+import static com.alibaba.polardbx.gms.module.LogLevel.NORMAL;
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESSING;
+import static com.alibaba.polardbx.gms.module.Module.SPM;
 
 public class DeleteBaselineSyncAction implements ISyncAction {
 
@@ -49,9 +56,13 @@ public class DeleteBaselineSyncAction implements ISyncAction {
 
     @Override
     public ResultCursor sync() {
-        if (planInfoId != null) {
+        if (planInfoId != null && planInfoId != 0) {
+            ModuleLogInfo.getInstance()
+                .logRecord(SPM, PROCESSING, new String[] {"delete plan " + planInfoId, parameterSql}, NORMAL);
             PlanManager.getInstance().deleteBaseline(schemaName, parameterSql, planInfoId);
         } else {
+            ModuleLogInfo.getInstance()
+                .logRecord(SPM, PROCESSING, new String[] {"delete baseline ", parameterSql}, NORMAL);
             PlanManager.getInstance().deleteBaseline(schemaName, parameterSql);
         }
         return null;

@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
@@ -43,7 +44,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.stream.Collectors;
 
 public class AlterTableGroupBaseBuilder {
 
@@ -140,6 +140,11 @@ public class AlterTableGroupBaseBuilder {
 
     public AlterTableGroupItemPreparedData createAlterTableGroupItemPreparedData(String tableName,
                                                                                  List<GroupDetailInfoExRecord> groupDetailInfoExRecords) {
+        TableMeta tableMeta =
+            getExecutionContext().getSchemaManager(getPreparedData().getSchemaName()).getTable(tableName);
+        if (tableMeta.withCci()) {
+            TableValidator.validateTableWithCCI(getExecutionContext(), getPreparedData().getTaskType());
+        }
 
         AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
             new AlterTableGroupItemPreparedData(preparedData.getSchemaName(), tableName);
@@ -161,7 +166,6 @@ public class AlterTableGroupBaseBuilder {
         alterTableGroupItemPreparedData.setInvisiblePartitionGroups(preparedData.getInvisiblePartitionGroups());
         alterTableGroupItemPreparedData.setTaskType(preparedData.getTaskType());
         String primaryTableName;
-        TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
         if (tableMeta.isGsi()) {
             //all the gsi table version change will be behavior by primary table
             assert
@@ -175,6 +179,7 @@ public class AlterTableGroupBaseBuilder {
             .setTableVersion(
                 executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(primaryTableName)
                     .getVersion());
+        alterTableGroupItemPreparedData.setColumnarIndex(tableMeta.isColumnar());
 
         return alterTableGroupItemPreparedData;
     }

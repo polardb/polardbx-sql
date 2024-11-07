@@ -599,6 +599,10 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
 
     @Test
     public void CreateTableDifferentCharsetWithFkReferred() throws SQLException {
+        if (isMySQL80()) {
+            return;
+        }
+
         JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
 
         dropTableIfExists("charset_c");

@@ -36,6 +36,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedDa
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;

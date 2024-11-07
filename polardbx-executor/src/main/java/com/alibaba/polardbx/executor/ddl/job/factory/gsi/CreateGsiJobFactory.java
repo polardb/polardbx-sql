@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -26,6 +27,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMeta
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterGsiAddLocalIndexTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertIndexMetaTask;
@@ -34,11 +36,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateGsi;
-import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
@@ -76,6 +76,7 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected final String indexComment;
     protected final String indexType;
     protected PhysicalPlanData physicalPlanData;
+    protected PhysicalPlanData physicalPlanDataForLocalIndex;
     protected final boolean clusteredIndex;
     protected final boolean hasTimestampColumnDefault;
     protected final Map<String, String> specialDefaultValues;
@@ -87,6 +88,8 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     public boolean mirrorCopy = false;
     public boolean stayAtBackFill = false;
     public boolean buildBroadCast = false;
+    public boolean splitByPkRange = false;
+    public boolean splitByPartition = false;
 
     /**
      * Foreign key
@@ -95,32 +98,38 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected List<ForeignKeyData> addedForeignKeys;
 
     /**
-     * for alter table modify sharding key (repartition check)
+     * for online modify column checker
      */
-    public Map<String, String> virtualColumnMap = null;
+    public Map<String, String> srcVirtualColumnMap = null;
+    public Map<String, String> dstVirtualColumnMap = null;
+    public Map<String, SQLColumnDefinition> dstColumnNewDefinitions = null;
 
     /**
      * for online modify column (change column name), column map, oldName ----> newName
      */
-    public Map<String, String> backfillColumnMap = null;
+    public Map<String, String> omcColumnMap = null;
 
     public List<String> modifyStringColumns = null;
 
     public List<String> addNewColumns = null;
 
     /**
-     * for online modify column, oldIndexName ----> newIndexName
+     * for online modify column, backfillSourceTable ----> newIndex
      */
-    public String oldIndexName;
+    public String backfillSourceTableName;
 
     public SubJobTask rerunTask;
 
     private boolean visible;
 
-    private boolean repartition;
+    protected boolean gsiCdcMark = true;
+
+    protected boolean removePartitioning = false;
 
     public CreateGsiJobFactory(CreateGlobalIndexPreparedData globalIndexPreparedData,
                                PhysicalPlanData physicalPlanData,
+                               PhysicalPlanData physicalPlanDataForLocalIndex,
+                               Boolean create4CreateTableWithGsi,
                                ExecutionContext executionContext) {
         this(
             globalIndexPreparedData.getSchemaName(),
@@ -140,22 +149,27 @@ public class CreateGsiJobFactory extends DdlJobFactory {
             globalIndexPreparedData.getIndexTablePreparedData() != null ?
                 globalIndexPreparedData.getIndexTablePreparedData().getSpecialDefaultValueFlags() :
                 new TreeMap<>(String.CASE_INSENSITIVE_ORDER),
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_BY_PK_RANGE),
+            executionContext.getParamManager().getBoolean(ConnectionParams.GSI_BACKFILL_BY_PARTITION),
             physicalPlanData,
+            physicalPlanDataForLocalIndex,
+            create4CreateTableWithGsi,
             globalIndexPreparedData.getAddedForeignKeys(),
             executionContext
         );
 
         this.visible = globalIndexPreparedData.isVisible();
-        this.repartition = globalIndexPreparedData.isRepartition();
+        this.gsiCdcMark = !globalIndexPreparedData.isRepartition();
     }
 
     public static CreateGsiJobFactory create(CreateGlobalIndexPreparedData preparedData,
                                              PhysicalPlanData physicalPlanData,
+                                             PhysicalPlanData physicalPlanDataForLocalIndex,
                                              ExecutionContext ec) {
         final String schema = preparedData.getSchemaName();
         return DbInfoManager.getInstance().isNewPartitionDb(schema) ?
-            new CreatePartitionGsiJobFactory(preparedData, physicalPlanData, ec) :
-            new CreateGsiJobFactory(preparedData, physicalPlanData, ec);
+            new CreatePartitionGsiJobFactory(preparedData, physicalPlanData, physicalPlanDataForLocalIndex, false, ec) :
+            new CreateGsiJobFactory(preparedData, physicalPlanData, physicalPlanDataForLocalIndex, false, ec);
     }
 
     protected CreateGsiJobFactory(String schemaName,
@@ -170,7 +184,11 @@ public class CreateGsiJobFactory extends DdlJobFactory {
                                   boolean hasTimestampColumnDefault,
                                   Map<String, String> specialDefaultValues,
                                   Map<String, Long> specialDefaultValueFlags,
+                                  boolean splitByPkRange,
+                                  boolean splitByPartition,
                                   PhysicalPlanData physicalPlanData,
+                                  PhysicalPlanData physicalPlanDataForLocalIndex,
+                                  Boolean create4CreateTableWithGsi,
                                   List<ForeignKeyData> addedForeignKeys,
                                   ExecutionContext executionContext) {
         this.schemaName = schemaName;
@@ -182,12 +200,17 @@ public class CreateGsiJobFactory extends DdlJobFactory {
         this.indexComment = indexComment == null ? "" : indexComment;
         this.indexType = indexType;
         this.physicalPlanData = physicalPlanData;
+        this.physicalPlanDataForLocalIndex = physicalPlanDataForLocalIndex;
         this.clusteredIndex = clusteredIndex;
         this.hasTimestampColumnDefault = hasTimestampColumnDefault;
         this.specialDefaultValues = specialDefaultValues;
         this.specialDefaultValueFlags = specialDefaultValueFlags;
         this.executionContext = executionContext;
         this.addedForeignKeys = addedForeignKeys;
+        if (!unique && !create4CreateTableWithGsi) {
+            this.splitByPkRange = splitByPkRange;
+        }
+        this.splitByPartition = splitByPartition;
     }
 
     @Override
@@ -199,15 +222,15 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         CreateGsiValidateTask validateTask =
-            new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName, null, null);
+            new CreateGsiValidateTask(schemaName, primaryTableName, indexTableName, null, null, removePartitioning, false);
 
         final String finalStatus =
             executionContext.getParamManager().getString(ConnectionParams.GSI_FINAL_STATUS_DEBUG);
         final boolean stayAtDeleteOnly = StringUtils.equalsIgnoreCase(DELETE_ONLY.name(), finalStatus);
         final boolean stayAtWriteOnly = StringUtils.equalsIgnoreCase(WRITE_ONLY.name(), finalStatus);
 
-        Map<String, String> columnMapping = backfillColumnMap == null ? null :
-            backfillColumnMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+        Map<String, String> columnMapping = omcColumnMap == null ? null :
+            omcColumnMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
         List<String> columns = columnAst2nameStr(this.columns);
         List<String> coverings = columnAst2nameStr(this.coverings);
@@ -217,13 +240,14 @@ public class CreateGsiJobFactory extends DdlJobFactory {
             bringUpGsi = GsiTaskFactory.addGlobalIndexTasksChangeSet(
                 schemaName,
                 primaryTableName,
-                oldIndexName,
+                backfillSourceTableName,
                 indexTableName,
                 stayAtDeleteOnly,
                 stayAtWriteOnly,
                 stayAtBackFill,
-                virtualColumnMap,
-                backfillColumnMap,
+                srcVirtualColumnMap,
+                dstVirtualColumnMap,
+                dstColumnNewDefinitions,
                 modifyStringColumns,
                 onlineModifyColumn,
                 mirrorCopy,
@@ -236,17 +260,18 @@ public class CreateGsiJobFactory extends DdlJobFactory {
             bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
                 schemaName,
                 primaryTableName,
-                oldIndexName,
+                backfillSourceTableName,
                 indexTableName,
                 stayAtDeleteOnly,
                 stayAtWriteOnly,
                 stayAtBackFill,
-                null,
-                null,
+                srcVirtualColumnMap,
+                dstVirtualColumnMap,
+                dstColumnNewDefinitions,
                 modifyStringColumns,
                 physicalPlanData,
                 tableMeta,
-                repartition,
+                gsiCdcMark,
                 onlineModifyColumn,
                 mirrorCopy,
                 executionContext.getOriginSql()
@@ -322,6 +347,12 @@ public class CreateGsiJobFactory extends DdlJobFactory {
         taskList.add(addIndexMetaTask.onExceptionTryRecoveryThenRollback());
         //3.2 gsi status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> PUBLIC
         taskList.addAll(bringUpGsi);
+        if (physicalPlanDataForLocalIndex != null) {
+            AlterGsiAddLocalIndexTask alterGsiPhyTable =
+                new AlterGsiAddLocalIndexTask(schemaName, primaryTableName, indexTableName,
+                    physicalPlanDataForLocalIndex);
+            taskList.add(alterGsiPhyTable);
+        }
 
         final ExecutableDdlJob4CreateGsi result = new ExecutableDdlJob4CreateGsi();
         result.addSequentialTasks(taskList);
@@ -366,7 +397,8 @@ public class CreateGsiJobFactory extends DdlJobFactory {
         DdlPhyPlanBuilder builder = new CreateGlobalIndexBuilder(ddl, globalIndexPreparedData, ec).build();
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData(autoPartition);
         ec.getDdlContext().setIgnoreCdcGsiMark(true);
-        CreateGsiJobFactory gsiJobFactory = new CreateGsiJobFactory(globalIndexPreparedData, physicalPlanData, ec);
+        CreateGsiJobFactory gsiJobFactory =
+            new CreateGsiJobFactory(globalIndexPreparedData, physicalPlanData, null, true, ec);
         gsiJobFactory.needOnlineSchemaChange = false;
         return gsiJobFactory.create();
     }
@@ -377,20 +409,32 @@ public class CreateGsiJobFactory extends DdlJobFactory {
         DdlPhyPlanBuilder builder = new CreateGlobalIndexBuilder(ddl, preparedData, ec).build();
         PhysicalPlanData physicalPlanData = builder.genPhysicalPlanData();
 
-        CreateGsiJobFactory gsiJobFactory = CreateGsiJobFactory.create(preparedData, physicalPlanData, ec);
+        CreateGsiJobFactory gsiJobFactory = CreateGsiJobFactory.create(preparedData, physicalPlanData, null, ec);
         return gsiJobFactory.create();
     }
 
-    public void setVirtualColumnMap(Map<String, String> virtualColumnMap) {
-        this.virtualColumnMap = virtualColumnMap;
+    public void setStayAtBackFill(boolean stayAtBackFill) {
+        this.stayAtBackFill = stayAtBackFill;
     }
 
-    public void setBackfillColumnMap(Map<String, String> backfillColumnMap) {
-        this.backfillColumnMap = backfillColumnMap;
+    public void setSrcVirtualColumnMap(Map<String, String> srcVirtualColumnMap) {
+        this.srcVirtualColumnMap = srcVirtualColumnMap;
     }
 
-    public void setOldIndexName(String oldIndexName) {
-        this.oldIndexName = oldIndexName;
+    public void setDstVirtualColumnMap(Map<String, String> dstVirtualColumnMap) {
+        this.dstVirtualColumnMap = dstVirtualColumnMap;
+    }
+
+    public void setDstColumnNewDefinitions(Map<String, SQLColumnDefinition> dstColumnNewDefinitions) {
+        this.dstColumnNewDefinitions = dstColumnNewDefinitions;
+    }
+
+    public void setOmcColumnMap(Map<String, String> omcColumnMap) {
+        this.omcColumnMap = omcColumnMap;
+    }
+
+    public void setBackfillSourceTableName(String backfillSourceTableName) {
+        this.backfillSourceTableName = backfillSourceTableName;
     }
 
     public void setOnlineModifyColumn(boolean onlineModifyColumn) {
@@ -411,5 +455,13 @@ public class CreateGsiJobFactory extends DdlJobFactory {
 
     public void setAddNewColumns(List<String> addNewColumns) {
         this.addNewColumns = addNewColumns;
+    }
+
+    public void setGsiCdcMark(boolean gsiCdcMark) {
+        this.gsiCdcMark = gsiCdcMark;
+    }
+
+    public void setRemovePartitioning(boolean removePartitioning) {
+        this.removePartitioning = removePartitioning;
     }
 }

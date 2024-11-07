@@ -81,7 +81,7 @@ public class ColumnarPruneManager {
                     // init sort key index
                     for (OrcProto.RowIndexEntry rowIndexEntry : rgIndex.getEntryList()) {
                         rgNum++;
-                        builder.appendSortKeyIndex(rowIndexEntry.getStatistics().getIntStatistics());
+                        builder.appendSortKeyIndex(rowIndexEntry.getStatistics());
                     }
                 } else {
                     // error log

@@ -31,6 +31,10 @@ public class SQLCastExpr extends SQLExprImpl implements SQLObjectWithDataType, S
     protected SQLExpr expr;
     protected SQLDataType dataType;
 
+    //mysql 80在8.0.17版本之后支持 CAST(expr AS type [ARRAY])；
+    //识别array关键字
+    protected boolean hasArray;
+
     public SQLCastExpr() {
 
     }
@@ -105,6 +109,9 @@ public class SQLCastExpr extends SQLExprImpl implements SQLObjectWithDataType, S
         if (expr != null ? !expr.equals(castExpr.expr) : castExpr.expr != null) {
             return false;
         }
+        if (hasArray != castExpr.hasArray) {
+            return false;
+        }
         return dataType != null ? dataType.equals(castExpr.dataType) : castExpr.dataType == null;
     }
 
@@ -113,6 +120,7 @@ public class SQLCastExpr extends SQLExprImpl implements SQLObjectWithDataType, S
         int result = (isTry ? 1 : 0);
         result = 31 * result + (expr != null ? expr.hashCode() : 0);
         result = 31 * result + (dataType != null ? dataType.hashCode() : 0);
+        result = 31 * result + (hasArray ? 1 : 0);
         return result;
     }
 
@@ -129,6 +137,7 @@ public class SQLCastExpr extends SQLExprImpl implements SQLObjectWithDataType, S
         if (dataType != null) {
             x.setDataType(dataType.clone());
         }
+        x.hasArray = hasArray;
         return x;
     }
 
@@ -151,5 +160,13 @@ public class SQLCastExpr extends SQLExprImpl implements SQLObjectWithDataType, S
 
     public String toString() {
         return SQLUtils.toSQLString(this);
+    }
+
+    public boolean isHasArray() {
+        return hasArray;
+    }
+
+    public void setHasArray(boolean hasArray) {
+        this.hasArray = hasArray;
     }
 }

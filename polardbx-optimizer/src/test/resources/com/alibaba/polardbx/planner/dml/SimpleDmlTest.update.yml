@@ -2,9 +2,7 @@
     update test_hash_tb set name = 'a' where id = 1;
 
   plan: |
-
-    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="UPDATE `test_hash_tb` AS `test_hash_tb` SET `name` = ? WHERE (`id` = ?)")
-
+    logicalmodifyview(tables="optest_0001.test_hash_tb", sql="update `test_hash_tb` as `test_hash_tb` force index(`primary`) set `name` = ? where (`id` = ?)")
   # UnSupport update ignore
 #- sql: |
 #    update ignore test_hash_tb set name = 'a' where id = 1;
@@ -46,16 +44,12 @@
     update test_hash_tb set name = 'a' where id = 1 limit 10;
 
   plan: |
-
-    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="UPDATE `test_hash_tb` AS `test_hash_tb` SET `name` = ? WHERE (`id` = ?) LIMIT ?")
-
+    logicalmodifyview(tables="optest_0001.test_hash_tb", sql="update `test_hash_tb` as `test_hash_tb` force index(`primary`) set `name` = ? where (`id` = ?) limit ?")
 - sql: |
     update test_hash_tb set name = 'a' where id = 1 order by id limit 10;
 
   plan: |
-
-    LogicalModifyView(tables="optest_0001.test_hash_tb", sql="UPDATE `test_hash_tb` AS `test_hash_tb` SET `name` = ? WHERE (`id` = ?) ORDER BY `id` LIMIT ?")
-
+    logicalmodifyview(tables="optest_0001.test_hash_tb", sql="update `test_hash_tb` as `test_hash_tb` force index(`primary`) set `name` = ? where (`id` = ?) order by `id` limit ?")
 - sql: |
     /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/update test_hash_tb set name = 'a' order by id;
 
@@ -67,10 +61,8 @@
     update test_hash_tb set id = 5 where id = 1 order by id limit 10;
 
   plan: |
-
-    LogicalRelocate(TYPE=UPDATE, SET="test_hash_tb.id=?0", RELOCATE="test_hash_tb")
-      LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name`, `create_time`, ? FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = ?) ORDER BY `id` LIMIT ? FOR UPDATE")
-
+    logicalrelocate(type=update, set="test_hash_tb.id=?0", relocate="test_hash_tb")
+      logicalview(tables="optest_0001.test_hash_tb", sql="select `id`, `name`, `create_time`, ? from `test_hash_tb` as `test_hash_tb` force index(`primary`) where (`id` = ?) order by `id` limit ? for update")
 - sql: |
     /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/update test_single set name = 'a'
 
@@ -103,15 +95,12 @@
     update test_single set id = 5 where id in (select id from test_hash_ta where id > 10);
 
   plan: |
-
-    LogicalModify(TYPE="UPDATE", SET="test_single.id=?0")
-      Project(id="id", name="name", create_time="create_time", gen$0="?0")
-        SemiBKAJoin(condition="id = id", type="semi")
-          LogicalView(tables="optest_0000.test_single", sql="SELECT `id`, `name`, `create_time` FROM `test_single` AS `test_single` WHERE (`id` > ?) FOR UPDATE")
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_ta", shardCount=4, sql="SELECT `id` FROM `test_hash_ta` AS `test_hash_ta` WHERE ((`id` > ?) AND (`id` IN (...))) FOR UPDATE")
-
-
+    logicalmodify(type="update", set="test_single.id=?0")
+      project(id="id", name="name", create_time="create_time", gen$0="?0")
+        semibkajoin(condition="id = id", type="semi")
+          logicalview(tables="optest_0000.test_single", sql="select `id`, `name`, `create_time` from `test_single` as `test_single` where (`id` > ?) for update")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_ta", shardcount=4, sql="select `id` from `test_hash_ta` as `test_hash_ta` force index(`primary`) where ((`id` > ?) and (`id` in (...))) for update")
 - sql: |
     update optest.test_single set test_single.name = 'a' where optest.test_single.name = 'test' order by optest.test_single.name limit 10;
 

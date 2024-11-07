@@ -20,10 +20,14 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 
 import com.google.common.base.Preconditions;
 import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
@@ -32,28 +36,33 @@ public class DoubleBlock extends AbstractBlock {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(DoubleBlock.class).instanceSize();
 
     private double[] values;
+    private final int scale;
 
     public DoubleBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new double[slotLen];
+        this.scale = null == dataType ? XResultUtil.DECIMAL_NOT_SPECIFIED : dataType.getScale();
         updateSizeInfo();
     }
 
     public DoubleBlock(DataType dataType, double[] values, boolean[] nulls, boolean hasNull, int length) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
+        this.scale = null == dataType ? XResultUtil.DECIMAL_NOT_SPECIFIED : dataType.getScale();
         updateSizeInfo();
     }
 
-    public DoubleBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, double[] values) {
+    public DoubleBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, double[] values, int scale) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
+        this.scale = scale;
         updateSizeInfo();
     }
 
     public DoubleBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, double[] values, boolean hasNull) {
         super(DataTypes.DoubleType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
+        this.scale = XResultUtil.DECIMAL_NOT_SPECIFIED;
         updateSizeInfo();
     }
 
@@ -61,7 +70,8 @@ public class DoubleBlock extends AbstractBlock {
         return new DoubleBlock(0,
             selSize,
             BlockUtils.copyNullArray(other.isNull, selection, selSize),
-            BlockUtils.copyDoubleArray(other.values, selection, selSize));
+            BlockUtils.copyDoubleArray(other.values, selection, selSize),
+            other.scale);
     }
 
     @Override
@@ -234,5 +244,20 @@ public class DoubleBlock extends AbstractBlock {
     public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
         elementUsedBytes = Byte.BYTES * positionCount + Double.BYTES * positionCount;
+    }
+
+    @Override
+    public int checksumV2(int position) {
+        if (isNull(position)) {
+            return 0;
+        }
+        double roundVal;
+        if (scale > 0 && scale < XResultUtil.DECIMAL_NOT_SPECIFIED) {
+            BigDecimal bd = new BigDecimal(Double.toString(values[position + arrayOffset]));
+            roundVal = bd.setScale(scale, RoundingMode.HALF_UP).doubleValue();
+        } else {
+            roundVal = values[position + arrayOffset];
+        }
+        return Double.hashCode(roundVal);
     }
 }

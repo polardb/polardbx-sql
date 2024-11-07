@@ -16,12 +16,10 @@
 
 
   plan: |
-
     materializedsemijoin(condition="id = expr$0", type="semi")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` in (...))")
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where (`id` in (...))")
       dynamicvalues(tuples=[{ 4 }, { 5 }, { 7 }])
-
 - sql: |
     select id
     from test_hash_tb a
@@ -60,14 +58,12 @@
 
 
   plan: |
-
     project(id="id")
       bkajoin(condition="expr$0 = id", type="inner")
         hashagg(group="expr$0")
           dynamicvalues(tuples=[{ 4 }, { 6 }, { 7 }])
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where ((`name` in('a', 'b', 'c')) and (`id` in (...)))")
-
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where ((`name` in('a', 'b', 'c')) and (`id` in (...)))")
 - sql: |
     select id
     from test_hash_tb a
@@ -86,11 +82,9 @@
 
 
   plan: |
-
-    LogicalInsert(table="test_hash_tb1", columns=RecordType(INTEGER id), mode=multi)
-      Gather(concurrent=true)
-        LogicalView(tables="[0001-0003].test_hash_tb", shardCount=3, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` IN(5, 6, 7))")
-
+    logicalinsert(table="test_hash_tb1", columns=recordtype(integer id), mode=multi)
+      gather(concurrent=true)
+        logicalview(tables="[0001-0003].test_hash_tb", shardcount=3, sql="select `id` from `test_hash_tb` as `test_hash_tb` force index(`primary`) where (`id` in(5, 6, 7))")
 - sql: |
     select id
     from test_hash_tb2 a

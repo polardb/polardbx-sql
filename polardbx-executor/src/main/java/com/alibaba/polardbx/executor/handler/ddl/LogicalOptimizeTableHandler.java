@@ -22,11 +22,14 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.OptimizeTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.ttl.TtlJobUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
@@ -45,6 +48,7 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * OPTIMIZE TABLE
@@ -89,6 +93,11 @@ public class LogicalOptimizeTableHandler extends LogicalCommonDdlHandler {
 
     @Override
     protected Cursor buildResultCursor(BaseDdlOperation logicalDdlPlan, DdlJob ddlJob, ExecutionContext ec) {
+
+        if (ec.getDdlContext().isAsyncMode()) {
+            return super.buildResultCursor(logicalDdlPlan, ddlJob, ec);
+        }
+
         ArrayResultCursor result = new ArrayResultCursor("OptimizeTable");
         result.addColumn("Table", DataTypes.StringType);
         result.addColumn("Op", DataTypes.StringType);
@@ -145,10 +154,26 @@ public class LogicalOptimizeTableHandler extends LogicalCommonDdlHandler {
             String table = ((SqlIdentifier) sqlNode).getLastName();
             result.add(Pair.of(schema, table));
 
-            List<String> gsiNames = GlobalIndexMeta.getPublishedIndexNames(table, schema, ec);
-            if (CollectionUtils.isNotEmpty(gsiNames)) {
-                for (String gsi : gsiNames) {
-                    result.add(Pair.of(schema, gsi));
+//            List<String> gsiNames = GlobalIndexMeta.getPublishedIndexNames(table, schema, ec);
+//            if (CollectionUtils.isNotEmpty(gsiNames)) {
+//                for (String gsi : gsiNames) {
+//                    result.add(Pair.of(schema, gsi));
+//                }
+//            }
+
+            /**
+             * The target table names of optimize table should ignore cci
+             */
+            final TableMeta tableMeta = ec.getSchemaManager(schema).getTable(table);
+            Map<String, GsiMetaManager.GsiIndexMetaBean> gsiBeans = tableMeta.getGsiPublished();
+            if (gsiBeans != null && !gsiBeans.isEmpty()) {
+                for (String gsiName : gsiBeans.keySet()) {
+                    GsiMetaManager.GsiIndexMetaBean gsiBean = gsiBeans.get(gsiName);
+                    if (gsiBean != null) {
+
+                        continue;
+                    }
+                    result.add(Pair.of(schema, gsiName));
                 }
             }
         }

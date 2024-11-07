@@ -210,6 +210,7 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                     Long physicalTableRows = DataTypes.LongType.convertFrom(tableStatRow.get("physicalTableRows"));
                     Long physicalDataLength = DataTypes.LongType.convertFrom(tableStatRow.get("physicalDataLength"));
                     Long physicalIndexLength = DataTypes.LongType.convertFrom(tableStatRow.get("physicalIndexLength"));
+                    Long physicalDataFree = DataTypes.LongType.convertFrom(tableStatRow.get("physicalDataFree"));
 
                     Long physicalRowsRead = 0L;
                     if (tableStatRow.containsKey("physicalRowsRead")) {
@@ -242,7 +243,7 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                     String groupName = pair.getValue();
                     String phyTblName = record.getLocation().getPhyTableName();
 
-                    Object[] row = new Object[21];
+                    Object[] row = new Object[22];
                     cursor.addRow(row);
                     int index = 0;
 
@@ -267,6 +268,8 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                     row[index++] = DataTypes.ULongType.convertFrom(physicalDataLength);
                     // INDEX_LENGTH
                     row[index++] = DataTypes.ULongType.convertFrom(physicalIndexLength);
+                    // DATA_FREE
+                    row[index++] = DataTypes.ULongType.convertFrom(physicalDataFree);
 
                     // BOUND_VALUE, a complete interval with lower_bnd and upper_bnd for part
                     row[index++] = DataTypes.StringType.convertFrom(boundValue);

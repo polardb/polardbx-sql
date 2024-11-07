@@ -104,15 +104,20 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLSizeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLSmallIntExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLSomeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveDefinitionExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimeToLiveJobExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTinyIntExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLUnaryExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuesExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableCleanupExpiredData;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetLocality;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableGroupSetPartitionsLocality;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsArchivePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMovePartition;
@@ -375,9 +380,11 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhileStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhoamiStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterStoragePoolStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableRemoveTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelComponentStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityPolicyStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsAlterTableModifyTtlOptions;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateStoragePoolStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelComponentStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelStatement;
@@ -1613,6 +1620,36 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(SQLFloatExpr x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLTimeToLiveDefinitionExpr x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLTimeToLiveDefinitionExpr x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLTimeToLiveExpr x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLTimeToLiveExpr x) {
+
+    }
+
+    @Override
+    public boolean visit(SQLTimeToLiveJobExpr x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(SQLTimeToLiveJobExpr x) {
 
     }
 
@@ -3804,6 +3841,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
     }
 
     @Override
+    public boolean visit(DrdsAlterTableCleanupExpiredData x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableCleanupExpiredData x) {
+
+    }
+
+    @Override
     public boolean visit(DrdsAlterTableExpireLocalPartition x) {
         return false;
     }
@@ -3825,6 +3872,16 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public void endVisit(DrdsMovePartition x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsArchivePartition x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsArchivePartition x) {
 
     }
 
@@ -3859,6 +3916,24 @@ public class SQLASTVisitorAdapter implements SQLASTVisitor {
 
     @Override
     public boolean visit(SQLAlterTableModifySubPartitionValues x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableRemoveTtlOptions x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableRemoveTtlOptions x) {
+        return false;
+    }
+
+    @Override
+    public void endVisit(DrdsAlterTableModifyTtlOptions x) {
+    }
+
+    @Override
+    public boolean visit(DrdsAlterTableModifyTtlOptions x) {
         return false;
     }
 

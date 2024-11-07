@@ -26,13 +26,14 @@ import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
@@ -50,6 +51,7 @@ import com.alibaba.polardbx.optimizer.core.join.LookupEquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicate;
 import com.alibaba.polardbx.optimizer.core.join.LookupPredicateBuilder;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.planner.PostPlanner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelToXPlanConverter;
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.RelXPlanOptimizer;
@@ -59,6 +61,8 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionSimplifyRul
 import com.alibaba.polardbx.optimizer.core.planner.rule.SubQueryToSemiJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.TddlFilterJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.ForceIndexUtil;
+import com.alibaba.polardbx.optimizer.core.rel.util.TargetTableInfo;
 import com.alibaba.polardbx.optimizer.index.Index;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
@@ -70,9 +74,11 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruner;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.planmanager.DRDSRelJson;
 import com.alibaba.polardbx.optimizer.planmanager.DRDSRelJsonReader;
 import com.alibaba.polardbx.optimizer.rel.rel2sql.TddlRelToSqlConverter;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.selectivity.TableScanSelectivityUpperLimitEstimator;
 import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
 import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
@@ -94,6 +100,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import org.apache.calcite.linq4j.Ord;
@@ -127,6 +134,7 @@ import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
+import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.rel2sql.RelToSqlConverter;
@@ -171,6 +179,7 @@ import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -183,6 +192,7 @@ import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TABLE_EMPTY_WITH_HINT;
+import static com.alibaba.polardbx.common.utils.GeneralUtil.formatSampleRate;
 
 /**
  * @author lingce.ldm 2017-07-07 15:01
@@ -254,6 +264,8 @@ public class LogicalView extends TableScan {
     private RelOptCost selfCost;
     private List<String> columnOrigins = Lists.newArrayList();
 
+    private boolean isFromForceIndex = false;
+
     /**
      * for json serialization
      */
@@ -269,7 +281,14 @@ public class LogicalView extends TableScan {
         this.newPartDbTbl = checkIfNewPartDbTbl(this.tableNames);
         this.partitions = extractPartitionsFromStrList(relInput.getStringList("partitions"));
         this.flashback = relInput.getExpression("flashback");
+        this.flashbackOperator = relInput.getSqlOperator("flashbackOperator");
         isMGetEnabled = relInput.getBoolean("isMGetEnabled", false);
+        Map<String, Object> xplanMap = (Map) relInput.get("xplan");
+        try {
+            this.XPlan = DRDSRelJson.fromJsonToXPlan(xplanMap);
+        } catch (InvalidProtocolBufferException e) {
+            throw new RuntimeException("PLAN EXTERNALIZE TEST error:" + e.getMessage(), e);
+        }
         Map<String, Object> pushDownOptParams = (Map) relInput.get("pushDownOpt");
         DRDSRelJsonReader drdsRelJsonReader = new DRDSRelJsonReader(relInput.getCluster(),
             SqlConverter
@@ -283,8 +302,7 @@ public class LogicalView extends TableScan {
                 PlannerContext.getPlannerContext(relInput.getCluster()).getExecutionContext());
             this.rebuildPartRoutingPlanInfo();
         } catch (IOException e) {
-            e.printStackTrace();
-            throw new RuntimeException("PLAN EXTERNALIZE TEST error:" + e.getMessage());
+            throw new RuntimeException("PLAN EXTERNALIZE TEST error:" + e.getMessage(), e);
         }
         buildApply();
         rebuildOriginColumnNames();
@@ -470,6 +488,8 @@ public class LogicalView extends TableScan {
             .itemIf("isMGetEnabled", isMGetEnabled, isMGetEnabled)
             .item("partitions", convertPartitionsToStrList())
             .item("flashback", flashback)
+            .itemIf("flashbackOperator", flashbackOperator, flashbackOperator != null)
+            .itemIf("xplan", XPlan, XPlan != null)
             ;
     }
 
@@ -637,6 +657,21 @@ public class LogicalView extends TableScan {
         return resultList;
     }
 
+    @NotNull
+    public List<PartPrunedResult> getCciPartPrunedResults(ExecutionContext executionContext,
+                                                          PartitionInfo cciPartInfo) {
+        List<PartPrunedResult> resultList = PartitionPruner.pruneCciPartitions(this, executionContext, cciPartInfo);
+        filterPrunedResultBySelectedPartitions(resultList);
+        return resultList;
+    }
+
+    public TargetTableInfo buildTargetTableInfosForPartitionTb(ExecutionContext executionContext) {
+        List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, executionContext);
+        filterPrunedResultBySelectedPartitions(resultList);
+        TargetTableInfo targetTableInfo = PartitionPrunerUtils.buildTargetTableInfoByPartPrunedResults(resultList);
+        return targetTableInfo;
+    }
+
     private void validateSelectedPartitions(boolean isNewPartDb, PartitionInfo partInfo, boolean isJoin) {
         if (this.partitions != null) {
             if (!isNewPartDb) {
@@ -688,51 +723,57 @@ public class LogicalView extends TableScan {
 
     protected void filterPrunedResultBySelectedPartitions(List<PartPrunedResult> resultList) {
         if (this.partitions != null) {
-            for (int i = 0; i < resultList.size(); i++) {
-                PartitionInfo partInfo = resultList.get(i).getPartInfo();
-                if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
-                    || partInfo.getTableType() == PartitionTableType.GSI_TABLE
-                    || partInfo.getTableType() == PartitionTableType.COLUMNAR_TABLE) {
-                    SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
-                    Set<Integer> selectedPartPostSet = new HashSet<>();
-                    for (SqlNode partNameAst : partNamesAst.getList()) {
-                        String partName = ((SqlIdentifier) partNameAst).getLastName();
-                        PartitionSpec pSpec = partInfo.getPartSpecSearcher().getPartSpecByPartName(partName);
-                        if (pSpec == null) {
-                            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                                String.format("Unknown partition '%s' in table '%s'", partName,
-                                    partInfo.getTableName()));
-                        }
-                        boolean isPhySpec = !pSpec.isLogical();
-                        if (isPhySpec) {
-                            selectedPartPostSet.add(pSpec.getPhyPartPosition().intValue());
-                        } else {
-                            if (pSpec.isSpecTemplate()) {
-                                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                                    String.format("Not allowed to select partition by using subpartition template '%s'",
-                                        partName,
-                                        partInfo.getTableName()));
-                            }
-
-                            List<PartitionSpec> subPartList = pSpec.getSubPartitions();
-                            for (int j = 0; j < subPartList.size(); j++) {
-                                PartitionSpec subPart = subPartList.get(j);
-                                selectedPartPostSet.add(subPart.getPhyPartPosition().intValue());
-                            }
-                        }
-
-                    }
-                    BitSet partSetSelected =
-                        PartitionPrunerUtils.buildPhyPartsBitSetByPhyPartPostSet(partInfo, selectedPartPostSet);
-                    resultList.get(i).getPartBitSet().and(partSetSelected);
-                } else if (partInfo.getTableType() == PartitionTableType.BROADCAST_TABLE) {
-                    continue;
-                } else {
-                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                        "PARTITION () clause on non partitioned table");
-                }
+            for (PartPrunedResult partPrunedResult : resultList) {
+                filterBySelectedPartition(partPrunedResult);
             }
+        }
+    }
 
+    public void filterBySelectedPartition(PartPrunedResult partPrunedResult) {
+        if (this.partitions == null) {
+            return;
+        }
+
+        PartitionInfo partInfo = partPrunedResult.getPartInfo();
+        if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
+            || partInfo.getTableType() == PartitionTableType.GSI_TABLE
+            || partInfo.getTableType() == PartitionTableType.COLUMNAR_TABLE) {
+            SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
+            Set<Integer> selectedPartPostSet = new HashSet<>();
+            for (SqlNode partNameAst : partNamesAst.getList()) {
+                String partName = ((SqlIdentifier) partNameAst).getLastName();
+                PartitionSpec pSpec = partInfo.getPartSpecSearcher().getPartSpecByPartName(partName);
+                if (pSpec == null || (pSpec.getStatus() != null
+                    && pSpec.getStatus() == TablePartitionRecord.PARTITION_STATUS_PARTITION_OFFLINE)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        String.format("Unknown partition '%s' in table '%s'", partName,
+                            partInfo.getTableName()));
+                }
+                boolean isPhySpec = !pSpec.isLogical();
+                if (isPhySpec) {
+                    selectedPartPostSet.add(pSpec.getPhyPartPosition().intValue());
+                } else {
+                    if (pSpec.isSpecTemplate()) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                            String.format("Not allowed to select partition by using subpartition template '%s'",
+                                pSpec.getTemplateName()));
+                    }
+
+                    List<PartitionSpec> subPartList = pSpec.getSubPartitions();
+                    for (PartitionSpec subPart : subPartList) {
+                        selectedPartPostSet.add(subPart.getPhyPartPosition().intValue());
+                    }
+                }
+
+            }
+            BitSet partSetSelected =
+                PartitionPrunerUtils.buildPhyPartsBitSetByPhyPartPostSet(partInfo, selectedPartPostSet);
+            partPrunedResult.getPartBitSet().and(partSetSelected);
+        } else if (partInfo.getTableType() == PartitionTableType.BROADCAST_TABLE) {
+            return;
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                "PARTITION () clause on non partitioned table");
         }
     }
 
@@ -742,6 +783,30 @@ public class LogicalView extends TableScan {
         List<List<TargetDB>> targetDBs;
         if (null == comparativeHintCache) {
             targetDBs = DataNodeChooser.shard(this, forceAllowFullTableScan, executionContext);
+            if (executionContext.getParamManager().getBoolean(ConnectionParams.BROADCAST_RANDOM_READ_IN_LOGICALVIEW)) {
+                if (targetDBs.size() == 1
+                    && targetDBs.get(0).size() == 1
+                    && !isJoin()
+                    && OptimizerContext.getContext(getSchemaName()).getRuleManager()
+                    .isBroadCast(getLogicalTableName())) {
+
+                    final TargetDB targetDB = targetDBs.get(0).get(0);
+
+                    if (GroupInfoUtil.isSingleGroup(targetDB.getDbIndex())) {
+                        final String broadcastTableGroup =
+                            PostPlanner.getBroadcastTableGroup(executionContext, getSchemaName());
+                        if (!GroupInfoUtil.isSingleGroup(broadcastTableGroup)) {
+                            final TargetDB newTargetDB = new TargetDB();
+                            newTargetDB.setDbIndex(broadcastTableGroup);
+                            newTargetDB.setTableNames(targetDB.getTableNameMap());
+                            newTargetDB.setLogTblName(targetDB.getLogTblName());
+                            final List<TargetDB> newTargetDbs = new ArrayList<>();
+                            newTargetDbs.add(newTargetDB);
+                            targetDBs = Collections.singletonList(newTargetDbs);
+                        }
+                    }
+                }
+            }
         } else {
             final BitSet evaluatedParamIndex = new BitSet();
             this.comparativeHintCache.values().forEach(e -> e.values().forEach(
@@ -879,7 +944,14 @@ public class LogicalView extends TableScan {
             float samplePercentage =
                 PlannerContext.getPlannerContext(this).getParamManager().getFloat(ConnectionParams.SAMPLE_PERCENTAGE);
             if (samplePercentage >= 0 && samplePercentage <= 100) {
-                ((SqlSelect) sqlTemplate).getOptimizerHint().addHint("+sample_percentage(" + samplePercentage + ")");
+                ((SqlSelect) sqlTemplate).getOptimizerHint()
+                    .addHint("+sample_percentage(" + formatSampleRate(samplePercentage) + ")");
+            }
+
+            // Pass through dn hint control by optimizer
+            String dnHint = ec.getParamManager().getString(ConnectionParams.DN_HINT);
+            if (ec != null && StringUtils.isNotEmpty(dnHint)) {
+                ((SqlSelect) sqlTemplate).getOptimizerHint().addHint("+" + dnHint);
             }
 
             // Pass through user hint.
@@ -923,23 +995,28 @@ public class LogicalView extends TableScan {
 
     public XPlanTemplate getXPlan() {
         // Always generate the XPlan in case of switching connection pool.
-        if (lockMode != LockMode.UNDEF) {
+        if (lockMode != LockMode.UNDEF || this.getFlashbackOperator() != null) {
             return null; // TODO: lock not supported now.
         }
         final RelNode pushedRel = getPushedRelNode();
         if (XPlanRel != pushedRel) { // Compare the value to check whether the plan changed.
-            final RelToXPlanConverter converter = new RelToXPlanConverter();
-            try {
-                XPlan = converter.convert(RelXPlanOptimizer.optimize(pushedRel));
-            } catch (Exception e) {
-                Throwable throwable = e;
-                while (throwable.getCause() != null && throwable.getCause() instanceof InvocationTargetException) {
-                    throwable = ((InvocationTargetException) throwable.getCause()).getTargetException();
+            synchronized (this) {
+                if (XPlanRel != pushedRel) {
+                    final RelToXPlanConverter converter = new RelToXPlanConverter();
+                    try {
+                        XPlan = converter.convert(RelXPlanOptimizer.optimize(pushedRel));
+                    } catch (Exception e) {
+                        Throwable throwable = e;
+                        while (throwable.getCause() != null
+                            && throwable.getCause() instanceof InvocationTargetException) {
+                            throwable = ((InvocationTargetException) throwable.getCause()).getTargetException();
+                        }
+                        logger.info("XPlan converter: " + throwable.getMessage());
+                        XPlan = null;
+                    }
                 }
-                logger.info("XPlan converter: " + throwable.getMessage());
-                XPlan = null;
+                XPlanRel = pushedRel;
             }
-            XPlanRel = pushedRel;
         }
         return XPlan;
     }
@@ -1281,8 +1358,11 @@ public class LogicalView extends TableScan {
             }
             ((SqlSelect) nativeSql).setWhere(filter);
         }
+        if (PlannerContext.getPlannerContext(this).getExtraCmds().containsKey(ConnectionProperties.DN_HINT)) {
+            nativeSql = getSqlTemplate(executionContext);
+        }
         ReplaceTableNameWithTestTableVisitor replaceTableNameWithTestTableVisitor =
-            new ReplaceTableNameWithTestTableVisitor(schemaName, false,
+            new ReplaceTableNameWithTestTableVisitor(schemaName, false, true,
                 PlannerContext.getPlannerContext(this).getExecutionContext());
         nativeSql = nativeSql.accept(replaceTableNameWithTestTableVisitor);
         String sql = TStringUtil.replace(RelUtils.toNativeSql(nativeSql, this.getDbType()), "\n", " ");
@@ -1623,6 +1703,8 @@ public class LogicalView extends TableScan {
             PlannerContext.getPlannerContext(this).getParamManager()
                 .getBoolean(ConnectionParams.CALCULATE_ACTUAL_SHARD_COUNT_FOR_COST);
         ExecutionContext executionContext = PlannerContext.getPlannerContext(this).getExecutionContext();
+        Parameters params = OptimizerUtils.getParametersForOptimizer(this);
+        executionContext = executionContext.copy(params);
         if (calActualShardCount) {
             try {
                 if (!partitionInfoManager.isNewPartDbTable(logTb)) {
@@ -1643,12 +1725,12 @@ public class LogicalView extends TableScan {
                     calcParams.put(CalcParamsAttribute.COM_DB_TB, m);
                     calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
                     calcParams.put(CalcParamsAttribute.EXECUTION_CONTEXT, executionContext);
-                    Map<Integer, ParameterContext> params =
-                        executionContext.getParams() == null ? null :
-                            executionContext.getParams().getCurrentParameter();
                     List<TargetDB> tdbs =
                         executionContext.getSchemaManager(schemaName).getTddlRuleManager()
-                            .shard(getShardingTable(), false, true, comps, params, calcParams, executionContext);
+                            .shard(getShardingTable(), false, true, comps,
+                                params == null ? null : params.getCurrentParameter(),
+                                calcParams,
+                                executionContext);
 
                     return tdbs.stream().map(targetDB -> targetDB.getTableNames() == null ? 0 :
                         targetDB.getTableNames().size()).reduce(0, (a, b) -> a + b).intValue();
@@ -1748,6 +1830,11 @@ public class LogicalView extends TableScan {
                 }
                 shardColumns = tr.getShardColumns();
             } else {
+
+                if (onlySelectOnePhysicalPartition(ec)) {
+                    return true;
+                }
+
                 PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
                 PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(getLogicalTableName());
                 shardColumns = partitionInfo.getPartitionColumns();
@@ -1782,8 +1869,17 @@ public class LogicalView extends TableScan {
                     shardColumns = tr.getShardColumns();
                 } else {
                     PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
-                    PartitionInfo partitionInfo =
-                        partitionInfoManager.getPartitionInfo(getLogicalTableName());
+                    PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(name);
+
+                    if (partitionInfo == null) {
+                        return false;
+                    } else if (partitionInfo.isSingleTable()) {
+                        hasOne = true;
+                        continue;
+                    } else if (partitionInfo.isBroadcastTable()) {
+                        continue;
+                    }
+
                     shardColumns = partitionInfo.getPartitionColumns();
                 }
 
@@ -1971,6 +2067,16 @@ public class LogicalView extends TableScan {
 
     public void optimizePhySql() {
         getPushDownOpt().optimizePhySql();
+        if(getNativeSqlNode().getKind() == SqlKind.DELETE){
+            // since force index in single table delete need to add alias
+            // may cause error execute on mysql
+            // so not support delete auto gen force index for delete
+            return;
+        }
+        String index = ForceIndexUtil.genAutoForceIndex(this);
+        if (index != null) {
+            getPushDownOpt().autoForceIndex(index);
+        }
         tableNames = collectTableNames();
         rebuildPartRoutingPlanInfo();
     }
@@ -2018,7 +2124,6 @@ public class LogicalView extends TableScan {
     public String explainNodeName() {
         String name = "LogicalView";
         return name;
-
     }
 
     public List<Integer> getBloomFilters() {
@@ -2057,7 +2162,9 @@ public class LogicalView extends TableScan {
         logicalView.setScalarList(scalarList);
         logicalView.correlateVariableScalar.addAll(correlateVariableScalar);
         logicalView.flashback = this.flashback;
+        logicalView.flashbackOperator = this.flashbackOperator;
         logicalView.columnOrigins = this.getColumnOrigins();
+        logicalView.isFromForceIndex = this.isFromForceIndex();
         return logicalView;
     }
 
@@ -2072,7 +2179,9 @@ public class LogicalView extends TableScan {
         newLogicalView.newPartDbTbl = this.newPartDbTbl;
         newLogicalView.pushDownOpt = pushDownOpt.copy(newLogicalView, this.getPushedRelNode());
         newLogicalView.flashback = this.flashback;
+        newLogicalView.flashbackOperator = this.flashbackOperator;
         newLogicalView.columnOrigins = this.getColumnOrigins();
+        newLogicalView.isFromForceIndex = this.isFromForceIndex();
         return newLogicalView;
     }
 
@@ -2203,6 +2312,14 @@ public class LogicalView extends TableScan {
 
     public List<String> getColumnOrigins() {
         return columnOrigins;
+    }
+
+    public boolean isFromForceIndex() {
+        return isFromForceIndex;
+    }
+
+    public void setFromForceIndex(boolean fromForceIndex) {
+        isFromForceIndex = fromForceIndex;
     }
 
     public static class ReplacedTableCondition {
@@ -2494,10 +2611,7 @@ public class LogicalView extends TableScan {
     }
 
     public RelOptCost getSelfCost(RelMetadataQuery mq) {
-        if (selfCost != null) {
-            return selfCost;
-        }
-        return selfCost = computeSelfCost(getCluster().getPlanner(), mq);
+        return computeSelfCost(getCluster().getPlanner(), mq);
     }
 
     public synchronized Double getRowCount(RelMetadataQuery mq) {
@@ -2548,6 +2662,26 @@ public class LogicalView extends TableScan {
         return mq.getFunctionalDependency(getPushedRelNode(), iOutputColumns);
     }
 
+    public Double getMaxSelectivity() {
+        final double[] result = {0D};
+        new RelVisitor() {
+            @Override
+            public void visit(RelNode node, int ordinal, RelNode parent) {
+                if (node instanceof LogicalFilter) {
+                    if (node.getInput(0) instanceof LogicalTableScan) {
+                        LogicalTableScan tableScan = (LogicalTableScan) ((LogicalFilter) node).getInput();
+                        TableScanSelectivityUpperLimitEstimator estimator =
+                            new TableScanSelectivityUpperLimitEstimator(tableScan);
+                        result[0] = estimator.evaluate(((LogicalFilter) node).getCondition()).getSelectivity();
+                        return;
+                    }
+                }
+                super.visit(node, ordinal, parent);
+            }
+        }.go(CBOUtil.optimizeByPushFilterImpl(getPushedRelNode()));
+        return result[0];
+    }
+
     public boolean useSelectPartitions() {
         if (this.partitions != null) {
             SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
@@ -2555,6 +2689,27 @@ public class LogicalView extends TableScan {
                 return true;
             }
         }
+        return false;
+    }
+
+    public boolean onlySelectOnePhysicalPartition(ExecutionContext ec) {
+        if (!useSelectPartitions() || isJoin()) {
+            return false;
+        }
+
+        try {
+            List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, ec);
+            filterPrunedResultBySelectedPartitions(resultList);
+            if (!resultList.isEmpty()) {
+                List<PhysicalPartitionInfo> prunedResult = resultList.get(0).getPrunedParttions();
+                if (prunedResult.size() == 1) {
+                    return true;
+                }
+            }
+        } catch (Throwable ex) {
+            logger.warn(ex);
+        }
+
         return false;
     }
 
@@ -2575,5 +2730,9 @@ public class LogicalView extends TableScan {
             return !RexUtil.isDeterministic(getFlashback());
         }
         return false;
+    }
+
+    public boolean hasTargetTableHint() {
+        return targetTablesHintCache != null && !targetTablesHintCache.isEmpty();
     }
 }

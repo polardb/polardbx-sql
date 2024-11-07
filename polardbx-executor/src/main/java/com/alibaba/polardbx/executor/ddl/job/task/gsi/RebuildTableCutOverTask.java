@@ -42,18 +42,21 @@ public class RebuildTableCutOverTask extends BaseGmsTask {
     private final boolean autoPartition;
     private final boolean single;
     private final boolean broadcast;
+    private final long versionId;
 
     public RebuildTableCutOverTask(final String schemaName,
                                    final String logicalTableName,
                                    Map<String, String> tableNameMap,
                                    boolean autoPartition,
                                    boolean single,
-                                   boolean broadcast) {
+                                   boolean broadcast,
+                                   long versionId) {
         super(schemaName, logicalTableName);
         this.tableNameMap = tableNameMap;
         this.autoPartition = autoPartition;
         this.single = single;
         this.broadcast = broadcast;
+        this.versionId = versionId;
         onExceptionTryRollback();
     }
 
@@ -79,7 +82,9 @@ public class RebuildTableCutOverTask extends BaseGmsTask {
             tableNameMap,
             autoPartition,
             single,
-            broadcast
+            broadcast,
+            versionId,
+            jobId
         );
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);

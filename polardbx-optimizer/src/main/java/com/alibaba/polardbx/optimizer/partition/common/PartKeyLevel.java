@@ -23,10 +23,36 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
  * @author chenghui.lch
  */
 public enum PartKeyLevel {
+    /**
+     * No use, maybe use for single-table or bro-table
+     */
     LOGICAL_TBL_KEY(0),
+
+    /**
+     * Mean that current pruning bitset result
+     * are only for a part bitset of one 1level-part
+     * table or of a one 2-level-part table
+     */
     PARTITION_KEY(1),
+
+    /**
+     * Mean that current pruning bitset result
+     * are only for a subpart bitset of one part
+     * of a non-template subpart table
+     */
     SUBPARTITION_KEY(2),
+
+    /**
+     * Mean that current pruning bitset result
+     * has no found part_key and full scan
+     */
     NO_PARTITION_KEY(-1),
+
+    /**
+     * Only used by SubPartTable Pruning,
+     * means current pruning bitset result
+     * are including all subpart bitsets of all part
+     */
     BOTH_PART_SUBPART_KEY(-2);
 
     private int levelIntVal;

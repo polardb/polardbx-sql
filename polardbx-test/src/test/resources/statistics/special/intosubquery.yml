@@ -3,56 +3,18 @@
     MULTI[10]
     Catalog:product_identity_service_prod,identity_code_info,status,-2
     Action:getFrequency
-    StatisticValue:1
-    ndv small enough to use histogram
-      Catalog:product_identity_service_prod,identity_code_info,status,-2_-2
-      Action:getRangeCount
-      StatisticValue:1
-      (long) (rangeCountInHistogram[0] /sample rate[1.0])
-      CACHE_LINE, modify by 2023-11-02 13:22:10
+    StatisticValue:634035138
     
     MULTI[10]
     Catalog:product_identity_service_prod,identity_code_info,del_flag,1
     Action:getFrequency
     StatisticValue:10000
-    ndv small enough to use histogram
-      Catalog:product_identity_service_prod,identity_code_info,del_flag,1_1
-      Action:getRangeCount
-      StatisticValue:10000
-      (long) (rangeCountInHistogram[10000] /sample rate[1.0])
-      CACHE_LINE, modify by 2023-11-02 13:22:10
     
     MULTI[3]
     Catalog:product_identity_service_prod,identity_code_info,status,1-1-2
     Action:getFrequency
-    StatisticValue:10002
-    sum
-    HISTOGRAM, modify by 1970-01-01 07:59:59
-      Catalog:product_identity_service_prod,identity_code_info,status,1
-      StatisticValue:10000
-      ndv small enough to use histogram
-        Catalog:product_identity_service_prod,identity_code_info,status,1_1
-        Action:getRangeCount
-        StatisticValue:10000
-        (long) (rangeCountInHistogram[10000] /sample rate[1.0])
-        CACHE_LINE, modify by 2023-11-02 13:22:10
-      Catalog:product_identity_service_prod,identity_code_info,status,-1
-      StatisticValue:1
-      ndv small enough to use histogram
-        Catalog:product_identity_service_prod,identity_code_info,status,-1_-1
-        Action:getRangeCount
-        StatisticValue:1
-        (long) (rangeCountInHistogram[0] /sample rate[1.0])
-        CACHE_LINE, modify by 2023-11-02 13:22:10
-      Catalog:product_identity_service_prod,identity_code_info,status,-2
-      StatisticValue:1
-      ndv small enough to use histogram
-        Catalog:product_identity_service_prod,identity_code_info,status,-2_-2
-        Action:getRangeCount
-        StatisticValue:1
-        (long) (rangeCountInHistogram[0] /sample rate[1.0])
-        CACHE_LINE, modify by 2023-11-02 13:22:10
-    
+    StatisticValue:1268080276
+
     MULTI[4]
     Catalog:product_identity_service_prod,identity_code_info
     Action:getRowCount
@@ -62,50 +24,22 @@
     MULTI[10]
     Catalog:product_identity_service_prod,identity_code_info,status,-1
     Action:getFrequency
-    StatisticValue:1
-    ndv small enough to use histogram
-      Catalog:product_identity_service_prod,identity_code_info,status,-1_-1
-      Action:getRangeCount
-      StatisticValue:1
-      (long) (rangeCountInHistogram[0] /sample rate[1.0])
-      CACHE_LINE, modify by 2023-11-02 13:22:10
-    
-    MULTI[6]
-    Catalog:product_identity_service_prod,identity_code_info,status
-    Action:getCardinality
-    StatisticValue:1
-    CACHE_LINE, modify by 2023-11-02 13:22:10
-    
-    MULTI[7]
-    Catalog:product_identity_service_prod,identity_code_info,identity_code
-    Action:getCardinality
-    StatisticValue:24779
-    CACHE_LINE, modify by 2023-11-02 13:22:10
+    StatisticValue:634035138
     
     MULTI[10]
     Catalog:product_identity_service_prod,identity_code_info,status,1
     Action:getFrequency
     StatisticValue:10000
-    ndv small enough to use histogram
-      Catalog:product_identity_service_prod,identity_code_info,status,1_1
-      Action:getRangeCount
-      StatisticValue:10000
-      (long) (rangeCountInHistogram[10000] /sample rate[1.0])
-      CACHE_LINE, modify by 2023-11-02 13:22:10
     
-    Catalog:product_identity_service_prod,identity_code_info,del_flag
+    Catalog:product_identity_service_prod,identity_code_info,status
     Action:getCardinality
     StatisticValue:1
 
   SQL: |
-    SELECT id,identity_code,identity_code_md5,sku_code,verify_num,verify_last_time,status,batch_num,operation_log_id,del_flag,version,last_operator,last_operator_id,update_time,creator,creator_id,created_time FROM identity_code_info WHERE del_flag=1 AND identity_code IN ('40/JxLg763EFYOx80h7Up79AhsWpYMDTcwp3BqxEFg0=','putUsbowaef+cV5wiFfhsvjZ1+Rrfe6HcOm0Qyyw8cA=','OYk1Z51Pi5KzfE01SkUJWXBGQ4eeWqvhb0Y1RvNi6BQ=','Si3A9PeQuuTRkRVPnxWGmODkWHHxMmTh71zKjeLd1U0=','O5RNkdAwdtdei5li/zaZRyKUC7SawUbwpePfTcbErFc=','jmbw0+WWooHKIQeJ7Lb3QXMexx/0z3KffM53Rcre/yA=','pVyVRrYhheN9KZZsM+Qdx7z2biBvNWwfZjIV/JBVXM4=','yvRnEu1ArrS/+U3F2WWJS2s8jon+Pqh91kTtS7IFJ8k=','HTRdHC4fYA3Csc3Vm/DD0KNyudr5RAiNbOQkdToeSXM=','UiH/6Sigtl73IZtMU+olPiJN8wU7NvqxV6tIKz+2vZw=','wqd/oSNR9+Keg2ZocPnHpd41xWZ0jKzoXHzRQ5FJaHw=','64cm5ojpCvR4rJ+og4YS2zHbsHYDKobDNII1SBuSh/c=') AND status IN (1,-1,-2)
+    /*TDDL:IN_SUB_QUERY_THRESHOLD=1000*/SELECT id,identity_code,identity_code_md5,sku_code,verify_num,verify_last_time,status,batch_num,operation_log_id,del_flag,version,last_operator,last_operator_id,update_time,creator,creator_id,created_time FROM identity_code_info WHERE del_flag=1 AND identity_code IN ('40/JxLg763EFYOx80h7Up79AhsWpYMDTcwp3BqxEFg0=','putUsbowaef+cV5wiFfhsvjZ1+Rrfe6HcOm0Qyyw8cA=','OYk1Z51Pi5KzfE01SkUJWXBGQ4eeWqvhb0Y1RvNi6BQ=','Si3A9PeQuuTRkRVPnxWGmODkWHHxMmTh71zKjeLd1U0=','O5RNkdAwdtdei5li/zaZRyKUC7SawUbwpePfTcbErFc=','jmbw0+WWooHKIQeJ7Lb3QXMexx/0z3KffM53Rcre/yA=','pVyVRrYhheN9KZZsM+Qdx7z2biBvNWwfZjIV/JBVXM4=','yvRnEu1ArrS/+U3F2WWJS2s8jon+Pqh91kTtS7IFJ8k=','HTRdHC4fYA3Csc3Vm/DD0KNyudr5RAiNbOQkdToeSXM=','UiH/6Sigtl73IZtMU+olPiJN8wU7NvqxV6tIKz+2vZw=','wqd/oSNR9+Keg2ZocPnHpd41xWZ0jKzoXHzRQ5FJaHw=','64cm5ojpCvR4rJ+og4YS2zHbsHYDKobDNII1SBuSh/c=') AND status IN (1,-1,-2)
   PLAN: |
-    PhysicalProject
-      BKAJoin
-        HashAgg
-          LogicalDynamicValues
-        Gather
-          LogicalView(tableNames=[[identity_code_info]])
+    Gather
+      LogicalView(tableNames=[[identity_code_info]])
     
   CATALOG: |
     set global AUTO_PARTITION_PARTITIONS = '16';

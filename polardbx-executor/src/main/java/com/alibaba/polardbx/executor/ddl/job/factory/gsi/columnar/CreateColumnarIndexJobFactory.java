@@ -26,7 +26,14 @@ import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcCreateColumnarIndexTask;
-import com.alibaba.polardbx.executor.ddl.job.task.columnar.*;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.AddColumnarTablesMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.AddColumnarTablesPartitionInfoMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CreateCheckCciTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CreateColumnarIndexValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CreateMockColumnarIndexTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.InsertColumnarIndexMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.UpdateColumnarConfigTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.WaitColumnarTableCreationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CciUpdateIndexStatusTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
@@ -57,6 +64,7 @@ import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlPartitionBy;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -235,7 +243,7 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
             tableGroupName, preparedData.isWithImplicitTableGroup(), joinGroupName,
             (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(),
             pkColMetas, allColMetas, PartitionTableType.COLUMNAR_TABLE,
-            executionContext, new LocalityDesc());
+            executionContext, new LocalityDesc(), false);
     }
 
     private void buildCoverings(TableMeta tableMeta) {
@@ -333,6 +341,12 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
                 primaryTableName,
                 columnarIndexTableName,
                 sqlCreateIndex.getOriginIndexName().getLastName(),
+                // Some columnar options are defined in CREATE INDEX STATEMENT,
+                // they are stored in `columnar_table_evolution`.
+                // Some options may be changed in the future,
+                // but `columnar_table_evolution` will not be updated.
+                // So use `columnar_config` to get the latest options,
+                // and use `columnar_table_evolution` to get the immutable options (like dict columns).
                 sqlCreateIndex.getColumnarOptions(),
                 sqlCreateIndex.toString(true),
                 versionId);
@@ -376,6 +390,17 @@ public class CreateColumnarIndexJobFactory extends DdlJobFactory {
         );
         createCheckCciTask.setExceptionAction(DdlExceptionAction.PAUSE);
         taskList.add(createCheckCciTask);
+
+        // 3.1.3 update columnar config if necessary
+        if (MapUtils.isNotEmpty(sqlCreateIndex.getColumnarOptions())) {
+            final UpdateColumnarConfigTask updateColumnarConfigTask = new UpdateColumnarConfigTask(
+                schemaName,
+                primaryTableName,
+                columnarIndexTableName,
+                sqlCreateIndex.getColumnarOptions()
+            );
+            taskList.add(updateColumnarConfigTask);
+        }
 
         // 3.2 change cci status to PUBLIC
         final CciUpdateIndexStatusTask updateCciStatusTask = (CciUpdateIndexStatusTask) new CciUpdateIndexStatusTask(

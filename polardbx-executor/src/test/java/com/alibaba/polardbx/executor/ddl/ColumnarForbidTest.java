@@ -20,13 +20,17 @@ package com.alibaba.polardbx.executor.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupBaseBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupModifyPartitionBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.AbstractDdlTask;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import org.apache.calcite.sql.SqlKind;
 import org.junit.Rule;
 import org.junit.Test;
@@ -109,5 +113,99 @@ public class ColumnarForbidTest {
             doCallRealMethod().when(truncateTableValidateTask).executeImpl(ec);
             truncateTableValidateTask.executeImpl(ec);
         }
+    }
+
+    @Test(expected = TddlRuntimeException.class)
+    public void validateTableWithCciThrowTest() {
+        ParamManager paramManager = mock(ParamManager.class);
+        ExecutionContext executionContext = mock(ExecutionContext.class);
+        when(executionContext.getParamManager()).thenReturn(paramManager);
+        when(paramManager.getBoolean(any())).thenReturn(true);
+        ComplexTaskMetaManager.ComplexTaskType complexTaskType = ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION;
+        TableValidator.validateTableWithCCI(executionContext, complexTaskType);
+        complexTaskType = ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION;
+        TableValidator.validateTableWithCCI(executionContext, complexTaskType);
+        complexTaskType = ComplexTaskMetaManager.ComplexTaskType.SPLIT_PARTITION;
+        TableValidator.validateTableWithCCI(executionContext, complexTaskType);
+    }
+
+    @Test
+    public void validateTableWithCciTest() {
+        ParamManager paramManager = mock(ParamManager.class);
+        ExecutionContext executionContext = mock(ExecutionContext.class);
+        when(executionContext.getParamManager()).thenReturn(paramManager);
+        when(paramManager.getBoolean(any())).thenReturn(true);
+        ComplexTaskMetaManager.ComplexTaskType complexTaskType = ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION;
+        TableValidator.validateTableWithCCI(executionContext, complexTaskType);
+    }
+
+    @Test(expected = TddlRuntimeException.class)
+    public void validateTableWithCciThrowTest1() {
+        AlterTableGroupBaseBuilder builder = mock(AlterTableGroupBaseBuilder.class);
+        AlterTableGroupBasePreparedData preparedData = mock(AlterTableGroupBasePreparedData.class);
+        ExecutionContext executionContext = mock(ExecutionContext.class);
+        SchemaManager schemaManager = mock(SchemaManager.class);
+        TableMeta tableMeta = mock(TableMeta.class);
+        when(builder.getExecutionContext()).thenReturn(executionContext);
+        when(builder.getPreparedData()).thenReturn(preparedData);
+        when(preparedData.getSchemaName()).thenReturn("schema");
+        when(executionContext.getSchemaManager(any())).thenReturn(schemaManager);
+        when(schemaManager.getTable(any())).thenReturn(tableMeta);
+        when(tableMeta.withCci()).thenReturn(true);
+        ParamManager paramManager = mock(ParamManager.class);
+        when(executionContext.getParamManager()).thenReturn(paramManager);
+        when(paramManager.getBoolean(any())).thenReturn(true);
+
+        doCallRealMethod().when(builder).createAlterTableGroupItemPreparedData(any(), any());
+        when(preparedData.getTaskType()).thenReturn(ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION);
+        builder.createAlterTableGroupItemPreparedData("tableName", null);
+        when(preparedData.getTaskType()).thenReturn(ComplexTaskMetaManager.ComplexTaskType.DROP_PARTITION);
+        builder.createAlterTableGroupItemPreparedData("tableName", null);
+        when(preparedData.getTaskType()).thenReturn(ComplexTaskMetaManager.ComplexTaskType.SPLIT_PARTITION);
+        builder.createAlterTableGroupItemPreparedData("tableName", null);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void validateTableWithCciTest1() {
+        AlterTableGroupBaseBuilder builder = mock(AlterTableGroupBaseBuilder.class);
+        AlterTableGroupBasePreparedData preparedData = mock(AlterTableGroupBasePreparedData.class);
+        ExecutionContext executionContext = mock(ExecutionContext.class);
+        SchemaManager schemaManager = mock(SchemaManager.class);
+        TableMeta tableMeta = mock(TableMeta.class);
+        when(builder.getExecutionContext()).thenReturn(executionContext);
+        when(builder.getPreparedData()).thenReturn(preparedData);
+        when(preparedData.getSchemaName()).thenReturn("schema");
+        when(executionContext.getSchemaManager(any())).thenReturn(schemaManager);
+        when(schemaManager.getTable(any())).thenReturn(tableMeta);
+        when(tableMeta.withCci()).thenReturn(true);
+        ParamManager paramManager = mock(ParamManager.class);
+        when(executionContext.getParamManager()).thenReturn(paramManager);
+        when(paramManager.getBoolean(any())).thenReturn(true);
+
+        doCallRealMethod().when(builder).createAlterTableGroupItemPreparedData(any(), any());
+        when(preparedData.getTaskType()).thenReturn(ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION);
+        builder.createAlterTableGroupItemPreparedData("tableName", null);
+    }
+
+    @Test(expected = TddlRuntimeException.class)
+    public void validateTableWithCciTest2() {
+        AlterTableGroupModifyPartitionBuilder builder = mock(AlterTableGroupModifyPartitionBuilder.class);
+        AlterTableGroupBasePreparedData preparedData = mock(AlterTableGroupBasePreparedData.class);
+        ExecutionContext executionContext = mock(ExecutionContext.class);
+        SchemaManager schemaManager = mock(SchemaManager.class);
+        TableMeta tableMeta = mock(TableMeta.class);
+        when(builder.getExecutionContext()).thenReturn(executionContext);
+        when(builder.getPreparedData()).thenReturn(preparedData);
+        when(preparedData.getSchemaName()).thenReturn("schema");
+        when(executionContext.getSchemaManager(any())).thenReturn(schemaManager);
+        when(schemaManager.getTable(any())).thenReturn(tableMeta);
+        when(tableMeta.withCci()).thenReturn(true);
+        ParamManager paramManager = mock(ParamManager.class);
+        when(executionContext.getParamManager()).thenReturn(paramManager);
+        when(paramManager.getBoolean(any())).thenReturn(true);
+
+        doCallRealMethod().when(builder).createAlterTableGroupItemPreparedData(any(), any());
+        when(preparedData.getTaskType()).thenReturn(ComplexTaskMetaManager.ComplexTaskType.REORGANIZE_PARTITION);
+        builder.createAlterTableGroupItemPreparedData("tableName", null);
     }
 }

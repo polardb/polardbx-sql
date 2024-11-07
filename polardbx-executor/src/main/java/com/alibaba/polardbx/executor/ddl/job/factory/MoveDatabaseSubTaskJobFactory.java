@@ -21,7 +21,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLogicalForeignKeyTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePhyTableWithRollbackCheckTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropLogicalForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -104,7 +104,8 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
         PhysicalPlanData physicalPlanData =
             DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations, executionContext);
         DdlTask phyDdlTask =
-            new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
+            new CreatePhyTableWithRollbackCheckTask(schemaName, physicalPlanData.getLogicalTableName(),
+                physicalPlanData, sourceTableTopology);
         taskList.add(phyDdlTask);
 
         final String finalStatus =

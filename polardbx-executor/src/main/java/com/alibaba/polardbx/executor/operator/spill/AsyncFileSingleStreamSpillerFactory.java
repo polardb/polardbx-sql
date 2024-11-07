@@ -64,7 +64,6 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static java.nio.file.Files.getFileStore;
 import static java.nio.file.Files.newDirectoryStream;
 import static java.util.Objects.requireNonNull;
-import static org.apache.hadoop.mapred.FileOutputCommitter.TEMP_DIR_NAME;
 
 public class AsyncFileSingleStreamSpillerFactory implements SingleStreamSpillerFactory {
 
@@ -195,7 +194,7 @@ public class AsyncFileSingleStreamSpillerFactory implements SingleStreamSpillerF
 
     @VisibleForTesting
     protected static File getTemPath(File base) {
-        return new File(base, TEMP_DIR_NAME);
+        return new File(base, "_temporary");
     }
 
     @Override

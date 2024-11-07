@@ -30,6 +30,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
+import javax.xml.crypto.Data;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.text.MessageFormat;
@@ -1124,6 +1125,55 @@ public class DeleteTest extends AutoCrudBasedLockTestCase {
             String.format("delete v from %s a, %s v where a.varchar_test = v.varchar_test", baseOneTableName, viewName);
         executeErrorAssert(tddlConnection, sql, null,
             MessageFormat.format("{0}'' of the {1} is not updatable", viewName, "DELETE"));
+    }
+
+    // delete with force index
+    // delete t from t ...
+    // delete from t ...
+    @Test
+    public void deleteWithForceIndex1() throws Exception {
+        String tddlSql = String.format("delete from %s force index (primary) where pk = 5", baseOneTableName);
+        String mysqlSql =
+            String.format("delete %s from %s force index (primary) where pk = 5", baseOneTableName, baseOneTableName);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+        String sql = String.format("select * from %s", baseOneTableName);
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
+    }
+
+    // delete from t as t1
+    @Test
+    public void deleteWithForceIndex2() throws Exception {
+        String tddlSql = String.format("delete from %s as t1 force index (primary) where t1.pk = 5", baseOneTableName);
+        String mysqlSql =
+            String.format("delete t1 from %s as t1 force index (primary) where t1.pk = 5", baseOneTableName,
+                baseOneTableName);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+        String sql = String.format("select * from %s", baseOneTableName);
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
+    }
+
+    // delete with force non-exist index should not throw exception
+    @Test
+    public void deleteWithForceIndex3() throws Exception {
+        String tddlSql = String.format("delete from %s force index (aaa) where pk = 5", baseOneTableName);
+        String mysqlSql = String.format("delete from %s where pk = 5", baseOneTableName);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+        String sql = String.format("select * from %s", baseOneTableName);
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
+    }
+
+    // delete with force multi index only use first
+    @Test
+    public void deleteWithForceIndex4() throws Exception {
+        String tddlSql = String.format("delete from %s force index (aaa,primary) where pk = 5", baseOneTableName);
+        String mysqlSql = String.format("delete from %s where pk = 5", baseOneTableName);
+        DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, mysqlSql, tddlSql, null, true);
+        String sql = String.format("select * from %s", baseOneTableName);
+        selectContentSameAssert(sql, null, mysqlConnection,
+            tddlConnection, true);
     }
 }
 

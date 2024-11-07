@@ -35,10 +35,12 @@ public class FastSubDecimalDecimalTest {
     private final Decimal[] targetResult = new Decimal[COUNT];
     private final boolean overflow;
     private final InputState inputState;
+    private final int[] sel;
+    private final boolean withSelection;
     private final ExecutionContext executionContext = new ExecutionContext();
 
     public FastSubDecimalDecimalTest(boolean overflow, String inputState,
-                                     int scale1, int scale2) {
+                                     int scale1, int scale2, boolean withSelection) {
         this.overflow = overflow;
         this.inputState = InputState.valueOf(inputState);
 
@@ -46,24 +48,35 @@ public class FastSubDecimalDecimalTest {
         this.decimalType2 = new DecimalType(20, scale2);
         // derive result type
         this.resultDecimalType = new DecimalType(20, Math.max(scale1, scale2));
+        this.withSelection = withSelection;
+        if (withSelection) {
+            final int offset = 10;
+            this.sel = new int[COUNT / 2];
+            for (int i = 0; i < sel.length; i++) {
+                sel[i] = i + offset;
+            }
+        } else {
+            this.sel = null;
+        }
     }
 
     /**
      * Mixing different scales
      */
-    @Parameterized.Parameters(name = "overflow={0},inputState={1},scale1={2},scale2={3}")
+    @Parameterized.Parameters(name = "overflow={0},inputState={1},scale1={2},scale2={3},sel={4}")
     public static List<Object[]> generateParameters() {
         List<Object[]> list = new ArrayList<>();
 
         for (InputState value : InputState.values()) {
-            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE});
-            list.add(new Object[] {true, value.name(), DEFAULT_SCALE + 1, DEFAULT_SCALE - 1});
-            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 4});
-            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 10});
-            list.add(new Object[] {false, value.name(), DEFAULT_SCALE, DEFAULT_SCALE});
-            list.add(new Object[] {false, value.name(), DEFAULT_SCALE + 1, DEFAULT_SCALE - 1});
-            list.add(new Object[] {false, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 4});
-            list.add(new Object[] {false, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 10});
+            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE, false});
+            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE, true});
+            list.add(new Object[] {true, value.name(), DEFAULT_SCALE + 1, DEFAULT_SCALE - 1, true});
+            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 4, false});
+            list.add(new Object[] {true, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 10, true});
+            list.add(new Object[] {false, value.name(), DEFAULT_SCALE, DEFAULT_SCALE, false});
+            list.add(new Object[] {false, value.name(), DEFAULT_SCALE + 1, DEFAULT_SCALE - 1, true});
+            list.add(new Object[] {false, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 4, false});
+            list.add(new Object[] {false, value.name(), DEFAULT_SCALE, DEFAULT_SCALE + 10, true});
         }
 
         return list;
@@ -139,9 +152,17 @@ public class FastSubDecimalDecimalTest {
 
         // check result
         Assert.assertEquals("Incorrect output block positionCount", COUNT, outputBlock.getPositionCount());
-        for (int i = 0; i < COUNT; i++) {
-            Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString() + " at " + i,
-                targetResult[i], outputBlock.getDecimal(i));
+        if (withSelection) {
+            for (int i = 0; i < sel.length; i++) {
+                int j = sel[i];
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(j).toString() + " at pos: " + i,
+                    targetResult[j], outputBlock.getDecimal(j));
+            }
+        } else {
+            for (int i = 0; i < COUNT; i++) {
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString() + " at pos: " + i,
+                    targetResult[i], outputBlock.getDecimal(i));
+            }
         }
     }
 
@@ -209,7 +230,13 @@ public class FastSubDecimalDecimalTest {
             break;
         }
 
-        return new MutableChunk(blocks);
+        MutableChunk chunk = new MutableChunk(blocks);
+        if (withSelection) {
+            chunk.setSelectionInUse(true);
+            chunk.setSelection(sel);
+            chunk.setBatchSize(sel.length);
+        }
+        return chunk;
     }
 
     private long genNotOverflowLong() {

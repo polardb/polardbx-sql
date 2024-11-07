@@ -28,9 +28,11 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemove
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTruncateTmpPrimaryTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.ResetSequence4TruncateTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateTableWithGsiMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.TruncateColumnarTableTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateCutOverTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.TruncateTableWithGsiValidateTask;
@@ -128,6 +130,11 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
 
         result.appendJob2(validateJob);
         result.appendJob2(createTmpTableJob);
+        DdlTask resetSequenceTask = new ResetSequence4TruncateTableTask(schemaName, logicalTableName);
+        result.appendTask(resetSequenceTask);
+        if (preparedData.isHasColumnarIndex()) {
+            result.appendTask(new TruncateColumnarTableTask(schemaName, logicalTableName, preparedData.getVersionId()));
+        }
         result.appendJob2(cutOverJob);
         result.appendJob2(dropTmpTableJob);
 
@@ -180,7 +187,7 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
     private ExecutableDdlJob generateCutOverJob() {
         ExecutableDdlJob cutOverJob = new ExecutableDdlJob();
         CdcTruncateTableWithGsiMarkTask cdcTask =
-            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName);
+            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName, preparedData.getVersionId());
         TruncateCutOverTask cutOverTask =
             new TruncateCutOverTask(schemaName, logicalTableName, tmpIndexTableMap, tmpPrimaryTableName);
         TruncateSyncTask syncTask =

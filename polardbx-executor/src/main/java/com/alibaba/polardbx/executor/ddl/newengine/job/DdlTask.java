@@ -17,10 +17,12 @@
 package com.alibaba.polardbx.executor.ddl.newengine.job;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Map;
 
 public interface DdlTask {
 
@@ -36,6 +38,10 @@ public interface DdlTask {
 
     void setRootJobId(Long rootJobId);
 
+    String getRankHint();
+
+    void setRankHint(String rankHint);
+
     /**
      * Get the task name.
      * used for Serialize/DeSerialize.
@@ -48,6 +54,14 @@ public interface DdlTask {
     String getSchemaName();
 
     void setSchemaName(String schemaName);
+
+    DdlEngineResources getResourceAcquired();
+
+    void setResourceAcquired(DdlEngineResources resourceAcquired);
+
+    Boolean getScheduled();
+
+    void setScheduled(Boolean scheduled);
 
     /**
      * Execute the DDL task.

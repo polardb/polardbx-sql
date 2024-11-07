@@ -16,15 +16,16 @@
 
 package com.alibaba.polardbx;
 
+import com.alibaba.polardbx.common.model.DbPriv;
+import com.alibaba.polardbx.common.model.TbPriv;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.common.CommonUtils;
 import com.alibaba.polardbx.config.IUserHostDefination;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.config.UserConfig;
 import com.alibaba.polardbx.net.handler.Privileges;
-import com.alibaba.polardbx.common.model.DbPriv;
-import com.alibaba.polardbx.common.model.TbPriv;
 import com.taobao.tddl.common.privilege.EncrptPassword;
-import com.alibaba.polardbx.config.ConfigDataMode;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.Collections;

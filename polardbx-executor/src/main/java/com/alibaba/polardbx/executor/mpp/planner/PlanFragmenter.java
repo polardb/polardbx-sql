@@ -22,10 +22,10 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
+import com.alibaba.polardbx.executor.mpp.operator.RangeScanMode;
 import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
 import com.alibaba.polardbx.executor.mpp.split.SplitManager;
@@ -33,6 +33,9 @@ import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.gms.node.MppScope;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
@@ -82,7 +85,6 @@ import static com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner.S
 import static com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner.SUPPORT_ONE_SIDE_CACHE_NODES;
 import static com.alibaba.polardbx.executor.mpp.planner.PartitionHandle.SINGLETON_SOURCE;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.convertBuildSide;
-import static com.alibaba.polardbx.executor.utils.ExecUtils.existMppOnlyInstanceNode;
 
 public class PlanFragmenter {
 
@@ -115,10 +117,10 @@ public class PlanFragmenter {
 
         private int maxConcurrentParallelism = -1;
         private int currentConcurrentParallelism = 0;
-        private boolean onlyUseReadInstance;
         private boolean lowConcurrencyQuery = false;
 
         private SplitManager splitManager;
+        private boolean isColumnar = false;
 
         public Fragmenter(Session session, RelNode root) {
             this.session = session;
@@ -127,9 +129,9 @@ public class PlanFragmenter {
             } else {
                 session.getClientContext().getExtraCmds().put(ConnectionProperties.MERGE_UNION, false);
             }
-
-            this.onlyUseReadInstance = existMppOnlyInstanceNode();
             this.splitManager = new SplitManagerImpl();
+            this.isColumnar = CBOUtil.isColumnarOptimizer(root);
+
         }
 
         public int getMaxConcurrentParallelism() {
@@ -350,7 +352,7 @@ public class PlanFragmenter {
                 shuffleHandle = new PartitionShuffleHandle(
                     PartitionShuffleHandle.PartitionShuffleMode.FIXED,
                     mergeSort);
-                shuffleHandle.setFullPartCount(exchange.getTraitSet().getDistribution().getShardCnt());
+                shuffleHandle.setFullPartCount(exchange.getDistribution().getShardCnt());
             }
             List<OrderByOption> orderBys = new ArrayList<>();
             if (mergeSort) {
@@ -457,8 +459,24 @@ public class PlanFragmenter {
                     if (logicalView.fromTableOperation() != null) {
                         splitInfo = splitManager.getSingleSplit(logicalView, session.getClientContext());
                     } else {
-                        splitInfo = splitManager.getSplits(
-                            logicalView, session.getClientContext(), !lowConcurrencyQuery);
+                        RangeScanMode rangeScanMode = null;
+                        ExecutionContext context = session.getClientContext();
+                        if (logicalView.pushedRelNodeIsSort()) {
+                            rangeScanMode = RangeScanUtils.useRangeScan(logicalView, context);
+                        }
+
+                        int mergeUnionSize = context.getParamManager().getInt(ConnectionParams.MERGE_UNION_SIZE);
+
+                        if (rangeScanMode != null) {
+                            context.putIntoHintCmds(ConnectionProperties.MERGE_UNION_SIZE, 1);
+                        }
+
+                        splitInfo = splitManager.getSplits(logicalView, context, !lowConcurrencyQuery);
+
+                        if (rangeScanMode != null) {
+                            // reset merge union size
+                            context.putIntoHintCmds(ConnectionProperties.MERGE_UNION_SIZE, mergeUnionSize);
+                        }
                     }
                     splitCountMap.put(logicalView.getLogicalTableName(), splitInfo.getSplitCount());
                     session.getGroups().putAll(splitInfo.getGroups());
@@ -491,7 +509,7 @@ public class PlanFragmenter {
                     bkaJoinParallelism = Math.max(outerParallelism * lookupJoinParallelismFactor, bkaJoinParallelism);
                     bkaJoinParallelism = Math.max(Math.min(bkaJoinParallelism,
                             ExecUtils
-                                .getMppMaxParallelism(session.getClientContext().getParamManager(), !onlyUseReadInstance)),
+                                .getMppMaxParallelism(session.getClientContext().getParamManager(), isColumnar)),
                         ExecUtils.getMppMinParallelism(session.getClientContext().getParamManager()));
                 }
             }
@@ -574,7 +592,7 @@ public class PlanFragmenter {
                 parallelism = (int) (properties.rootRowCnt / paramManager
                     .getInt(ConnectionParams.MPP_QUERY_ROWS_PER_PARTITION));
                 parallelism =
-                    Math.max(Math.min(parallelism, ExecUtils.getMppMaxParallelism(paramManager, !onlyUseReadInstance)),
+                    Math.max(Math.min(parallelism, ExecUtils.getMppMaxParallelism(paramManager, isColumnar)),
                         ExecUtils.getMppMinParallelism(paramManager));
             } else {
                 parallelism = paramManager.getInt(ConnectionParams.MPP_PARALLELISM);
@@ -589,7 +607,7 @@ public class PlanFragmenter {
                             parallelism, subPlan.getFragment().getBkaJoinParallelism());
                     }
                     parallelism = Math.max(
-                        Math.min(parallelism, ExecUtils.getMppMaxParallelism(paramManager, !onlyUseReadInstance)),
+                        Math.min(parallelism, ExecUtils.getMppMaxParallelism(paramManager, isColumnar)),
                         ExecUtils.getMppMinParallelism(paramManager));
                 }
             }
@@ -606,7 +624,7 @@ public class PlanFragmenter {
 
             int parallelsim = -1;
             if (paramManager.getBoolean(ConnectionParams.MPP_PARALLELISM_AUTO_ENABLE)) {
-                int maxParallelism = ExecUtils.getMppMaxParallelism(paramManager, !onlyUseReadInstance);
+                int maxParallelism = ExecUtils.getMppMaxParallelism(paramManager, isColumnar);
                 int minParallelism = ExecUtils.getMppMinParallelism(paramManager);
                 parallelsim = (int) (io / paramManager
                     .getInt(ConnectionParams.MPP_QUERY_IO_PER_PARTITION)) + 1;
@@ -620,12 +638,12 @@ public class PlanFragmenter {
                     parallelsim = (int) (io / paramManager
                         .getInt(ConnectionParams.MPP_QUERY_IO_PER_PARTITION)) + 1;
                     parallelsim = Math.max(
-                        Math.min(parallelsim, ExecUtils.getMppMaxParallelism(paramManager, !onlyUseReadInstance)),
+                        Math.min(parallelsim, ExecUtils.getMppMaxParallelism(paramManager, isColumnar)),
                         ExecUtils.getMppMinParallelism(paramManager));
                 }
             }
 
-            int dbParallelism = ExecUtils.getPolarDbCores(paramManager, !onlyUseReadInstance);
+            int dbParallelism = ExecUtils.getPolarDbCores(paramManager);
             parallelsim = Math.max(Math.min(Math.min(
                 splitInfo.getSplitCount(), dbParallelism * splitInfo.getInsCount()), parallelsim), 1);
 
@@ -647,14 +665,14 @@ public class PlanFragmenter {
             int parallelism = paramManager.getInt(ConnectionParams.MPP_PARALLELISM);
 
             if (parallelism < 0) {
+                MppScope mppScope = ExecUtils.getMppSchedulerScope(!isColumnar);
                 int mppNodeSize = paramManager.getInt(ConnectionParams.MPP_NODE_SIZE);
                 if (mppNodeSize <= 0) {
-                    mppNodeSize = (ServiceProvider.getInstance().getServer()).getNodeManager()
-                        .getAllWorkers(ConfigDataMode.isMasterMode() && paramManager
-                            .getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST)).size();
+                    mppNodeSize = ServiceProvider.getInstance().getServer()
+                        .getNodeManager().getAllNodes().getAllWorkers(mppScope).size();
                 }
                 // default parallelism is cores of all compute node
-                parallelism = mppNodeSize * ExecUtils.getPolarDBXCores(paramManager, !onlyUseReadInstance);
+                parallelism = mppNodeSize * ExecUtils.getPolarDBXCNCores(paramManager, mppScope);
             }
 
             if (simpleOssScan && splitInfo.getSplitCount() > 0) {

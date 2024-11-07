@@ -84,13 +84,13 @@ public class CheckTableTest extends DDLBaseNewDBTestCase {
         }
     }
 
-    public Pair<Integer, String> getFullObjectName(Connection connection, String tableName, String objectName,
-                                                   int index) {
+    public static Pair<Integer, String> getFullObjectName(Connection connection, String tableName, String objectName,
+                                                          int index) {
         String fetchNameSql = String.format("show full create table %s", objectName);
-        ResultSet resultSet1 = JdbcUtil.executeQuery(fetchNameSql, tddlConnection);
+        ResultSet resultSet1 = JdbcUtil.executeQuery(fetchNameSql, connection);
         String fullTableName = JdbcUtil.getAllResult(resultSet1).get(0).get(0).toString();
         String fetchTopology = String.format("show topology %s", fullTableName);
-        ResultSet resultSet2 = JdbcUtil.executeQuery(fetchTopology, tddlConnection);
+        ResultSet resultSet2 = JdbcUtil.executeQuery(fetchTopology, connection);
         List<Object> result =
             JdbcUtil.getAllResult(resultSet2).stream().filter(o -> o.get(2).toString().endsWith(String.valueOf(index)))
                 .collect(Collectors.toList()).get(0);

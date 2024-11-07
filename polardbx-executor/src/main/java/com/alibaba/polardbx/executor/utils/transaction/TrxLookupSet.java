@@ -60,11 +60,13 @@ public class TrxLookupSet {
     public Transaction updateTransaction(Long transactionId,
                                          Long frontendConnId,
                                          String sql,
-                                         Long startTime) {
+                                         Long startTime,
+                                         boolean ddl) {
         final Transaction trx = transactionMap.computeIfAbsent(transactionId, Transaction::new);
         trx.setFrontendConnId(frontendConnId);
         trx.setSql(sql);
         trx.setStartTime(startTime);
+        trx.setDdl(ddl);
         return trx;
     }
 
@@ -151,6 +153,7 @@ public class TrxLookupSet {
         private Long frontendConnId;
         private String sql;
         private Long startTime;
+        private boolean ddl;
         /**
          * group name -> local transaction
          */
@@ -196,7 +199,7 @@ public class TrxLookupSet {
         }
 
         public boolean isDdl() {
-            return null == frontendConnId;
+            return null == frontendConnId || ddl;
         }
 
         // ---------- setter methods ----------
@@ -211,6 +214,10 @@ public class TrxLookupSet {
 
         public void setStartTime(Long startTime) {
             this.startTime = startTime;
+        }
+
+        public void setDdl(boolean ddl) {
+            this.ddl = ddl;
         }
 
         @Override

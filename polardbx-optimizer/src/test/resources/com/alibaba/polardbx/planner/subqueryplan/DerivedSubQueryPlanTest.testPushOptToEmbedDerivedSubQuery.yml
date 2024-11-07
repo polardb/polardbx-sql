@@ -107,9 +107,8 @@
     group by tb.int_col1
 
   plan: |
-
     project(count(distinct tb.id)="count(distinct tb.id)", int_col1="int_col1")
       hashagg(group="int_col1", count(distinct tb.id)="count(id)")
         hashagg(group="int_col1,id")
           gather(concurrent=true)
-            logicalview(tables="[0000-0003].msg_tb_[0-7]", shardcount=8, sql="select `int_col1`, `id` from `msg_tb` as `msg_tb` where (`msg_id` > 1000)")
+            logicalview(tables="[0000-0003].msg_tb_[0-7]", shardcount=8, sql="select `int_col1`, `id` from `msg_tb` as `msg_tb` where (`msg_id` > 1000) group by `id`, `int_col1`")

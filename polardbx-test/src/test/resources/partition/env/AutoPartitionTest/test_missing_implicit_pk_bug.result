@@ -29,18 +29,18 @@ PARTITIONS #@#
 SHOW CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
-	`id` int(11) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_id` USING BTREE (`id`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	`id` int(11) NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_id` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
 SHOW FULL CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
-	`id` int(11) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_id` USING BTREE (`id`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	`id` int(11) NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE LOCAL KEY `auto_shard_key_id` USING BTREE (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`id`)
 PARTITIONS #@#
@@ -79,20 +79,20 @@ PARTITIONS #@#
 SHOW CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
-	`id` int(11) DEFAULT NULL,
+	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_a` USING BTREE (`a`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_a` USING BTREE (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS #@#
 SHOW FULL CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
-	`id` int(11) DEFAULT NULL,
+	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_a` USING BTREE (`a`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS #@#
@@ -131,20 +131,20 @@ PARTITIONS #@#
 SHOW CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
-	`id` int(11) DEFAULT NULL,
+	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
-	UNIQUE KEY `auto_shard_key_a` USING BTREE (`a`),
-	KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `auto_shard_key_a` USING BTREE (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS #@#
 SHOW FULL CREATE TABLE `id_index`;
 Table,Create Table
 id_index_$,CREATE TABLE `id_index_$` (
-	`id` int(11) DEFAULT NULL,
+	`id` int(11) NOT NULL,
 	`a` int(11) DEFAULT NULL,
-	UNIQUE LOCAL KEY `auto_shard_key_a` USING BTREE (`a`),
-	LOCAL KEY `_gsi_pk_idx_` USING BTREE (`id`)
+	PRIMARY KEY (`id`),
+	UNIQUE LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS #@#

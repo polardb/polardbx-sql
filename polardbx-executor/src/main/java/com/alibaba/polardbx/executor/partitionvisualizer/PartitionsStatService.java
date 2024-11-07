@@ -24,11 +24,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -178,7 +180,7 @@ public class PartitionsStatService {
                 continue;
             }
             List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
-            HashMap<String, String> partitionPyhDbMap = new HashMap<>();
+            Map<String, String> partitionPyhDbMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
             if (CollectionUtils.isNotEmpty(partitionGroupRecords)) {
                 partitionPyhDbMap.putAll(partitionGroupRecords.stream().collect(Collectors.toMap(
                     PartitionGroupRecord::getPartition_name, PartitionGroupRecord::getPhy_db)));

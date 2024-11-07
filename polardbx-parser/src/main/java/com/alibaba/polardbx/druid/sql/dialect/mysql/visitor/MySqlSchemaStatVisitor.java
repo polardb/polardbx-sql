@@ -77,6 +77,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeDDLJ
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeRuleVersionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarPartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarSnapshot;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckGlobalIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclTriggersStatement;
@@ -106,7 +107,10 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsPushDownUd
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRecoverDDLJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRemoveDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsResumeRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRollbackDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDdlEngineStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsTerminateRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowChangeSet;
@@ -544,6 +548,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
     }
 
     @Override
+    public void endVisit(DrdsShowDdlEngineStatus x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsShowDdlEngineStatus x) {
+        return true;
+    }
+
+    @Override
     public void endVisit(DrdsShowDDLResults x) {
 
     }
@@ -660,6 +674,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
 
     @Override
     public boolean visit(DrdsTerminateRebalanceJob x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsResumeRebalanceJob x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsResumeRebalanceJob x) {
         return true;
     }
 
@@ -825,6 +849,16 @@ public class MySqlSchemaStatVisitor extends SchemaStatVisitor implements MySqlAS
 
     @Override
     public void endVisit(DrdsCheckColumnarIndex x) {
+
+    }
+
+    @Override
+    public boolean visit(DrdsCheckColumnarSnapshot x) {
+        return true;
+    }
+
+    @Override
+    public void endVisit(DrdsCheckColumnarSnapshot x) {
 
     }
 

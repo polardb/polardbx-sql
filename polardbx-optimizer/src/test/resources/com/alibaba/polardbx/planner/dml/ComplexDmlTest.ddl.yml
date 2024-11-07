@@ -482,3 +482,28 @@ test_hash_tb2:
   KEY `auto_shard_key_ID` (`id`),
   KEY `auto_shard_key_ID_0` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+t1_upsert:
+   CREATE TABLE `t1_upsert` (
+     `ID` varchar(32) NOT NULL ,
+     `XX_DATE` date NOT NULL,
+     PRIMARY KEY (`ID`)
+  ) dbpartition by UNI_HASH(`id`) tbpartition by DD(`xx_date`) tbpartitions 31;
+
+t2_upsert:
+  CREATE TABLE `t2_upsert` (
+  `ID` varchar(32) NOT NULL ,
+  `name` varchar(30) DEFAULT NULL,
+  `XX_DATE` date NOT NULL,
+  PRIMARY KEY (`ID`),
+  GLOBAL INDEX `g_i_name`(`name`) DBPARTITION BY HASH(`name`)
+  ) dbpartition by UNI_HASH(`id`) tbpartition by DD(`xx_date`) tbpartitions 31;
+
+t3_upsert:
+  CREATE TABLE `t3_upsert` (
+  `ID` varchar(32) NOT NULL AUTO_INCREMENT,
+  `name` varchar(30) DEFAULT NULL,
+  `XX_DATE` date NOT NULL,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `u_i_name`(`name`)
+  ) dbpartition by HASH(`name`) tbpartition by DD(`xx_date`) tbpartitions 31;

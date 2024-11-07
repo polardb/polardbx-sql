@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableLogical
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.misc.SchemaInfoCleaner;
 import com.alibaba.polardbx.gms.metadb.table.BaselineInfoAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
@@ -34,12 +35,14 @@ import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.SchemaMetaCleaner;
+import com.alibaba.polardbx.gms.ttl.TtlInfoAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.optimizer.view.PolarDbXSystemTableView;
 
 import java.sql.Connection;
 import java.util.List;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_HLL;
 
 /**
@@ -50,17 +53,17 @@ public class SchemaMetaUtil {
     public static class PolarDbXSchemaMetaCleaner implements SchemaMetaCleaner {
 
         @Override
-        public void clearSchemaMeta(String schemaName, Connection metaDbConn) {
-            SchemaMetaUtil.cleanupSchemaMeta(schemaName, metaDbConn);
+        public void clearSchemaMeta(String schemaName, Connection metaDbConn, long versionId) {
+            SchemaMetaUtil.cleanupSchemaMeta(schemaName, metaDbConn, versionId);
         }
     }
 
-    public static void cleanupSchemaMeta(String schemaName, Connection metaDbConn) {
+    public static void cleanupSchemaMeta(String schemaName, Connection metaDbConn, long versionId) {
 
         TableInfoManager tableInfoManager = new TableInfoManager();
         SchemaInfoCleaner schemaInfoCleaner = new SchemaInfoCleaner();
         DdlPlanAccessor ddlPlanAccessor = new DdlPlanAccessor();
-        BaselineInfoAccessor baselineInfoAccessor = new BaselineInfoAccessor(false);
+        TtlInfoAccessor ttlInfoAccessor = new TtlInfoAccessor();
 
         try {
             assert metaDbConn != null;
@@ -68,7 +71,7 @@ public class SchemaMetaUtil {
             tableInfoManager.setConnection(metaDbConn);
             schemaInfoCleaner.setConnection(metaDbConn);
             ddlPlanAccessor.setConnection(metaDbConn);
-            baselineInfoAccessor.setConnection(metaDbConn);
+            ttlInfoAccessor.setConnection(metaDbConn);
 
             // If the schema has been dropped, then we have to do some cleanup.
             String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
@@ -83,7 +86,10 @@ public class SchemaMetaUtil {
                 MetaDbConfigManager.getInstance().unregister(tableDataId, metaDbConn);
             }
 
-            tableInfoManager.updateColumnarTableStatusBySchema(schemaName, ColumnarTableStatus.DROP.name());
+            if (versionId != DEFAULT_DDL_VERSION_ID) {
+                tableInfoManager.updateColumnarTableStatusAndVersionIDBySchema(schemaName, versionId,
+                    ColumnarTableStatus.DROP.name());
+            }
 
             tableInfoManager.removeAll(schemaName);
 
@@ -94,8 +100,6 @@ public class SchemaMetaUtil {
 
             new PolarDbXSystemTableLogicalTableStatistic().deleteAll(schemaName, metaDbConn);
             new PolarDbXSystemTableColumnStatistic().deleteAll(schemaName, metaDbConn);
-
-            baselineInfoAccessor.deleteBySchema(schemaName);
 
             GsiBackfillManager.deleteAll(schemaName, metaDbConn);
             CheckerManager.deleteAll(schemaName, metaDbConn);
@@ -109,8 +113,8 @@ public class SchemaMetaUtil {
         } finally {
             tableInfoManager.setConnection(null);
             schemaInfoCleaner.setConnection(null);
-            baselineInfoAccessor.setConnection(null);
         }
+        deleteBaselineInformation(schemaName, new BaselineInfoAccessor(false));
     }
 
     public static boolean checkSupportHll(String schemaName) {
@@ -130,21 +134,26 @@ public class SchemaMetaUtil {
         return executorContext.getStorageInfoManager().supportsHyperLogLog();
     }
 
-    public static boolean checkSupportHll(String schemaName, boolean useHll) {
-        if (schemaName == null || schemaName.isEmpty()) {
-            throw new IllegalArgumentException("checkSupportHll with empty schema name");
-        }
-        if (!useHll) {
-            return false;
-        }
+    /**
+     * Deletes baseline information for a specified schema separately,
+     * due to potential size issues with removing the entire schema in a single transaction.
+     *
+     * @param schemaName Name of the schema whose baseline information should be deleted.
+     */
+    public static void deleteBaselineInformation(String schemaName, BaselineInfoAccessor baselineInfoAccessor) {
+        try (Connection metaDatabaseConnection = MetaDbDataSource.getInstance().getConnection()) {
+            // Set up a new connection to the meta database specifically
+            baselineInfoAccessor.setConnection(metaDatabaseConnection);
 
-        ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
-
-        // should not happen, ExecutorContext should be inited when schema inited
-        if (executorContext == null) {
-            return false;
+            // Delete baseline information associated with the specified schema
+            baselineInfoAccessor.deleteBySchema(schemaName);
+        } catch (Exception exception) {
+            MetaDbLogUtil.META_DB_LOG.error("Failed to delete baseline information for schema: " + schemaName,
+                exception);
+        } finally {
+            // Clear the connection reference to ensure proper resource cleanup.
+            baselineInfoAccessor.setConnection(null);
         }
-        return executorContext.getStorageInfoManager().supportsHyperLogLog();
     }
 
 }

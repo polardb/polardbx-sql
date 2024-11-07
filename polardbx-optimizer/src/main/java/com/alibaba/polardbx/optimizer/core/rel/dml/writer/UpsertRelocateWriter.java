@@ -98,12 +98,9 @@ public class UpsertRelocateWriter extends RelocateWriter {
             final boolean insertThenUpdate = row.insertThenUpdate();
             final boolean updateOnly = row.updateOnly();
 
-            // Use delete + insert to avoid dup key error while adding column
-            final boolean isOnlineModifyColumn = TableColumnUtils.isModifying(schemaName, tableName, ec);
-
             // If partition key is not modified do UPDATE, or else do DELETE + INSERT
             final boolean doUpdate = updateOnly && identicalSk.test(this, Pair.of(row.updateSource, null))
-                && (!canWriteForScaleout || isReadyToPublishForScaleout) && !isOnlineModifyColumn && !isGsiBackfill;
+                && (!canWriteForScaleout || isReadyToPublishForScaleout) && !isGsiBackfill;
 
             addResult(row.before, row.after, row.updateSource, row.insertParam, row.duplicated, insertThenUpdate,
                 doUpdate, ec, result);

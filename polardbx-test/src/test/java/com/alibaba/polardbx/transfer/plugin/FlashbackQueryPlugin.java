@@ -24,7 +24,7 @@ public class FlashbackQueryPlugin extends BasePlugin {
     private final int minTime;
     private final int maxTime;
 
-    private boolean firstTime = false;
+    private boolean firstTime = true;
 
     public FlashbackQueryPlugin() {
         super();
@@ -46,7 +46,7 @@ public class FlashbackQueryPlugin extends BasePlugin {
         if (firstTime) {
             // wait until flashback timestamp is valid
             try {
-                Thread.sleep(minTime * 1000L);
+                Thread.sleep(maxTime * 1000L);
                 firstTime = false;
             } catch (Throwable t) {
                 // ignored

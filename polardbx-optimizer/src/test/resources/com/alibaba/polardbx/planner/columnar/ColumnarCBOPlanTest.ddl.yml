@@ -1,0 +1,337 @@
+t_shard_id1:
+  CREATE TABLE `t_shard_id1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  )  ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t_shard_id2:
+  CREATE TABLE `t_shard_id2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t_shard_id2` on t_shard_id2(`ID`) PARTITION BY key(`ID`) PARTITIONS 4
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t_shard_id3:
+  CREATE TABLE `t_shard_id3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t_shard_id3` on t_shard_id3(`ID`) PARTITION BY key(`ID`) PARTITIONS 4
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t_shard_id4:
+  CREATE TABLE `t_shard_id4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t_shard_id4` on t_shard_id4(`ID`) PARTITION BY key(`ID`) PARTITIONS 4
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t1:
+  CREATE TABLE `t1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t1` on t1(`ID`) PARTITION BY key(`ID`) PARTITIONS 4
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 4;
+
+t2:
+  CREATE TABLE `t2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t1` on t2(`ID`) PARTITION BY key(`ID`) PARTITIONS 8
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 8;
+
+t3:
+  CREATE TABLE `t3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t3` on t3(`ID`) PARTITION BY key(`ID`) PARTITIONS 12
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 12;
+
+t4:
+  CREATE TABLE `t4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t4` on t4(`ID`) PARTITION BY key(`ID`) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 16;
+
+t5:
+  CREATE TABLE `t5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t5` on t5(`ID`) PARTITION BY key(`ID`) PARTITIONS 28
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 20;
+
+t6:
+  CREATE TABLE `t6` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t6` on t6(`ID`) PARTITION BY key(`ID`) PARTITIONS 24
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 24;
+
+t7:
+  CREATE TABLE `t7` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t7` on t7(`ID`) PARTITION BY key(`ID`) PARTITIONS 28
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 28;
+
+t8:
+  CREATE TABLE `t8` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t8` on t8(`ID`) PARTITION BY key(`ID`) PARTITIONS 32
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 32;
+
+ts:
+  CREATE TABLE `ts` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_t8` on t8(`ID`) PARTITION BY key(`ID`) PARTITIONS 32
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 single;
+
+l1:
+  CREATE TABLE `l1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l1` on l1(`ID`) PARTITION BY key(`ID`) PARTITIONS 5
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 5;
+
+l2:
+  CREATE TABLE `l2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l2` on l2(`ID`) PARTITION BY key(`ID`) PARTITIONS 8
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 8;
+
+l3:
+  CREATE TABLE `l3` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l3` on l3(`ID`) PARTITION BY key(`ID`) PARTITIONS 12
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 12;
+
+l4:
+  CREATE TABLE `l4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l4` on l4(`ID`) PARTITION BY key(`ID`) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 16;
+
+l5:
+  CREATE TABLE `l5` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l5` on l5(`ID`) PARTITION BY key(`ID`) PARTITIONS 20
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 20;
+
+l6:
+  CREATE TABLE `l6` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l6` on l6(`ID`) PARTITION BY key(`ID`) PARTITIONS 24
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 24;
+
+l7:
+  CREATE TABLE `l7` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l7` on l7(`ID`) PARTITION BY key(`ID`) PARTITIONS 28
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 28;
+
+l8:
+  CREATE TABLE `l8` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l8` on l8(`ID`) PARTITION BY key(`ID`) PARTITIONS 32
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 32;
+
+l9:
+  CREATE TABLE `l9` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_l9` on l9(`ID`) PARTITION BY key(`ID`) PARTITIONS 36
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 36;
+
+fact:
+  CREATE TABLE `fact` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `id1` int(11) DEFAULT NULL,
+  `id2` int(11) DEFAULT NULL,
+  `id3` int(11) DEFAULT NULL,
+  `id4` int(11) DEFAULT NULL,
+  `id5` int(11) DEFAULT NULL,
+  `id6` int(11) DEFAULT NULL,
+  `id7` int(11) DEFAULT NULL,
+  `id8` int(11) DEFAULT NULL,
+  `id9` int(11) DEFAULT NULL,
+  `id10` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_fact` on fact(`ID`) PARTITION BY key(`ID`) PARTITIONS 40
+  ) ENGINE=InnoDB AUTO_INCREMENT=1501888 DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 40;
+
+v1:
+  CREATE TABLE `v1` (
+  `id` int(11) NOT NULL,
+  `v1_k` int(11) NOT NULL,
+  `name1` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_v1` on v1(`ID`) PARTITION BY key(`ID`) PARTITIONS 5
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 5;
+
+v2:
+  CREATE TABLE `v2` (
+  `id` int(11) NOT NULL,
+  `v2_k` int(11) NOT NULL,
+  `name2` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_v2` on v2(`ID`) PARTITION BY key(`ID`) PARTITIONS 8
+  ) DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 8;
+
+v3:
+  CREATE TABLE `v3` (
+  `id` int(11) NOT NULL,
+  `v3_k` int(11) NOT NULL,
+  `name3` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_v3` on v3(`ID`) PARTITION BY key(`ID`) PARTITIONS 12
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 12;
+
+v4:
+  CREATE TABLE `v4` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_v4` on v4(`ID`) PARTITION BY key(`ID`) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(`ID`) partitions 16;
+
+S1:
+  CREATE TABLE `s1` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_s1` on s1(`ID`) PARTITION BY hash(`ID`) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(id) partitions 16;
+
+S2:
+  CREATE TABLE `s2` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_s2` on s2(`ID`) PARTITION BY hash(YEAR(create_time)) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by HASH(YEAR(create_time)) partitions 16;
+
+S3:
+  CREATE TABLE `s3` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_s3` on s3(`ID`) PARTITION BY hash(id,v4_k) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by hash(id,v4_k) partitions 16;
+
+S4:
+  CREATE TABLE `s4` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_s4` on s4(`ID`) PARTITION BY key(id,v4_k) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(id,v4_k) partitions 16;
+
+S5:
+  CREATE TABLE `s5` (
+  `id` int(11) NOT NULL,
+  `v4_k` int(11) NOT NULL,
+  `name4` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  CLUSTERED COLUMNAR INDEX `cci_s5` on s5(`ID`) PARTITION BY key(v4_k,id) PARTITIONS 16
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 partition by key(v4_k,id) partitions 16;

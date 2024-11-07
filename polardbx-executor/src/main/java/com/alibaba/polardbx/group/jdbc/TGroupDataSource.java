@@ -31,9 +31,11 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.Version;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.group.config.OptimizedGroupConfigManager;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
+import com.google.common.annotations.VisibleForTesting;
 
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
@@ -120,6 +122,11 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
         checkProperties();
         configManager = new OptimizedGroupConfigManager(this);
         configManager.init();
+    }
+
+    @VisibleForTesting
+    protected void setConfigManager(OptimizedGroupConfigManager configManager) {
+        this.configManager = configManager;
     }
 
     /**
@@ -327,12 +334,24 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
      * 销毁数据源，慎用
      */
     public void destroyDataSource() {
+
+        /**
+         * Unbound the config listeners of group
+         */
+        if (this.configManager != null) {
+            configManager.unbindGroupConfigListener();
+        }
+
+        /**
+         * destroy the datasources of group
+         */
         destroy();
     }
 
+
+
     @Override
     protected void doDestroy() {
-
         if (configManager != null) {
             configManager.destroyDataSource();
         }
@@ -500,5 +519,16 @@ public class TGroupDataSource extends AbstractLifecycle implements IDataSource, 
             }
         }
         return masterDNId;
+    }
+
+    @Override
+    public int hashCode() {
+        // schema, group name, host:port
+        int result = 1;
+        String masterAddr = getMasterSourceAddress();
+        result = 31 * result + (schemaName == null ? 0 : schemaName.hashCode());
+        result = 31 * result + (dbGroupKey == null ? 0 : dbGroupKey.hashCode());
+        result = 31 * result + (masterAddr == null ? 0 : masterAddr.hashCode());
+        return result;
     }
 }

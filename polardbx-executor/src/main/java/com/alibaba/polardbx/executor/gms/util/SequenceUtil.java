@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -27,14 +28,18 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceOptRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceRecord;
+import com.alibaba.polardbx.gms.metadb.seq.SequencesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.sequence.SequenceManagerProxy;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 import org.apache.calcite.sql.SequenceBean;
+import org.apache.calcite.sql.SqlKind;
 
+import java.sql.Connection;
 import java.util.function.Supplier;
 
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_PREFIX;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INNER_STEP;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_START_WITH;
@@ -58,6 +63,29 @@ public class SequenceUtil {
             return buildDropRecord(sequence);
         default:
             throw new SequenceException("Unexpected operation: " + sequence.getKind());
+        }
+    }
+
+    public static void resetSequence4TruncateTable(String schema, String table, Connection metaDbConn,
+                                                   ExecutionContext executionContext) {
+        SequencesAccessor sequencesAccessor = new SequencesAccessor();
+        sequencesAccessor.setConnection(metaDbConn);
+        final String sequenceName = AUTO_SEQ_PREFIX + table;
+        final SequenceBean sequenceBean = new SequenceBean();
+        sequenceBean.setStart(1L);
+        sequenceBean.setToType(Type.NA);
+        sequenceBean.setKind(SqlKind.ALTER_SEQUENCE);
+        sequenceBean.setSchemaName(schema);
+        sequenceBean.setName(sequenceName);
+
+        long newSeqCacheSize = executionContext.getParamManager().getLong(ConnectionParams.NEW_SEQ_CACHE_SIZE);
+        newSeqCacheSize = newSeqCacheSize < 1 ? 0 : newSeqCacheSize;
+
+        SequenceBaseRecord record = SequenceUtil.convert(sequenceBean, null, executionContext);
+
+        Type existingType = SequenceManagerProxy.getInstance().checkIfExists(schema, sequenceName);
+        if (existingType != Type.TIME) {
+            sequencesAccessor.update(record, newSeqCacheSize);
         }
     }
 

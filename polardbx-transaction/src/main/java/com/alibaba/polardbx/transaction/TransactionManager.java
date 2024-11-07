@@ -44,6 +44,7 @@ import com.alibaba.polardbx.optimizer.utils.ITransactionManagerUtil;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.async.DeadlockDetectionTaskWrapper;
 import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTaskWrapper;
+import com.alibaba.polardbx.transaction.async.SyncPointTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionIdleTimeoutTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionStatisticsTaskWrapper;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
@@ -56,8 +57,10 @@ import com.alibaba.polardbx.transaction.trx.AutoCommitTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.BestEffortTransaction;
 import com.alibaba.polardbx.transaction.trx.CobarStyleTransaction;
 import com.alibaba.polardbx.transaction.trx.ITsoTransaction;
+import com.alibaba.polardbx.transaction.trx.IgnoreBinlogTransaction;
 import com.alibaba.polardbx.transaction.trx.MppReadOnlyTransaction;
 import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
+import com.alibaba.polardbx.transaction.trx.SyncPointTransaction;
 import com.alibaba.polardbx.transaction.trx.TsoTransaction;
 import com.alibaba.polardbx.transaction.trx.XATransaction;
 import com.alibaba.polardbx.transaction.trx.XATsoTransaction;
@@ -117,7 +120,9 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
 
     private static TransactionIdleTimeoutTaskWrapper transactionIdleTimeoutTask;
 
-    private TimerTask mdlDeadlockDetectionTask;
+    private static SyncPointTaskWrapper syncPointTask;
+
+    private static TimerTask mdlDeadlockDetectionTask;
     private TimerTask killTimeoutTransactionTask;
 
     // Since heartbeat task must run on PolarDB-X instances, only one task is need
@@ -172,9 +177,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         }
 
         // Schedule timer tasks.
-        scheduleDeadlockDetectionTask();
-        scheduleTransactionStatisticsTask();
-        scheduleTransactionIdleTimeoutTask();
+        scheduleTimerTask();
     }
 
     public static TransactionManager getInstance(String schema) {
@@ -250,15 +253,17 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         case XA:
             // 如果启用了 DRDS XA 事务，定期检查 XA RECOVER
             enableXaRecoverScan();
-            if (storageManager.isSupportMarkDistributed() && executionContext.isEnableXaTso()) {
+            if ((supportXaTso() || InstanceVersion.isMYSQL80())
+                && executionContext.isEnableXaTso()) {
                 trx = new XATsoTransaction(executionContext, this);
             } else {
                 trx = new XATransaction(executionContext, this);
             }
             break;
         case TSO:
-            enableXaRecoverScan();
-            if (executionContext.enableAsyncCommit() && supportAsyncCommit()) {
+            if (storageManager.isSupportSyncPoint() && executionContext.isMarkSyncPoint()) {
+                trx = new SyncPointTransaction(executionContext, this);
+            } else if (executionContext.enableAsyncCommit() && supportAsyncCommit()) {
                 trx = new AsyncCommitTransaction(executionContext, this);
             } else {
                 trx = new TsoTransaction(executionContext, this);
@@ -297,12 +302,12 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         case ARCHIVE:
             trx = new ArchiveTransaction(executionContext, this);
             break;
+        case IGNORE_BINLOG_TRANSACTION:
+            trx = new IgnoreBinlogTransaction(executionContext, this);
+            break;
         default:
             throw new AssertionError("TransactionType: " + trxConfig.name() + " not supported");
         }
-        enableKillTimeoutTransaction();
-        // Schedule log cleaning task.
-        enableLogCleanTask();
 
         // 配置会在执行器里设置
         return trx;
@@ -375,7 +380,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
                             new TransactionIdleTimeoutTaskWrapper(properties, executor.getAsyncQueue());
                     } catch (Throwable t) {
                         transactionIdleTimeoutTask = null;
-                        TransactionLogger.warn("Failed to init deadlock detection task.");
+                        TransactionLogger.warn("Failed to init transaction idle timeout task.");
                     }
                 }
             }
@@ -392,6 +397,21 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
                     } catch (Throwable t) {
                         transactionStatisticsTask = null;
                         TransactionLogger.warn("Failed to init deadlock detection task.");
+                    }
+                }
+            }
+        }
+    }
+
+    public void scheduleSyncPointTask() {
+        if (null == syncPointTask) {
+            synchronized (TransactionManager.class) {
+                if (null == syncPointTask) {
+                    try {
+                        syncPointTask = new SyncPointTaskWrapper(properties, executor.getAsyncQueue());
+                    } catch (Throwable t) {
+                        syncPointTask = null;
+                        TransactionLogger.warn("Failed to init sync point task.");
                     }
                 }
             }
@@ -449,7 +469,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             return;
         }
         if (mdlDeadlockDetectionTask == null) {
-            synchronized (this) {
+            synchronized (TransactionManager.class) {
                 if (mdlDeadlockDetectionTask == null) {
                     AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
 
@@ -457,8 +477,11 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
                         5 * paramManager.getInt(ConnectionParams.DEADLOCK_DETECTION_INTERVAL); // reuse this variable
                     int mdlWaitTimeoutInSec =
                         paramManager.getInt(ConnectionParams.PHYSICAL_DDL_MDL_WAITING_TIMEOUT); // reuse this variable
+                    // keySet is a shadow copy of schemaMap's key, which can refer to comment keySet
+                    // So if any schema removed or added, they will be mapped into mdlDeadlockDetectionTask
                     mdlDeadlockDetectionTask =
-                        asyncQueue.scheduleMdlDeadlockDetectionTask(executor, interval, mdlWaitTimeoutInSec);
+                        asyncQueue.scheduleMdlDeadlockDetectionTask(executor, interval, schemaMap.keySet(),
+                            mdlWaitTimeoutInSec);
                 }
             }
         }
@@ -663,6 +686,12 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             } else {
                 transactionIdleTimeoutTask.resetTask();
             }
+
+            if (null == syncPointTask) {
+                scheduleSyncPointTask();
+            } else {
+                syncPointTask.resetTask();
+            }
         }
     }
 
@@ -688,10 +717,6 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         return storageManager.supportAsyncCommit();
     }
 
-    @Override
-    public boolean support2pcOpt() {
-        return storageManager.support2pcOpt();
-    }
 
     public static boolean isExceedAsyncCommitTaskLimit() {
         return asyncCommitTasks.get() >= InstConfUtil.getInt(ConnectionParams.ASYNC_COMMIT_TASK_LIMIT);
@@ -717,4 +742,19 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         MetaDbUtil.setGlobal(properties);
     }
 
+    @Override
+    public void scheduleTimerTask() {
+        enableXaRecoverScan();
+        enableKillTimeoutTransaction();
+        enableLogCleanTask();
+        scheduleDeadlockDetectionTask();
+        scheduleTransactionStatisticsTask();
+        scheduleTransactionIdleTimeoutTask();
+        scheduleSyncPointTask();
+    }
+
+    @Override
+    public boolean supportXaTso() {
+        return storageManager.isSupportMarkDistributed();
+    }
 }

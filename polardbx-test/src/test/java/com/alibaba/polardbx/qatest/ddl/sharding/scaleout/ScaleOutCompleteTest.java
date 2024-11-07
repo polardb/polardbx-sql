@@ -34,6 +34,7 @@ import org.junit.runners.Parameterized;
 import org.yaml.snakeyaml.Yaml;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -157,7 +158,7 @@ public class ScaleOutCompleteTest extends ScaleOutBaseTest {
         public long workloadTime = 0;
         public String scaleOutHint =
             String.format(
-                "/*+TDDL:CMD_EXTRA(SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, SCALE_OUT_DEBUG_WAIT_TIME_IN_WO=%s,SCALEOUT_BACKFILL_BATCH_SIZE=2, SCALEOUT_BACKFILL_SPEED_LIMITATION=32)*/",
+                "/*+TDDL:CMD_EXTRA(SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, SCALE_OUT_DEBUG_WAIT_TIME_IN_WO=%s,SCALEOUT_BACKFILL_BATCH_SIZE=2, SCALEOUT_BACKFILL_SPEED_LIMITATION=32)*/",
                 String.valueOf(waitTimeEachDb));
 
         public ScaleOutTaskContext() {

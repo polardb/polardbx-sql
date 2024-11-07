@@ -30,6 +30,9 @@ import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
@@ -76,6 +79,12 @@ public final class PhyTableOperation extends BaseTableOperation {
      * instead of going to LogicalViewHandler to its execution.
      */
     protected boolean onlyOnePartitionAfterPruning = false;
+    /**
+     * Mapping from index of DynamicParamIndex in {@link #logicalPlan} to index in {@link #param}
+     */
+    @Getter
+    @Setter
+    protected List<Integer> paramIndex = new ArrayList<>();
 
     /**
      * NOT allowed to use new PhyTableOperation() build PhyTableOp,

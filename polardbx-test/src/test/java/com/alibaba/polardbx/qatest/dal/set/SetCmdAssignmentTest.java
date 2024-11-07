@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.dal.set;
 
 import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.qatest.DirectConnectionBaseTestCase;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -147,7 +148,9 @@ public class SetCmdAssignmentTest extends DirectConnectionBaseTestCase {
     }
 
     @Ignore
-    public void testTransactionPolicy() throws SQLException {
+    public void testTransactionPolicy() throws SQLException, InterruptedException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET GLOBAL DISABLE_LEGACY_VARIABLE = FALSE");
+        Thread.sleep(1000);
 
         String variable = "TRANSACTION POLICY";
 
@@ -157,7 +160,17 @@ public class SetCmdAssignmentTest extends DirectConnectionBaseTestCase {
         String selectSql = "select @savedValue";
         String selectTmpSql = "select @tmp";
 
-        int oldValue = getIntValue(showSql, 2);
+        int retry = 0;
+        int oldValue = -1;
+        while (retry < 10) {
+            retry++;
+            oldValue = getIntValue(showSql, 2);
+            if (oldValue != -1) {
+                break;
+            }
+            Thread.sleep(1000);
+        }
+
         try {
             //保存初始值到 变量@savedValue 以及 oldValue中
             setVar(setVarSql);
@@ -187,13 +200,15 @@ public class SetCmdAssignmentTest extends DirectConnectionBaseTestCase {
             String setSql = "set @@`" + variable + "` = " + oldValue;
             setVar(setSql);
             Assert.assertEquals(getIntValue(showSql, 2), oldValue);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "SET GLOBAL DISABLE_LEGACY_VARIABLE = TRUE");
             this.tddlConnection.close();
         }
     }
 
     @Test
-    public void testTransPolicy() throws SQLException {
-
+    public void testTransPolicy() throws SQLException, InterruptedException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET GLOBAL DISABLE_LEGACY_VARIABLE = FALSE");
+        Thread.sleep(1000);
         String variable = "TRANS.POLICY";
 
         String showSql = "show variables like '" + variable + "'";
@@ -203,7 +218,17 @@ public class SetCmdAssignmentTest extends DirectConnectionBaseTestCase {
         String selectTmpSql = "select @tmp";
         String commitSql = "commit";
 
-        String oldValue = getStringValue(showSql, 2);
+        int retry = 0;
+        String oldValue = null;
+        while (retry < 10) {
+            retry++;
+            oldValue = getStringValue(showSql, 2);
+            if (oldValue != null) {
+                break;
+            }
+            Thread.sleep(1000);
+        }
+
         try {
             //关闭autocommit
             String setSql = "set @@autocommit = 0";
@@ -242,6 +267,7 @@ public class SetCmdAssignmentTest extends DirectConnectionBaseTestCase {
             Assert.assertEquals(getStringValue(showSql, 2), oldValue);
             setSql = "set @@autocommit = 1";
             setVar(setSql);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "SET GLOBAL DISABLE_LEGACY_VARIABLE = TRUE");
             this.tddlConnection.close();
         }
     }

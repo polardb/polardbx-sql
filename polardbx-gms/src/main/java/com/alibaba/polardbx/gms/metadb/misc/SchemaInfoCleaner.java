@@ -29,6 +29,7 @@ public class SchemaInfoCleaner extends AbstractAccessor {
     private final DdlEngineTaskAccessor ddlEngineTaskAccessor;
     private final ScheduledJobsAccessor scheduledJobsAccessor;
     private final FiredScheduledJobsAccessor firedScheduledJobsAccessor;
+    private final BackfillSampleRowsAccessor backfillSampleRowsAccessor;
 
     public SchemaInfoCleaner() {
         ddlEngineAccessor = new DdlEngineAccessor();
@@ -36,6 +37,7 @@ public class SchemaInfoCleaner extends AbstractAccessor {
         readWriteLockAccessor = new ReadWriteLockAccessor();
         scheduledJobsAccessor = new ScheduledJobsAccessor();
         firedScheduledJobsAccessor = new FiredScheduledJobsAccessor();
+        backfillSampleRowsAccessor = new BackfillSampleRowsAccessor();
     }
 
     @Override
@@ -46,6 +48,7 @@ public class SchemaInfoCleaner extends AbstractAccessor {
         ddlEngineTaskAccessor.setConnection(connection);
         scheduledJobsAccessor.setConnection(connection);
         firedScheduledJobsAccessor.setConnection(connection);
+        backfillSampleRowsAccessor.setConnection(connection);
     }
 
     public void removeAll(String schemaName) {
@@ -55,7 +58,9 @@ public class SchemaInfoCleaner extends AbstractAccessor {
         //ddlEngineTaskAccessor.deleteAllArchive(schemaName);
         readWriteLockAccessor.deleteAll(schemaName);
         scheduledJobsAccessor.deleteAll(schemaName);
+
         firedScheduledJobsAccessor.deleteAll(schemaName);
+        backfillSampleRowsAccessor.deleteAll(schemaName);
     }
 
 }

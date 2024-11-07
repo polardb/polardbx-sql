@@ -19,18 +19,22 @@ package com.alibaba.polardbx.common.utils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executor;
 
 /**
  * @author yaozhili
  */
 public class LockUtil {
+    private static final Logger logger = LoggerFactory.getLogger(LockUtil.class);
+
     /**
      * Wrapped operations with specified lock_wait_timeout to avoid long MDL-wait.
      */
@@ -61,8 +65,7 @@ public class LockUtil {
                 }
             }
         } else {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG,
-                "Get wrong lock_wait_timeout value: " + originLockWaitTimeout);
+            task.run();
         }
     }
 
@@ -93,8 +96,33 @@ public class LockUtil {
                 }
             }
         } else {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG,
-                "Get wrong innodb_lock_wait_timeout value: " + originLockWaitTimeout);
+            task.run();
+        }
+    }
+
+    /**
+     * Wrapped operations with specified lock_wait_timeout to avoid long MDL-wait.
+     */
+    public static <T> T wrapWithSocketTimeout(Connection conn, int socketTimeout, Executor socketTimeoutExecutor,
+                                              Callable<T> task) throws SQLException {
+        int originNetworkTimeout = conn.getNetworkTimeout();
+        // Only decrease the socket timeout, not increase it.
+        try {
+            if (0 == originNetworkTimeout || originNetworkTimeout > socketTimeout) {
+                conn.setNetworkTimeout(socketTimeoutExecutor, socketTimeout);
+                try {
+                    return task.call();
+                } finally {
+                    conn.setNetworkTimeout(socketTimeoutExecutor, originNetworkTimeout);
+                }
+            } else {
+                return task.call();
+            }
+        } catch (SQLException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("wrapWithSocketTimeout error: ", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e);
         }
     }
 }

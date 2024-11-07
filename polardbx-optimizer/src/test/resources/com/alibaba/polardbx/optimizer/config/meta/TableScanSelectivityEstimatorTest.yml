@@ -1,0 +1,38 @@
+SQL:
+  - sql: |
+      select * from cest_full_table_big where c_varchar ='0abdb';
+    plan: |
+      222320
+  - sql: |
+      select * from cest_full_table_big where c_varchar  like '0abdb';
+    plan: |
+      222686
+  - sql: |
+      select * from cest_full_table_big where c_varchar  like '0abdb%';
+    plan: |
+      222686
+DDL:
+  cest_full_table_big:
+    CREATE TABLE `cest_full_table_big` (      `c_varchar` varchar(10) DEFAULT NULL) ENGINE = InnoDB AUTO_INCREMENT = 9999976 DEFAULT CHARSET = utf8mb4 PARTITION BY KEY(`c_varchar`) PARTITIONS 32
+STATISTICS:
+  cest_full_table_big:
+    10146065
+  cest_full_table_big.c_varchar.TOPN:
+    { "countArr": [ 2433,1066,969,848,715,3308,1257,1527,4703,640,44010,7391,1950,14569 ],"valueArr": [ "0abdb","150e3","322e0ed","5ee951d192","75","817a071","8b","8b4283","8f4b82","920e8","ae093","b","bd4663a26","d9" ],"type": "String","sampleRate": 0.9006259287612014 }
+  cest_full_table_big.c_varchar.cardinality:
+    16380
+  cest_full_table_big.c_varchar.histogram:
+    { "buckets": [ { "ndv": 6,"upper": "00a","lower": "0","count": 559,"preSum": 0 },{ "ndv": 52,"upper": "074b69539b","lower": "00c85b4","count": 231,"preSum": 559 },{ "ndv": 47,"upper": "0dc7e251","lower": "078e97e","count": 229,"preSum": 790 },{ "ndv": 45,"upper": "13b","lower": "0dceae5","count": 229,"preSum": 1019 },{ "ndv": 53,"upper": "1b00dc6b0","lower": "13c39952","count": 229,"preSum": 1248 },{ "ndv": 31,"upper": "1fd95","lower": "1b05b203c","count": 682,"preSum": 1477 },{ "ndv": 31,"upper": "2381ac2e","lower": "2","count": 231,"preSum": 2159 },{ "ndv": 20,"upper": "26480","lower": "23a039a182","count": 229,"preSum": 2390 },{ "ndv": 22,"upper": "29","lower": "266","count": 272,"preSum": 2619 },{ "ndv": 7,"upper": "2a33cd62","lower": "290","count": 374,"preSum": 2891 },{ "ndv": 21,"upper": "2c5f8","lower": "2a38b3e6","count": 295,"preSum": 3265 },{ "ndv": 39,"upper": "3100e1bed","lower": "2c881705c0","count": 232,"preSum": 3560 },{ "ndv": 104,"upper": "3e7b006b66","lower": "310e28","count": 236,"preSum": 3792 },{ "ndv": 38,"upper": "439d9","lower": "3f065cb89","count": 382,"preSum": 4028 },{ "ndv": 40,"upper": "4a9e0d0","lower": "43bebbfaa","count": 321,"preSum": 4410 },{ "ndv": 79,"upper": "55d20f80","lower": "4acf6","count": 248,"preSum": 4731 },{ "ndv": 40,"upper": "5bd6f342c","lower": "56854ff5bf","count": 609,"preSum": 4979 },{ "ndv": 36,"upper": "61","lower": "5c299","count": 231,"preSum": 5588 },{ "ndv": 48,"upper": "68718fec4","lower": "6136af56de","count": 229,"preSum": 5819 },{ "ndv": 64,"upper": "7","lower": "687d3","count": 237,"preSum": 6048 },{ "ndv": 40,"upper": "7645e370","lower": "7001a8263","count": 364,"preSum": 6285 },{ "ndv": 33,"upper": "7ad","lower": "7667f5ffef","count": 239,"preSum": 6649 },{ "ndv": 42,"upper": "7fc5796","lower": "7adf2","count": 233,"preSum": 6888 },{ "ndv": 37,"upper": "8526f8","lower": "7fe486c70","count": 229,"preSum": 7121 },{ "ndv": 31,"upper": "88bc","lower": "857","count": 395,"preSum": 7350 },{ "ndv": 46,"upper": "8f942aac4d","lower": "88d29a56","count": 229,"preSum": 7745 },{ "ndv": 30,"upper": "93a4db","lower": "8fab04","count": 356,"preSum": 7974 },{ "ndv": 27,"upper": "97e","lower": "93c76a5e","count": 528,"preSum": 8330 },{ "ndv": 32,"upper": "9bd3b47ab0","lower": "97e90","count": 233,"preSum": 8858 },{ "ndv": 51,"upper": "a3d0c","lower": "9be21b","count": 280,"preSum": 9091 },{ "ndv": 31,"upper": "a862","lower": "a4373237","count": 280,"preSum": 9371 },{ "ndv": 44,"upper": "af454e5e2","lower": "a87355","count": 229,"preSum": 9651 },{ "ndv": 24,"upper": "b4866c38cf","lower": "af6f6396","count": 601,"preSum": 9880 },{ "ndv": 63,"upper": "bcdcc4413","lower": "b497d9","count": 231,"preSum": 10481 },{ "ndv": 43,"upper": "c333418","lower": "bce","count": 247,"preSum": 10712 },{ "ndv": 13,"upper": "c69","lower": "c38d","count": 345,"preSum": 10959 },{ "ndv": 32,"upper": "cb1050e6","lower": "c69b9b575b","count": 335,"preSum": 11304 },{ "ndv": 38,"upper": "cf539a","lower": "cb11fa08","count": 231,"preSum": 11639 },{ "ndv": 17,"upper": "d1c8d334c9","lower": "cf5d486","count": 550,"preSum": 11870 },{ "ndv": 56,"upper": "d992","lower": "d1cecee0ab","count": 272,"preSum": 12420 },{ "ndv": 84,"upper": "e3d64","lower": "d9ecd163d","count": 229,"preSum": 12692 },{ "ndv": 36,"upper": "e98c","lower": "e3e391eee","count": 240,"preSum": 12921 },{ "ndv": 64,"upper": "f3","lower": "e9dd622b","count": 230,"preSum": 13161 },{ "ndv": 13,"upper": "f4ead0","lower": "f33c3","count": 331,"preSum": 13391 },{ "ndv": 32,"upper": "f95f6364e","lower": "f4f7b","count": 330,"preSum": 13722 },{ "ndv": 28,"upper": "fe2","lower": "f9aa89","count": 257,"preSum": 14052 },{ "ndv": 6,"upper": "ffb6b2558","lower": "fe31162","count": 304,"preSum": 14309 },{ "ndv": 2,"upper": "fff96","lower": "fff2","count": 2,"preSum": 14613 } ],"maxBucketSize": 64,"type": "String","sampleRate": 0.90062594 }
+  cest_full_table_big.c_varchar.null_count:
+    0
+  cest_full_table_big.c_varchar.sample_rate:
+    0.010943651
+  cest_full_table_big.c_varchar.composite_cardinality:
+    25009
+CONFIG:
+  ENABLE_DIRECT_PLAN:
+    false
+  ENABLE_POST_PLANNER:
+    false
+  defaltxxAPPName.isNew:
+    true

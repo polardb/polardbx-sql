@@ -22,7 +22,15 @@ package com.alibaba.polardbx.common.properties;
  * @author Dreamond
  */
 public class ConnectionProperties {
+    /**
+     * Generate columnar snapshots automatically.
+     */
+    public static final String ENABLE_AUTO_GEN_COLUMNAR_SNAPSHOT = "ENABLE_AUTO_GEN_COLUMNAR_SNAPSHOT";
+    public static final String AUTO_GEN_COLUMNAR_SNAPSHOT_PARALLELISM = "AUTO_GEN_COLUMNAR_SNAPSHOT_PARALLELISM";
 
+    /**
+     * CoronaDB PlanCache
+     */
     public static final String PLAN_CACHE = "PLAN_CACHE";
     public static final String PHY_SQL_TEMPLATE_CACHE = "PHY_SQL_TEMPLATE_CACHE";
     public static final String PREPARE_OPTIMIZE = "PREPARE_OPTIMIZE";
@@ -125,8 +133,34 @@ public class ConnectionProperties {
 
     public static final String FIRST_THEN_CONCURRENT_POLICY = "FIRST_THEN_CONCURRENT_POLICY";
 
+    /**
+     * 在事务时，DML忽略串行执行策略规则，详情请见ExecUtils.getQueryConcurrencyPolicy
+     */
+    public static final String ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION =
+        "ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION";
+
+    /**
+     * 指定 DML 执行策略, PUSHDOWN, DETERMINISTIC_PUSHDOWN, LOGICAL
+     */
     public static final String DML_EXECUTION_STRATEGY = "DML_EXECUTION_STRATEGY";
 
+    /**
+     * 是否下推 WHERE 条件中包含目标表子查询的 DELETE/UPDATE 语句
+     */
+    public final static String DML_PUSH_MODIFY_WITH_SUBQUERY_CONDITION_OF_TARGET =
+        "DML_PUSH_MODIFY_WITH_SUBQUERY_CONDITION_OF_TARGET";
+
+    /**
+     * 是否禁止 SET 子句中包含子查询的 UPDATE 语句
+     */
+    public final static String DML_FORBID_UPDATE_WITH_SUBQUERY_IN_SET = "DML_FORBID_UPDATE_WITH_SUBQUERY_IN_SET";
+
+    public final static String DML_FORBID_PUSH_DOWN_UPDATE_WITH_SUBQUERY_IN_SET =
+        "DML_FORBID_PUSH_DOWN_UPDATE_WITH_SUBQUERY_IN_SET";
+
+    /**
+     * 是否下推 INSERT IGNORE / REPLACE / UPSERT
+     */
     public static final String DML_PUSH_DUPLICATE_CHECK = "DML_PUSH_DUPLICATE_CHECK";
 
     public static final String DML_SKIP_TRIVIAL_UPDATE = "DML_SKIP_TRIVIAL_UPDATE";
@@ -143,6 +177,22 @@ public class ConnectionProperties {
      * 是否使用 returning 优化
      */
     public static final String DML_USE_RETURNING = "DML_USE_RETURNING";
+
+    /**
+     * 是否使用 returning 优化包含 order by limit 的 update / delete
+     */
+    public static final String OPTIMIZE_MODIFY_TOP_N_BY_RETURNING = "OPTIMIZE_MODIFY_TOP_N_BY_RETURNING";
+
+    /**
+     * 是否使用 returning 优化需要逻辑执行的 DELETE
+     */
+    public static final String OPTIMIZE_DELETE_BY_RETURNING = "OPTIMIZE_DELETE_BY_RETURNING";
+
+    /**
+     * 是否为局部 UK 使用全表扫描检查冲突的插入值
+     */
+    public static final String DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN =
+        "DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN";
 
     /**
      * 是否使用 GSI 检查冲突的插入值
@@ -211,6 +261,16 @@ public class ConnectionProperties {
      * 是否允许在包含 CCI 的表上执行 DDL
      */
     public static final String FORBID_DDL_WITH_CCI = "FORBID_DDL_WITH_CCI";
+
+    /**
+     * 是否在执行repartition的时候重建CCI
+     */
+    public static final String REBUILD_CCI_WHEN_REPARTITION = "REBUILD_CCI_WHEN_REPARTITION";
+
+    /**
+     * 是否允许在 CCI 上执行 DROP/TRUNCATE PARTITION 删除/清空数据，会造成主表和分区表数据不一致
+     */
+    public static final String ENABLE_DROP_TRUNCATE_CCI_PARTITION = "ENABLE_DROP_TRUNCATE_CCI_PARTITION";
 
     /**
      * 在 RelocateWriter 中是否通过 PartitionField 判断拆分键是否变化
@@ -594,6 +654,11 @@ public class ConnectionProperties {
     public static final String COLUMNAR_TSO_UPDATE_INTERVAL = "COLUMNAR_TSO_UPDATE_INTERVAL";
 
     /**
+     * 主动为主实例增加一个 tso 加载延迟，通过读一个更早的 tso 来规避加载增量数据导致的延迟，单位为毫秒
+     */
+    public static final String COLUMNAR_TSO_UPDATE_DELAY = "COLUMNAR_TSO_UPDATE_DELAY";
+
+    /**
      * 默认事务清理开始时间（在该时间段内随机）
      */
     public static final String PURGE_TRANS_START_TIME = "PURGE_TRANS_START_TIME";
@@ -648,6 +713,9 @@ public class ConnectionProperties {
      * Insert select self_table; insert 和 select 操作同一个表时,非事务下可能会导致数据 > 2倍，默认自身表时，先select 再insert
      */
     public static final String INSERT_SELECT_SELF_BY_PARALLEL = "INSERT_SELECT_SELF_BY_PARALLEL";
+
+    public static final String ENABLE_INSERT_SELECT_WITH_FLASHBACK_PUSH_DOWN =
+        "ENABLE_INSERT_SELECT_WITH_FLASHBACK_PUSH_DOWN";
 
     /**
      * 是否允许 Insert 列重复
@@ -756,6 +824,8 @@ public class ConnectionProperties {
 
     public static final String SAMPLE_PERCENTAGE = "SAMPLE_PERCENTAGE";
 
+    public static final String DN_HINT = "DN_HINT";
+
     /**
      * backfill sample_percentage
      */
@@ -861,6 +931,10 @@ public class ConnectionProperties {
 
     public static final String ENABLE_LV_SUBQUERY_UNWRAP = "ENABLE_LV_SUBQUERY_UNWRAP";
 
+    public static final String ENABLE_AUTO_FORCE_INDEX = "ENABLE_AUTO_FORCE_INDEX";
+
+    public static final String ENABLE_DELETE_FORCE_CC_INDEX = "ENABLE_DELETE_FORCE_CC_INDEX";
+
     public static final String EXPLAIN_PRUNING_DETAIL = "EXPLAIN_PRUNING_DETAIL";
 
     public static final String ENABLE_FILTER_REORDER = "ENABLE_FILTER_REORDER";
@@ -880,7 +954,9 @@ public class ConnectionProperties {
 
     public static final String ENABLE_SORT_AGG = "ENABLE_SORT_AGG";
 
-    public static final String PARTIAL_AGG_ONLY = "PARTIAL_AGG_ONLY";
+    public static final String PREFER_PUSH_AGG = "PREFER_PUSH_AGG";
+
+    public static final String PREFER_PARTIAL_AGG = "PREFER_PARTIAL_AGG";
 
     public static final String PARTIAL_AGG_SHARD = "PARTIAL_AGG_SHARD";
 
@@ -888,6 +964,12 @@ public class ConnectionProperties {
      * enable partial agg default true
      */
     public static final String ENABLE_PARTIAL_AGG = "ENABLE_PARTIAL_AGG";
+
+    public static final String ENABLE_TOPN = "ENABLE_TOPN";
+
+    public static final String ENABLE_LIMIT = "ENABLE_LIMIT";
+
+    public static final String ENABLE_PARTIAL_LIMIT = "ENABLE_PARTIAL_LIMIT";
 
     public static final String PARTIAL_AGG_SELECTIVITY_THRESHOLD = "PARTIAL_AGG_SELECTIVITY_THRESHOLD";
 
@@ -988,6 +1070,11 @@ public class ConnectionProperties {
      * allow NODE/SCAN of dml on broadcast table
      */
     public static final String PUSHDOWN_HINT_ON_BROADCAST = "PUSHDOWN_HINT_ON_BROADCAST";
+
+    /**
+     * copy modify with HINT NODE(0) TO SINGLE GROUP
+     */
+    public static final String COPY_MODIFY_NODE0_TO_SINGLE = "COPY_MODIFY_NODE0_TO_SINGLE";
 
     /**
      * allow Global Secondary Index DDL or DML on MySQL 5.6
@@ -1091,7 +1178,13 @@ public class ConnectionProperties {
     /**
      * max sample size of backfill physical table
      */
-    public static final String BACKFILL_MAX_SAMPLE_SIZE = "BACKFILL_MAX_SAMPLE_SIZE";
+    public static final String BACKFILL_MAX_SAMPLE_ROWS = "BACKFILL_MAX_SAMPLE_ROWS";
+
+    public static final String BACKFILL_MAX_SAMPLE_ROWS_FOR_PK_RANGE = "BACKFILL_MAX_SAMPLE_ROWS_FOR_PK_RANGE";
+
+    public static final String BACKFILL_MAX_PK_RANGE_SIZE = "BACKFILL_MAX_PK_RANGE_SIZE";
+
+    public static final String BACKFILL_MAX_TASK_PK_RANGE_SIZE = "BACKFILL_MAX_TASK_PK_RANGE_SIZE";
 
     public static final String BACKFILL_USE_RETURNING = "BACKFILL_USE_RETURNING";
 
@@ -1119,9 +1212,20 @@ public class ConnectionProperties {
 
     public static final String GSI_BACKFILL_USE_FASTCHECKER = "GSI_BACKFILL_USE_FASTCHECKER";
 
-    public static final String CHECK_GLOBAL_INDEX_USE_FASTCHECKER = "CHECK_GLOBAL_INDEX_USE_FASTCHECKER";
+    public static final String GSI_BACKFILL_OVERRIDE_DDL_PARAMS = "GSI_BACKFILL_OVERRIDE_DDL_PARAMS";
 
-    public static final String FASTCHECKER_RETRY_TIMES = "FASTCHECKER_RETRY_TIMES";
+    public static final String GSI_BUILD_LOCAL_INDEX_LATER = "GSI_BUILD_LOCAL_INDEX_LATER";
+
+    public static final String GSI_BACKFILL_BY_PK_RANGE = "GSI_BACKFILL_BY_PK_RANGE";
+
+    public static final String GSI_BACKFILL_BY_PARTITION = "GSI_BACKFILL_BY_PARTITION";
+
+    public static final String GSI_JOB_MAX_PARALLELISM = "GSI_JOB_MAX_PARALLELISM";
+
+    public static final String GSI_PK_RANGE_CPU_ACQUIRE = "GSI_PK_RANGE_CPU_ACQUIRE";
+
+    public static final String GSI_PK_RANGE_LOCK_READ = "GSI_PK_RANGE_LOCK_READ";
+
     /**
      * fastChecker use thread pool to control parallelism
      * each thread pool corresponds to a storage inst node
@@ -1200,6 +1304,11 @@ public class ConnectionProperties {
     public static final String SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE =
         "SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE";
 
+    public static final String SCALE_OUT_GENERATE_MULTIPLE_TO_GROUP_JOB =
+        "SCALE_OUT_GENERATE_MULTIPLE_TO_GROUP_JOB";
+    /**
+     * retry time when scaleout task fail
+     */
     public static final String SCALEOUT_TASK_RETRY_TIME = "SCALEOUT_TASK_RETRY_TIME";
 
     public static final String ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE = "ALLOW_DROP_DATABASE_IN_SCALEOUT_PHASE";
@@ -1224,6 +1333,11 @@ public class ConnectionProperties {
      */
     public static final String ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI = "ALLOW_DROP_OR_MODIFY_PART_UNIQUE_WITH_GSI";
 
+    public static final String UNIQUE_GSI_WITH_PRIMARY_KEY = "UNIQUE_GSI_WITH_PRIMARY_KEY";
+
+    /**
+     * allow change/modify columns in which is also in GSI.
+     */
     public static final String ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI = "ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI";
 
     /**
@@ -1464,6 +1578,10 @@ public class ConnectionProperties {
 
     public static final String ENABLE_SPM_EVOLUTION_BY_TIME = "ENABLE_SPM_EVOLUTION_BY_TIME";
 
+    public static final String ENABLE_HOT_GSI_EVOLUTION = "ENABLE_HOT_GSI_EVOLUTION";
+
+    public static final String HOT_GSI_EVOLUTION_THRESHOLD = "HOT_GSI_EVOLUTION_THRESHOLD";
+
     public static final String ENABLE_SPM_BACKGROUND_TASK = "ENABLE_SPM_BACKGROUND_TASK";
 
     public static final String SPM_MAX_BASELINE_SIZE = "SPM_MAX_BASELINE_SIZE";
@@ -1534,6 +1652,11 @@ public class ConnectionProperties {
      * immediately.
      */
     public static final String PURE_ASYNC_DDL_MODE = "PURE_ASYNC_DDL_MODE";
+
+    /**
+     * Label if return job_id on async_ddl_mode when submit ddl
+     */
+    public static final String RETURN_JOB_ID_ON_ASYNC_DDL_MODE = "RETURN_JOB_ID_ON_ASYNC_DDL_MODE";
 
     public static final String ENABLE_OPERATE_SUBJOB = "ENABLE_OPERATE_SUBJOB";
 
@@ -1674,7 +1797,7 @@ public class ConnectionProperties {
 
     public static final String POLARDBX_PARALLELISM = "POLARDBX_PARALLELISM";
 
-    public static final String POLARDBX_SLAVE_INSTANCE_FIRST = "POLARDBX_SLAVE_INSTANCE_FIRST";
+    public static final String ALLOW_COLUMNAR_BIND_MASTER = "ALLOW_COLUMNAR_BIND_MASTER";
 
     public static final String SEGMENTED = "SEGMENTED";
 
@@ -1791,11 +1914,16 @@ public class ConnectionProperties {
 
     public static final String MPP_ELAPSED_QUERY_THRESHOLD_MILLS = "MPP_ELAPSED_QUERY_THRESHOLD_MILLS";
 
+    public static final String ENABLE_MPP_UI = "ENABLE_MPP_UI";
+
     public static final String MPP_METRIC_LEVEL = "MPP_METRIC_LEVEL";
 
     public static final String MPP_QUERY_NEED_RESERVE = "MPP_QUERY_NEED_RESERVE";
 
     public static final String ENABLE_MODIFY_SHARDING_COLUMN = "ENABLE_MODIFY_SHARDING_COLUMN";
+
+    public static final String NDV_ALIKE_PRECENTAGE_THRESHOLD = "NDV_ALIKE_PRECENTAGE_THRESHOLD";
+
     public static final String ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO = "ENABLE_MODIFY_LIMIT_OFFSET_NOT_ZERO";
     /**
      * Allow multi update/delete cross db
@@ -1814,6 +1942,10 @@ public class ConnectionProperties {
     public static final String ENABLE_INDEX_SKYLINE = "ENABLE_INDEX_SKYLINE";
     public static final String ENABLE_MERGE_INDEX = "ENABLE_MERGE_INDEX";
     public static final String ENABLE_OSS_INDEX_SELECTION = "ENABLE_OSS_INDEX_SELECTION";
+
+    /**
+     * whether to use plan cache for columnar plan
+     */
     public static final String ENABLE_COLUMNAR_PLAN_CACHE = "ENABLE_COLUMNAR_PLAN_CACHE";
     public static final String ENABLE_COLUMNAR_PULL_UP_PROJECT = "ENABLE_COLUMNAR_PULL_UP_PROJECT";
     /**
@@ -1935,13 +2067,16 @@ public class ConnectionProperties {
     public static final String WORKLOAD_CPU_THRESHOLD = "WORKLOAD_CPU_THRESHOLD";
     public static final String WORKLOAD_MEMORY_THRESHOLD = "WORKLOAD_MEMORY_THRESHOLD";
     public static final String WORKLOAD_IO_THRESHOLD = "WORKLOAD_IO_THRESHOLD";
+
     public static final String WORKLOAD_OSS_NET_THRESHOLD = "WORKLOAD_OSS_NET_THRESHOLD";
     public static final String WORKLOAD_COLUMNAR_ROW_THRESHOLD = "WORKLOAD_COLUMNAR_ROW_THRESHOLD";
     public static final String WORKLOAD_TYPE = "WORKLOAD_TYPE";
 
     public static final String ENABLE_OSS_MOCK_COLUMNAR = "ENABLE_OSS_MOCK_COLUMNAR";
 
+    public static final String ENABLE_COLUMNAR_CORRELATE = "ENABLE_COLUMNAR_CORRELATE";
     public static final String ENABLE_COLUMNAR_OPTIMIZER = "ENABLE_COLUMNAR_OPTIMIZER";
+    public static final String ENABLE_COLUMNAR_OPTIMIZER_WITH_COLUMNAR = "ENABLE_COLUMNAR_OPTIMIZER_WITH_COLUMNAR";
     public static final String EXECUTOR_MODE = "EXECUTOR_MODE";
     public static final String ENABLE_MASTER_MPP = "ENABLE_MASTER_MPP";
     public static final String ENABLE_TEMP_TABLE_JOIN = "ENABLE_TEMP_TABLE_JOIN";
@@ -1981,6 +2116,8 @@ public class ConnectionProperties {
     public static final String SPILL_OUTPUT_MAX_BUFFER_SIZE = "SPILL_OUTPUT_MAX_BUFFER_SIZE";
     public static final String SUPPORT_READ_FOLLOWER_STRATEGY = "SUPPORT_READ_FOLLOWER_STRATEGY";
     public static final String ENABLE_BROADCAST_RANDOM_READ = "ENABLE_BROADCAST_RANDOM_READ";
+    public static final String BROADCAST_RANDOM_READ_IN_LOGICALVIEW =
+        "BROADCAST_RANDOM_READ_IN_LOGICALVIEW";
 
     public static final String ENABLE_LOCAL_PARTITION_WISE_JOIN = "ENABLE_LOCAL_PARTITION_WISE_JOIN";
 
@@ -2043,9 +2180,8 @@ public class ConnectionProperties {
      */
     public static final String STATISTICS_DUMP_IGNORE_STRING = "STATISTICS_DUMP_IGNORE_STRING";
     /**
-     * 是否开启 SELECT INTO OUTFILE 默认关闭
+     * Use range-format to show hash/key partitioned table
      */
-    public static final String ENABLE_SELECT_INTO_OUTFILE = "ENABLE_SELECT_INTO_OUTFILE";
     public static final String SHOW_HASH_PARTITIONS_BY_RANGE = "SHOW_HASH_PARTITIONS_BY_RANGE";
     public static final String SHOW_TABLE_GROUP_NAME = "SHOW_TABLE_GROUP_NAME";
     public static final String MAX_PHYSICAL_PARTITION_COUNT = "MAX_PHYSICAL_PARTITION_COUNT";
@@ -2076,10 +2212,7 @@ public class ConnectionProperties {
     public static final String BALANCER_MAX_PARTITION_SIZE = "BALANCER_MAX_PARTITION_SIZE";
     public static final String BALANCER_WINDOW = "BALANCER_WINDOW";
 
-    /**
-     * switch for partition management
-     */
-    public static final String ENABLE_PARTITION_MANAGEMENT = "ENABLE_PARTITION_MANAGEMENT";
+    public static final String SHOW_DDL_ENGINE_RESOURCES = "SHOW_DDL_ENGINE_RESOURCES";
 
     /**
      * Allow move the single table with locality='balance_single_table=on' during scale-out/scale-in
@@ -2110,6 +2243,7 @@ public class ConnectionProperties {
     public static final String ENABLE_OPTIMIZER_ALERT = "ENABLE_OPTIMIZER_ALERT";
     public static final String ENABLE_OPTIMIZER_ALERT_LOG = "ENABLE_OPTIMIZER_ALERT_LOG";
     public static final String OPTIMIZER_ALERT_LOG_INTERVAL = "OPTIMIZER_ALERT_LOG_INTERVAL";
+
     public static final String ALERT_BKA_BASE = "ALERT_BKA_BASE";
     public static final String ALERT_TP_BASE = "ALERT_TP_BASE";
 
@@ -2167,9 +2301,11 @@ public class ConnectionProperties {
     public static final String STORAGE_HA_CONNECT_TIMEOUT = "STORAGE_HA_CONNECT_TIMEOUT";
     public static final String ENABLE_HA_CHECK_TASK_LOG = "ENABLE_HA_CHECK_TASK_LOG";
 
-    public static final String ENABLE_NDV_USE_COLUMNAR = "ENABLE_NDV_USE_COLUMNAR";
+    public static final String ANALYZE_TEST_UPDATE = "ANALYZE_TEST_UPDATE";
 
     public static final String ENABLE_MPP_NDV_USE_COLUMNAR = "ENABLE_MPP_NDV_USE_COLUMNAR";
+
+    public static final String MPP_NDV_USE_COLUMNAR_LIMIT = "MPP_NDV_USE_COLUMNAR_LIMIT";
     /**
      * ndv sketch expire time
      */
@@ -2207,6 +2343,10 @@ public class ConnectionProperties {
     public static final String SCHEDULER_MAX_WORKER_COUNT = "SCHEDULER_MAX_WORKER_COUNT";
     public static final String DEFAULT_LOCAL_PARTITION_SCHEDULE_CRON_EXPR =
         "DEFAULT_LOCAL_PARTITION_SCHEDULE_CRON_EXPR";
+
+    public static final String DEFAULT_TTL_SCHEDULE_CRON_EXPR =
+        "DEFAULT_TTL_SCHEDULE_CRON_EXPR";
+
     /**
      * check target table after alter tablegroup's backfill
      */
@@ -2282,6 +2422,7 @@ public class ConnectionProperties {
     public static final String ENABLE_OSS_DELAY_MATERIALIZATION = "ENABLE_OSS_DELAY_MATERIALIZATION";
     public static final String ENABLE_OSS_ZERO_COPY = "ENABLE_OSS_ZERO_COPY";
     public static final String ENABLE_OSS_COMPATIBLE = "ENABLE_OSS_COMPATIBLE";
+    public static final String OSS_STREAM_BUFFER_SIZE = "OSS_STREAM_BUFFER_SIZE";
 
     public static final String ENABLE_PAIRWISE_SHUFFLE_COMPATIBLE = "ENABLE_PAIRWISE_SHUFFLE_COMPATIBLE";
 
@@ -2293,6 +2434,9 @@ public class ConnectionProperties {
         "ENABLE_OSS_FILE_CONCURRENT_SPLIT_ROUND_ROBIN";
     public static final String ENABLE_REUSE_VECTOR = "ENABLE_REUSE_VECTOR";
     public static final String ENABLE_DECIMAL_FAST_VEC = "ENABLE_DECIMAL_FAST_VEC";
+    public static final String ENABLE_IN_VEC_AUTO_TYPE = "ENABLE_IN_VEC_AUTO_TYPE";
+    public static final String ENABLE_AND_FAST_VEC = "ENABLE_AND_FAST_VEC";
+    public static final String ENABLE_OR_FAST_VEC = "ENABLE_OR_FAST_VEC";
     public static final String ENABLE_UNIQUE_HASH_KEY = "ENABLE_UNIQUE_HASH_KEY";
     public static final String ENABLE_PRUNE_EXCHANGE_PARTITION = "ENABLE_PRUNE_EXCHANGE_PARTITION";
     public static final String BLOCK_BUILDER_CAPACITY = "BLOCK_BUILDER_CAPACITY";
@@ -2302,7 +2446,13 @@ public class ConnectionProperties {
     public static final String OSS_FILE_ORDER = "OSS_FILE_ORDER";
     public static final String MAX_SESSION_PREPARED_STMT_COUNT = "MAX_SESSION_PREPARED_STMT_COUNT";
     public static final String ALLOW_REPLACE_ARCHIVE_TABLE = "ALLOW_REPLACE_ARCHIVE_TABLE";
+
+    public static final String CHECK_ARCHIVE_PARTITION_READY = "CHECK_ARCHIVE_PARTITION_READY";
+
     public static final String ALLOW_CREATE_TABLE_LIKE_FILE_STORE = "ALLOW_CREATE_TABLE_LIKE_FILE_STORE";
+
+    public static final String ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI = "ALLOW_CREATE_TABLE_LIKE_IGNORE_ARCHIVE_CCI";
+
     /**
      * is enable collect partitions heatmap, dynamic, default:true
      */
@@ -2331,6 +2481,9 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_EXTREME_PERFORMANCE = "ENABLE_EXTREME_PERFORMANCE";
     public static final String ENABLE_CLEAN_FAILED_PLAN = "ENABLE_CLEAN_FAILED_PLAN";
+
+    public static final String ENABLE_LOG_SYSTEM_METRICS = "ENABLE_LOG_SYSTEM_METRICS";
+
     /**
      * the min size of IN expr that would be pruned
      */
@@ -2481,6 +2634,12 @@ public class ConnectionProperties {
      */
     public static final String ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX = "ROLLBACK_UNKNOWN_PRIMARY_GROUP_XA_TRX";
     public static final String PREFETCH_EXECUTE_POLICY = "PREFETCH_EXECUTE_POLICY";
+
+    public static final String ENABLE_RANGE_SCAN = "ENABLE_RANGE_SCAN";
+    public static final String ENABLE_RANGE_SCAN_FOR_DML = "ENABLE_RANGE_SCAN_FOR_DML";
+    public static final String RANGE_SCAN_MODE = "RANGE_SCAN_MODE";
+    public static final String RANGE_SCAN_ADAPTIVE_POLICY = "RANGE_SCAN_ADAPTIVE_POLICY";
+    public static final String RANGE_SCAN_SERIALIZE_LIMIT = "RANGE_SCAN_SERIALIZE_LIMIT";
     public static final String MAX_RECURSIVE_TIME = "MAX_RECURSIVE_COUNT";
     public static final String MAX_RECURSIVE_CTE_MEM_BYTES = "MAX_RECURSIVE_CTE_MEM_BYTES";
     public static final String ENABLE_REPLICA = "ENABLE_REPLICA";
@@ -2548,6 +2707,10 @@ public class ConnectionProperties {
      */
     public static final String COLUMNAR_WORK_UNIT = "COLUMNAR_WORK_UNIT";
     /**
+     * To enable the multi-version partition for columnar index partition pruning.
+     */
+    public static final String ENABLE_COLUMNAR_MULTI_VERSION_PARTITION = "ENABLE_COLUMNAR_MULTI_VERSION_PARTITION";
+    /**
      * The policy of table scan: IO_PRIORITY, FILTER_PRIORITY, IO_ON_DEMAND.
      */
     public static final String SCAN_POLICY = "SCAN_POLICY";
@@ -2588,6 +2751,7 @@ public class ConnectionProperties {
     public static final String ENABLE_DRIVER_OBJECT_POOL = "ENABLE_DRIVER_OBJECT_POOL";
     public static final String ENABLE_COLUMNAR_SCAN_SELECTION = "ENABLE_COLUMNAR_SCAN_SELECTION";
     public static final String BLOCK_CACHE_MEMORY_SIZE_FACTOR = "BLOCK_CACHE_MEMORY_SIZE_FACTOR";
+    public static final String PREHEATED_CACHE_MAX_ENTRIES = "PREHEATED_CACHE_MAX_ENTRIES";
     public static final String ENABLE_BLOCK_BUILDER_BATCH_WRITING = "ENABLE_BLOCK_BUILDER_BATCH_WRITING";
     public static final String ENABLE_SCAN_RANDOM_SHUFFLE = "ENABLE_SCAN_RANDOM_SHUFFLE";
 
@@ -2620,8 +2784,18 @@ public class ConnectionProperties {
     public static final String PHYSICAL_BACKFILL_IMPORT_TABLESPACE_BY_LEADER =
         "PHYSICAL_BACKFILL_IMPORT_TABLESPACE_BY_LEADER";
 
+    public static final String PHYSICAL_BACKFILL_IMPORT_TABLESPACE_IO_ADVISE =
+        "PHYSICAL_BACKFILL_IMPORT_TABLESPACE_IO_ADVISE";
+    public static final String PHYSICAL_BACKFILL_PIPELINE_SIZE = "PHYSICAL_BACKFILL_PIPELINE_SIZE";
+
+    public static final String DISCARD_TABLESPACE_USE_GROUP_CONCURRENT_BLOCK =
+        "DISCARD_TABLESPACE_USE_GROUP_CONCURRENT_BLOCK";
+
     public static final String PHYSICAL_BACKFILL_SPEED_TEST =
         "PHYSICAL_BACKFILL_SPEED_TEST";
+
+    public static final String ANALYZE_TABLE_AFTER_IMPORT_TABLESPACE =
+        "ANALYZE_TABLE_AFTER_IMPORT_TABLESPACE";
 
     public static final String REBALANCE_MAINTENANCE_ENABLE = "REBALANCE_MAINTENANCE_ENABLE";
     public static final String REBALANCE_MAINTENANCE_TIME_START = "REBALANCE_MAINTENANCE_TIME_START";
@@ -2631,6 +2805,16 @@ public class ConnectionProperties {
     public static final String CANCEL_REBALANCE_JOB_DUE_MAINTENANCE = "CANCEL_REBALANCE_JOB_DUE_MAINTENANCE";
 
     public static final String ENABLE_DEADLOCK_DETECTION_80 = "ENABLE_DEADLOCK_DETECTION_80";
+
+    public static final String DEADLOCK_DETECTION_80_FETCH_TRX_ROWS = "DEADLOCK_DETECTION_80_FETCH_TRX_ROWS";
+
+    public static final String DEADLOCK_DETECTION_DATA_LOCK_WAITS_THRESHOLD =
+        "DEADLOCK_DETECTION_DATA_LOCK_WAITS_THRESHOLD";
+
+    public static final String MAX_KEEP_DEADLOCK_LOGS = "MAX_KEEP_DEADLOCK_LOGS";
+
+    public static final String DEADLOCK_DETECTION_SKIP_ROUND = "DEADLOCK_DETECTION_SKIP_ROUND";
+
     public static final String MOCK_COLUMNAR_INDEX = "MOCK_COLUMNAR_INDEX";
     public static final String MCI_FORMAT = "MCI_FORMAT";
     public static final String ENABLE_LOGICAL_TABLE_META = "ENABLE_LOGICAL_TABLE_META";
@@ -2709,26 +2893,332 @@ public class ConnectionProperties {
 
     public static final String ENABLE_1PC_OPT = "ENABLE_1PC_OPT";
 
-    // In milliseconds.
-    public static final String MIN_SNAPSHOT_KEEP_TIME = "MIN_SNAPSHOT_KEEP_TIME";
-
     public static final String FORCE_CCI_VISIBLE = "FORCE_CCI_VISIBLE";
 
-    public static final String ENABLE_ORC_DELETED_SCAN = "ENABLE_ORC_DELETED_SCAN";
+    public static final String ENABLE_OSS_DELETED_SCAN = "ENABLE_OSS_DELETED_SCAN";
 
     public static final String ENABLE_ORC_RAW_TYPE_BLOCK = "ENABLE_ORC_RAW_TYPE_BLOCK";
-
-    public static final String FORCE_READ_ORC_FILE = "FORCE_READ_ORC_FILE";
 
     public static final String READ_CSV_ONLY = "READ_CSV_ONLY";
 
     public static final String READ_ORC_ONLY = "READ_ORC_ONLY";
 
-    public static final String ENABLE_FAST_CCI_CHECKER = "ENABLE_FAST_CCI_CHECKER";
+    public static final String READ_SPECIFIED_COLUMNAR_FILES = "READ_SPECIFIED_COLUMNAR_FILES";
+
+    public static final String CCI_INCREMENTAL_CHECK = "CCI_INCREMENTAL_CHECK";
+
+    public static final String ENABLE_CCI_FAST_CHECKER = "ENABLE_CCI_FAST_CHECKER";
 
     public static final String ENABLE_FAST_PARSE_ORC_RAW_TYPE = "ENABLE_FAST_PARSE_ORC_RAW_TYPE";
+
+    public static final String ENABLE_ACCURATE_REL_TYPE_TO_DATA_TYPE = "ENABLE_ACCURATE_REL_TYPE_TO_DATA_TYPE";
+
+    public static final String CHECK_CCI_TASK_CHECKPOINT_LIMIT = "CHECK_CCI_TASK_CHECKPOINT_LIMIT";
+
+    public static final String SKIP_CHECK_CCI_SCHEDULE_JOB = "SKIP_CHECK_CCI_SCHEDULE_JOB";
 
     public static final String FORBID_AUTO_COMMIT_TRX = "FORBID_AUTO_COMMIT_TRX";
 
     public static final String FORCE_2PC_DURING_CCI_CHECK = "FORCE_2PC_DURING_CCI_CHECK";
+
+    public static final String ENABLE_ACCURATE_INFO_SCHEMA_TABLES = "ENABLE_ACCURATE_INFO_SCHEMA_TABLES";
+    public static final String ENABLE_FLOATING_TYPE_PRECISION = "ENABLE_FLOATING_TYPE_PRECISION";
+
+    public static final String ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION = "ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION";
+
+    /**
+     * Enable sync point function in CN.
+     */
+    public static final String ENABLE_SYNC_POINT = "ENABLE_SYNC_POINT";
+
+    /**
+     * Mark this trx as sync point trx, for inner usage.
+     */
+    public static final String MARK_SYNC_POINT = "MARK_SYNC_POINT";
+
+    public static final String SYNC_POINT_TASK_INTERVAL = "SYNC_POINT_TASK_INTERVAL";
+
+    public static final String DISABLE_LEGACY_VARIABLE = "DISABLE_LEGACY_VARIABLE";
+
+    public static final String SHOW_COLUMNAR_STATUS_USE_SUB_QUERY = "SHOW_COLUMNAR_STATUS_USE_SUB_QUERY";
+
+    public static final String ENABLE_SHARE_READVIEW_IN_RC = "ENABLE_SHARE_READVIEW_IN_RC";
+
+    /**
+     * ================ Param keys for ttl job begin ================
+     */
+
+    /**
+     * ===========================
+     * The following Config Params for polardbx-inst-level
+     * ===========================
+     */
+
+    /**
+     * The global worker count of select task of all ttl-jobs, default is 0, auto decided by dn count
+     */
+    public static final String TTL_GLOBAL_SELECT_WORKER_COUNT = "TTL_GLOBAL_SELECT_WORKER_COUNT";
+
+    /**
+     * The global worker count of delete task of all ttl-jobs, default is 0, auto decided by dn count
+     */
+    public static final String TTL_GLOBAL_DELETE_WORKER_COUNT = "TTL_GLOBAL_DELETE_WORKER_COUNT";
+
+    /**
+     * The max data length of each one ttl tmp table
+     */
+    public static final String TTL_TMP_TBL_MAX_DATA_LENGTH = "TTL_TMP_TBL_MAX_DATA_LENGTH";
+
+    /**
+     * The max percent of (data_free * 100 /  data_length) of ttl-table to perform optimize-table operation,
+     * the default value if 60% , unit: %
+     */
+    public static final String TTL_TBL_MAX_DATA_FREE_PERCENT = "TTL_TBL_MAX_DATA_FREE_PERCENT";
+
+    /**
+     * The max wait time for interrupting a running ttl intra-task, unit: ms, default is 10s
+     * Unit: ms
+     */
+    public static final String TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME = "TTL_INTRA_TASK_INTERRUPTION_MAX_WAIT_TIME";
+
+    /**
+     * The wait time of each round for the manager of intra-tasks
+     * Unit: ms
+     */
+    public static final String TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME =
+        "TTL_INTRA_TASK_MONITOR_EACH_ROUTE_WAIT_TIME";
+
+    /**
+     * The max wait time for waiting a ddl-job from pause to running, unit: ms, default value is  30s
+     */
+    public static final String TTL_WAIT_TIME_OF_DDL_JOB_FROM_PAUSED_TO_RUNNING =
+        "TTL_WAIT_TIME_OF_DDL_JOB_FROM_PAUSED_TO_RUNNING";
+
+    /**
+     * The global switch that label if using auto-optimize table in ttl job
+     */
+    public static final String TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB = "TTL_ENABLE_AUTO_OPTIMIZE_TABLE_IN_TTL_JOB";
+
+    /**
+     * Label if auto perform the optimize-table operation for the ttl-table after archiving
+     */
+    public static final String TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING =
+        "TTL_ENABLE_AUTO_EXEC_OPTIMIZE_TABLE_AFTER_ARCHIVING";
+
+    /**
+     * The max parallelism for the scheduled job of all ttl tables
+     */
+    public static final String TTL_SCHEDULED_JOB_MAX_PARALLELISM = "TTL_SCHEDULED_JOB_MAX_PARALLELISM";
+
+    /**
+     * A local debug option, use create gsi sql instead of cci sql for create
+     * columnar arc table of ttl table, just for debug, session level
+     */
+    public static final String TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL = "TTL_DEBUG_USE_GSI_FOR_COLUMNAR_ARC_TBL";
+
+    /**
+     * A local debug option of ttl20, specify the skip ddl tasks of cci creation of ttl tbl,
+     * such as : SKIP_DDL_TASKS="WaitColumnarTableCreationTask"
+     */
+    public static final String TTL_DEBUG_CCI_SKIP_DDL_TASKS = "TTL_DEBUG_CCI_SKIP_DDL_TASKS";
+
+    /**
+     * The default batch size of dml of ttl-job
+     */
+    public static final String TTL_JOB_DEFAULT_BATCH_SIZE = "TTL_JOB_DEFAULT_BATCH_SIZE";
+
+    /**
+     * The interval count for computing minCleanupBound base on lowerBound(normalized minVal of ttl_col),
+     * that means the delta = ttlMinCleanupBoundIntervalCount * ttlUnit, is the delta interval between
+     * minCleanupBound and the lowerBound, default is 1
+     */
+    public static final String TTL_CLEANUP_BOUND_INTERVAL_COUNT = "TTL_CLEANUP_BOUND_INTERVAL_COUNT";
+
+    /**
+     * Stop ttl-job scheduling for all ttl tables, used for handling critical situation
+     */
+    public static final String TTL_STOP_ALL_JOB_SCHEDULING = "TTL_STOP_ALL_JOB_SCHEDULING";
+
+    /**
+     * label if use archive trans policy for all dml trans of  ttl-job
+     * <pre>
+     *      usage:
+     *           set transaction_policy = archive;
+     *           begin;
+     *           ...
+     *           delete from ttl_tbl where ...
+     *           commit;
+     *
+     *  </pre>
+     */
+    public static final String TTL_USE_ARCHIVE_TRANS_POLICY = "TTL_USE_ARCHIVE_TRANS_POLICY";
+
+    /**
+     * The default merge_union_size for the select sql of fetch ttl-col lower bound
+     */
+    public static final String TTL_SELECT_MERGE_UNION_SIZE = "TTL_SELECT_MERGE_UNION_SIZE";
+
+    /**
+     * The label if use merge_concurrent for the select sql of fetch ttl-col lower bound
+     */
+    public static final String TTL_SELECT_MERGE_CONCURRENT = "TTL_SELECT_MERGE_CONCURRENT";
+
+    /**
+     * The query hint for the select stmt of fetch ttl-col lower bound,
+     * which use to control the concurrent policy
+     */
+    public static final String TTL_SELECT_STMT_HINT = "TTL_SELECT_STMT_HINT";
+
+    /**
+     * The query hint for delete stmt of deleting expired data
+     */
+    public static final String TTL_DELETE_STMT_HINT = "TTL_DELETE_STMT_HINT";
+
+    /**
+     * The query hint for insert-select stmt of preparing expired data
+     */
+    public static final String TTL_INSERT_STMT_HINT = "TTL_INSERT_STMT_HINT";
+
+    /**
+     * The query hint for optimize table stmt of ttl-table
+     */
+    public static final String TTL_OPTIMIZE_TABLE_STMT_HINT = "TTL_OPTIMIZE_TABLE_STMT_HINT";
+
+    /**
+     * The query hint for alter table add parts stmt of cci of ttl-table or arctmp of ttl-table
+     */
+    public static final String TTL_ALTER_ADD_PART_STMT_HINT = "TTL_ALTER_ADD_PART_STMT_HINT";
+
+    /**
+     * The default group_parallelism of conn of select stmt, 0 means use the default val of inst_config
+     */
+    public static final String TTL_GROUP_PARALLELISM_ON_DQL_CONN = "TTL_GROUP_PARALLELISM_ON_DQL_CONN";
+
+    /**
+     * The default group_parallelism of conn of delete/insert stmt,0 means use the default val of inst_config
+     */
+    public static final String TTL_GROUP_PARALLELISM_ON_DML_CONN = "TTL_GROUP_PARALLELISM_ON_DML_CONN";
+
+    /**
+     * Label if auto add a maxvalue into the range parts of cci of art-tbl
+     */
+    public static final String TTL_ADD_MAXVAL_PART_ON_CCI_CREATING = "TTL_ADD_MAXVAL_PART_ON_CCI_CREATING";
+
+    /**
+     * The max periods of try waiting to acquire the rate permits, unit: ms
+     */
+    public static final String TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS = "TTL_MAX_WAIT_ACQUIRE_RATE_PERMITS_PERIODS";
+
+    /**
+     * The default rowsSpeed limit for each dn, unit: rows/sec
+     */
+    public static final String TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN = "TTL_CLEANUP_ROWS_SPEED_LIMIT_EACH_DN";
+
+    /**
+     * Label if need limit the cleanup rows speed for each dn
+     */
+    public static final String TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT = "TTL_ENABLE_CLEANUP_ROWS_SPEED_LIMIT";
+
+    /**
+     * Label if ignore maintain window in ttl ddl job
+     */
+    public static final String TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB = "TTL_IGNORE_MAINTAIN_WINDOW_IN_DDL_JOB";
+
+    /**
+     * The ratio of global-worker / rw-dn-count, default is 2
+     */
+    public static final String TTL_GLOBAL_WORKER_DN_RATIO = "TTL_GLOBAL_WORKER_DN_RATIO";
+
+    /**
+     * The default allocate part count for pre building of futrue of arc cci
+     */
+    public static final String TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT = "TTL_DEFAULT_ARC_PRE_ALLOCATE_COUNT";
+
+    /**
+     * The default allocate part count for post building of past of arc cci
+     */
+    public static final String TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT = "TTL_DEFAULT_ARC_POST_ALLOCATE_COUNT";
+
+    /**
+     * Label if enable auto add partitoins for arc cci
+     */
+    public static final String TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI = "TTL_ENABLE_AUTO_ADD_PARTS_FOR_ARC_CCI";
+
+    /**
+     *
+     * ===========================
+     * The following Config Params for polardbx-session-level
+     * ===========================
+     */
+
+    /**
+     * The default charset of trans conn of ttl-job when exec sql
+     */
+    public static final String TTL_DEFAULT_CHARSET_ON_CONN = "TTL_DEFAULT_CHARSET_ON_CONN";
+
+    /**
+     * The default sql mode of trans conn of ttl-job when exec sql
+     */
+    public static final String TTL_DEFAULT_SQL_MODE_ON_CONN = "TTL_DEFAULT_SQL_MODE_ON_CONN";
+
+    /**
+     * The parallelism of alter table ttl_tbl optimize partitions xxx
+     */
+    public static final String TTL_OPTIMIZE_TABLE_PARALLELISM = "TTL_OPTIMIZE_TABLE_PARALLELISM";
+
+    /**
+     * The current datetime value of debug, using for testcases
+     */
+    public static final String TTL_DEBUG_CURRENT_DATETIME = "TTL_DEBUG_CURRENT_DATETIME";
+
+    /**
+     * label of forbid drop ttl-defined table with archive table cci
+     */
+    public static final String TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI = "TTL_FORBID_DROP_TTL_TBL_WITH_ARC_CCI";
+
+    /**
+     *
+     * ===========================
+     * The following Config Params for polardbx-stmt-level
+     * ===========================
+     */
+
+    /**
+     * Label if allowed force drop the cci of the archive table
+     */
+    public static final String TTL_FORCE_DROP_ARCHIVE_CCI = "TTL_FORCE_DROP_ARCHIVE_CCI";
+
+    /**
+     * Label if allowed force drop the view of the archive table view of cci
+     */
+    public static final String TTL_FORCE_DROP_ARCHIVE_CCI_VIEW = "TTL_FORCE_DROP_ARCHIVE_CCI_VIEW";
+
+    /**
+     * ================ Param keys for ttl job end ================
+     */
+
+    public static final String ENABLE_PARAM_TYPE_CHANGE = "ENABLE_PARAM_TYPE_CHANGE";
+
+    public static final String COLUMNAR_CLUSTER_MAXIMUM_QPS = "COLUMNAR_CLUSTER_MAXIMUM_QPS";
+
+    public static final String COLUMNAR_CLUSTER_MAXIMUM_CONCURRENCY = "COLUMNAR_CLUSTER_MAXIMUM_CONCURRENCY";
+
+    public static final String COLUMNAR_QPS_WINDOW_PERIOD = "COLUMNAR_QPS_WINDOW_PERIOD";
+
+    /**
+     * All write trx will start a standard 2PC TSO transaction, even in auto-commit mode.
+     */
+    public static final String ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX = "ENABLE_EXTERNAL_CONSISTENCY_FOR_WRITE_TRX";
+
+    public static final String CCI_INCREMENTAL_CHECK_PARALLELISM = "CCI_INCREMENTAL_CHECK_PARALLELISM";
+    public static final String CCI_INCREMENTAL_CHECK_BATCH_SIZE = "CCI_INCREMENTAL_CHECK_BATCH_SIZE";
+    public static final String ENABLE_COLUMNAR_DEBUG = "ENABLE_COLUMNAR_DEBUG";
+
+    public static final String MPP_QUERY_RESULT_MAX_WAIT_IN_MILLIS = "MPP_QUERY_RESULT_MAX_WAIT_IN_MILLIS";
+
+    public static final String WAIT_FOR_COLUMNAR_COMMIT_MS = "WAIT_FOR_COLUMNAR_COMMIT_MS";
+
+    public static final String CN_DIV_PRECISION_INCREMENT = "CN_DIV_PRECISION_INCREMENT";
+
+    public static final String ENABLE_DRDS_TYPE_SYSTEM = "ENABLE_DRDS_TYPE_SYSTEM";
 }

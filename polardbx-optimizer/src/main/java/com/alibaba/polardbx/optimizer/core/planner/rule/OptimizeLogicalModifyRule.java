@@ -64,7 +64,7 @@ public class OptimizeLogicalModifyRule extends RelOptRule {
         operand(LogicalModify.class, any()));
 
     public OptimizeLogicalModifyRule(RelOptRuleOperand operand) {
-        super(operand, OptimizeLogicalModifyRule.class.getName());
+        super(operand, OptimizeLogicalModifyRule.class.getSimpleName());
     }
 
     @Override

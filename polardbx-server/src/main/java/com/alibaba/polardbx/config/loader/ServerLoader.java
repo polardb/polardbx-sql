@@ -33,6 +33,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.ConfigException;
 import com.alibaba.polardbx.config.SystemConfig;
 import com.alibaba.polardbx.executor.balancer.Balancer;
+import com.alibaba.polardbx.executor.common.CciMetaManager;
 import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
 import com.alibaba.polardbx.executor.utils.SchemaMetaUtil;
 import com.alibaba.polardbx.gms.config.impl.ConnPoolConfigManager;
@@ -274,6 +275,9 @@ public final class ServerLoader extends AbstractLifecycle implements Lifecycle {
 
         // Init storage pool manager
         StoragePoolManager.getInstance();
+
+        //Init the cci meta manager
+        CciMetaManager.getInstance();
     }
 
     protected void initPortInfoAndInstId() {

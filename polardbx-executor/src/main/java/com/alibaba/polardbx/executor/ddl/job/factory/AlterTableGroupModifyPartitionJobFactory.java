@@ -160,7 +160,7 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
 
         List<DdlTask> bringUpAlterTableGroupTasks =
             ComplexTaskFactory.bringUpAlterTableGroup(schemaName, tableGroupName, null,
-                taskType, executionContext);
+                taskType, preparedData.getDdlVersionId(), executionContext);
 
         if (preparedData.isDropVal()) {
             AlterTableGroupRemoveTempPartitionTask alterTableGroupRemoveTempPartitionTask =
@@ -229,7 +229,8 @@ public class AlterTableGroupModifyPartitionJobFactory extends AlterTableGroupBas
             DdlTask dropUselessTableTask = ComplexTaskFactory
                 .CreateDropUselessPhyTableTask(schemaName, entry.getKey(),
                     getTheDeletedPartitionsLocation(preparedData.getSchemaName(), entry.getKey(),
-                        subTaskJobFactory.getTempPartitionSpecs()), executionContext);
+                        subTaskJobFactory.getTempPartitionSpecs()),
+                    targetTablesTopology.get(entry.getKey()), executionContext);
             executableDdlJob.addTask(dropUselessTableTask);
             executableDdlJob
                 .addTaskRelationship(bringUpAlterTableGroupTasks.get(bringUpAlterTableGroupTasks.size() - 1),

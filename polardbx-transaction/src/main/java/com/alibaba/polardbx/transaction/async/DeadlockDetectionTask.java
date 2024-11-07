@@ -20,27 +20,34 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.mock.MockStatus;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.transaction.DeadlockParser;
-import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
 import com.alibaba.polardbx.executor.utils.transaction.LocalTransaction;
+import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLock;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.trx.DeadlocksAccessor;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.transaction.TransactionLogger;
+import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.sync.FetchTransForDeadlockDetectionSyncAction;
 import com.alibaba.polardbx.transaction.utils.DiGraph;
+import lombok.Data;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
@@ -49,11 +56,15 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
@@ -68,58 +79,49 @@ public class DeadlockDetectionTask implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(DeadlockDetectionTask.class);
 
-    private static final String SQL_QUERY_DEADLOCKS_80 =
+    /**
+     * Query all unique lock and how many trx are waiting for them respectively.
+     */
+    protected static final String SQL_QUERY_HOTSPOT_LOCK =
         "SELECT "
-            /* Transaction information of waiting transaction. */
-            + "trx_a.TRX_MYSQL_THREAD_ID AS waiting_conn_id, "
-            + "trx_a.TRX_STATE AS waiting_state, "
-            + "trx_a.TRX_QUERY AS waiting_physical_sql, "
-            + "trx_a.TRX_OPERATION_STATE AS waiting_operation_state, "
-            + "trx_a.TRX_TABLES_IN_USE AS waiting_tables_in_use, "
-            + "trx_a.TRX_TABLES_LOCKED AS waiting_tables_locked, "
-            + "trx_a.TRX_LOCK_STRUCTS AS waiting_lock_structs, "
-            + "trx_a.TRX_LOCK_MEMORY_BYTES AS waiting_heap_size, "
-            + "trx_a.TRX_ROWS_LOCKED AS waiting_row_locks, "
-            /* Lock information of waiting transaction. */
-            + "locks_a.ENGINE_LOCK_ID AS waiting_lock_id, "
-            + "locks_a.LOCK_MODE AS waiting_lock_mode, "
-            + "locks_a.LOCK_TYPE AS waiting_lock_type, "
-            + "locks_a.OBJECT_NAME AS waiting_lock_physical_table, "
-            + "locks_a.INDEX_NAME AS waiting_lock_index, "
-            + "locks_a.LOCK_DATA AS waiting_lock_data, "
-            /* Transaction information of blocking transaction. */
-            + "trx_b.TRX_MYSQL_THREAD_ID AS blocking_conn_id, "
-            + "trx_b.TRX_STATE AS blocking_state, "
-            + "trx_b.TRX_QUERY AS blocking_physical_sql, "
-            + "trx_b.TRX_OPERATION_STATE AS blocking_operation_state, "
-            + "trx_b.TRX_TABLES_IN_USE AS blocking_tables_in_use, "
-            + "trx_b.TRX_TABLES_LOCKED AS blocking_tables_locked, "
-            + "trx_b.TRX_LOCK_STRUCTS AS blocking_lock_structs, "
-            + "trx_b.TRX_LOCK_MEMORY_BYTES AS blocking_heap_size, "
-            + "trx_b.TRX_ROWS_LOCKED AS blocking_row_locks, "
-            /* Lock information of blocking transaction. */
-            + "locks_b.ENGINE_LOCK_ID AS blocking_lock_id, "
-            + "locks_b.LOCK_MODE AS blocking_lock_mode, "
-            + "locks_b.LOCK_TYPE AS blocking_lock_type, "
-            + "locks_b.OBJECT_NAME AS blocking_lock_physical_table, "
-            + "locks_b.INDEX_NAME AS blocking_lock_index, "
-            + "locks_b.LOCK_DATA AS blocking_lock_data "
-            + "FROM "
-            + "performance_schema.DATA_LOCK_WAITS AS lock_waits, "
-            /* trx_a requesting locks_a, is blocked by trx_b holding locks_b */
-            + "performance_schema.DATA_LOCKS AS locks_a, performance_schema.DATA_LOCKS AS locks_b, "
-            + "information_schema.INNODB_TRX AS trx_a, information_schema.INNODB_TRX AS trx_b "
-            + "WHERE "
-            /* Filter the non-direct-blocking trx. Trx which is waiting a lock should not block others. */
-            + "trx_b.trx_state != 'LOCK WAIT' "
-            + "AND "
-            /* Join innodb_trx to get the trx information. */
-            + "trx_a.trx_id = lock_waits.REQUESTING_ENGINE_TRANSACTION_ID AND trx_b.trx_id = lock_waits.BLOCKING_ENGINE_TRANSACTION_ID "
-            + "AND "
-            /* Join innodb_locks to get the lock information. */
-            + "lock_waits.REQUESTING_ENGINE_LOCK_ID = locks_a.ENGINE_LOCK_ID AND lock_waits.BLOCKING_ENGINE_LOCK_ID = locks_b.ENGINE_LOCK_ID";
+            + "COUNT(0) AS cnt, SUBSTRING_INDEX(TRX_REQUESTED_LOCK_ID, ':', -3) AS lock_id "
+            + "FROM INFORMATION_SCHEMA.innodb_trx "
+            + "GROUP BY lock_id";
 
-    private static final String SQL_QUERY_DEADLOCKS =
+    protected static final String SQL_QUERY_HOTSPOT_LOCK_80 =
+        "SELECT "
+            + "COUNT(0) AS cnt, SUBSTRING_INDEX(SUBSTRING_INDEX(TRX_REQUESTED_LOCK_ID, ':', -4), ':', 3) AS lock_id "
+            + "FROM INFORMATION_SCHEMA.innodb_trx "
+            + "GROUP BY lock_id";
+
+    /**
+     * Query all local trx, including waiting and blocking trx.
+     */
+    protected static final String SQL_QUERY_TRX_80 =
+        "SELECT "
+            + "TRX_ID AS trx_id, "
+            + "TRX_MYSQL_THREAD_ID AS conn_id, "
+            + "TRX_STATE AS state, "
+            + "TRX_QUERY AS physical_sql, "
+            + "TRX_OPERATION_STATE AS operation_state, "
+            + "TRX_TABLES_IN_USE AS tables_in_use, "
+            + "TRX_TABLES_LOCKED AS tables_locked, "
+            + "TRX_LOCK_STRUCTS AS lock_structs, "
+            + "TRX_LOCK_MEMORY_BYTES AS heap_size, "
+            + "TRX_ROWS_LOCKED AS row_locks "
+            + "FROM information_schema.INNODB_TRX ";
+
+    /**
+     * Query all blocking and waiting trx.
+     */
+    protected static final String SQL_QUERY_LOCK_WAITS_80 =
+        "SELECT "
+            + "REQUESTING_ENGINE_TRANSACTION_ID AS waiting_trx_id, "
+            + "BLOCKING_ENGINE_TRANSACTION_ID AS blocking_trx_id "
+            + "FROM "
+            + "performance_schema.DATA_LOCK_WAITS AS lock_waits ";
+
+    protected static final String SQL_QUERY_DEADLOCKS =
         "SELECT "
             /* Transaction information of waiting transaction. */
             + "trx_a.TRX_MYSQL_THREAD_ID AS waiting_conn_id, "
@@ -176,14 +178,19 @@ public class DeadlockDetectionTask implements Runnable {
             /* Join innodb_locks to get the lock information. */
             + "lock_waits.requested_lock_id = locks_a.lock_id AND lock_waits.blocking_lock_id = locks_b.lock_id";
 
+    private static final AtomicLong SKIP = new AtomicLong(0L);
     private final Collection<String> allSchemas;
     private static Class killSyncActionClass;
 
     static {
         // 只有server支持
         try {
-            killSyncActionClass =
-                Class.forName("com.alibaba.polardbx.server.response.KillSyncAction");
+            if (MockStatus.isMock()) {
+                killSyncActionClass = null;
+            } else {
+                killSyncActionClass =
+                    Class.forName("com.alibaba.polardbx.server.response.KillSyncAction");
+            }
         } catch (ClassNotFoundException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
@@ -201,28 +208,114 @@ public class DeadlockDetectionTask implements Runnable {
      * @param lookupSet a transaction lookup set which contains all transactions
      * @param graph a wait-for graph containing "trx a is waiting for trx b"-like information
      */
-    public void fetchLockWaits(TGroupDataSource dataSource,
-                               Collection<String> groupNames,
-                               TrxLookupSet lookupSet,
-                               DiGraph<TrxLookupSet.Transaction> graph) {
-        boolean isMySQL80 = ExecUtils.isMysql80Version();
-        String deadLocksSql = isMySQL80 ? SQL_QUERY_DEADLOCKS_80 : SQL_QUERY_DEADLOCKS;
+    protected void fetchLockWaits(TGroupDataSource dataSource,
+                                  Collection<String> groupNames,
+                                  TrxLookupSet lookupSet,
+                                  DiGraph<TrxLookupSet.Transaction> graph) {
+        if (InstanceVersion.isMYSQL80()) {
+            // Do join in CN.
+            // local trx id -> local trx
+            Map<Long, LocalTrxInfo> localTrxInfoMap = new HashMap<>();
+            long maxFetchRows = DynamicConfig.getInstance().getDeadlockDetection80FetchTrxRows();
 
-        try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
-            final Statement stmt = conn.createStatement();
-            final ResultSet rs = stmt.executeQuery(deadLocksSql)) {
+            // 1. Fetch all local trx info.
+            maxFetchRows = Math.max(maxFetchRows, 1L);
+            Set<Long> blockingTrxSet = new HashSet<>();
+            try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
+                final Statement stmt = conn.createStatement();
+                final ResultSet rs = stmt.executeQuery(SQL_QUERY_TRX_80 + " LIMIT " + maxFetchRows)) {
+                while (rs.next()) {
+                    LocalTrxInfo localTrxInfo = new LocalTrxInfo(
+                        rs.getLong("trx_id"),
+                        rs.getLong("conn_id"),
+                        rs.getString("state"),
+                        rs.getString("physical_sql"),
+                        rs.getString("operation_state"),
+                        rs.getInt("tables_in_use"),
+                        rs.getInt("tables_locked"),
+                        rs.getInt("lock_structs"),
+                        rs.getInt("heap_size"),
+                        rs.getInt("row_locks")
+                    );
+                    localTrxInfoMap.put(localTrxInfo.getTrxId(), localTrxInfo);
+                    // Record trx holding locks but not waiting any other locks.
+                    if (!localTrxInfo.getState().equalsIgnoreCase("LOCK WAIT")
+                        && localTrxInfo.getRowLocks() > 0) {
+                        blockingTrxSet.add(localTrxInfo.getTrxId());
+                    }
+                }
+            } catch (SQLException ex) {
+                final String dnId = dataSource.getMasterSourceAddress();
+                throw new RuntimeException("Failed to fetch trx info on data source " + dnId, ex);
+            }
 
-            while (rs.next()) {
-                // Get the waiting and blocking connection id of DN
-                final long waiting = rs.getLong("waiting_conn_id");
-                final long blocking = rs.getLong("blocking_conn_id");
+            // 2. Fetch waiting trx info.
+            if (!blockingTrxSet.isEmpty()) {
+                try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
+                    final Statement stmt = conn.createStatement();
+                    final ResultSet rs = stmt.executeQuery(SQL_QUERY_LOCK_WAITS_80)) {
+                    while (rs.next()) {
+                        final long waitingTrxId = rs.getLong("waiting_trx_id");
+                        final long blockingTrxId = rs.getLong("blocking_trx_id");
+                        if (!blockingTrxSet.contains(blockingTrxId)) {
+                            continue;
+                        }
+                        final LocalTrxInfo waitingTrxInfo = localTrxInfoMap.get(waitingTrxId);
+                        final LocalTrxInfo blockingTrxInfo = localTrxInfoMap.get(blockingTrxId);
+                        if (null == waitingTrxInfo || null == blockingTrxInfo) {
+                            continue;
+                        }
+                        // Update the wait-for graph and the lookup set
+                        // Get the waiting and blocking transaction
+                        final long waiting = waitingTrxInfo.getConnId();
+                        final long blocking = blockingTrxInfo.getConnId();
+                        final Triple<TrxLookupSet.Transaction, TrxLookupSet.Transaction, String> waitingAndBlockingTrx =
+                            lookupSet.getWaitingAndBlockingTrx(groupNames, waiting, blocking);
+                        final TrxLookupSet.Transaction waitingTrx = waitingAndBlockingTrx.getLeft();
+                        final TrxLookupSet.Transaction blockingTrx = waitingAndBlockingTrx.getMiddle();
 
-                // Get the waiting and blocking transaction
-                final Triple<TrxLookupSet.Transaction, TrxLookupSet.Transaction, String> waitingAndBlockingTrx =
-                    lookupSet.getWaitingAndBlockingTrx(groupNames, waiting, blocking);
+                        if (null != waitingTrx && null != blockingTrx) {
+                            // Update the wait-for graph and the lookup set
+                            graph.addDiEdge(waitingTrx, blockingTrx);
 
-                final TrxLookupSet.Transaction waitingTrx = waitingAndBlockingTrx.getLeft();
-                final TrxLookupSet.Transaction blockingTrx = waitingAndBlockingTrx.getMiddle();
+                            try {
+                                // Get the group which the waiting and blocking thread id are in
+                                final String groupName = waitingAndBlockingTrx.getRight();
+
+                                // Get the waiting local transaction of this group
+                                final LocalTransaction waitingLocalTrx = waitingTrx.getLocalTransaction(groupName);
+                                extractTrx80(waitingTrxInfo, waitingLocalTrx);
+
+                                // Get the blocking local transaction of this group
+                                final LocalTransaction blockingLocalTrx = blockingTrx.getLocalTransaction(groupName);
+                                extractTrx80(blockingTrxInfo, blockingLocalTrx);
+                            } catch (Throwable t) {
+                                // Ignore.
+                                logger.warn("Get lock-wait message failed.", t);
+                            }
+                        }
+                    }
+                } catch (SQLException ex) {
+                    final String dnId = dataSource.getMasterSourceAddress();
+                    throw new RuntimeException("Failed to fetch lock waits on data source " + dnId, ex);
+                }
+            }
+        } else {
+            try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
+                final Statement stmt = conn.createStatement();
+                final ResultSet rs = stmt.executeQuery(SQL_QUERY_DEADLOCKS)) {
+
+                while (rs.next()) {
+                    // Get the waiting and blocking connection id of DN
+                    final long waiting = rs.getLong("waiting_conn_id");
+                    final long blocking = rs.getLong("blocking_conn_id");
+
+                    // Get the waiting and blocking transaction
+                    final Triple<TrxLookupSet.Transaction, TrxLookupSet.Transaction, String> waitingAndBlockingTrx =
+                        lookupSet.getWaitingAndBlockingTrx(groupNames, waiting, blocking);
+
+                    final TrxLookupSet.Transaction waitingTrx = waitingAndBlockingTrx.getLeft();
+                    final TrxLookupSet.Transaction blockingTrx = waitingAndBlockingTrx.getMiddle();
 
                 if (null != waitingTrx && null != blockingTrx) {
                     // Update the wait-for graph and the lookup set
@@ -231,27 +324,28 @@ public class DeadlockDetectionTask implements Runnable {
                         // Get the group which the waiting and blocking thread id are in
                         final String groupName = waitingAndBlockingTrx.getRight();
 
-                        // Get the waiting local transaction of this group
-                        final LocalTransaction waitingLocalTrx = waitingTrx.getLocalTransaction(groupName);
-                        extractWaitingTrx(rs, waitingLocalTrx, isMySQL80);
+                            // Get the waiting local transaction of this group
+                            final LocalTransaction waitingLocalTrx = waitingTrx.getLocalTransaction(groupName);
+                            extractWaitingTrx(rs, waitingLocalTrx);
 
-                        // Get the blocking local transaction of this group
-                        final LocalTransaction blockingLocalTrx = blockingTrx.getLocalTransaction(groupName);
-                        extractBlockingTrx(rs, blockingLocalTrx, isMySQL80);
-                    } catch (Throwable t) {
-                        // Ignore.
-                        logger.warn("Get lock-wait message failed.", t);
+                            // Get the blocking local transaction of this group
+                            final LocalTransaction blockingLocalTrx = blockingTrx.getLocalTransaction(groupName);
+                            extractBlockingTrx(rs, blockingLocalTrx);
+                        } catch (Throwable t) {
+                            // Ignore.
+                            logger.warn("Get lock-wait message failed.", t);
+                        }
                     }
                 }
+            } catch (SQLException ex) {
+                final String dnId = dataSource.getMasterSourceAddress();
+                throw new RuntimeException("Failed to fetch lock waits on data source " + dnId, ex);
             }
-        } catch (SQLException ex) {
-            final String dnId = dataSource.getMasterSourceAddress();
-            throw new RuntimeException("Failed to fetch lock waits on data source " + dnId, ex);
         }
 
     }
 
-    private void extractBlockingTrx(ResultSet rs, LocalTransaction blockingLocalTrx, boolean isMySQL80)
+    private void extractBlockingTrx(ResultSet rs, LocalTransaction blockingLocalTrx)
         throws SQLException {
         if (!blockingLocalTrx.isUpdated()) {
             blockingLocalTrx.setState(rs.getString("blocking_state"));
@@ -269,31 +363,20 @@ public class DeadlockDetectionTask implements Runnable {
             blockingLocalTrx.setUpdated(true);
         }
         // Update holding-lock information of blocking transaction
-        if (isMySQL80) {
-            blockingLocalTrx.addHoldingTrxLock(new TrxLock(
-                rs.getString("blocking_lock_id"),
-                rs.getString("blocking_lock_mode"),
-                rs.getString("blocking_lock_type"),
-                rs.getString("blocking_lock_physical_table"),
-                rs.getString("blocking_lock_index"),
-                rs.getString("blocking_lock_data")
-            ));
-        } else {
-            blockingLocalTrx.addHoldingTrxLock(new TrxLock(
-                rs.getString("blocking_lock_id"),
-                rs.getString("blocking_lock_mode"),
-                rs.getString("blocking_lock_type"),
-                rs.getString("blocking_lock_physical_table"),
-                rs.getString("blocking_lock_index"),
-                rs.getInt("blocking_lock_space"),
-                rs.getInt("blocking_lock_page"),
-                rs.getInt("blocking_lock_rec"),
-                rs.getString("blocking_lock_data")
-            ));
-        }
+        blockingLocalTrx.addHoldingTrxLock(new TrxLock(
+            rs.getString("blocking_lock_id"),
+            rs.getString("blocking_lock_mode"),
+            rs.getString("blocking_lock_type"),
+            rs.getString("blocking_lock_physical_table"),
+            rs.getString("blocking_lock_index"),
+            rs.getInt("blocking_lock_space"),
+            rs.getInt("blocking_lock_page"),
+            rs.getInt("blocking_lock_rec"),
+            rs.getString("blocking_lock_data")
+        ));
     }
 
-    private void extractWaitingTrx(ResultSet rs, LocalTransaction waitingLocalTrx, boolean isMySQL80)
+    private void extractWaitingTrx(ResultSet rs, LocalTransaction waitingLocalTrx)
         throws SQLException {
         if (!waitingLocalTrx.isUpdated()) {
             waitingLocalTrx.setState(rs.getString("waiting_state"));
@@ -312,59 +395,46 @@ public class DeadlockDetectionTask implements Runnable {
         }
 
         if (null == waitingLocalTrx.getWaitingTrxLock()) {
-            // Update waiting-lock information of this local transaction
-            if (isMySQL80) {
-                waitingLocalTrx.setWaitingTrxLock(new TrxLock(
-                    rs.getString("waiting_lock_id"),
-                    rs.getString("waiting_lock_mode"),
-                    rs.getString("waiting_lock_type"),
-                    rs.getString("waiting_lock_physical_table"),
-                    rs.getString("waiting_lock_index"),
-                    null,
-                    null,
-                    null,
-                    rs.getString("waiting_lock_data")
-                ));
-            } else {
-                waitingLocalTrx.setWaitingTrxLock(new TrxLock(
-                    rs.getString("waiting_lock_id"),
-                    rs.getString("waiting_lock_mode"),
-                    rs.getString("waiting_lock_type"),
-                    rs.getString("waiting_lock_physical_table"),
-                    rs.getString("waiting_lock_index"),
-                    rs.getInt("waiting_lock_space"),
-                    rs.getInt("waiting_lock_page"),
-                    rs.getInt("waiting_lock_rec"),
-                    rs.getString("waiting_lock_data")
-                ));
-            }
+            waitingLocalTrx.setWaitingTrxLock(new TrxLock(
+                rs.getString("waiting_lock_id"),
+                rs.getString("waiting_lock_mode"),
+                rs.getString("waiting_lock_type"),
+                rs.getString("waiting_lock_physical_table"),
+                rs.getString("waiting_lock_index"),
+                rs.getInt("waiting_lock_space"),
+                rs.getInt("waiting_lock_page"),
+                rs.getInt("waiting_lock_rec"),
+                rs.getString("waiting_lock_data")
+            ));
+        }
+    }
+
+    private void extractTrx80(LocalTrxInfo info, LocalTransaction waitingLocalTrx) {
+        if (!waitingLocalTrx.isUpdated()) {
+            waitingLocalTrx.setState(info.getState());
+            final String physicalSql = info.getPhysicalSql();
+            // Record a truncated SQL
+            waitingLocalTrx.setPhysicalSql(
+                physicalSql == null ? null : physicalSql.substring(0, min(4096, physicalSql.length())));
+            waitingLocalTrx.setOperationState(info.getOperationState());
+            waitingLocalTrx.setTablesInUse(info.getTablesInUse());
+            waitingLocalTrx.setTablesLocked(info.getTablesLocked());
+            waitingLocalTrx.setLockStructs(info.getLockStructs());
+            waitingLocalTrx.setHeapSize(info.getHeapSize());
+            waitingLocalTrx.setRowLocks(info.getRowLocks());
+            waitingLocalTrx.setUpdated(true);
         }
     }
 
     /**
      * Fetch all transactions on the instance.
      */
-    private TrxLookupSet fetchTransInfo() {
+    public static TrxLookupSet fetchTransInfo() {
         final TrxLookupSet lookupSet = new TrxLookupSet();
         final List<List<Map<String, Object>>> results =
             SyncManagerHelper.sync(new FetchTransForDeadlockDetectionSyncAction(null), DEFAULT_DB_NAME,
                 SyncScope.CURRENT_ONLY);
-        for (final List<Map<String, Object>> result : results) {
-            if (result == null) {
-                continue;
-            }
-            for (final Map<String, Object> row : result) {
-                final Long transId = (Long) row.get("TRANS_ID");
-                final String group = (String) row.get("GROUP");
-                final long connId = (Long) row.get("CONN_ID");
-                final long frontendConnId = (Long) row.get("FRONTEND_CONN_ID");
-                final Long startTime = (Long) row.get("START_TIME");
-                final String sql = (String) row.get("SQL");
-                final GroupConnPair entry = new GroupConnPair(group, connId);
-                lookupSet.addNewTransaction(entry, transId);
-                lookupSet.updateTransaction(transId, frontendConnId, sql, startTime);
-            }
-        }
+        TransactionUtils.updateTrxLookupSet(results, lookupSet);
         return lookupSet;
     }
 
@@ -390,7 +460,12 @@ public class DeadlockDetectionTask implements Runnable {
             return;
         }
 
-        if (ExecUtils.isMysql80Version() && !InstConfUtil.getBool(ConnectionParams.ENABLE_DEADLOCK_DETECTION_80)) {
+        if (InstanceVersion.isMYSQL80() && !InstConfUtil.getBool(ConnectionParams.ENABLE_DEADLOCK_DETECTION_80)) {
+            return;
+        }
+
+        if (SKIP.get() > 0) {
+            SKIP.decrementAndGet();
             return;
         }
 
@@ -420,6 +495,10 @@ public class DeadlockDetectionTask implements Runnable {
                     final Set<String> groupNames =
                         groupDataSources.stream().map(TGroupDataSource::getDbGroupKey).collect(Collectors.toSet());
 
+                    if (maybeTooManyDataLockWaits(groupDataSource)) {
+                        return;
+                    }
+
                     // Fetch lock-wait information for this DN,
                     // and update the lookup set and the graph with the information
                     fetchLockWaits(groupDataSource, groupNames, lookupSet, graph);
@@ -437,7 +516,12 @@ public class DeadlockDetectionTask implements Runnable {
 
                 // TODO: kill transaction by some priority, such as create time, or prefer to kill internal transaction.
                 // The index of the transaction to be killed in the cycle
-                final int indexOfToKillTrx = 0;
+                int indexOfToKillTrx = 0;
+                for (int i = 0; i < cycle.size(); i++) {
+                    if (!cycle.get(i).isDdl()) {
+                        indexOfToKillTrx = i;
+                    }
+                }
                 final TrxLookupSet.Transaction toKillTrx = cycle.get(indexOfToKillTrx);
                 simpleDeadlockLog
                     .append(String.format(" Will rollback %s", Long.toHexString(toKillTrx.getTransactionId())));
@@ -445,6 +529,15 @@ public class DeadlockDetectionTask implements Runnable {
 
                 // Store deadlock log in StorageInfoManager so that executor can access it
                 StorageInfoManager.updateDeadlockInfo(fullDeadlockLog.toString());
+                // Record deadlock in meta db.
+                try (Connection connection = MetaDbUtil.getConnection()) {
+                    DeadlocksAccessor deadlocksAccessor = new DeadlocksAccessor();
+                    deadlocksAccessor.setConnection(connection);
+                    deadlocksAccessor.recordDeadlock(GlobalTxLogManager.getCurrentServerAddr(), "GLOBAL",
+                        fullDeadlockLog.toString());
+                } catch (Exception e) {
+                    logger.error(e);
+                }
 
                 TransactionLogger.warn(simpleDeadlockLog.toString());
                 logger.warn(simpleDeadlockLog.toString());
@@ -458,6 +551,37 @@ public class DeadlockDetectionTask implements Runnable {
         }
     }
 
+    protected boolean maybeTooManyDataLockWaits(TGroupDataSource dataSource) {
+        // Estimate row count of data_lock_waits records, if too many, skip this round of detection.
+        // Or it may cause DN hang for a long time.
+        String sql = InstanceVersion.isMYSQL80() ? SQL_QUERY_HOTSPOT_LOCK_80 : SQL_QUERY_HOTSPOT_LOCK;
+        long estimateRowCount = 0;
+        try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
+            final Statement stmt = conn.createStatement();
+            final ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                String lockId = rs.getString("lock_id");
+                if (null != lockId && !"NULL".equalsIgnoreCase(lockId)) {
+                    long cnt = rs.getLong("cnt");
+                    estimateRowCount += cnt * (cnt - 1) / 2;
+                }
+                if (estimateRowCount > DynamicConfig.getInstance().getDeadlockDetectionDataLockWaitsThreshold()) {
+                    final String dnId = dataSource.getMasterSourceAddress();
+                    String errMsg = "[" + dnId + "] Too many data_lock_waits records: " + estimateRowCount
+                        + ", skip deadlock detection task.";
+                    TransactionLogger.warn(errMsg);
+                    EventLogger.log(EventType.DEAD_LOCK_DETECTION, errMsg);
+                    SKIP.set(DynamicConfig.getInstance().getDeadlockDetectionSkipRound());
+                    return true;
+                }
+            }
+        } catch (SQLException ex) {
+            final String dnId = dataSource.getMasterSourceAddress();
+            throw new RuntimeException("Failed to estimate row count on data source " + dnId, ex);
+        }
+        return false;
+    }
+
     private boolean hasLeadership() {
         return !allSchemas.isEmpty() && ExecUtils.hasLeadership(allSchemas.iterator().next());
     }
@@ -465,5 +589,34 @@ public class DeadlockDetectionTask implements Runnable {
     public static Connection createPhysicalConnectionForLeaderStorage(TGroupDataSource dataSource) {
         String masterDnId = dataSource.getMasterDNId();
         return DbTopologyManager.getConnectionForStorage(masterDnId);
+    }
+
+    @Data
+    private static class LocalTrxInfo {
+        private final Long trxId;
+        private final Long connId;
+        private final String state;
+        private final String physicalSql;
+        private final String operationState;
+        private final Integer tablesInUse;
+        private final Integer tablesLocked;
+        private final Integer lockStructs;
+        private final Integer heapSize;
+        private final Integer rowLocks;
+
+        public LocalTrxInfo(Long trxId, Long connId, String state, String physicalSql, String operationState,
+                            Integer tablesInUse, Integer tablesLocked, Integer lockStructs, Integer heapSize,
+                            Integer rowLocks) {
+            this.trxId = trxId;
+            this.connId = connId;
+            this.state = state;
+            this.physicalSql = physicalSql;
+            this.operationState = operationState;
+            this.tablesInUse = tablesInUse;
+            this.tablesLocked = tablesLocked;
+            this.lockStructs = lockStructs;
+            this.heapSize = heapSize;
+            this.rowLocks = rowLocks;
+        }
     }
 }

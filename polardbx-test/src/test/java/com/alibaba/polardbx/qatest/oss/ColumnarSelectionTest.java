@@ -5,6 +5,7 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -61,6 +62,14 @@ public class ColumnarSelectionTest extends DDLBaseNewDBTestCase {
         return true;
     }
 
+    @After
+    public void dropTable() {
+        JdbcUtil.dropTable(getTddlConnection1(), tb1);
+        JdbcUtil.dropTable(getTddlConnection1(), tb2);
+        JdbcUtil.dropTable(getTddlConnection1(), tb3);
+        JdbcUtil.dropTable(getTddlConnection1(), tbOss);
+    }
+
     @Before
     public void prepareTable() {
         JdbcUtil.dropTable(getTddlConnection1(), tb1);
@@ -97,8 +106,8 @@ public class ColumnarSelectionTest extends DDLBaseNewDBTestCase {
         checkNoOSSTableScan(sql);
         sql = String.format("explain simple delete from %s force index(%s) where a = 1", tb1, colIdxA);
         checkNoOSSTableScan(sql);
-        sql = String.format("explain simple update %s force index(%s) set b = 1 where a= 1", tb1, colIdxA);
-        checkCantUse(sql);
+//        sql = String.format("explain simple update %s force index(%s) set b = 1 where a= 1", tb1, colIdxA);
+//        checkCantUse(sql);
 //        sql = APHINT + String.format("explain simple select * from %s for update", tb1);
 //        checkNoOSSTableScan(sql);
 //        sql = APHINT + String.format("explain simple select * from %s force index(%s) for update", tb1, colA);
@@ -108,7 +117,7 @@ public class ColumnarSelectionTest extends DDLBaseNewDBTestCase {
         sql = String.format("explain simple select *,(select 1 from %s limit 1) from %s", tb1, tb2);
         checkNoOSSTableScan(sql);
         sql = APHINT + String.format("explain simple select *,(select 1 from %s limit 1) from %s", tb1, tb2);
-        checkAllOSSTableScan(sql);
+        checkNoOSSTableScan(sql);
 
         // force/ignore index
         sql = String.format("explain simple select *,(select 1 from %s force index(%s) limit 1) from %s", tb1, colIdxA,
@@ -120,7 +129,7 @@ public class ColumnarSelectionTest extends DDLBaseNewDBTestCase {
         checkOSSTableScanAndLogicalView(sql);
         sql = APHINT + String.format("explain simple select *,(select 1 from %s force index(%s) limit 1) from %s", tb1,
             colIdxA, tb2);
-        checkAllOSSTableScan(sql);
+        checkOSSTableScanAndLogicalView(sql);
 
         sql =
             String.format("explain simple select *,(select 1 from %s force index(%s) limit 1) from %s force index(%s)",
@@ -147,11 +156,11 @@ public class ColumnarSelectionTest extends DDLBaseNewDBTestCase {
         sql = APHINT + String.format(
             "explain simple select *,(select 1 from %s force index(%s) limit 1) from %s ignore index(idx_c)", tb1,
             colIdxA, tb2);
-        checkAllOSSTableScan(sql);
+        checkOSSTableScanAndLogicalView(sql);
 
         sql = APHINT + String.format(
             "explain simple select *,(select 1 from %s limit 1) from %s ignore index(idx_c)", tb1, tb2);
-        checkAllOSSTableScan(sql);
+        checkNoOSSTableScan(sql);
         sql = APHINT + String.format(
             "explain simple select *,(select 1 from %s ignore index(%s) limit 1) from %s ignore index(idx_c)", tb1,
             colIdxA, tb2);

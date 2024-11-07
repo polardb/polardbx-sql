@@ -104,19 +104,30 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
         } else if (preparedData.isGsi() && !preparedData.isSharding() && preparedData.getPartitioning() == null) {
             partitionTableType = PartitionTableType.GSI_SINGLE_TABLE;
         }
+//        partitionInfo =
+//            PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
+//                preparedData.isWithImplicitTableGroup(), joinGroupName, (SqlPartitionBy) preparedData.getPartitioning(),
+//                preparedData.getPartBoundExprInfo(),
+//                pkColMetas, allColMetas, partitionTableType, executionContext, localityDesc);
+//        partitionInfo.setTableType(partitionTableType);
+
+        boolean ttlTemporary = preparedData.isTtlTemporary();
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
                 preparedData.isWithImplicitTableGroup(), joinGroupName, (SqlPartitionBy) preparedData.getPartitioning(),
                 preparedData.getPartBoundExprInfo(),
-                pkColMetas, allColMetas, partitionTableType, executionContext, localityDesc);
+                pkColMetas, allColMetas, partitionTableType, executionContext, localityDesc, ttlTemporary);
         partitionInfo.setTableType(partitionTableType);
 
         //
         // Set auto partition flag only on primary table.
         if (tblType == PartitionTableType.PARTITION_TABLE) {
             assert relDdl.sqlNode instanceof SqlCreateTable;
-            partitionInfo.setPartFlags(
-                ((SqlCreateTable) relDdl.sqlNode).isAutoPartition() ? TablePartitionRecord.FLAG_AUTO_PARTITION : 0);
+            long partFlag = partitionInfo.getPartFlags();
+            if (((SqlCreateTable) relDdl.sqlNode).isAutoPartition()) {
+                partFlag |= TablePartitionRecord.FLAG_AUTO_PARTITION;
+            }
+            partitionInfo.setPartFlags(partFlag);
             // TODO(moyi) write a builder for autoFlag
             int autoFlag = ((SqlCreateTable) relDdl.sqlNode).isAutoSplit() ?
                 TablePartitionRecord.PARTITION_AUTO_BALANCE_ENABLE_ALL : 0;

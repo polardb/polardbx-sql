@@ -26,6 +26,7 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableNDVSketchStatistic;
 import com.google.common.collect.Lists;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -73,11 +74,11 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
         + "TABLE_NAME = ? ";
 
     private static final String LOAD_ALL_SQL =
-        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM "
+        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `INDEX_NAME`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM "
             + TABLE_NAME;
 
     private static final String LOAD_BY_TABLE_NAME_SQL =
-        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM `"
+        "SELECT `SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `INDEX_NAME`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_TYPE`, `GMT_MODIFIED`, `GMT_CREATED` FROM `"
             + TABLE_NAME + "` WHERE SCHEMA_NAME = ? AND TABLE_NAME = ?";
 
     private static final String LOAD_BY_TABLE_NAME_AND_COLUMN_NAME_SQL =
@@ -88,7 +89,8 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
      * select table rows sql, need to concat with values
      */
     private static final String REPLACE_SQL = "REPLACE INTO `" + TABLE_NAME +
-        "` (`SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_BYTES`, `SKETCH_TYPE`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        "` (`SCHEMA_NAME`, `TABLE_NAME`, `COLUMN_NAMES`, `SHARD_PART`, `INDEX_NAME`, `DN_CARDINALITY`, `COMPOSITE_CARDINALITY`, `SKETCH_BYTES`, `SKETCH_TYPE`) "
+        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     /**
      * update composite cardinality
@@ -206,6 +208,7 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
                         rs.getString("TABLE_NAME"),
                         rs.getString("COLUMN_NAMES"),
                         rs.getString("SHARD_PART"),
+                        rs.getString("INDEX_NAME"),
                         rs.getLong("DN_CARDINALITY"),
                         rs.getLong("COMPOSITE_CARDINALITY"),
                         rs.getString("SKETCH_TYPE"),
@@ -247,6 +250,7 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
                         rs.getString("TABLE_NAME"),
                         rs.getString("COLUMN_NAMES"),
                         rs.getString("SHARD_PART"),
+                        rs.getString("INDEX_NAME"),
                         rs.getLong("DN_CARDINALITY"),
                         rs.getLong("COMPOSITE_CARDINALITY"),
                         rs.getString("SKETCH_TYPE"),
@@ -281,10 +285,11 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
                 ps.setString(2, sketchRow.getTableName());
                 ps.setString(3, sketchRow.getColumnNames());
                 ps.setString(4, sketchRow.getShardPart());
-                ps.setLong(5, sketchRow.getDnCardinality());
-                ps.setLong(6, sketchRow.getCompositeCardinality());
-                ps.setBytes(7, sketchRow.getSketchBytes());
-                ps.setString(8, sketchRow.getSketchType());
+                ps.setString(5, sketchRow.getIndexName());
+                ps.setLong(6, sketchRow.getDnCardinality());
+                ps.setLong(7, sketchRow.getCompositeCardinality());
+                ps.setBytes(8, sketchRow.getSketchBytes());
+                ps.setString(9, sketchRow.getSketchType());
                 ps.addBatch();
             }
 
@@ -329,8 +334,8 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
     }
 
     @Override
-    public void loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
-                                             Map<String, byte[]> shardParts, int[] registers) {
+    public boolean loadByTableNameAndColumnName(String schemaName, String tableName, String columnName,
+                                                Map<String, byte[]> shardParts, int[] registers) {
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
@@ -354,6 +359,9 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
                     if (oneRow == null || oneRow.length == 0) {
                         throw new IllegalArgumentException("sketch bytes not ready yet");
                     }
+                    if (oneRow.length == 1) {
+                        throw new IllegalArgumentException("sketch bytes from columnar");
+                    }
 
                     BitSet bitSet = BitSet.valueOf(oneRow);
                     for (int j = 0; j * 6 < HLL_REGBYTES * 8; j++) {// cal the reciprocal
@@ -371,8 +379,52 @@ public class PolarDbXSystemTableNDVSketchStatistic implements SystemTableNDVSket
             }
         } catch (Exception e) {
             logger.error("select " + TABLE_NAME + " error", e);
+            return false;
         } finally {
             JdbcUtils.close(rs);
+            JdbcUtils.close(ps);
+            JdbcUtils.close(conn);
+        }
+        return true;
+    }
+
+    public boolean deleteByColumn(String schemaName, String tableName, String columns) {
+        return deleteByColumn(schemaName, tableName, columns, MetaDbDataSource.getInstance().getDataSource());
+    }
+
+    /**
+     * Deletes records based on the specified schema name, table name, and column names.
+     *
+     * @param schemaName The schema name to operate on
+     * @param tableName The table name to operate on
+     * @param columns The list of column names
+     */
+    public boolean deleteByColumn(String schemaName, String tableName, String columns, DataSource dataSource) {
+        // Return early if not in master mode
+        if (!ConfigDataMode.isMasterMode() || dataSource == null) {
+            return false;
+        }
+
+        Connection conn = null;
+        PreparedStatement ps = null;
+
+        try {
+            conn = dataSource.getConnection();
+            ps = conn.prepareStatement(DELETED_BY_TABLENAME_COLUMNS_SQL);
+
+            // Set parameter values (converted to lowercase)
+            ps.setString(1, schemaName.toLowerCase());
+            ps.setString(2, tableName.toLowerCase());
+            ps.setString(3, columns.toLowerCase());
+
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            // Log error message
+            logger.error("Delete " + TABLE_NAME + " error, SQL statement: " + DELETED_BY_TABLENAME_COLUMNS_SQL
+                + ", parameters: " + schemaName + "," + tableName + "," + columns, e);
+            return false;
+        } finally {
             JdbcUtils.close(ps);
             JdbcUtils.close(conn);
         }

@@ -67,6 +67,28 @@ public class VariableConfigAccessor extends AbstractAccessor {
         }
     }
 
+    public void addVariableConfigs(String instId, Properties properties, boolean notify) {
+        try (PreparedStatement preparedStatement = this.connection.prepareStatement(INSERT_IGNORE_VARIABLE_CONFIGS)) {
+            for (String propName : properties.stringPropertyNames()) {
+                String propVal = properties.getProperty(propName);
+                preparedStatement.setString(1, instId);
+                preparedStatement.setString(2, propName);
+                preparedStatement.setString(3, propVal);
+                preparedStatement.setString(4, "");
+                preparedStatement.addBatch();
+            }
+            preparedStatement.executeBatch();
+        } catch (Throwable e) {
+            logger.error("Failed to query the system table '" + VARIABLE_CONFIG_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                VARIABLE_CONFIG_TABLE, e.getMessage());
+        }
+
+        if (notify) {
+            MetaDbConfigManager.getInstance().notify(MetaDbDataIdBuilder.getVariableConfigDataId(instId), connection);
+        }
+    }
+
     private List<VariableConfigRecord> queryBySql(String sql, Map<Integer, ParameterContext> params) {
         try {
             return MetaDbUtil.query(sql, params, VariableConfigRecord.class

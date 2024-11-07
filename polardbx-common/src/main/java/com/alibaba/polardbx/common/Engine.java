@@ -35,7 +35,8 @@ public enum Engine {
     ABS,
     OSS,
     NFS,
-    MEMORY;
+    MEMORY,
+    COLUMNAR;
 
     public static final Engine DEFAULT_COLUMNAR_ENGINE = OSS;
 
@@ -94,6 +95,7 @@ public enum Engine {
         case NFS:
         case S3:
         case ABS:
+        case COLUMNAR:
             return true;
         default:
             return false;

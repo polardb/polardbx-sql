@@ -73,6 +73,8 @@ public class InformationSchemaSPM extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("HINT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(
             new RelDataTypeFieldImpl("USE_POST_PLANNER", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("HOT_EVOLVED", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

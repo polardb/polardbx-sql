@@ -51,6 +51,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
@@ -154,6 +155,11 @@ public class RepartitionJobFactory extends DdlJobFactory {
         );
         boolean checkSingleTgNotExists = result.getKey();
         boolean checkBroadcastTgNotExists = result.getValue();
+        boolean rebuildCci =
+            executionContext.getParamManager().getBoolean(ConnectionParams.REBUILD_CCI_WHEN_REPARTITION);
+
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
+        boolean autoPartition = tableMeta.isAutoPartition();
 
         if (physicalPlanData.getTableGroupConfig() != null) {
             TableGroupRecord tableGroupRecord = physicalPlanData.getTableGroupConfig().getTableGroupRecord();
@@ -185,7 +191,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
 
         globalIndexPreparedData.setRepartition(true);
         CreateGsiJobFactory createGsiJobFactory =
-            CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, executionContext);
+            CreateGsiJobFactory.create(globalIndexPreparedData, physicalPlanData, null, executionContext);
         createGsiJobFactory.stayAtBackFill = true;
         ExecutableDdlJob createGsiJob = createGsiJobFactory.create();
         if (globalIndexPreparedData.getRelatedTableGroupInfo().values().stream().anyMatch(o -> o.booleanValue())
@@ -236,17 +242,22 @@ public class RepartitionJobFactory extends DdlJobFactory {
         repartitionJob.addTaskRelationship(validateTableVersionTask, validateTask);
 
         // 1.gsi add column
-        for (ExecutableDdlJob4AlterTable gsiAddColumnJob : gsiAddColumnJobs) {
-            repartitionJob.combineTasks(gsiAddColumnJob);
-            repartitionJob.addTaskRelationship(validateTask, gsiAddColumnJob.getTableValidateTask());
+        if (!autoPartition) {
+            for (ExecutableDdlJob4AlterTable gsiAddColumnJob : gsiAddColumnJobs) {
+                repartitionJob.combineTasks(gsiAddColumnJob);
+                repartitionJob.addTaskRelationship(validateTask, gsiAddColumnJob.getTableValidateTask());
+            }
+        } else {
+            // 默认主键拆分表，需要删除所有的gsi，无需为 gsi add column
+            dropGlobalIndexJobs.forEach(repartitionJob::appendJob2);
         }
 
         boolean skipCheck = executionContext.getParamManager().getBoolean(ConnectionParams.REPARTITION_SKIP_CHECK);
 
         // only optimize for key partition
         // do not change topology, only change table meta
-        if (!skipCheck && changeShardColumnsOnly != null && !changeShardColumnsOnly.isEmpty() && modifyLocality != null
-            && !modifyLocality) {
+        if (!skipCheck && changeShardColumnsOnly != null && !changeShardColumnsOnly.isEmpty()
+            && (modifyLocality == null || !modifyLocality)) {
             // add local index subJob
             SubJobTask addIndexSubJobTask = null;
             if (addLocalIndexSql != null && addLocalIndexSql.getKey() != null && addLocalIndexSql.getValue() != null) {
@@ -287,7 +298,7 @@ public class RepartitionJobFactory extends DdlJobFactory {
             return repartitionJob;
         }
 
-        if (GeneralUtil.isNotEmpty(dropCciSql)) {
+        if (rebuildCci && GeneralUtil.isNotEmpty(dropCciSql)) {
             List<SubJobTask> dropCciSubJobTasks = new ArrayList<>();
             for (Pair<String, String> sql : dropCciSql) {
                 SubJobTask dropCciSubJobTask =
@@ -351,12 +362,14 @@ public class RepartitionJobFactory extends DdlJobFactory {
         }
 
         // 6. drop gsi tables
-        dropGlobalIndexJobs.forEach(repartitionJob::appendJob2);
+        if (!autoPartition) {
+            dropGlobalIndexJobs.forEach(repartitionJob::appendJob2);
+        }
 
         // create cci
 //        repartitionJob.appendJob2(createCciJob);
 
-        if (GeneralUtil.isNotEmpty(addCciSql)) {
+        if (rebuildCci && GeneralUtil.isNotEmpty(addCciSql)) {
             List<SubJobTask> addCciSubJobTasks = new ArrayList<>();
             for (Pair<String, String> sql : addCciSql) {
                 SubJobTask addCciSubJobTask =

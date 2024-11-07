@@ -67,6 +67,7 @@ public class ReplicaReadPlugin extends BasePlugin {
                         // rollback if necessary
                         if (choice < 0.66) {
                             conn.rollback();
+                            conn.setAutoCommit(true);
                         }
                     }
                 } catch (SQLException e) {
@@ -95,6 +96,7 @@ public class ReplicaReadPlugin extends BasePlugin {
                     // rollback if necessary
                     if (choice < 0.66) {
                         conn.rollback();
+                        conn.setAutoCommit(true);
                     }
                 }
             } catch (SQLException e) {

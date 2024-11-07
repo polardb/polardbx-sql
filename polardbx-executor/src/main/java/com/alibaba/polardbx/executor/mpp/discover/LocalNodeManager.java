@@ -23,12 +23,9 @@ import com.alibaba.polardbx.gms.node.InternalNode;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeServer;
-import com.alibaba.polardbx.gms.node.NodeState;
 import com.google.common.collect.ImmutableSet;
 
 import javax.inject.Inject;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 public class LocalNodeManager implements InternalNodeManager {
@@ -42,27 +39,8 @@ public class LocalNodeManager implements InternalNodeManager {
     public LocalNodeManager(InternalNode currentNode) {
         this.localNode = currentNode;
         this.allNodes =
-            new AllNodes(ImmutableSet.of(localNode), ImmutableSet.of(), ImmutableSet.of(), ImmutableSet.of());
-    }
-
-    @Override
-    public Set<InternalNode> getNodes(NodeState state, boolean slaveFirst) {
-        switch (state) {
-        case ACTIVE:
-            if (slaveFirst) {
-                Set<InternalNode> otherActiveNodes = getAllNodes().getOtherActiveNodes();
-                if (otherActiveNodes != null && !otherActiveNodes.isEmpty()) {
-                    return otherActiveNodes;
-                }
-            }
-            return getAllNodes().getActiveNodes();
-        case INACTIVE:
-            return getAllNodes().getInactiveNodes();
-        case SHUTTING_DOWN:
-            return getAllNodes().getShuttingDownNodes();
-        default:
-            throw new IllegalArgumentException("Unknown node state " + state);
-        }
+            new AllNodes(ImmutableSet.of(localNode), ImmutableSet.of(), ImmutableSet.of(), ImmutableSet.of(),
+                ImmutableSet.of());
     }
 
     @Override
@@ -71,24 +49,8 @@ public class LocalNodeManager implements InternalNodeManager {
     }
 
     @Override
-    public Set<Node> getCoordinators() {
-        Set<Node> coordinators = new HashSet<>();
-        for (Node node : allNodes.getActiveNodes()) {
-            if (node.isCoordinator()) {
-                coordinators.add(node);
-            }
-        }
-        return coordinators;
-    }
-
-    @Override
     public AllNodes getAllNodes() {
         return allNodes;
-    }
-
-    @Override
-    public void refreshNodes() {
-        throw new IllegalStateException();
     }
 
     @Override
@@ -97,24 +59,15 @@ public class LocalNodeManager implements InternalNodeManager {
     }
 
     @Override
-    public synchronized void updateNodes(Set<InternalNode> activeNodes, Set<InternalNode> otherActiveNodes,
-                                         Set<InternalNode> inactiveNodes, Set<InternalNode> shuttingDownNodes) {
+    public synchronized void updateNodes(Set<InternalNode> currentActiveNodes, Set<InternalNode> remoteActiveRowNodes,
+                                         Set<InternalNode> remoteActiveColumnarNodes, Set<InternalNode> inactiveNodes,
+                                         Set<InternalNode> shuttingDownNodes) {
         if (logger.isDebugEnabled()) {
-            logger.debug("updateNodes:activeNodes=" + activeNodes + ",inactiveNodes=" + inactiveNodes + "," +
-                "shuttingDownNodes=" + shuttingDownNodes);
+            logger.debug("updateNodes:activeNodes=" + currentActiveNodes + ",otherActiveNodes=" + remoteActiveRowNodes
+                + ",remoteActiveColumnarNodes=" + remoteActiveColumnarNodes + ",inactiveNodes=" + inactiveNodes + ","
+                + "shuttingDownNodes=" + shuttingDownNodes);
         }
-        allNodes.setActiveNodes(activeNodes, otherActiveNodes);
-        allNodes.setInactiveNodes(inactiveNodes);
-        allNodes.setShuttingDownNodes(shuttingDownNodes);
-    }
-
-    @Override
-    public List<Node> getAllWorkers(boolean slaveFirst) {
-        return allNodes.getAllWorkers(slaveFirst);
-    }
-
-    @Override
-    public List<Node> getAllCoordinators() {
-        return allNodes.getAllCoordinators();
+        allNodes.updateActiveNodes(currentActiveNodes, remoteActiveRowNodes, remoteActiveColumnarNodes, inactiveNodes,
+            shuttingDownNodes);
     }
 }

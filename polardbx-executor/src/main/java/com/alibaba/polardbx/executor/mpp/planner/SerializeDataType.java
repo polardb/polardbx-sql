@@ -19,11 +19,15 @@ package com.alibaba.polardbx.executor.mpp.planner;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
+import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
+import com.alibaba.polardbx.optimizer.core.datatype.DoubleType;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
+import com.alibaba.polardbx.optimizer.core.datatype.FloatType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
@@ -158,7 +162,8 @@ public class SerializeDataType {
         return dataTypes;
     }
 
-    public static List<DataType> convertToDataType(List<SerializeDataType> relDataTypeList) {
+    public static List<DataType> convertToDataType(List<SerializeDataType> relDataTypeList,
+                                                   ExecutionContext context) {
         List<DataType> dataTypes = new ArrayList<>();
         for (int i = 0; i < relDataTypeList.size(); i++) {
             SerializeDataType serializeDataType = relDataTypeList.get(i);
@@ -173,7 +178,8 @@ public class SerializeDataType {
                 serializeDataType.sensitive,
                 enumValues,
                 charsetName,
-                collationName);
+                collationName,
+                context);
             dataTypes.add(dt);
         }
         return dataTypes;
@@ -183,8 +189,9 @@ public class SerializeDataType {
     @Deprecated
     private static DataType relTypeToTddlType(SqlTypeName typeName, int precision, int scale, boolean hasBooleanType,
                                               boolean sensitive, List<String> enumValues, String charset,
-                                              String collation) {
+                                              String collation, ExecutionContext context) {
         // TODO FIX ME
+        boolean accurateType = context.isEnableAccurateRelTypeToDataType();
         DataType dataType = null;
         CharsetName charsetName = Optional.ofNullable(charset)
             .map(CharsetName::of)
@@ -194,7 +201,7 @@ public class SerializeDataType {
             .orElseGet(CollationName::defaultCollation);
         switch (typeName) {
         case DECIMAL:
-            dataType = DataTypes.DecimalType;
+            dataType = accurateType ? new DecimalType(precision, scale) : DataTypes.DecimalType;
             break;
         case BOOLEAN:
             if (hasBooleanType) {
@@ -219,14 +226,14 @@ public class SerializeDataType {
             dataType = DataTypes.LongType;
             break;
         case FLOAT:
-            dataType = DataTypes.FloatType;
+            dataType = accurateType ? new FloatType(scale) : DataTypes.FloatType;
             break;
         case DATETIME:
             dataType = new DateTimeType(MySQLTimeTypeUtil.normalizeScale(scale));
             break;
         case REAL:
         case DOUBLE:
-            dataType = DataTypes.DoubleType;
+            dataType = accurateType ? new DoubleType(scale) : DataTypes.DoubleType;
             break;
         case DATE:
             dataType = DataTypes.DateType;

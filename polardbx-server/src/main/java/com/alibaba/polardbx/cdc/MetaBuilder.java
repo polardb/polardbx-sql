@@ -42,10 +42,12 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.server.conn.InnerConnection;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
 
 import java.sql.Connection;
@@ -259,17 +261,25 @@ public class MetaBuilder {
         });
     }
 
-    private static Connection getPhyConnection(String schemaName, String groupName)
+    static Connection getPhyConnection(String schemaName, String groupName)
         throws SQLException {
         ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
         if (executorContext != null) {
             IGroupExecutor groupExecutor = executorContext.getTopologyHandler().get(groupName);
             if (groupExecutor != null && groupExecutor.getDataSource() instanceof TGroupDataSource) {
                 TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
-                return dataSource.getConnection();
+                TGroupDirectConnection connection = dataSource.getConnection();
+                return connection == null ? null : preparePhyConnection(connection);
             }
         }
         return null;
+    }
+
+    static TGroupDirectConnection preparePhyConnection(TGroupDirectConnection connection) throws SQLException {
+        Map<String, Object> variables = Maps.newHashMap();
+        variables.put("sql_mode", "");
+        connection.setServerVariables(variables);
+        return connection;
     }
 
     private static LogicMeta.LogicTableMeta buildLogicTableMetaInternal(String schemaName,

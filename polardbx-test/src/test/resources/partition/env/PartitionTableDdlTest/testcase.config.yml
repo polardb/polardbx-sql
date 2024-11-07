@@ -34,3 +34,5 @@ test_online_modify_column
 test_online_modify_column_gsi
 test_compressed_table
 test_create_table_with_blank
+test_identifier_with_special_character
+test_fulltext_with_parser

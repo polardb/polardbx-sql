@@ -67,7 +67,6 @@ public class FastBetweenDecimalColDecimalConstDecimalConstVectorizedExpression e
         Object operand2Value = ((LiteralVectorizedExpression) children[2]).getConvertedValue();
 
         this.useCompareWithDecimal64 = false;
-        // TODO simplify between null and null
         if (operand1Value == null) {
             this.operand1 = Decimal.ZERO;
             this.operand1IsNull = true;

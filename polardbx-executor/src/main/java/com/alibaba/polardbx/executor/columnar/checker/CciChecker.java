@@ -31,6 +31,7 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -45,8 +46,8 @@ import java.util.stream.Collectors;
 public class CciChecker implements ICciChecker {
     private static final Logger logger = LoggerFactory.getLogger(CciChecker.class);
     private final String schemaName;
-    private final String tableName;
-    private final String indexName;
+    protected final String tableName;
+    protected final String indexName;
     private long primaryHashCode = -1;
     private long columnarHashCode = -1;
     private long primaryCount = -1;
@@ -62,11 +63,11 @@ public class CciChecker implements ICciChecker {
     private static final String CALCULATE_COLUMNAR_HASH =
         "select count(0) as count, check_sum_v2(%s) as pk_checksum, check_sum_v2(*) as checksum "
             + "from %s force index(%s)";
-    private static final String PRIMARY_HINT =
-        "/*+TDDL:WORKLOAD_TYPE=AP ENABLE_MPP=true ENABLE_MASTER_MPP=true "
+    protected static final String PRIMARY_HINT =
+        "/*+TDDL:WORKLOAD_TYPE=AP "
             + "SOCKET_TIMEOUT=259200000 MPP_TASK_MAX_RUN_TIME=259200000 %s */";
-    private static final String COLUMNAR_HINT =
-        "/*+TDDL:WORKLOAD_TYPE=AP ENABLE_MPP=true ENABLE_MASTER_MPP=true ENABLE_COLUMNAR_OPTIMIZER=true "
+    protected static final String COLUMNAR_HINT =
+        "/*+TDDL:WORKLOAD_TYPE=AP ENABLE_COLUMNAR_OPTIMIZER=true "
             + "OPTIMIZER_TYPE='columnar' ENABLE_HTAP=true SOCKET_TIMEOUT=259200000 "
             + "MPP_TASK_MAX_RUN_TIME=259200000 %s */";
 
@@ -78,8 +79,7 @@ public class CciChecker implements ICciChecker {
 
     @Override
     public void check(ExecutionContext baseEc, Runnable recoverChangedConfigs) throws Throwable {
-        Pair<Long, Long> tso =
-            ColumnarTransactionUtils.getLatestOrcCheckpointTsoFromGms();
+        Pair<Long, Long> tso = getCheckTso();
         IInnerConnectionManager manager = ExecutorContext.getContext(schemaName).getInnerConnectionManager();
         logger.warn("Check cci using innodb tso " + tso.getKey() + ", columnar tso " + tso.getValue());
 
@@ -104,20 +104,16 @@ public class CciChecker implements ICciChecker {
             }
 
             // Calculate columnar table checksum.
-            try (Connection conn = manager.getConnection(schemaName);
+            try (IInnerConnection conn = manager.getConnection(schemaName);
                 Statement stmt = conn.createStatement()) {
-                if (conn instanceof IInnerConnection) {
-                    ((IInnerConnection) conn).addExecutionContextInjectHook(
-                        // To see non-PUBLIC CCI.
-                        (ec) -> ((ExecutionContext) ec).setCheckingCci(true));
-                }
+                conn.addExecutionContextInjectHook(
+                    // To see non-PUBLIC CCI.
+                    (ec) -> ((ExecutionContext) ec).setCheckingCci(true));
                 long start = System.nanoTime();
                 calColumnarHashCode(stmt, baseEc, tso.getValue());
                 SQLRecorderLogger.ddlLogger.info("[Naive checker] Columnar checksum calculated, costing "
                     + ((System.nanoTime() - start) / 1_000_000) + " ms");
-                if (conn instanceof IInnerConnection) {
-                    ((IInnerConnection) conn).clearExecutionContextInjectHooks();
-                }
+                conn.clearExecutionContextInjectHooks();
 
             } catch (Throwable t) {
                 SQLRecorderLogger.ddlLogger.error(
@@ -129,6 +125,10 @@ public class CciChecker implements ICciChecker {
             trx.close();
         }
 
+    }
+
+    protected Pair<Long, Long> getCheckTso() {
+        return ColumnarTransactionUtils.getLatestOrcCheckpointTsoFromGms();
     }
 
     @Override
@@ -164,25 +164,6 @@ public class CciChecker implements ICciChecker {
     }
 
     private void calPrimaryHashCode(Statement stmt, ExecutionContext ec, long tso) throws SQLException {
-        // Build hint.
-        StringBuilder sb = new StringBuilder();
-        long parallelism;
-        if ((parallelism = ec.getParamManager().getInt(ConnectionParams.MPP_PARALLELISM)) > 0) {
-            sb.append(" MPP_PARALLELISM=")
-                .append(parallelism)
-                .append(" ");
-        }
-        if ((parallelism = ec.getParamManager().getInt(ConnectionParams.PARALLELISM)) > 0) {
-            sb.append(" PARALLELISM=")
-                .append(parallelism)
-                .append(" ");
-        }
-        sb.append(" SNAPSHOT_TS=")
-            .append(tso)
-            .append(" ");
-        sb.append(" TRANSACTION_POLICY=TSO");
-        String hint = String.format(PRIMARY_HINT, sb);
-
         // Build pk list.
         String pkList = ec
             .getSchemaManager(schemaName)
@@ -191,11 +172,7 @@ public class CciChecker implements ICciChecker {
             .stream()
             .map(ColumnMeta::getName)
             .collect(Collectors.joining(","));
-
-        String sql = String.format(CALCULATE_PRIMARY_HASH, pkList, tableName);
-
-        // Assert using logical view as table scan.
-        sql = hint + sql;
+        String sql = getPrimarySql(ec, tso, pkList);
         logger.warn("Check CCI primary sql: " + sql);
         primaryCheckSql = sql;
         ResultSet explainRs = stmt.executeQuery("explain " + sql);
@@ -208,7 +185,7 @@ public class CciChecker implements ICciChecker {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Check cci plan does not contain LogicalView");
         }
 
-        ResultSet rs = stmt.executeQuery(hint + sql);
+        ResultSet rs = stmt.executeQuery(sql);
         if (rs.next()) {
             primaryCount = rs.getLong("count");
             primaryPkHashCode = rs.getLong("pk_checksum");
@@ -217,24 +194,6 @@ public class CciChecker implements ICciChecker {
     }
 
     private void calColumnarHashCode(Statement stmt, ExecutionContext ec, long tso) throws SQLException {
-        // Build hint.
-        StringBuilder sb = new StringBuilder();
-        long parallelism;
-        if ((parallelism = ec.getParamManager().getInt(ConnectionParams.MPP_PARALLELISM)) > 0) {
-            sb.append(" MPP_PARALLELISM=")
-                .append(parallelism)
-                .append(" ");
-        }
-        if ((parallelism = ec.getParamManager().getInt(ConnectionParams.PARALLELISM)) > 0) {
-            sb.append(" PARALLELISM=")
-                .append(parallelism)
-                .append(" ");
-        }
-        sb.append(" SNAPSHOT_TS=")
-            .append(tso)
-            .append(" ");
-        String hint = String.format(COLUMNAR_HINT, sb);
-
         // Build pk list.
         String pkList = ec
             .getSchemaManager(schemaName)
@@ -243,11 +202,7 @@ public class CciChecker implements ICciChecker {
             .stream()
             .map(ColumnMeta::getName)
             .collect(Collectors.joining(","));
-
-        String sql = String.format(CALCULATE_COLUMNAR_HASH, pkList, tableName, indexName);
-
-        // Assert using columnar scan.
-        sql = hint + sql;
+        String sql = getColumnarSql(ec, tso, pkList);
         logger.warn("Check CCI columnar sql: " + sql);
         columnarCheckSql = sql;
         ResultSet explainRs = stmt.executeQuery("explain " + sql);
@@ -266,5 +221,34 @@ public class CciChecker implements ICciChecker {
             columnarPkHashCode = rs.getLong("pk_checksum");
             columnarHashCode = rs.getLong("checksum");
         }
+    }
+
+    protected String getColumnarSql(ExecutionContext ec, long tso, String pkList) {
+        // Build hint.
+        StringBuilder sb = new StringBuilder();
+        ICciChecker.setBasicHint(ec, sb);
+        sb.append(" SNAPSHOT_TS=")
+            .append(tso)
+            .append(" ");
+        String hint = String.format(COLUMNAR_HINT, sb);
+
+        String sql = String.format(CALCULATE_COLUMNAR_HASH, pkList, tableName, indexName);
+
+        return hint + sql;
+    }
+
+    protected String getPrimarySql(ExecutionContext ec, long tso, String pkList) {
+        // Build hint.
+        StringBuilder sb = new StringBuilder();
+        ICciChecker.setBasicHint(ec, sb);
+        sb.append(" SNAPSHOT_TS=")
+            .append(tso)
+            .append(" ");
+        sb.append(" TRANSACTION_POLICY=TSO");
+        String hint = String.format(PRIMARY_HINT, sb);
+
+        String sql = String.format(CALCULATE_PRIMARY_HASH, pkList, tableName);
+
+        return hint + sql;
     }
 }

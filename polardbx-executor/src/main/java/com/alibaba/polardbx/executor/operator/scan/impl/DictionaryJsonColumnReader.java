@@ -79,7 +79,7 @@ public class DictionaryJsonColumnReader extends AbstractDictionaryColumnReader {
                     int dictId = (int) dictIdReader.next();
                     Slice sliceValue = dictionary.getValue(dictId);
                     sliceOutput.writeBytes(sliceValue);
-                    long length = sliceValue.length();
+                    long length = sliceValue.toStringUtf8().length();
                     totalLength += length;
                     offsets[i] = (int) totalLength;
                     nulls[i] = false;
@@ -103,7 +103,7 @@ public class DictionaryJsonColumnReader extends AbstractDictionaryColumnReader {
                         int dictId = (int) dictIdReader.next();
                         Slice sliceValue = dictionary.getValue(dictId);
                         sliceOutput.writeBytes(sliceValue);
-                        long length = sliceValue.length();
+                        long length = sliceValue.toStringUtf8().length();
                         totalLength += length;
                         offsets[i] = (int) totalLength;
                         nulls[i] = false;

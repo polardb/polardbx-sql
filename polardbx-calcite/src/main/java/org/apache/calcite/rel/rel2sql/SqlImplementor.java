@@ -65,6 +65,7 @@ import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlBinaryOperator;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCallParam;
+import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -395,9 +396,15 @@ public abstract class SqlImplementor {
       return new Result(node, clauses, alias4, rel.getRowType(), aliases);
     }
     final String alias5;
+    /**
+     * set existForceIndex = true when forced index exists to make neededAlias not null,
+     * otherwise alias will be implicit in asFrom()
+     */
+    boolean existForceIndex = node.getKind() == SqlKind.IDENTIFIER && ((SqlIdentifier)node).indexNode != null;
     if (alias2 == null
         || !alias2.equals(alias4)
-        || !dialect.hasImplicitTableAlias()) {
+        || !dialect.hasImplicitTableAlias()
+        || existForceIndex) {
       alias5 = alias4;
     } else {
       alias5 = null;
@@ -1435,7 +1442,7 @@ public abstract class SqlImplementor {
         //}
         // MySQL only support syntax showed above.
         // So that we must put AS OF in front of alias and index_hint_list behind alias
-        if (node instanceof SqlIdentifier && ((SqlIdentifier) node).flashback != null
+        if (node instanceof SqlIdentifier
             && ((SqlIdentifier) node).indexNode != null) {
           // Move index hint from identifier to alias
           final SqlIdentifier identifier = (SqlIdentifier) node;

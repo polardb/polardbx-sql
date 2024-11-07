@@ -134,10 +134,10 @@ public abstract class ScaleOutBaseTest extends AsyncDDLBaseNewDBTestCase {
             if (StringUtils.isEmpty(finalTableStat) || ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC.toString()
                 .equalsIgnoreCase(finalTableStat)) {
                 tddlSql =
-                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true)*/ ";
+                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true)*/ ";
             } else {
                 tddlSql =
-                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, SCALE_OUT_FINAL_TABLE_STATUS_DEBUG="
+                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, SCALE_OUT_FINAL_TABLE_STATUS_DEBUG="
                         + finalTableStat + ")*/ ";
 
             }
@@ -164,10 +164,10 @@ public abstract class ScaleOutBaseTest extends AsyncDDLBaseNewDBTestCase {
             if (StringUtils.isEmpty(finalTableStat) || ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC.toString()
                 .equalsIgnoreCase(finalTableStat)) {
                 tddlSql =
-                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true)*/ ";
+                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true)*/ ";
             } else {
                 tddlSql =
-                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, SCALE_OUT_FINAL_TABLE_STATUS_DEBUG="
+                    "move database /*+TDDL:CMD_EXTRA(SCALE_OUT_DEBUG=true, SHARE_STORAGE_MODE=true, PHYSICAL_BACKFILL_ENABLE=false, SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true, SCALE_OUT_FINAL_TABLE_STATUS_DEBUG="
                         + finalTableStat + ")*/ ";
 
             }

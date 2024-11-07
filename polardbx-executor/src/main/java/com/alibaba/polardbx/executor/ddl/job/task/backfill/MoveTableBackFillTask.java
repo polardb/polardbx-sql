@@ -81,6 +81,7 @@ public class MoveTableBackFillTask extends BaseBackfillTask implements RemoteExe
         updateTaskStateInNewTxn(DdlTaskState.DIRTY);
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         executionContext.setSchemaName(schemaName);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);

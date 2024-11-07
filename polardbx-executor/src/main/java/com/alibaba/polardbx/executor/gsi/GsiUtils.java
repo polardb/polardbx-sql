@@ -19,20 +19,35 @@ package com.alibaba.polardbx.executor.gsi;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.twophase.DnStats;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillObjectRecord;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillRecord;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillStatus;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
+import com.alibaba.polardbx.gms.node.GmsNodeManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
+import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexColumnType;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexRecord;
@@ -44,6 +59,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
@@ -74,6 +90,10 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -87,6 +107,9 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -223,12 +246,17 @@ public class GsiUtils {
         return phyTableMapping;
     }
 
+    public static Map<String, Set<String>> getPhyTablesForBackFill(String schemaName, String logicalTableName) {
+        return getPhyTablesForBackFill(schemaName, logicalTableName, null);
+    }
+
     /**
      * return group and physical tables for one logical table.
      *
      * @return db: [tbs], db and tb are both sorted
      */
-    public static Map<String, Set<String>> getPhyTablesForBackFill(String schemaName, String logicalTableName) {
+    public static Map<String, Set<String>> getPhyTablesForBackFill(String schemaName, String logicalTableName,
+                                                                   List<String> partitionList) {
         PartitionInfo partitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
         if (partitionInfo == null) {
@@ -247,9 +275,13 @@ public class GsiUtils {
             }
         } else {
             Map<String, Set<String>> phyTables = new HashMap<>();
+            Set<String> partitionNames = new HashSet<>(Optional.ofNullable(partitionList).orElse(new ArrayList<>()));
             for (PartitionSpec spec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
                 PartitionLocation location = spec.getLocation();
-                phyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>()).add(location.getPhyTableName());
+                if (partitionNames.isEmpty() || partitionNames.contains(spec.getName())) {
+                    phyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>())
+                        .add(location.getPhyTableName());
+                }
                 if (partitionInfo.isGsiBroadcastOrBroadcast()) {
                     break;
                 }
@@ -979,9 +1011,11 @@ public class GsiUtils {
         return partitionPolicy;
     }
 
-    public static BackfillRecord buildBackfillRecord(long jobId, String schema, String tableName, String indexName) {
+    public static BackfillRecord buildBackfillRecord(long jobId, long taskId, String schema, String tableName,
+                                                     String indexName) {
         return new BackfillRecord(-1,
             jobId,
+            taskId,
             schema,
             tableName,
             schema,
@@ -994,12 +1028,14 @@ public class GsiUtils {
             "");
     }
 
-    public static BackfillObjectRecord buildBackfillObjectRecord(long jobId, String schema, String tableName,
+    public static BackfillObjectRecord buildBackfillObjectRecord(long jobId, long taskId, String schema,
+                                                                 String tableName,
                                                                  String indexName, String physicalDb,
                                                                  String physicalTable, long columnIndex,
                                                                  String extra) {
         return new BackfillObjectRecord(-1,
             jobId,
+            taskId,
             schema,
             tableName,
             schema,
@@ -1018,13 +1054,15 @@ public class GsiUtils {
             extra);
     }
 
-    public static BackfillObjectRecord buildBackfillObjectRecord(long jobId, String schema, String tableName,
+    public static BackfillObjectRecord buildBackfillObjectRecord(long jobId, long taskId, String schema,
+                                                                 String tableName,
                                                                  String indexName, String physicalDb,
                                                                  String physicalTable, long columnIndex,
                                                                  String paramMethod, String lastValue,
                                                                  String maxValue, String extra) {
         return new BackfillObjectRecord(-1,
             jobId,
+            taskId,
             schema,
             tableName,
             schema,
@@ -1051,6 +1089,47 @@ public class GsiUtils {
     public static <R> R wrapWithDistributedTrx(ITransactionManager tm, ExecutionContext baseEc,
                                                Function<ExecutionContext, R> call) {
         return wrapWithTransaction(tm, tm.getDefaultDistributedTrxPolicy(baseEc), baseEc, call);
+    }
+
+    public static IServerConfigManager getServerConfigManager() {
+        IServerConfigManager serverConfigManager = OptimizerHelper.getServerConfigManager();
+        if (serverConfigManager == null) {
+            serverConfigManager = new DefaultServerConfigManager(null);
+        }
+        return serverConfigManager;
+    }
+
+    public static <R> R wrapWithDistributedTrxForPkExtractor(ITransactionManager tm, ExecutionContext baseEc,
+                                                             IServerConfigManager serverMgr,
+                                                             Function<Pair<ExecutionContext, Connection>, R> caller) {
+        final ExecutionContext ec = baseEc.copy();
+        R result = null;
+        Object transConn = null;
+        String schemaName = ec.getSchemaName();
+        try {
+            transConn = serverMgr.getTransConnection(schemaName);
+            serverMgr.transConnectionBegin(transConn);
+            result = caller.apply(Pair.of(ec, (Connection) transConn));
+            serverMgr.transConnectionCommit(transConn);
+        } catch (SQLException ex) {
+            if (transConn != null) {
+                try {
+                    serverMgr.transConnectionRollback(transConn);
+                } catch (Throwable err) {
+                    // ignore
+                }
+            }
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, ex);
+        } finally {
+            if (null != transConn) {
+                try {
+                    serverMgr.closeTransConnection(transConn);
+                } catch (Throwable ex) {
+                    // ignore
+                }
+            }
+        }
+        return result;
     }
 
     public static <R> R wrapWithSingleDbTrx(ITransactionManager tm, ExecutionContext baseEc,
@@ -1088,8 +1167,12 @@ public class GsiUtils {
             ec.setTxId(0L);
 
             // Create new transaction
-            trx = tm.createTransaction(policy.getTransactionType(false, ec.isReadOnly()), ec);
+            trx = tm.createTransaction(policy.getTransactionType(false, ec.isReadOnly(), false, false), ec);
             ec.setTransaction(trx);
+            if (0 == trx.getStartTimeInMs()) {
+                trx.setStartTimeInMs(ec.getLogicalSqlStartTimeInMs());
+                trx.setStartTime(ec.getLogicalSqlStartTime());
+            }
 
             // Do something within transaction, eg.lock some row
             return caller.apply(ec);
@@ -1112,6 +1195,36 @@ public class GsiUtils {
             .collect(Collectors.joining(","));
     }
 
+    public static String rowToString(List<ParameterContext> row) {
+        return GeneralUtil.isEmpty(row) ? "" : row
+            .stream()
+            .sorted(Comparator.comparingLong(o -> Long.valueOf(o.getArgs()[0].toString())))
+            .map(o -> o.getValue() == null ? "null" : String.valueOf(o.getValue()))
+            .collect(Collectors.joining(","));
+    }
+
+//    public static String rowsToString(List<Map<Integer, ParameterContext>> rows) {
+//        if (rows.isEmpty()) {
+//            return "";
+//        } else {
+//            List<String> results = new ArrayList<>();
+//            for (Map<Integer, ParameterContext> row : rows) {
+//                if(row == null){
+//                    results.add("");
+//                    continue;
+//                }
+//                int size = row.size();
+//                List<Object> result = new ArrayList<>();
+//                for (Integer key: row.keySet()) {
+//                    result.add(row.get(key).getValue().toString());
+//                }
+//                results.add(StringUtils.join(result, "-").toString());
+//            }
+//            return StringUtils.join(results, ", ");
+//
+//        }
+//    }
+
     public static boolean vendorErrorIs(TddlNestableRuntimeException e, String sqlState, ErrorCode errCode) {
         return sqlState.equals(e.getSQLState()) && errCode.getCode() == e.getErrorCode();
     }
@@ -1123,14 +1236,22 @@ public class GsiUtils {
 
     public static <R> R retryOnException(Supplier<R> call, Function<TddlNestableRuntimeException, Boolean> errChecker,
                                          BiConsumer<TddlNestableRuntimeException, Integer> errConsumer) {
+        return retryOnException(call, errChecker, errConsumer, null);
+    }
+
+    public static <R> R retryOnException(Supplier<R> call, Function<TddlNestableRuntimeException, Boolean> errChecker,
+                                         BiConsumer<TddlNestableRuntimeException, Integer> errConsumer,
+                                         ExecutionContext ec) {
         int retryCount = 0;
+        String prefix =
+            (ec == null) ? "" : String.format("[%s][%s][%s] ", ec.getTraceId(), ec.getTaskId(), ec.getBackfillId());
         do {
             try {
                 return call.get();
             } catch (TddlNestableRuntimeException e) {
                 if (errChecker.apply(e)) {
                     SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
-                        "retryOnException()#retry with errorCode:{0}, errorMsg:{1}",
+                        prefix + "retryOnException()#retry with errorCode:{0}, errorMsg:{1}",
                         e.getErrorCode(),
                         e.getMessage()
                     ), e);
@@ -1138,7 +1259,7 @@ public class GsiUtils {
                     retryCount++;
                 } else {
                     SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
-                        "retryOnException#ignore with errorCode:{0}, errorMsg:{1}",
+                        prefix + "retryOnException#ignore with errorCode:{0}, errorMsg:{1}",
                         e.getErrorCode(),
                         e.getMessage()
                     ), e);
@@ -1178,5 +1299,30 @@ public class GsiUtils {
             result = addIndex.isColumnarIndex();
         }
         return result;
+    }
+
+    public static int getAvaliableNodeNum(String schemaName, String logicalTableName,
+                                          ExecutionContext executionContext){
+        int maxNodeNum = 1;
+        ParamManager paramManager = executionContext.getParamManager();
+        Boolean enableRemote = !paramManager.getBoolean(ConnectionParams.FORBID_REMOTE_DDL_TASK);
+        Boolean enableStandby = paramManager.getBoolean(ConnectionParams.ENABLE_STANDBY_BACKFILL);
+        if(enableRemote){
+            int masterNodeNum = GmsNodeManager.getInstance().getMasterNodes().size();
+            int standbyNodeNum = GmsNodeManager.getInstance().getStandbyNodes().size();
+            int cnNodeNum = masterNodeNum;
+            if(!enableStandby){
+                cnNodeNum = masterNodeNum - standbyNodeNum;
+            }
+            if(schemaName != null && logicalTableName != null) {
+                Map<String, String> sourceGroupDnMap =
+                    DnStats.buildGroupToDnMap(schemaName, logicalTableName, executionContext);
+                int dnNodeNum = sourceGroupDnMap.values().stream().collect(Collectors.toSet()).size();
+                maxNodeNum = Math.min(cnNodeNum, dnNodeNum);
+            }else{
+                maxNodeNum = cnNodeNum;
+            }
+        }
+        return maxNodeNum;
     }
 }

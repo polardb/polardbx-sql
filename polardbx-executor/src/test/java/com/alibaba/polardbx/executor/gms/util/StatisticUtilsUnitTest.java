@@ -3,27 +3,206 @@ package com.alibaba.polardbx.executor.gms.util;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.Field;
+import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.junit.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_HLL;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANCE_TIME_START;
+import static com.alibaba.polardbx.common.utils.Assert.assertTrue;
 import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.SELECT_TABLE_ROWS_SQL;
+import static com.alibaba.polardbx.executor.gms.util.StatisticUtils.getIndexInfoFromGsi;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author fangwu
  */
 public class StatisticUtilsUnitTest {
+    @Test
+    public void testSketchTableDdlNormal() {
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        // 测试用例1：当参数正确时，不抛出异常
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
+        ) {
+            OptimizerContext optimizerContext = mock(OptimizerContext.class);
+            SchemaManager schemaManager = mock(SchemaManager.class);
+            optimizerContextMockedStatic.when(() -> OptimizerContext.getContext("test_schema"))
+                .thenReturn(optimizerContext);
+            when(optimizerContext.getLatestSchemaManager()).thenReturn(schemaManager);
+            when(schemaManager.getTable("test_table")).thenReturn(mock(TableMeta.class));
+            globalIndexMetaMockedStatic.when(() -> GlobalIndexMeta.getTableIndexMap(any(), any()))
+                .thenReturn(Maps.newHashMap());
+            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
+        }
+    }
+
+    @Test
+    public void testSketchTableDdlFileStore() {
+        // 测试用例2：如果是文件存储表，则直接返回而不执行后续操作
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = Mockito.mockStatic(StatisticUtils.class);) {
+            OptimizerContext optimizerContext = mock(OptimizerContext.class);
+            SchemaManager schemaManager = mock(SchemaManager.class);
+            optimizerContextMockedStatic.when(() -> OptimizerContext.getContext("test_schema"))
+                .thenReturn(optimizerContext);
+            when(optimizerContext.getLatestSchemaManager()).thenReturn(schemaManager);
+            when(schemaManager.getTable("test_table")).thenReturn(mock(TableMeta.class));
+
+            globalIndexMetaMockedStatic.when(() -> GlobalIndexMeta.getTableIndexMap(any(), any()))
+                .thenReturn(Maps.newHashMap());
+
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.isFileStore(any(), any()))
+                .thenReturn(true);
+            statisticUtilsMockedStatic.when(
+                    () -> StatisticUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
+                .thenCallRealMethod();
+
+            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
+        }
+    }
+
+    @Test
+    public void testSketchTableDdl_JobInterrupted() {
+        // 测试用例3：如果DDL作业被取消，则抛出TddlRuntimeException
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = Mockito.mockStatic(StatisticUtils.class);
+            MockedStatic<CrossEngineValidator> crossEngineValidatorMockedStatic = Mockito.mockStatic(
+                CrossEngineValidator.class);
+        ) {
+            Map<String, java.util.Map<String, List<String>>> indexMap = Maps.newHashMap();
+            indexMap.put("test_schema", Maps.newHashMap());
+
+            OptimizerContext optimizerContext = mock(OptimizerContext.class);
+            SchemaManager schemaManager = mock(SchemaManager.class);
+            optimizerContextMockedStatic.when(() -> OptimizerContext.getContext("test_schema"))
+                .thenReturn(optimizerContext);
+            when(optimizerContext.getLatestSchemaManager()).thenReturn(schemaManager);
+
+            TableMeta tableMeta = mock(TableMeta.class);
+            when(schemaManager.getTable("test_table")).thenReturn(tableMeta);
+            IndexMeta uniqueIndex = createIndex(false);
+            List<IndexMeta> indexMetas = Lists.newArrayList();
+            indexMetas.add(uniqueIndex);
+            when(tableMeta.getAllIndexes()).thenReturn(indexMetas);
+
+            globalIndexMetaMockedStatic.when(() -> GlobalIndexMeta.getTableIndexMap(any(), any()))
+                .thenReturn(indexMap);
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.getIndexInfoFromGsi(any(), any(), any()))
+                .thenCallRealMethod();
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.getIndexInfoFromLocalIndex(any(), any(), any()))
+                .thenCallRealMethod();
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.isFileStore(any(), any()))
+                .thenReturn(false);
+            statisticUtilsMockedStatic.when(
+                    () -> StatisticUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
+                .thenCallRealMethod();
+            crossEngineValidatorMockedStatic.when(() -> CrossEngineValidator.isJobInterrupted(any()))
+                .thenReturn(true);
+
+            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, new ExecutionContext());
+            Assert.fail();
+        } catch (Exception e) {
+            assertTrue(e.getMessage().contains("4636"));
+        }
+    }
+
+    @Test
+    public void testSketchTableDdlRebuild() {
+        // 测试用例5：当需要强制重建时，调用rebuildShardParts方法
+        MetaDbInstConfigManager.setConfigFromMetaDb(false);
+        try (MockedStatic<OptimizerContext> optimizerContextMockedStatic = Mockito.mockStatic(OptimizerContext.class);
+            MockedStatic<GlobalIndexMeta> globalIndexMetaMockedStatic = Mockito.mockStatic(GlobalIndexMeta.class);
+            MockedStatic<StatisticUtils> statisticUtilsMockedStatic = Mockito.mockStatic(StatisticUtils.class);
+            MockedStatic<CrossEngineValidator> crossEngineValidatorMockedStatic = Mockito.mockStatic(
+                CrossEngineValidator.class);
+            MockedStatic<StatisticManager> statisticManagerMockedStatic = Mockito.mockStatic(StatisticManager.class);
+
+        ) {
+            Map<String, java.util.Map<String, List<String>>> indexMap = Maps.newHashMap();
+            indexMap.put("test_schema", Maps.newHashMap());
+            indexMap.get("test_schema").put("test_table", ImmutableList.of("test_col"));
+
+            OptimizerContext optimizerContext = mock(OptimizerContext.class);
+            SchemaManager schemaManager = mock(SchemaManager.class);
+            optimizerContextMockedStatic.when(() -> OptimizerContext.getContext("test_schema"))
+                .thenReturn(optimizerContext);
+            when(optimizerContext.getLatestSchemaManager()).thenReturn(schemaManager);
+            TableMeta tableMeta = mock(TableMeta.class);
+            when(schemaManager.getTable("test_table")).thenReturn(tableMeta);
+            IndexMeta uniqueIndex = createIndex(false);
+            List<IndexMeta> indexMetas = Lists.newArrayList();
+            indexMetas.add(uniqueIndex);
+            when(tableMeta.getAllIndexes()).thenReturn(indexMetas);
+
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.isFileStore(any(), any()))
+                .thenReturn(false);
+            statisticUtilsMockedStatic.when(
+                    () -> StatisticUtils.sketchTableDdl(any(), any(), Mockito.anyBoolean(), any()))
+                .thenCallRealMethod();
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.getIndexInfoFromGsi(any(), any(), any()))
+                .thenCallRealMethod();
+            statisticUtilsMockedStatic.when(() -> StatisticUtils.getIndexInfoFromLocalIndex(any(), any(), any()))
+                .thenCallRealMethod();
+            crossEngineValidatorMockedStatic.when(() -> CrossEngineValidator.isJobInterrupted(any()))
+                .thenReturn(false);
+
+            StatisticManager statisticManager = mock(StatisticManager.class);
+            statisticManagerMockedStatic.when(() -> StatisticManager.getInstance()).thenReturn(statisticManager);
+
+            ExecutionContext executionContext = new ExecutionContext();
+
+            StatisticUtils.sketchTableDdl("test_schema", "test_table", true, executionContext);
+
+            verify(statisticManager, times(2)).rebuildShardParts(any(), any(), any(), any(), any());
+            verify(statisticManager, times(0)).updateAllShardParts(any(), any(), any(), any(), any());
+
+            clearInvocations(statisticManager);
+
+            StatisticUtils.sketchTableDdl("test_schema", "test_table", false, executionContext);
+
+            verify(statisticManager, times(0)).rebuildShardParts(any(), any(), any(), any(), any());
+            verify(statisticManager, times(2)).updateAllShardParts(any(), any(), any(), any(), any());
+        }
+    }
 
     @Test
     public void testConstructScanSamplingSql() {
@@ -43,7 +222,7 @@ public class StatisticUtilsUnitTest {
                 + "select `col1`,`col2` from `testTable`";
 
         // 断言结果是否正确
-        Assert.assertTrue(sql.startsWith(expectedSqlStart));
+        assertTrue(sql.startsWith(expectedSqlStart));
 
     }
 
@@ -55,7 +234,7 @@ public class StatisticUtilsUnitTest {
             "select_base_four_multi_db_multi_tb_Nu9i_06"};
         String sql = StatisticUtils.buildCollectRowCountSql(Lists.newArrayList(tbls));
         System.out.println(sql);
-        Assert.assertTrue(
+        assertTrue(
             ("SELECT table_schema, table_name, table_rows FROM information_schema.tables "
                 + "WHERE TABLE_NAME IN ("
                 + "'select_base_four_multi_db_multi_tb_Nu9i_00',"
@@ -66,9 +245,9 @@ public class StatisticUtilsUnitTest {
                 .equals(sql));
 
         sql = StatisticUtils.buildCollectRowCountSql(null);
-        Assert.assertTrue(SELECT_TABLE_ROWS_SQL.equals(sql));
+        assertTrue(SELECT_TABLE_ROWS_SQL.equals(sql));
         sql = StatisticUtils.buildCollectRowCountSql(Collections.emptyList());
-        Assert.assertTrue(SELECT_TABLE_ROWS_SQL.equals(sql));
+        assertTrue(SELECT_TABLE_ROWS_SQL.equals(sql));
     }
 
     /**
@@ -82,32 +261,32 @@ public class StatisticUtilsUnitTest {
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap()
             .put("ENABLE_BACKGROUND_STATISTIC_COLLECTION", "false");
 
-        Assert.assertTrue(InstConfUtil.getBool(ENABLE_BACKGROUND_STATISTIC_COLLECTION) == false);
+        assertTrue(InstConfUtil.getBool(ENABLE_BACKGROUND_STATISTIC_COLLECTION) == false);
 
         Pair<Boolean, String> pair = ExecUtils.needSketchInterrupted();
 
-        Assert.assertTrue(pair.getKey());
+        assertTrue(pair.getKey());
 
-        Assert.assertTrue(pair.getValue().equals("ENABLE_BACKGROUND_STATISTIC_COLLECTION not enabled"));
+        assertTrue(pair.getValue().equals("ENABLE_BACKGROUND_STATISTIC_COLLECTION not enabled"));
 
         // revert ENABLE_BACKGROUND_STATISTIC_COLLECTION = true
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap()
             .put("ENABLE_BACKGROUND_STATISTIC_COLLECTION", "true");
-        Assert.assertTrue(InstConfUtil.getBool(ENABLE_BACKGROUND_STATISTIC_COLLECTION));
+        assertTrue(InstConfUtil.getBool(ENABLE_BACKGROUND_STATISTIC_COLLECTION));
 
         // Test  sketch interrupted by ENABLE_HLL=false
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("ENABLE_HLL", "false");
-        Assert.assertTrue(InstConfUtil.getBool(ENABLE_HLL) == false);
+        assertTrue(InstConfUtil.getBool(ENABLE_HLL) == false);
 
         pair = ExecUtils.needSketchInterrupted();
 
-        Assert.assertTrue(pair.getKey());
+        assertTrue(pair.getKey());
 
-        Assert.assertTrue(pair.getValue().equals("ENABLE_HLL not enabled"));
+        assertTrue(pair.getValue().equals("ENABLE_HLL not enabled"));
 
         // revert ENABLE_HLL = true
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("ENABLE_HLL", "true");
-        Assert.assertTrue(InstConfUtil.getBool(ENABLE_HLL));
+        assertTrue(InstConfUtil.getBool(ENABLE_HLL));
     }
 
     /**
@@ -119,53 +298,215 @@ public class StatisticUtilsUnitTest {
         Calendar calendar = Calendar.getInstance();
 
         calendar.set(Calendar.HOUR_OF_DAY, 1);
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 2);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 3);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 4);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 4);
         calendar.set(Calendar.MINUTE, 40);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 5);
         calendar.set(Calendar.MINUTE, 1);
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         // mock error config for MAINTENANCE_TIME_START / MAINTENANCE_TIME_END
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("MAINTENANCE_TIME_START", "xx");
-        Assert.assertTrue(InstConfUtil.getOriginVal(MAINTENANCE_TIME_START).equals("xx"));
+        assertTrue(InstConfUtil.getOriginVal(MAINTENANCE_TIME_START).equals("xx"));
 
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().remove("MAINTENANCE_TIME_START");
-        Assert.assertTrue(InstConfUtil.getOriginVal(MAINTENANCE_TIME_START).equals("02:00"));
+        assertTrue(InstConfUtil.getOriginVal(MAINTENANCE_TIME_START).equals("02:00"));
 
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("MAINTENANCE_TIME_START", "23:00");
         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().put("MAINTENANCE_TIME_END", "03:00");
         calendar.set(Calendar.HOUR_OF_DAY, 1);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 0);
-        Assert.assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
 
         calendar.set(Calendar.HOUR_OF_DAY, 4);
-        Assert.assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
+        assertTrue(!InstConfUtil.isInMaintenanceTimeWindow(calendar, ConnectionParams.MAINTENANCE_TIME_START,
             ConnectionParams.MAINTENANCE_TIME_END));
     }
+
+    /**
+     * 空的gsiPublished集合
+     */
+    @Test
+    public void testGetIndexInfoFromGsiWithEmptyGsiPublished() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+        getIndexInfoFromGsi(mockTableMeta, colDoneSet, indexColsMap);
+        assertTrue(indexColsMap.isEmpty(), "当没有GSI时，索引列映射应该是空的");
+    }
+
+    /**
+     * 包含非唯一索引的gsiPublished集合
+     */
+    @Test
+    public void testGetIndexInfoFromGsiWithNonUniqueGsi() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+
+        // 假设有一个非唯一的GSI
+        List<GsiMetaManager.GsiIndexColumnMetaBean> columns = Arrays.asList(
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnA", "", -1L, null, null, null, false),
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnB", "", -1L, null, null, null, false)
+        );
+        GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = new GsiMetaManager.GsiIndexMetaBean(null, null, null, true,
+            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null);
+        Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = new HashMap<>();
+        gsiPublished.put("index1", gsiIndexMetaBean);
+        when(mockTableMeta.getGsiPublished()).thenReturn(gsiPublished);
+
+        getIndexInfoFromGsi(mockTableMeta, colDoneSet, indexColsMap);
+
+        assertEquals("应该有两个索引列被加入到集合中", 2, indexColsMap.get("index1").size());
+    }
+
+    /**
+     * 包含唯一索引的gsiPublished集合
+     */
+    @Test
+    public void testGetIndexInfoFromGsiWithUniqueGsi() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+
+        // 假设有一个非唯一的GSI
+        List<GsiMetaManager.GsiIndexColumnMetaBean> columns = Arrays.asList(
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnA", "", -1L, null, null, null, false),
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnB", "", -1L, null, null, null, false),
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnC", "", -1L, null, null, null, false)
+        );
+        GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = new GsiMetaManager.GsiIndexMetaBean(null, null, null, false,
+            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null);
+        Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = new HashMap<>();
+        gsiPublished.put("index1", gsiIndexMetaBean);
+        when(mockTableMeta.getGsiPublished()).thenReturn(gsiPublished);
+
+        getIndexInfoFromGsi(mockTableMeta, colDoneSet, indexColsMap);
+
+        assertEquals("应该有一个索引被加入到集合中", 1, indexColsMap.size());
+        assertEquals("应该有两个索引列被加入到集合中", 2, indexColsMap.values().iterator().next().size());
+    }
+
+    /**
+     * 已经存在的索引名称
+     */
+    @Test
+    public void testGetIndexInfoFromGsiWithExistingIndexName() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+
+        List<GsiMetaManager.GsiIndexColumnMetaBean> columns = Arrays.asList(
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnA", "", -1L, null, null, null, true),
+            new GsiMetaManager.GsiIndexColumnMetaBean(-1, "columnB", "", -1L, null, null, null, true)
+        );
+        GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean = new GsiMetaManager.GsiIndexMetaBean(null, null, null, true,
+            null, null, columns, null, null, null, null, null, null, null, -1L, false, false, null);
+        // 假设有两个相同的非唯一GSI
+        Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = new HashMap<>();
+        gsiPublished.put("index1", gsiIndexMetaBean);
+        gsiPublished.put("index1", gsiIndexMetaBean); // 同样的名字
+        when(mockTableMeta.getGsiPublished()).thenReturn(gsiPublished);
+
+        getIndexInfoFromGsi(mockTableMeta, colDoneSet, indexColsMap);
+        assertEquals("即使存在多个同名索引，也应该只记录一次", 2, indexColsMap.get("index1").size());
+        assertEquals("即使存在多个同名索引，也应该只记录一次", 1, indexColsMap.size());
+    }
+
+    /**
+     * 空的tableMeta, 当传入空的tableMeta时，应该没有任何改变。
+     */
+    @Test
+    public void testGetIndexInfoFromLocalIndexWithEmptyTableMeta() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+
+        when(mockTableMeta.getAllIndexes()).thenReturn(Collections.emptyList());
+
+        StatisticUtils.getIndexInfoFromLocalIndex(mockTableMeta, colDoneSet, indexColsMap);
+
+        assertEquals(0, indexColsMap.size());
+        assertEquals(0, colDoneSet.size());
+    }
+
+    /**
+     * 包含唯一索引的tableMeta
+     * 唯一索引不应该被处理。
+     */
+    @Test
+    public void testGetIndexInfoFromLocalIndexWithUniqueIndex() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+
+        IndexMeta uniqueIndex = createIndex(true); // 创建唯一的索引
+        List<IndexMeta> indexMetas = Lists.newArrayList();
+        indexMetas.add(uniqueIndex);
+        when(mockTableMeta.getAllIndexes()).thenReturn(indexMetas);
+
+        StatisticUtils.getIndexInfoFromLocalIndex(mockTableMeta, colDoneSet, indexColsMap);
+
+        assertEquals(1, indexColsMap.size());
+        assertEquals(1, colDoneSet.size());
+    }
+
+    /**
+     * 正常情况下的非唯一索引
+     * 应当正确填充indexColsMap并更新colDoneSet。
+     */
+    @Test
+    public void testGetIndexInfoFromLocalIndexWithNonUniqueIndex() {
+        TableMeta mockTableMeta = mock(TableMeta.class);
+        Set<String> colDoneSet = new HashSet<>();
+        Map<String, Set<String>> indexColsMap = new HashMap<>();
+
+        IndexMeta nonUniqueIndex = createIndex(false); // 创建非唯一的索引
+        List<IndexMeta> indexMetas = Lists.newArrayList();
+        indexMetas.add(nonUniqueIndex);
+        when(mockTableMeta.getAllIndexes()).thenReturn(indexMetas);
+
+        StatisticUtils.getIndexInfoFromLocalIndex(mockTableMeta, colDoneSet, indexColsMap);
+
+        assertEquals(1, indexColsMap.size());
+        assertTrue(indexColsMap.containsKey("idx1"));
+        assertEquals(2, colDoneSet.size());
+        assertTrue(colDoneSet.contains("c1"));
+        assertTrue(colDoneSet.contains("c1,c2"));
+    }
+
+    private IndexMeta createIndex(boolean isUnique) {
+        List<ColumnMeta> columns = Arrays.asList(
+            new ColumnMeta(null, "c1", null, mock(Field.class)),
+            new ColumnMeta(null, "c2", null, mock(Field.class))
+        );
+        return new IndexMeta("t1", columns, columns, null, null, false, false, isUnique, "idx1");
+    }
+
 }

@@ -17,9 +17,13 @@
 package com.alibaba.polardbx.gms.engine;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.oss.ColumnarFileType;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.FSOSSInputStream;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
+import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystemStore;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -31,9 +35,10 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.Seekable;
+import org.apache.hadoop.fs.PositionedReadable;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,7 +48,6 @@ import java.util.Map;
 import java.util.Optional;
 
 public class FileSystemUtils {
-
     public static final String DELIMITER = "/";
     private static final File LOCAL_DIRECTORY = new File("/tmp/");
 
@@ -120,6 +124,7 @@ public class FileSystemUtils {
     public static byte[] readFullyFile(String fileName, Engine engine, boolean isColumnar) {
         FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
         try (InputStream in = fileSystem.open(buildPath(fileSystem, fileName, isColumnar))) {
+            // TODO(siyun): migrate to use cached file system
             return IOUtils.toByteArray(in);
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
@@ -133,8 +138,36 @@ public class FileSystemUtils {
                                 boolean isColumnar) {
         FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
         try (InputStream in = fileSystem.open(buildPath(fileSystem, fileName, isColumnar))) {
-            ((Seekable) in).seek(offset);
-            IOUtils.read(in, output, 0, length);
+            ((PositionedReadable) in).readFully(offset, output, 0, length);
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public static FSDataInputStream openStreamFileWithBuffer(String fileName, Engine engine, boolean isColumnar) {
+        FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
+        Path filePath = buildPath(fileSystem, fileName, isColumnar);
+        try {
+            if (engine == Engine.OSS) {
+                // This will bypass cache filesystem for OSS
+                OSSFileSystem ossFileSystem = (OSSFileSystem) ((CachingFileSystem) fileSystem).getDataTier();
+                OSSFileSystemStore ossFileSystemStore = ossFileSystem.getStore();
+                String ossKeyPath = ossFileSystem.pathToKey(filePath);
+                return new FSDataInputStream(new FSOSSInputStream(ossFileSystemStore, ossKeyPath,
+                    DynamicConfig.getInstance().getOssStreamBufferSize()));
+            } else {
+                return fileSystem.open(filePath);
+            }
+        } catch (IOException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public static FSDataInputStream openStreamFile(String fileName, Engine engine, boolean isColumnar) {
+        FileSystem fileSystem = FileSystemManager.getFileSystemGroup(engine).getMaster();
+        Path filePath = buildPath(fileSystem, fileName, isColumnar);
+        try {
+            return fileSystem.open(filePath);
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
         }
@@ -166,6 +199,15 @@ public class FileSystemUtils {
 
     private static String getColdDataDirectory() {
         return ServerInstIdManager.getInstance().getMasterInstId();
+    }
+
+    public static String getSuffix(String fileName) {
+        return fileName.substring(fileName.lastIndexOf('.') + 1);
+    }
+
+    public static ColumnarFileType getFileType(String fileName) {
+        String suffix = getSuffix(fileName);
+        return ColumnarFileType.of(suffix);
     }
 
     public static GuavaFileSystemRateLimiter newRateLimiter() {

@@ -25,7 +25,9 @@ import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateType;
+import com.alibaba.polardbx.optimizer.core.datatype.DoubleType;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import io.airlift.slice.Slice;
 import org.apache.orc.impl.TypeUtils;
 
@@ -74,9 +76,9 @@ public abstract class BlockBuilders {
         } else if (clazz == Byte.class) {
             return new ByteBlockBuilder(initialCapacity);
         } else if (clazz == Double.class) {
-            return new DoubleBlockBuilder(initialCapacity);
+            return new DoubleBlockBuilder(initialCapacity, type.getScale());
         } else if (clazz == Float.class) {
-            return new FloatBlockBuilder(initialCapacity);
+            return new FloatBlockBuilder(initialCapacity, type.getScale());
         } else if (clazz == String.class) {
             return new StringBlockBuilder(type, initialCapacity, EXPECTED_STRING_LEN);
         } else if (clazz == Enum.class) {
@@ -155,7 +157,7 @@ public abstract class BlockBuilders {
         case MYSQL_TYPE_FLOAT:
         case MYSQL_TYPE_DOUBLE: {
             // Double block builder.
-            return new DoubleBlockBuilder(initialCapacity);
+            return new DoubleBlockBuilder(initialCapacity, type.getScale());
         }
         case MYSQL_TYPE_DECIMAL:
         case MYSQL_TYPE_NEWDECIMAL: {

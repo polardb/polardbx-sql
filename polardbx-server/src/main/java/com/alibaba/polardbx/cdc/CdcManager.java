@@ -67,6 +67,7 @@ import com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
 import com.alibaba.polardbx.gms.partition.TablePartitionConfigUtil;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
@@ -136,6 +137,7 @@ import static com.alibaba.polardbx.common.cdc.ICdcManager.InstructionType.Storag
 import static com.alibaba.polardbx.executor.ddl.ImplicitTableGroupUtil.tryAttachImplicitTableGroup;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_FAILURE_TO_CDC_AFTER_ADD_NEW_GROUP;
+import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_OVERRIDE_NOW;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.INITIAL;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.READY;
 import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.SUCCESS;
@@ -305,11 +307,17 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         Map<String, Object> extendParams = cdcDDLContext.getExtendParams();
 
         // 对于if not exists 和 if exists，外部没有对长度进行判断，此处进行判断
-        checkLength(schemaName, tableName);
+        if (!cdcDDLContext.isSequenceDdl()) {
+            checkLength(schemaName, tableName);
+        }
 
         boolean isGSI = isDdlOnGsi(cdcDDLContext, extendParams);
 
         extendParams.put(CDC_IS_GSI, isGSI);
+
+        boolean isCCI = isDdlOnCci(cdcDDLContext, extendParams);
+
+        extendParams.put(CDC_IS_CCI, isCCI);
 
         // check if ignore
         if (!checkDdl(schemaName, ddlSql, cdcDDLContext, extendParams)) {
@@ -323,6 +331,9 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
 
         checkSleep(extendParams);
 
+        final boolean recordCommitTso = extendParams.containsKey(CDC_MARK_RECORD_COMMIT_TSO) &&
+            Boolean.parseBoolean(extendParams.get(CDC_MARK_RECORD_COMMIT_TSO).toString());
+
         Future<?> future = managerCoreExecutor.submit(() -> {
             CdcManager.this.checkState();
             synchronized (CdcManager.this) {
@@ -331,7 +342,7 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
                     if (Thread.interrupted()) {
                         throw new RuntimeException("cdc ddl mark is interrupted");
                     }
-                    try (Connection connection = prepareConnection()) {
+                    try (Connection connection = prepareConnection(recordCommitTso)) {
                         // 虽然checkStorageChangeExecutor可以定时扫描Storage的变化，但这是一个异步操作，一旦Storage插入Storage_info表之后，就会
                         // 立即生效，所以，在checkStorageChangeExecutor扫描到变化之前，在新的Storage上可能已经发生了逻辑ddl和dml操作，所以这里加入
                         // 一个Barrier，每次ddl打标前，调用一下checkStorageChange方法，保证下游先收到storage的变化，再收到新的逻辑Schema变化
@@ -500,8 +511,24 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         return CBOUtil.isGsi(schemaName, tableName);
     }
 
+    public boolean isDdlOnCci(CdcDDLContext cdcDDLContext, Map<String, Object> extendParams) {
+        Boolean isCci = (Boolean) extendParams.get(ICdcManager.CDC_IS_CCI);
+        if (isCci != null && isCci) {
+            return true;
+        }
+        String schemaName = cdcDDLContext.getSchemaName();
+        String tableName = cdcDDLContext.getTableName();
+        TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
+        TablesExtAccessor tablesExtAccessor = new TablesExtAccessor();
+        return CBOUtil.isCci(schemaName, tableName, tablePartitionAccessor, tablesExtAccessor);
+    }
+
     private Connection prepareConnection() throws SQLException {
-        return new InnerConnection(SystemDbHelper.CDC_DB_NAME);
+        return prepareConnection(false);
+    }
+
+    private Connection prepareConnection(boolean recordCommitTso) throws SQLException {
+        return new InnerConnection(SystemDbHelper.CDC_DB_NAME, recordCommitTso);
     }
 
     private List<CdcDdlRecord> queryDdl(Connection connection, CdcDDLContext context) throws SQLException {
@@ -519,10 +546,10 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
             context.getJobId());
     }
 
-    private void recordDdl(Connection connection, String schema, String tableName, String sqlKind, String ddlSql,
-                           CdcDDLContext cdcDDLContext,
-                           CdcDdlMarkVisibility visibility,
-                           Map<String, Object> extendParams)
+    public void recordDdl(Connection connection, String schema, String tableName, String sqlKind, String ddlSql,
+                          CdcDDLContext cdcDDLContext,
+                          CdcDdlMarkVisibility visibility,
+                          Map<String, Object> extendParams)
         throws SQLException {
         if (cdcDDLContext.getJobId() != null) {
             // 如果job不为空，则需要进行幂等判断，防止重复执行
@@ -543,6 +570,28 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
             logger.warn("insert ddl record for job_id " + getJobId(cdcDDLContext));
         }
 
+        DDLExtInfo extInfo = buildExtInfo(schema, tableName, ddlSql, cdcDDLContext, extendParams);
+
+        boolean recordCommitTso = false;
+        if (extendParams.containsKey(CDC_MARK_RECORD_COMMIT_TSO)) {
+            recordCommitTso = Boolean.parseBoolean(extendParams.get(CDC_MARK_RECORD_COMMIT_TSO).toString());
+        }
+        long commitTso = doFinalMark(connection, getJobId(cdcDDLContext), sqlKind, schema, tableName, ddlSql,
+            buildMetaInfo(cdcDDLContext.isRefreshTableMetaInfo(),
+                schema,
+                tableName,
+                sqlKind,
+                extendParams,
+                cdcDDLContext.getNewTableTopology(),
+                cdcDDLContext.getTablesExtInfoPair()),
+            visibility,
+            JSONObject.toJSONString(extInfo), recordCommitTso);
+        cdcDDLContext.setCommitTso(commitTso);
+    }
+
+    public DDLExtInfo buildExtInfo(String schema, String tableName, String ddlSql, CdcDDLContext cdcDDLContext,
+                                   Map<String, Object> extendParams)
+        throws SQLException {
         DDLExtInfo extInfo = new DDLExtInfo();
         extInfo.setTaskId(cdcDDLContext.getTaskId());
         extInfo.setCreateSql4PhyTable(tryBuildCreateSql4PhyTable(schema, tableName, extendParams, cdcDDLContext));
@@ -560,12 +609,12 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
         }
         if (extendParams.containsKey(CDC_ORIGINAL_DDL)) {
             extInfo.setOriginalDdl(extendParams.get(CDC_ORIGINAL_DDL).toString());
-            if (StringUtils.isNotBlank(extInfo.getOriginalDdl())) {
-                checkToString(extInfo.getOriginalDdl());
-            }
         }
         if (extendParams.containsKey(CDC_IS_GSI)) {
             extInfo.setGsi((Boolean) extendParams.get(CDC_IS_GSI));
+        }
+        if (extendParams.containsKey(CDC_IS_CCI)) {
+            extInfo.setCci((Boolean) extendParams.get(CDC_IS_CCI));
         }
         if (extendParams.containsKey(CDC_GROUP_NAME)) {
             extInfo.setGroupName(extendParams.get(CDC_GROUP_NAME).toString());
@@ -600,30 +649,47 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
             extInfo.setDdlScope(((DdlScope) extendParams.get(CDC_DDL_SCOPE)).getValue());
         }
 
+        if (extendParams.containsKey(FP_OVERRIDE_NOW)) {
+            extInfo.addPolarxVariable(FP_OVERRIDE_NOW, extendParams.get(FP_OVERRIDE_NOW).toString());
+        }
+
+        if (extendParams.containsKey(FP_OVERRIDE_NOW)) {
+            extInfo.addPolarxVariable(FP_OVERRIDE_NOW, extendParams.get(FP_OVERRIDE_NOW).toString());
+        }
+
         tryAttachImplicitTableGroupInfo(schema, tableName, ddlSql, extInfo, extendParams);
-        doFinalMark(connection, getJobId(cdcDDLContext), sqlKind, schema, tableName, ddlSql,
-            buildMetaInfo(cdcDDLContext.isRefreshTableMetaInfo(),
-                schema,
-                tableName,
-                sqlKind,
-                extendParams,
-                cdcDDLContext.getNewTableTopology(),
-                cdcDDLContext.getTablesExtInfoPair()),
-            visibility,
-            JSONObject.toJSONString(extInfo));
+        if (StringUtils.isNotBlank(extInfo.getOriginalDdl())) {
+            checkToString(extInfo.getOriginalDdl());
+        }
+
+        return extInfo;
     }
 
-    private void doFinalMark(Connection connection, Long jobId, String sqlKind, String schema, String tableName,
-                             String ddlSql, String metaInfo, CdcDdlMarkVisibility visibility, String ext) {
+    /**
+     * @param recordCommitTso 是否需要记录commitTso
+     * @return 返回commitTso
+     */
+    private long doFinalMark(Connection connection, Long jobId, String sqlKind, String schema, String tableName,
+                             String ddlSql, String metaInfo, CdcDdlMarkVisibility visibility, String ext,
+                             boolean recordCommitTso) {
+        long commitTso = -1L;
         CdcDdlMarkSyncAction syncAction = new CdcDdlMarkSyncAction(
-            jobId, sqlKind, schema, tableName, ddlSql, metaInfo, visibility, ext);
-        if (ExecUtils.hasLeadership(null)) {
-            syncAction.doSync(connection);
+            jobId, sqlKind, schema, tableName, ddlSql, metaInfo, visibility, ext, recordCommitTso);
+        //需要记录commitTso的，也不用sync到主节点进行执行。
+        if (ExecUtils.hasLeadership(null) || recordCommitTso) {
+            commitTso = syncAction.doSync(connection);
         } else {
             boolean success = false;
             try {
                 String leaderKey = ExecUtils.getLeaderKey(null);
-                SyncManagerHelper.sync(syncAction, SystemDbHelper.CDC_DB_NAME, leaderKey);
+                List<Map<String, Object>> result =
+                    SyncManagerHelper.sync(syncAction, SystemDbHelper.CDC_DB_NAME, leaderKey);
+                if (result != null && result.size() > 0) {
+                    Object object = result.get(0).get("COMMIT_TSO");
+                    if (object != null) {
+                        commitTso = (Long) object;
+                    }
+                }
                 success = true;
             } catch (Throwable e) {
                 logger.error(
@@ -632,9 +698,10 @@ public class CdcManager extends AbstractLifecycle implements ICdcManager {
             }
 
             if (!success) {
-                syncAction.doSync(connection);
+                commitTso = syncAction.doSync(connection);
             }
         }
+        return commitTso;
     }
 
     private void tryAttachImplicitTableGroupInfo(String schema, String tableName, String ddlSql,

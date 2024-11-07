@@ -18,8 +18,6 @@ package com.alibaba.polardbx.executor.scaleout.fastchecker;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -77,7 +75,7 @@ public class MoveTableFastChecker extends FastChecker {
             tableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
 
         // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!!!
-        final List<String> pks = FastChecker.getorderedPrimaryKeys(tableMeta);
+        final List<String> pks = FastChecker.getOrderedPrimaryKeys(tableMeta);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 

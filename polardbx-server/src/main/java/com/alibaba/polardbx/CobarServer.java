@@ -17,6 +17,7 @@
 package com.alibaba.polardbx;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -151,6 +152,19 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
     protected String rpcPort;
 
     private CobarServer() {
+        if (ConfigDataMode.isMock()) {
+            // For UT only.
+            this.config = null;
+            this.scheduler = null;
+            this.syncExecutor = null;
+            this.managerExecutor = null;
+            this.killExecutor = null;
+            this.timerTaskExecutor = null;
+            this.serverExecutor = null;
+            this.isOnline = null;
+            this.forceOffline = null;
+            return;
+        }
         this.config = new CobarConfig();
         SystemConfig system = config.getSystem();
         checkSslEnable(system);
@@ -263,25 +277,43 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         }
     }
 
-    private static void tryInitServerVariables() throws SQLException {
+    protected static void tryInitServerVariables() throws SQLException {
         // If this is a new instance, not an upgraded one, set some aggressive variables for it.
         if (isNewInstance()) {
-            Properties properties = new Properties();
+            // For CN:
+            Properties cnProperties = new Properties();
             // Enable A/B table mechanism for trx log table.
-            properties.setProperty(ConnectionProperties.TRX_LOG_METHOD, String.valueOf(1));
+            cnProperties.setProperty(ConnectionProperties.TRX_LOG_METHOD, String.valueOf(1));
             // Enable auto-commit-tso trx by default.
-            properties.setProperty(ConnectionProperties.ENABLE_AUTO_COMMIT_TSO, "true");
+            cnProperties.setProperty(ConnectionProperties.ENABLE_AUTO_COMMIT_TSO, "true");
             // Ignore setting NO_TRANSACTION.
-            properties.setProperty(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION, "true");
+            cnProperties.setProperty(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION, "true");
+            // Collect accurate information_schema.tables statistics.
+            cnProperties.setProperty(ConnectionProperties.ENABLE_ACCURATE_INFO_SCHEMA_TABLES, "true");
+            cnProperties.setProperty(ConnectionProperties.ENABLE_INFO_SCHEMA_TABLES_STAT_COLLECTION, "true");
+            // Enable auto force index
+            cnProperties.setProperty(ConnectionProperties.ENABLE_AUTO_FORCE_INDEX, "true");
+            cnProperties.setProperty(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION, "true");
+            // Disable full table scan for duplicate check of upsert on table without UGSI
+            cnProperties.setProperty(ConnectionProperties.DML_GET_DUP_FOR_LOCAL_UK_WITH_FULL_TABLE_SCAN, "false");
+
+            //忽略事务情况下，DML串行执行
+            cnProperties.setProperty(ConnectionProperties.ENABLE_DML_GROUP_CONCURRENT_IN_TRANSACTION, "true");
 
             //Disable udf
-            properties.setProperty(TddlConstants.ENABLE_JAVA_UDF, "false");
+            cnProperties.setProperty(TddlConstants.ENABLE_JAVA_UDF, "false");
+
+
+            // enable strict set global
+            cnProperties.setProperty(TddlConstants.ENABLE_STRICT_SET_GLOBAL, "true");
 
             // Update inst config using insert ignore.
             try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
-                InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
-                instConfigAccessor.setConnection(metaDbConn);
-                instConfigAccessor.addInstConfigs(InstIdUtil.getInstId(), properties, true);
+                if (!cnProperties.isEmpty()) {
+                    InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
+                    instConfigAccessor.setConnection(metaDbConn);
+                    instConfigAccessor.addInstConfigs(InstIdUtil.getInstId(), cnProperties, true);
+                }
             } catch (Throwable t) {
                 logger.error("Try init server variables failed.", t);
             }
@@ -323,7 +355,7 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
         return "on".equalsIgnoreCase(paramValue) || "true".equalsIgnoreCase(paramValue);
     }
 
-    private static boolean isNewInstance() {
+    protected static boolean isNewInstance() {
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             InstConfigAccessor instConfigAccessor = new InstConfigAccessor();
             instConfigAccessor.setConnection(metaDbConn);

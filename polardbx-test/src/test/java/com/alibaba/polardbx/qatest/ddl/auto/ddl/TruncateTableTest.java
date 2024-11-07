@@ -20,6 +20,7 @@ import com.alibaba.polardbx.gms.metadb.limit.Limits;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestUtils;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
@@ -69,7 +70,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     public void testTruncateBroadCastTable() {
         String tableName = schemaPrefix + testTableName + "_1";
         dropTableIfExists(tableName);
-        String sql = "create table " + tableName + "(id int, name varchar(20))broadcast";
+        String sql = "create table " + tableName + "(id int primary key auto_increment, name varchar(20))broadcast";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
@@ -80,9 +81,12 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
 //        Assert.assertEquals(getNodeNum(tddlConnection), getExplainNum(sql));
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
-        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        sql = "insert into " + tableName + " (id, name) values (null, \"tom\"), (null, \"simi\") ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        Assert.assertTrue(ImmutableList.of(1, 2).equals(nums));
+
         dropTableIfExists(tableName);
     }
 
@@ -93,7 +97,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
     public void testTruncateSingleTable() {
         String tableName = schemaPrefix + testTableName + "_2";
         dropTableIfExists(tableName);
-        String sql = "create table " + tableName + " (id int, name varchar(20))";
+        String sql = "create table " + tableName + " (id int primary key auto_increment, name varchar(20))";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
@@ -104,9 +108,12 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        sql = "insert into " + tableName + " (id, name) values (null, \"tom\"), (null, \"simi\") ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        Assert.assertTrue(ImmutableList.of(1, 2).equals(nums));
 
         dropTableIfExists(tableName);
 
@@ -122,7 +129,8 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         assertNotExistsTable(tableName, tddlConnection);
 
-        sql = "create table " + tableName + " (id int, name varchar(20)) partition by hash (id)";
+        sql = "create table " + tableName
+            + " (id int primary key auto_increment, name varchar(20)) partition by hash (id)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
@@ -133,9 +141,12 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(0, getDataNumFromTable(tddlConnection, tableName));
 
-        sql = "insert into " + tableName + " (id, name) values (1, \"tom\"), (2, \"simi\") ";
+        sql = "insert into " + tableName + " (id, name) values (null, \"tom\"), (null, \"simi\") ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(2, getDataNumFromTable(tddlConnection, tableName));
+
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        Assert.assertTrue(ImmutableList.of(1, 2).equals(nums));
 
         dropTableIfExists(tableName);
     }
@@ -186,7 +197,7 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         dropTableIfExists(indexTableName4);
 
         String sql = "create table " + tableName
-            + " (id int primary key, "
+            + " (id int primary key auto_increment by new, "
             + "name varchar(20), "
             + "global index " + indexTableName1 + " (name) partition by hash(name),"
             + "global unique index " + indexTableName2 + " (name) partition by hash(name),"
@@ -215,10 +226,13 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName4));
 
         sql = "insert into " + tableName
-            + " (id, name) values (1, \"a\"), (2, \"b\") , (3, \"c\"), (4, \"d\"), (5, \"e\"), (6, \"f\"), (7, \"g\"), (8, \"h\")";
+            + " (id, name) values (null, \"a\"), (null, \"b\") , (null, \"c\"), (null, \"d\"), (null, \"e\"), (null, \"f\"), (null, \"g\"), (null, \"h\")";
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(8, getDataNumFromTable(tddlConnection, tableName));
+        List<Integer> nums = getAllDataNumFromTable(tddlConnection, tableName, "id");
+        Assert.assertTrue(ImmutableList.of(1, 2, 3, 4, 5, 6, 7, 8).equals(nums));
+
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName1));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName2));
         checkGsi(tddlConnection, getRealGsiName(tddlConnection, tableName, indexTableName3));

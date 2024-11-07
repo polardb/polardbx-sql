@@ -50,3 +50,11 @@ test_compound_key:
   PRIMARY KEY (`id`),
   KEY `auto_shard_key_ID` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`NAME`) tbpartitions 2;
+
+test_force_gsi:
+  CREATE TABLE `test_force_gsi` (
+  `id` bigint(20) NOT NULL,
+  `name` bigint(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  GLOBAL INDEX `g_idx_name` (`name`) dbpartition by hash(`NAME`) tbpartition by hash(`NAME`) tbpartitions 2
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`NAME`) tbpartitions 2;

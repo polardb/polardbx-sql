@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -38,6 +37,7 @@ import com.alibaba.polardbx.executor.sync.BaselineInvalidateSchemaSyncAction;
 import com.alibaba.polardbx.executor.sync.DropDbRelatedProcedureSyncAction;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
@@ -106,6 +106,7 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         dropDbInfo.setTs(ts);
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         dropDbInfo.setSocketTimeout(socketTimeout == null ? -1 : socketTimeout);
+        dropDbInfo.setVersionId(DdlUtils.generateVersionId(executionContext));
 
         DbTopologyManager.dropLogicalDb(dropDbInfo);
         CdcManagerHelper.getInstance()

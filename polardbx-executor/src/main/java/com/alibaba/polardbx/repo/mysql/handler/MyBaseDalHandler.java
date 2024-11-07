@@ -16,19 +16,32 @@
 
 package com.alibaba.polardbx.repo.mysql.handler;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.model.Group.GroupType;
+import com.alibaba.polardbx.common.privilege.MySQLPrivilegesName;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.BaseDalHandler;
+import com.alibaba.polardbx.executor.handler.subhandler.InformationSchemaCollationsHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
+import com.alibaba.polardbx.gms.metadb.table.DBStatusRecord;
+import com.alibaba.polardbx.gms.metadb.table.EnginesRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -51,7 +64,6 @@ import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyQueryCursor;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
-import groovy.sql.Sql;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -59,7 +71,10 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShow;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -81,6 +96,14 @@ public class MyBaseDalHandler extends BaseDalHandler {
         // but if user expect execute it on slave we should not change it to master.
         if (!executionContext.getExtraCmds().containsKey(ConnectionProperties.SLAVE)) {
             executionContext.getExtraCmds().put(ConnectionProperties.MASTER, true);
+        }
+        if (ConfigDataMode.isColumnarMode() || executionContext.getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_LOGICAL_TABLE_META)) {
+            Cursor cursor = handleInColumnarMode(logicalPlan, executionContext);
+//            if cursor == null, use the original path
+            if (cursor != null) {
+                return cursor;
+            }
         }
 
         IRepository myRepo = handleForShow(dal, executionContext);
@@ -129,6 +152,202 @@ public class MyBaseDalHandler extends BaseDalHandler {
         }
 
         return buildMultiCursor(executionContext, dal);
+    }
+
+    private Cursor handleInColumnarMode(RelNode logicalPlan, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+
+        if (dal.getKind() == SqlKind.SHOW && dal.getNativeSqlNode() instanceof SqlShow) {
+            if (TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW COLUMNS") ||
+                TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW FULL COLUMNS")) {
+                return handleShowColumnInColumnarMode(logicalPlan, ec);
+            } else if (TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW COLLATION")) {
+                return handleShowCollationInColumnarMode(logicalPlan, ec);
+            } else if (TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW CHARACTER SET")) {
+                return handleShowCharacterSetInColumnarMode(logicalPlan, ec);
+            } else if (TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW PRIVILEGES")) {
+                return handleShowPrivilegesInColumnarMode(logicalPlan, ec);
+            } else if (TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW ENGINES")) {
+                return handleShowEnginesInColumnarMode(logicalPlan, ec);
+            } else if (TStringUtil.startsWithIgnoreCase(dal.getNativeSql(), "SHOW STATUS")) {
+                return handleShowStatusInColumnarMode(logicalPlan, ec);
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
+    }
+
+    private Cursor handleShowStatusInColumnarMode(RelNode logicalPlan, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+        String schemaName = dal.getSchemaName();
+        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+        String sql = "show status";
+        List<DBStatusRecord> dbStatusRecords;
+        try (Connection connection = dataSource.getConnection()) {
+            dbStatusRecords = MetaDbUtil.query(sql, DBStatusRecord.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                "fail to access metadb" + e.getMessage());
+        }
+        ArrayResultCursor resultCursor = new ArrayResultCursor(schemaName);
+        resultCursor.addColumn("Variable_name", DataTypes.StringType, false);
+        resultCursor.addColumn("Value", DataTypes.StringType, false);
+        for (DBStatusRecord dbStatusRecord : dbStatusRecords) {
+            resultCursor.addRow(new Object[] {
+                dbStatusRecord.variableName, dbStatusRecord.value
+            });
+        }
+        return resultCursor;
+    }
+    private Cursor handleShowEnginesInColumnarMode(RelNode logicalPlan, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+        String schemaName = dal.getSchemaName();
+        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+        String sql = "show engines";
+        List<EnginesRecord> enginesRecords;
+        try (Connection connection = dataSource.getConnection()) {
+            enginesRecords = MetaDbUtil.query(sql, EnginesRecord.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                "fail to access metadb" + e.getMessage());
+        }
+        ArrayResultCursor resultCursor = new ArrayResultCursor(schemaName);
+        resultCursor.addColumn("Engine", DataTypes.StringType, false);
+        resultCursor.addColumn("Support", DataTypes.StringType, false);
+        resultCursor.addColumn("Comment", DataTypes.StringType, false);
+        resultCursor.addColumn("Transaction", DataTypes.StringType, false);
+        resultCursor.addColumn("XA", DataTypes.StringType, false);
+        resultCursor.addColumn("Savepoints", DataTypes.StringType, false);
+        for (EnginesRecord record : enginesRecords) {
+            resultCursor.addRow(new Object[] {
+                record.engine, record.support, record.comment, record.transcations, record.XA, record.savePoints
+            });
+        }
+        return resultCursor;
+    }
+
+
+    private Cursor handleShowColumnInColumnarMode(RelNode logicalPlan, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+        DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+        ShowColumnsContext showColumnsContext = extractSchemaTableNameForShowColumns(dal, ec);
+        Assert.assertTrue(showColumnsContext != null, "showColumnsContext shouldn't be null");
+        String sql = "select * from " + SqlIdentifier.surroundWithBacktick(GmsSystemTables.COLUMNS)
+            + " where table_schema = ? and table_name = ? and column_name != ?";
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, showColumnsContext.schemaName);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, showColumnsContext.tableName);
+        //do not show _drds_implicit_id_ by default
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, "_drds_implicit_id_");
+        List<ColumnsInfoSchemaRecord> columnsInfoSchemaRecords;
+        try (Connection connection = dataSource.getConnection()) {
+            columnsInfoSchemaRecords = MetaDbUtil.query(sql, params, ColumnsInfoSchemaRecord.class, connection);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE,
+                "fail to access metadb" + e.getMessage());
+        }
+        ArrayResultCursor resultCursor = new ArrayResultCursor(showColumnsContext.tableName);
+        if (showColumnsContext != null) {
+            resultCursor.addColumn("Field", DataTypes.StringType, false);
+            resultCursor.addColumn("Type", DataTypes.StringType, false);
+            if (showColumnsContext.isFull) {
+                resultCursor.addColumn("Collation", DataTypes.StringType, false);
+            }
+            resultCursor.addColumn("Null", DataTypes.StringType, false);
+            resultCursor.addColumn("Key", DataTypes.StringType, false);
+            resultCursor.addColumn("Default", DataTypes.StringType, false);
+            resultCursor.addColumn("Extra", DataTypes.StringType, false);
+            if (showColumnsContext.isFull) {
+                resultCursor.addColumn("Privileges", DataTypes.StringType, false);
+                resultCursor.addColumn("Comment", DataTypes.StringType, false);
+            }
+        }
+        for (ColumnsInfoSchemaRecord record : columnsInfoSchemaRecords) {
+            if (showColumnsContext.isFull) {
+                resultCursor.addRow(new Object[] {
+                    record.columnName, record.columnType.toLowerCase(), record.collationName, record.isNullable,
+                    record.columnKey, record.columnDefault, record.extra, record.privileges,
+                    record.columnComment
+                });
+            } else {
+                resultCursor.addRow(new Object[] {
+                    record.columnName, record.columnType.toLowerCase(), record.isNullable, record.columnKey,
+                    record.columnDefault,
+                    record.extra
+                });
+            }
+        }
+        return resultCursor;
+    }
+
+    //information_schema.collation is a virtual view, so we should not access metadb
+    private Cursor handleShowCollationInColumnarMode(RelNode logicalPlan, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+        String schemaName = dal.getSchemaName();
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = ec.getSchemaName();
+        }
+        ArrayResultCursor resultCursor = new ArrayResultCursor(schemaName);
+        resultCursor.addColumn("Collation", DataTypes.StringType, false);
+        resultCursor.addColumn("Charset", DataTypes.StringType, false);
+        resultCursor.addColumn("Id", DataTypes.LongType, false);
+        resultCursor.addColumn("Default", DataTypes.StringType, false);
+        resultCursor.addColumn("Compiled", DataTypes.StringType, false);
+        resultCursor.addColumn("Sortlen", DataTypes.LongType, false);
+        for (Object[] record : InformationSchemaCollationsHandler.COLLATIONS) {
+            //PADAttribute columns will be ignored automatically
+            resultCursor.addRow(record);
+        }
+        return resultCursor;
+    }
+
+    private Cursor handleShowCharacterSetInColumnarMode(RelNode logicalPlan, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalPlan;
+        String schemaName = dal.getSchemaName();
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = ec.getSchemaName();
+        }
+        ArrayResultCursor resultCursor = new ArrayResultCursor(schemaName);
+        resultCursor.addColumn("Charset", DataTypes.StringType, false);
+        resultCursor.addColumn("Description", DataTypes.StringType, false);
+        resultCursor.addColumn("Default collation", DataTypes.StringType, false);
+        resultCursor.addColumn("Maxlen", DataTypes.LongType, false);
+        for (CharsetName record : CharsetName.values()) {
+            if (record != null) {
+                resultCursor.addRow(new Object[] {
+                    record.name(),
+                    //since we do not record description, this field will be temporarily null
+                    "",
+                    record.getDefaultCollationName(),
+                    record.getMaxLen()
+                });
+            }
+        }
+        return resultCursor;
+    }
+
+    private Cursor handleShowPrivilegesInColumnarMode(RelNode logicalNode, ExecutionContext ec) {
+        final BaseDalOperation dal = (BaseDalOperation) logicalNode;
+        String schemaName = dal.getSchemaName();
+        if (TStringUtil.isEmpty(schemaName)) {
+            schemaName = ec.getSchemaName();
+        }
+        ArrayResultCursor resultCursor = new ArrayResultCursor(schemaName);
+        resultCursor.addColumn("Privilege", DataTypes.StringType, false);
+        resultCursor.addColumn("Context", DataTypes.StringType, false);
+        resultCursor.addColumn("Comment", DataTypes.StringType, false);
+        for (MySQLPrivilegesName record : MySQLPrivilegesName.values()) {
+            if (record != null) {
+                resultCursor.addRow(new Object[] {
+                    record.getPrivilege(),
+                    record.getContext(),
+                    record.getComment()
+                });
+            }
+        }
+        return resultCursor;
     }
 
     private Cursor reorgLogicalColumnOrder(ShowColumnsContext context, Cursor cursor, ExecutionContext ec) {

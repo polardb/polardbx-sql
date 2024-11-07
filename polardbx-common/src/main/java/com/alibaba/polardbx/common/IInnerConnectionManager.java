@@ -20,7 +20,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 public interface IInnerConnectionManager {
-    Connection getConnection() throws SQLException;
+    IInnerConnection getConnection() throws SQLException;
 
-    Connection getConnection(String schema) throws SQLException;
+    IInnerConnection getConnection(String schema) throws SQLException;
 }

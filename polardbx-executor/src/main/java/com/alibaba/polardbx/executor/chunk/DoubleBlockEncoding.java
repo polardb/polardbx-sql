@@ -37,6 +37,15 @@ import static com.alibaba.polardbx.executor.chunk.EncoderUtil.encodeNullsAsBits;
 
 public class DoubleBlockEncoding implements BlockEncoding {
     private static final String NAME = "DOUBLE";
+    private final int scale;
+
+    public DoubleBlockEncoding(int scale) {
+        this.scale = scale;
+    }
+
+    public int getScale() {
+        return scale;
+    }
 
     @Override
     public String getName() {
@@ -67,6 +76,6 @@ public class DoubleBlockEncoding implements BlockEncoding {
                 values[position] = sliceInput.readDouble();
             }
         }
-        return new DoubleBlock(0, positionCount, valueIsNull, values);
+        return new DoubleBlock(0, positionCount, valueIsNull, values, scale);
     }
 }

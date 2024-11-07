@@ -16,7 +16,9 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.visitor;
 
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableAllocateLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableCleanupExpiredData;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsAlterTableExpireLocalPartition;
+import com.alibaba.polardbx.druid.sql.ast.statement.DrdsArchivePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsExtractHotKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsInspectIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.DrdsMergePartition;
@@ -68,6 +70,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeDDLJ
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsChangeRuleVersionStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarPartition;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckColumnarSnapshot;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCheckGlobalIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsClearCclTriggersStatement;
@@ -107,8 +110,11 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRecoverDDL
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshLocalRulesStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRefreshTopology;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRemoveDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsResumeRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRevokeSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsRollbackDDLJob;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowDdlEngineStatus;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsTerminateRebalanceJob;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsShowChangeSet;
@@ -371,6 +377,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     boolean visit(DrdsShowDDLJobs x);
 
+    void endVisit(DrdsShowDdlEngineStatus x);
+
+    boolean visit(DrdsShowDdlEngineStatus x);
+
     void endVisit(DrdsShowDDLResults x);
 
     boolean visit(DrdsShowDDLResults x);
@@ -427,6 +437,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     boolean visit(DrdsTerminateRebalanceJob x);
 
+    void endVisit(DrdsResumeRebalanceJob x);
+
+    boolean visit(DrdsResumeRebalanceJob x);
+
     void endVisit(DrdsSkipRebalanceSubjob x);
 
     boolean visit(DrdsSkipRebalanceSubjob x);
@@ -480,6 +494,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(DrdsCheckColumnarPartition x);
 
     void endVisit(DrdsCheckColumnarIndex x);
+
+    boolean visit(DrdsCheckColumnarSnapshot x);
+
+    void endVisit(DrdsCheckColumnarSnapshot x);
 
     boolean visit(DrdsCheckColumnarIndex x);
 
@@ -1307,6 +1325,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
 
     void endVisit(DrdsMovePartition x);
 
+    boolean visit(DrdsArchivePartition x);
+
+    void endVisit(DrdsArchivePartition x);
+
     boolean visit(DrdsExtractHotKey x);
 
     void endVisit(DrdsExtractHotKey x);
@@ -1330,6 +1352,10 @@ public interface MySqlASTVisitor extends SQLASTVisitor {
     boolean visit(DrdsAlterTableExpireLocalPartition x);
 
     void endVisit(DrdsAlterTableExpireLocalPartition x);
+
+    boolean visit(DrdsAlterTableCleanupExpiredData x);
+
+    void endVisit(DrdsAlterTableCleanupExpiredData x);
 
     boolean visit(DrdsDropFileStorageStatement x);
 

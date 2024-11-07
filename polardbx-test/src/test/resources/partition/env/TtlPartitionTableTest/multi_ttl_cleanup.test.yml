@@ -1,0 +1,241 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE IF NOT EXISTS `my_t0` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS `my_t1` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS  `my_t2` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS  `my_t3` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS  `my_t4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS  `my_t5` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS  `my_t6` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+
+CREATE TABLE IF NOT EXISTS  `my_t7` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+CREATE TABLE IF NOT EXISTS  `my_t8` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+CREATE TABLE IF NOT EXISTS  `my_t9` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`text_field` varchar(2048) NOT NULL,
+`text_field1` varchar(32) NOT NULL,
+`text_field2` varchar(32) NOT NULL,
+`text_field3` varchar(32) NOT NULL,
+`text_field4` varchar(32) NOT NULL,
+`text_field5` varchar(32) NOT NULL,
+`int_field` int(11) NOT NULL,
+`date_field` datetime NOT NULL,
+`float_field` float NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 5000001 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 48;
+
+ALTER TABLE my_t0
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t1
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t2
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t3
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t4
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t5
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t6
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t7
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t8
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+ALTER TABLE my_t9
+MODIFY TTL
+SET
+TTL_ENABLE = 'ON'
+TTL_EXPR = `b` EXPIRE AFTER 2 MONTH TIMEZONE '+08:00'
+TTL_JOB = CRON '*/5 * * * * ?' TIMEZONE '+00:00';
+
+
+

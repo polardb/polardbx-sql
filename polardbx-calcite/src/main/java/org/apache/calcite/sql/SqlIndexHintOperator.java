@@ -23,6 +23,7 @@ import org.apache.calcite.sql.validate.SqlMonotonicity;
 import org.apache.calcite.util.Litmus;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  *
@@ -108,9 +109,22 @@ public class SqlIndexHintOperator extends SqlSpecialOperator {
     if (call.operandCount() > 2) {
       SqlWriter.Frame frameFunc = writer.startList(SqlWriter.FrameTypeEnum.FUN_CALL, "(", ")");
       for (int i = 0; i < sqlNodeList.size(); i++) {
-        SqlCharStringLiteral sqlNode = (SqlCharStringLiteral)sqlNodeList.get(i);
-        String value2 = sqlNode.getNlsString().getValue();
-        writer.sep(value2);
+        SqlNode node = sqlNodeList.get(i);
+        if (node instanceof SqlCharStringLiteral){
+          SqlCharStringLiteral sqlNode = (SqlCharStringLiteral)node;
+          String value2 = sqlNode.getNlsString().getValue();
+          writer.sep(value2);
+        } else if (node instanceof SqlIdentifier){
+          SqlIdentifier sqlNode = (SqlIdentifier)node;
+          String value2 = sqlNode.getLastName();
+          writer.sep(value2);
+        } else {
+          throw new IllegalArgumentException("not support sql hint:" + node);
+        }
+        if(Objects.equals(value0, "FORCE INDEX")){
+          // force index only support one index
+          break;
+        }
         if (i != sqlNodeList.size() - 1) {
           writer.sep(",");
         }

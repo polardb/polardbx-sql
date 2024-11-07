@@ -41,8 +41,9 @@ public class NullSafeEqual extends AbstractCollationScalarFunction {
         } else if (isAnull || isBnull) {
             return 0L;
         } else {
+            // Row value compare.
             DataType type = getCompareType();
-            return type.compare(args[0], args[1]) == 0 ? 1L : 0L;
+            return type.compare(args[0], args[1]) == 0 ? 1l : 0l;
         }
     }
 

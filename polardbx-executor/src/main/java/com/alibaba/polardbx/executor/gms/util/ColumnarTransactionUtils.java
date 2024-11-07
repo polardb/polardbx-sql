@@ -20,14 +20,20 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.oss.ColumnarFileType;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.sync.RequestColumnarSnapshotSeqSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarAppendedFilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarCheckpointsRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
@@ -52,14 +58,17 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class ColumnarTransactionUtils {
+
+    private final static Logger LOGGER = LoggerFactory.getLogger("ColumnarTransactionUtils");
+    private final static String COLUMNAR_PURGE_LIMIT_TSO = "columnar_purge_limit_tso";
+
     @NotNull
     public static Long getMinColumnarSnapshotTime() {
         IGmsSyncAction action = new RequestColumnarSnapshotSeqSyncAction();
         List<List<Map<String, Object>>> results =
             SyncManagerHelper.sync(action, SystemDbHelper.DEFAULT_DB_NAME, SyncScope.ALL);
 
-        long minSnapshotKeepTime = DynamicConfig.getInstance().getMinSnapshotKeepTime();
-        long minSnapshotTime = ColumnarManager.getInstance().latestTso() - (minSnapshotKeepTime << 22);
+        long minSnapshotTime = ColumnarManager.getInstance().latestTso();
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {
@@ -83,6 +92,18 @@ public class ColumnarTransactionUtils {
             checkpointsAccessor.setConnection(connection);
 
             return checkpointsAccessor.queryLatestTso();
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
+                "Failed to fetch latest columnar tso");
+        }
+    }
+
+    public static Long getLatestTsoFromGmsWithDelay(long delayMicroseconds) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            ColumnarCheckpointsAccessor checkpointsAccessor = new ColumnarCheckpointsAccessor();
+            checkpointsAccessor.setConnection(connection);
+
+            return checkpointsAccessor.queryLatestTsoWithDelay(delayMicroseconds);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
                 "Failed to fetch latest columnar tso");
@@ -117,6 +138,35 @@ public class ColumnarTransactionUtils {
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
                 "Failed to fetch latest columnar tso");
+        }
+    }
+
+    public static int updateColumnarPurgeWatermark(long purgeWatermark) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            ColumnarConfigAccessor configAccessor = new ColumnarConfigAccessor();
+            configAccessor.setConnection(connection);
+            // Only leader CN could reach hear, so we don't need to select for update
+            List<ColumnarConfigRecord> records = configAccessor.queryGlobalByConfigKey(COLUMNAR_PURGE_LIMIT_TSO);
+
+            boolean shouldUpdate = false;
+            if (GeneralUtil.isEmpty(records)) {
+                shouldUpdate = true;
+            } else {
+                ColumnarConfigRecord configRecord = records.get(0);
+
+                if (configRecord.configValue == null || Long.parseLong(configRecord.configValue) < purgeWatermark) {
+                    shouldUpdate = true;
+                }
+            }
+
+            if (shouldUpdate) {
+                return configAccessor.updateGlobalParamValue(COLUMNAR_PURGE_LIMIT_TSO, Long.toString(purgeWatermark));
+            }
+
+            return 0;
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
+                "Failed to update purge watermark");
         }
     }
 
@@ -164,14 +214,13 @@ public class ColumnarTransactionUtils {
                     .map(partitionSpecConfig -> partitionSpecConfig.getSpecConfigInfo().partName)
                     .collect(Collectors.toList());
             } catch (Exception e) {
-                //正在创建的表可能rollback了，分区信息找不到，忽略就好
-                if (record.status.equalsIgnoreCase(ColumnarTableStatus.CREATING.name())) {
-                    continue;
-                } else {
-                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                        "fail to fetch partition info by columnar index: " + record.tableSchema + "." + record.tableName
-                            + "(" + record.indexName + "(" + record.tableId + "))", e);
-                }
+                //暂时忽略该列存索引表分区获取失败的情况：
+                //1.正在创建的表可能rollback了，分区信息找不到，忽略就好
+                //2.public的表可能删除了，分区信息找不到，也忽略
+                LOGGER.warn(
+                    "fail to fetch partition info by columnar index: " + record.tableSchema + "." + record.tableName
+                        + "(" + record.indexName + "(" + record.tableId + "))", e);
+                continue;
             }
             ColumnarIndexStatusRow row = new ColumnarIndexStatusRow();
             row.tso = tso;
@@ -197,15 +246,24 @@ public class ColumnarTransactionUtils {
                 appendedFilesAccessor.setConnection(metaDbConn);
 
                 //csv/del文件统计
-                List<ColumnarAppendedFilesRecord> appendedFilesRecords =
-                    appendedFilesAccessor.queryLastValidAppendByTsoAndTableId(tso, schemaName,
+                boolean useSubQuery = DynamicConfig.getInstance().isShowColumnarStatusUseSubQuery();
+                List<ColumnarAppendedFilesRecord> appendedFilesRecords;
+                if (useSubQuery) {
+                    //子查询方式
+                    appendedFilesRecords =
+                        appendedFilesAccessor.queryLastValidAppendByTsoAndTableIdSubQuery(tso, schemaName,
+                            String.valueOf(tableId));
+                } else {
+                    //join方式
+                    appendedFilesRecords = appendedFilesAccessor.queryLastValidAppendByTsoAndTableId(tso, schemaName,
                         String.valueOf(tableId));
+                }
+
                 //按照tso降序排序的，del文件总删除的行数只需要统计各分区最新文件的最新append记录就行，防止多个del文件
                 Set<String> haveRecordDelRowPartitions = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                 for (ColumnarAppendedFilesRecord appendRecord : appendedFilesRecords) {
                     String fileName = appendRecord.fileName;
-                    String suffix = fileName.substring(fileName.lastIndexOf('.') + 1);
-                    ColumnarFileType columnarFileType = ColumnarFileType.of(suffix);
+                    ColumnarFileType columnarFileType = FileSystemUtils.getFileType(fileName);
                     switch (columnarFileType) {
                     case CSV:
                         row.csvFileNum++;

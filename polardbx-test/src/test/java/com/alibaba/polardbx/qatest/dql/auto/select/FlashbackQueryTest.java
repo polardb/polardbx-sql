@@ -98,36 +98,32 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
             "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of timestamp '"
                 + currentTime + "' as tt partition(p1)"
         );
+
         final List<String> explainResult = ImmutableList.of(
-            "Gather(concurrent=true)\n"
-                + "  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TIMESTAMP ? AS `FlashbackQueryTest`\")\n"
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TIMESTAMP ? AS `FlashbackQueryTest`\")\n"
                 + "HitCache:false\n"
                 + "Source:null\n"
                 + "TemplateId: NULL\n",
-            "Gather(concurrent=true)\n"
-                + "  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TIMESTAMP ? AS `FlashbackQueryTest`\")\n"
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TIMESTAMP ? AS `FlashbackQueryTest`\")\n"
                 + "HitCache:false\n"
                 + "Source:null\n"
                 + "TemplateId: NULL\n",
-            "Gather(concurrent=true)\n"
-                + "  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TIMESTAMP ? AS `FlashbackQueryTest`\")\n"
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TIMESTAMP ? AS `FlashbackQueryTest`\")\n"
                 + "HitCache:false\n"
                 + "Source:null\n"
                 + "TemplateId: NULL\n"
         );
+
         final List<String> explainResult80 = ImmutableList.of(
-            "Gather(concurrent=true)\n"
-                + "  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")\n"
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")\n"
                 + "HitCache:false\n"
                 + "Source:null\n"
                 + "TemplateId: NULL\n",
-            "Gather(concurrent=true)\n"
-                + "  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")\n"
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")\n"
                 + "HitCache:false\n"
                 + "Source:null\n"
                 + "TemplateId: NULL\n",
-            "Gather(concurrent=true)\n"
-                + "  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")\n"
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")\n"
                 + "HitCache:false\n"
                 + "Source:null\n"
                 + "TemplateId: NULL\n"
@@ -182,7 +178,7 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
         String sql =
             "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest tt partition(p1) as of tso 10000";
         String expect =
-            "Gather(concurrent=true)  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TSO ? AS `FlashbackQueryTest`\")HitCache:falseSource:nullTemplateId: NULL";
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TSO ? AS `FlashbackQueryTest`\")HitCache:falseSource:nullTemplateId: NULL";
         String explain = JdbcUtil.getExplainResult(tddlConnection, sql);
         Assert.assertEquals(expect, explain);
     }
@@ -195,7 +191,7 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
         String sql =
             "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest tt partition(p1) as of tso 10000";
         String expect =
-            "Gather(concurrent=true)  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")HitCache:falseSource:nullTemplateId: NULL";
+            "LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")HitCache:falseSource:nullTemplateId: NULL";
         String explain = JdbcUtil.getExplainResult(tddlConnection, sql);
         Assert.assertEquals(expect, explain);
     }
@@ -206,7 +202,21 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
             String createTable = MessageFormat.format(tableFormat, partition);
 
             JdbcUtil.dropTable(tddlConnection, tableName);
-            JdbcUtil.executeSuccess(tddlConnection, createTable);
+
+            //创建单表可能会报table group: 65 not exist错误，重试几次
+            int retry = 0;
+            while (retry++ < 5) {
+                try {
+                    JdbcUtil.executeSuccess(tddlConnection, createTable);
+                    break;
+                } catch (Exception e) {
+                    Thread.sleep(2000);
+                }
+            }
+
+            if (retry > 5) {
+                Assert.fail("create table failed:" + createTable);
+            }
 
             //等待5s，避免时间转tso：(UNIX_TIMESTAMP(now()) << 22) * 1000，报错：The definition of the table required by the flashback query has changed
             Thread.sleep(5000);

@@ -17,15 +17,18 @@
 package com.alibaba.polardbx.optimizer.utils.mppchecker;
 
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 
 public class MppPlanCheckerInput {
     private final RelNode originalPlan;
     private final PlannerContext plannerContext;
+    private final ExecutionContext executionContext;
 
-    public MppPlanCheckerInput(RelNode originalPlan, PlannerContext plannerContext) {
+    public MppPlanCheckerInput(RelNode originalPlan, PlannerContext plannerContext, ExecutionContext executionContext) {
         this.originalPlan = originalPlan;
         this.plannerContext = plannerContext;
+        this.executionContext = executionContext;
     }
 
     public RelNode getOriginalPlan() {
@@ -34,5 +37,9 @@ public class MppPlanCheckerInput {
 
     public PlannerContext getPlannerContext() {
         return plannerContext;
+    }
+
+    public ExecutionContext getExecutionContext() {
+        return executionContext;
     }
 }

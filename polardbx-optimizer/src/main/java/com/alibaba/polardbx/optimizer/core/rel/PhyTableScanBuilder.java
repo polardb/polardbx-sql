@@ -338,11 +338,11 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         if (pushDowned && parent instanceof LogicalView) {
             //the sqlTemplate shouldn't happen change for push-down plan.
             bytesSql = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
-            XPlan = ((LogicalView) parent).getXPlan();
+            XPlan = ((LogicalView) parent).getXPlanDirect();
         } else if (parent instanceof LogicalView
             && ((LogicalView) parent).getSqlTemplate(executionContext) == sqlTemplate) {
             bytesSql = ((LogicalView) parent).getBytesSql(sqlTemplate);
-            XPlan = ((LogicalView) parent).getXPlan();
+            XPlan = ((LogicalView) parent).getXPlanDirect();
         } else {
             bytesSql = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
             XPlan = null;
@@ -385,6 +385,13 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
         Boolean enableGrpParallelism =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_GROUP_PARALLELISM);
+
+        if (parent instanceof OSSTableScan) {
+            if (((OSSTableScan) parent).isColumnarIndex()) {
+                enableGrpParallelism = false;
+            }
+        }
+
         if (enableGrpParallelism) {
             TargetTableInfo targetTableInfo =
                 PhyTableOperationUtil.groupTargetTablesByGroupConnId(schemaName, logTblNames, targetTables, isForUpdate,

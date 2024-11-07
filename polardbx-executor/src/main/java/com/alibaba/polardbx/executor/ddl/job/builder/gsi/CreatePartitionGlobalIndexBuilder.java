@@ -207,6 +207,7 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
     protected void buildPhysicalPlans() {
         buildSqlTemplate();
         buildPhysicalPlans(gsiPreparedData.getIndexTableName());
+        buildPhysicalPlansForLocalIndex(gsiPreparedData.getIndexTableName());
     }
 
     private static List<String> getPrimaryKeyNames(MySqlCreateTableStatement astCreateIndexTable) {
@@ -370,6 +371,7 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         final Set<String> indexShardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         indexShardingColumns.addAll(indexPartitionInfo.getPartitionColumns());
         final boolean isClusteredIndex = sqlCreateIndex.createClusteredIndex();
+        final List<MySqlTableIndex> localIndexList = new ArrayList<>();
 
         if (isClusteredIndex) {
             return createClusteredIndexTable(indexName,
@@ -451,7 +453,8 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
         boolean usePartBy = !partStrategy.isEmpty();
         boolean useSubPartBy = false;
         boolean subPartKeyContainAllPartKeyAsPrefixCols = false;
-        List<String> partKeyList = allLevelPartKeys.get(0);
+        List<String> partKeyList = new ArrayList<>();
+        partKeyList.addAll(allLevelPartKeys.get(0));
         List<String> subPartKeyList = null;
         boolean addPartColIndexLater = false;
         if (allLevelPartKeys.size() > 1 && allLevelPartKeys.get(1).size() > 0) {

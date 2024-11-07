@@ -24,7 +24,6 @@ import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.mpp.planner.FragmentRFManager;
 import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import org.apache.hadoop.conf.Configuration;
@@ -107,6 +106,8 @@ public interface ColumnarSplit extends ConnectorSplit, Comparable<ColumnarSplit>
 
         ColumnarSplitBuilder tso(Long tso);
 
+        ColumnarSplitBuilder position(Long position);
+
         ColumnarSplitBuilder partNum(int partNum);
 
         ColumnarSplitBuilder nodePartCount(int nodePartCount);
@@ -116,6 +117,22 @@ public interface ColumnarSplit extends ConnectorSplit, Comparable<ColumnarSplit>
         ColumnarSplitBuilder fragmentRFManager(FragmentRFManager fragmentRFManager);
 
         ColumnarSplitBuilder operatorStatistic(OperatorStatistics operatorStatistics);
+
+        default ColumnarSplitBuilder begin(int begin) {
+            return this;
+        }
+
+        default ColumnarSplitBuilder end(int end) {
+            return this;
+        }
+
+        default ColumnarSplitBuilder tsoV0(long tsoV0) {
+            return this;
+        }
+
+        default ColumnarSplitBuilder tsoV1(long tsoV1) {
+            return this;
+        }
     }
 
     public enum ColumnarSplitPriority {

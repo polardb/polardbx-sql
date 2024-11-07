@@ -95,7 +95,6 @@ commit;
 
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/select * from single_t1.single_t1_s1 as t1 inner join single_t2.single_t2_s1 t2 on t1.a1=t2.a2;
 
-
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
 
 begin;
@@ -103,6 +102,10 @@ begin;
 explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
 
 commit;
+
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert drds_single_t4.single_t4_s1(a3, b3) select * from single_t1.single_t1_s1;
+
+explain /*+TDDL:SIMPLIFY_MULTI_DB_SINGLE_TB_PLAN=true*/insert single_t1.single_t1_s1(a1, b1) select * from drds_single_t4.single_t4_s1;
 
 insert single_t3.single_t3_s1(a3, b3) select * from single_t1.single_t1_s1;
 

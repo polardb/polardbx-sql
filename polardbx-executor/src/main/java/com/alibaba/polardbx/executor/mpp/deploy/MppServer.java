@@ -68,8 +68,9 @@ public class MppServer extends Server {
 
     public MppServer(int id, boolean isMppServer, boolean isMppWorker, String serverHost, int mppHttpPort) {
         super(id, mppHttpPort);
-        log.warn("MppServer nodeId=" + id + ",isMppServer=" + isMppServer + ",isMppWorker=" + isMppWorker
-            + ",serverHost=" + serverHost + ",mppHttpPort=" + mppHttpPort);
+        log.warn(
+            "MppServer nodeId=" + id + ",isMppServer=" + isMppServer + ",isMppWorker=" + isMppWorker + ",serverHost="
+                + serverHost + ",mppHttpPort=" + mppHttpPort);
         this.isMppWorker = isMppWorker;
         this.serverHost = serverHost;
         this.isMppServer = isMppServer;
@@ -131,7 +132,10 @@ public class MppServer extends Server {
             taskExecutor = injector.getInstance(TaskExecutor.class);
             spillerFactory = injector.getInstance(SpillerFactory.class);
 
-            this.manager = new PolarDBXNodeStatusManager(nodeManager, localNode);
+            if (ConfigDataMode.isPolarDbX()) {
+                this.manager = new PolarDBXNodeStatusManager(nodeManager, localNode);
+                this.manager.init();
+            }
         } catch (Throwable t) {
             log.error("MppServer start error.", t);
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_MPP, t, "MppServer start error");
@@ -143,6 +147,14 @@ public class MppServer extends Server {
     public TaskManager getTaskManager() {
         return taskManager;
     }
+
+    public synchronized void updateNodeId(int nodeId) {
+        log.warn("update mppServer nodeId=" + nodeId);
+        this.nodeId = NODEID_PREFIX + nodeId;
+        bootstrapProperties.put(BootstrapConfig.CONFIG_KEY_NODE_ID, this.nodeId);
+        this.localNode.setNodeIdentifier(this.nodeId);
+    }
+
 
     public LocalStatementClient newLocalStatementClient(
         ExecutionContext executionContext, RelNode node) {

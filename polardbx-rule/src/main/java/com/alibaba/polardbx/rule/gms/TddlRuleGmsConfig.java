@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.record.RecordConverter;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
@@ -31,7 +32,6 @@ import com.alibaba.polardbx.rule.MappingRule;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRuleConfig;
 import com.alibaba.polardbx.rule.VirtualTableRoot;
-import com.alibaba.polardbx.rule.utils.RuleUtils;
 import com.google.common.collect.Maps;
 
 import java.sql.Connection;
@@ -51,6 +51,18 @@ public class TddlRuleGmsConfig extends TddlRuleConfig {
 
     @Override
     public void doInit() {
+        if (ConfigDataMode.isFastMock()) {
+            // 构建versionIndex
+            int index = 0;
+            Map<Integer, String> tempIndexMap = new HashMap<Integer, String>();
+            for (String version : vtrs.keySet()) {
+                tempIndexMap.put(index, version);
+                index++;
+            }
+            this.versionIndex = tempIndexMap;
+            this.lastTimestamp = System.currentTimeMillis();
+            return;
+        }
         initRules();
     }
 

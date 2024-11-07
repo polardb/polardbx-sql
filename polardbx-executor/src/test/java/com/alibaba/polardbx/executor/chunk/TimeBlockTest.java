@@ -1,19 +1,3 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.time.RandomTimeGenerator;
@@ -22,6 +6,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
@@ -69,9 +54,24 @@ public class TimeBlockTest extends BaseBlockTest {
         IntStream.range(0, TEST_SIZE)
             .forEach(
                 i -> {
-                    boolean isEqual = block.equals(i, block1, i);
-                    assertTrue(isEqual);
+                    Assert.assertTrue(block.equals(i, block1, i));
+                    Assert.assertTrue(block.equals(i, timeBlockBuilder, i));
                 }
             );
+
+        TimeBlock timeBlock = (TimeBlock) block;
+        TimeBlockBuilder builder = new TimeBlockBuilder(TEST_SIZE / 2, dataType, new ExecutionContext());
+        for (int i = 0; i < TEST_SIZE; i++) {
+            timeBlock.writePositionTo(i, builder);
+        }
+        TimeBlock newBlock = (TimeBlock) builder.build();
+        for (int i = 0; i < TEST_SIZE; i++) {
+            Assert.assertEquals(timeBlock.getTime(i), newBlock.getTime(i));
+            Assert.assertEquals(timeBlock.getObject(i), newBlock.getObject(i));
+            Assert.assertEquals(timeBlock.getPackedLong(i), newBlock.getPackedLong(i));
+            Assert.assertEquals(timeBlock.getLong(i), newBlock.getLong(i));
+            Assert.assertEquals(timeBlock.hashCode(i), newBlock.hashCode(i));
+            Assert.assertEquals(timeBlock.hashCodeUseXxhash(i), newBlock.hashCodeUseXxhash(i));
+        }
     }
 }

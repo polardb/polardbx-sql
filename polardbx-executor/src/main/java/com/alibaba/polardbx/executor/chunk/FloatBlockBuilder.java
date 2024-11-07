@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 
@@ -23,9 +24,18 @@ public class FloatBlockBuilder extends AbstractBlockBuilder {
 
     private final FloatArrayList values;
 
+    private final int scale;
+
     public FloatBlockBuilder(int capacity) {
         super(capacity);
         this.values = new FloatArrayList(capacity);
+        this.scale = XResultUtil.DECIMAL_NOT_SPECIFIED;
+    }
+
+    public FloatBlockBuilder(int capacity, int scale) {
+        super(capacity);
+        this.values = new FloatArrayList(capacity);
+        this.scale = scale;
     }
 
     @Override
@@ -63,7 +73,8 @@ public class FloatBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public Block build() {
-        return new FloatBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, values.elements());
+        return new FloatBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null,
+            values.elements(), scale);
     }
 
     @Override
@@ -74,7 +85,7 @@ public class FloatBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public BlockBuilder newBlockBuilder() {
-        return new FloatBlockBuilder(getCapacity());
+        return new FloatBlockBuilder(getCapacity(), scale);
     }
 
     @Override

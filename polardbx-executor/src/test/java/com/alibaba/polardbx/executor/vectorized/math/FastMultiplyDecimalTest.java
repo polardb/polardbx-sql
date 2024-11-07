@@ -41,25 +41,28 @@ public class FastMultiplyDecimalTest {
 
     private final Random random = new Random(System.currentTimeMillis());
     private final Decimal[] targetResult = new Decimal[COUNT];
-
+    private final int[] sel;
+    private final boolean withSelection;
     private final ExecutionContext executionContext = new ExecutionContext();
 
-    @Parameterized.Parameters(name = "leftScale={0},rightScale={1},overflow={2}")
+    @Parameterized.Parameters(name = "leftScale={0},rightScale={1},overflow={2},sel={3}")
     public static List<Object[]> generateParameters() {
         List<Object[]> list = new ArrayList<>();
 
         final int[] scales = {0, 1, 2, 5};
         for (int leftScale : scales) {
             for (int rightScale : scales) {
-                list.add(new Object[] {leftScale, rightScale, false});
-                list.add(new Object[] {leftScale, rightScale, true});
+                list.add(new Object[] {leftScale, rightScale, false, true});
+                list.add(new Object[] {leftScale, rightScale, false, false});
+                list.add(new Object[] {leftScale, rightScale, true, true});
+                list.add(new Object[] {leftScale, rightScale, true, false});
             }
         }
         return list;
     }
 
     public FastMultiplyDecimalTest(int leftScale, int rightScale,
-                                   boolean overflow) {
+                                   boolean overflow, boolean withSelection) {
         if (leftScale > PRECISION || rightScale > PRECISION) {
             throw new IllegalArgumentException("Too large scale");
         }
@@ -67,6 +70,16 @@ public class FastMultiplyDecimalTest {
         this.rightDecimalType = new DecimalType(PRECISION, rightScale);
         this.targetDecimalType = new DecimalType(PRECISION * 2, leftScale + rightScale);
         this.overflow = overflow;
+        this.withSelection = withSelection;
+        if (withSelection) {
+            final int offset = 10;
+            this.sel = new int[COUNT / 2];
+            for (int i = 0; i < sel.length; i++) {
+                sel[i] = i + offset;
+            }
+        } else {
+            this.sel = null;
+        }
     }
 
     @Before
@@ -101,10 +114,19 @@ public class FastMultiplyDecimalTest {
 
         // check result
         Assert.assertEquals("Incorrect output block positionCount", COUNT, outputBlock.getPositionCount());
-        for (int i = 0; i < COUNT; i++) {
-            Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString()
-                    + " and " + rightBlock.getDecimal(i).toString() + " at " + i,
-                targetResult[i], outputBlock.getDecimal(i));
+        if (withSelection) {
+            for (int i = 0; i < sel.length; i++) {
+                int j = sel[i];
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(j).toString()
+                        + " and " + rightBlock.getDecimal(i).toString() + " at " + i,
+                    targetResult[j], outputBlock.getDecimal(j));
+            }
+        } else {
+            for (int i = 0; i < COUNT; i++) {
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString()
+                        + " and " + rightBlock.getDecimal(i).toString() + " at " + i,
+                    targetResult[i], outputBlock.getDecimal(i));
+            }
         }
     }
 
@@ -140,8 +162,16 @@ public class FastMultiplyDecimalTest {
                 Assert.assertTrue("Output should be simple when not overflowed, but got: " + outputBlock.getState(),
                     outputBlock.getState().isFull());
             } else {
-                Assert.assertTrue("Output should be simple when not overflowed, but got: " + outputBlock.getState(),
-                    outputBlock.isSimple());
+                if (withSelection) {
+                    Assert.assertTrue(
+                        "Expect output block to simple when input is simple, got: " + outputBlock.getState(),
+                        outputBlock.getState().isFull());
+                } else {
+                    // simple mode does not support selection
+                    Assert.assertTrue("Expect output block to full when input is simple with selection, got: "
+                            + outputBlock.getState(),
+                        outputBlock.isSimple());
+                }
             }
         } else {
             // simple 模式可能是full 可能是simple
@@ -152,10 +182,19 @@ public class FastMultiplyDecimalTest {
 
         // check result
         Assert.assertEquals("Incorrect output block positionCount", COUNT, outputBlock.getPositionCount());
-        for (int i = 0; i < COUNT; i++) {
-            Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString()
-                    + " and " + rightBlock.getDecimal(i).toString() + " at " + i,
-                targetResult[i], outputBlock.getDecimal(i));
+        if (withSelection) {
+            for (int i = 0; i < sel.length; i++) {
+                int j = sel[i];
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(j).toString()
+                        + " and " + rightBlock.getDecimal(i).toString() + " at " + i,
+                    targetResult[j], outputBlock.getDecimal(j));
+            }
+        } else {
+            for (int i = 0; i < COUNT; i++) {
+                Assert.assertEquals("Incorrect value for: " + leftBlock.getDecimal(i).toString()
+                        + " and " + rightBlock.getDecimal(i).toString() + " at " + i,
+                    targetResult[i], outputBlock.getDecimal(i));
+            }
         }
     }
 
@@ -168,20 +207,41 @@ public class FastMultiplyDecimalTest {
         for (int i = 0; i < COUNT; i++) {
             long left;
             long right;
-            if (!overflow || i % 2 == 0) {
-                left = genDecimal64NotOverflowLong();
-                // 穿插正负数
-                if (i % 3 == 0) {
-                    left = -left;
-                }
+            if (i == 0) {
+                left = 0;
                 right = genDecimal64NotOverflowLong();
-                if (i % 5 == 0) {
-                    right = -right;
-                }
+            } else if (i == 1) {
+                left = 1;
+                right = genDecimal64NotOverflowLong();
+            } else if (i == 2) {
+                left = 1;
+                right = genDecimal64NotOverflowLong();
+            } else if (i == 3) {
+                left = -1;
+                right = genDecimal64NotOverflowLong();
+            } else if (i == 4) {
+                left = genDecimal64NotOverflowLong();
+                right = -1;
+            } else if (i == 5) {
+                left = genDecimal64NotOverflowLong();
+                right = 1;
             } else {
-                left = genDecimal64OverflowLong();
-                right = genDecimal64OverflowLong();
+                if (!overflow || i % 2 == 0) {
+                    left = genDecimal64NotOverflowLong();
+                    // 穿插正负数
+                    if (i % 3 == 0) {
+                        left = -left;
+                    }
+                    right = genDecimal64NotOverflowLong();
+                    if (i % 5 == 0) {
+                        right = -right;
+                    }
+                } else {
+                    left = genDecimal64OverflowLong();
+                    right = genDecimal64OverflowLong();
+                }
             }
+
             leftBuilder.writeLong(left);
             rightBuilder.writeLong(right);
 
@@ -200,7 +260,13 @@ public class FastMultiplyDecimalTest {
         blocks[1] = rightBlock;
         Assert.assertTrue(rightBlock.isDecimal64());
 
-        return new MutableChunk(blocks);
+        MutableChunk chunk = new MutableChunk(blocks);
+        if (withSelection) {
+            chunk.setSelectionInUse(true);
+            chunk.setSelection(sel);
+            chunk.setBatchSize(sel.length);
+        }
+        return chunk;
     }
 
     private MutableChunk buildSimpleChunk() {
@@ -238,7 +304,13 @@ public class FastMultiplyDecimalTest {
         blocks[1] = rightBlock;
         Assert.assertTrue(rightBlock.isSimple());
 
-        return new MutableChunk(blocks);
+        MutableChunk chunk = new MutableChunk(blocks);
+        if (withSelection) {
+            chunk.setSelectionInUse(true);
+            chunk.setSelection(sel);
+            chunk.setBatchSize(sel.length);
+        }
+        return chunk;
     }
 
     private long genDecimal64NotOverflowLong() {

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticHllScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticInfoSchemaTablesScheduleJob;
 import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
@@ -66,6 +67,18 @@ public class LogicalFireScheduleHandler extends HandlerCommon {
             executableScheduledJob.setFireTime(System.currentTimeMillis());
             executableScheduledJob.setTimeZone("SYSTEM");
             StatisticHllScheduledJob job = new StatisticHllScheduledJob(executableScheduledJob);
+            job.setFromScheduleJob(false);
+            job.execute();
+
+            logger.info(String.format("fire scheduled job:[%s]", scheduleId));
+            return new AffectRowCursor(1);
+        } else if (record.getExecutorType().equalsIgnoreCase("STATISTIC_INFO_SCHEMA_TABLES")) {
+            ExecutableScheduledJob executableScheduledJob = new ExecutableScheduledJob();
+            executableScheduledJob.setScheduleId(record.getScheduleId());
+            executableScheduledJob.setFireTime(System.currentTimeMillis());
+            executableScheduledJob.setTimeZone("SYSTEM");
+            StatisticInfoSchemaTablesScheduleJob job =
+                new StatisticInfoSchemaTablesScheduleJob(executableScheduledJob);
             job.setFromScheduleJob(false);
             job.execute();
 

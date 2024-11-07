@@ -38,7 +38,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class IndexesAccessor extends AbstractAccessor {
 
@@ -205,6 +204,10 @@ public class IndexesAccessor extends AbstractAccessor {
 
     private static final String UPDATE_INDEXES_TABLE_NAME =
         UPDATE_INDEXES + "`index_name` = ?, `index_table_name` = `index_name`"
+            + WHERE_SCHEMA + " and `index_name` = ?";
+
+    private static final String UPDATE_CCI_TABLE_NAME =
+        UPDATE_INDEXES + "`index_table_name` = ?"
             + WHERE_SCHEMA + " and `index_name` = ?";
 
     private static final String UPDATE_LOCAL_INDEXES_RENAME =
@@ -603,6 +606,10 @@ public class IndexesAccessor extends AbstractAccessor {
 
     public void renameGsiIndexes(String tableSchema, String indexName, String newIndexName) {
         update(UPDATE_INDEXES_TABLE_NAME, INDEXES_TABLE, tableSchema, indexName, newIndexName);
+    }
+
+    public void renameCciIndex(String tableSchema, String newIndexName) {
+        update(UPDATE_CCI_TABLE_NAME, INDEXES_TABLE, tableSchema, newIndexName, newIndexName);
     }
 
     public int renameLocalIndexes(String tableSchema, String tableName, String newTableName) {

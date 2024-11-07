@@ -79,6 +79,7 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 import java.sql.Types;
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public class MySqlExprParser extends SQLExprParser {
     public final static String[] AGGREGATE_FUNCTIONS;
@@ -841,6 +842,10 @@ public class MySqlExprParser extends SQLExprParser {
             } else if ("@localhost".equals(variant)) {
                 return userNameRest(expr);
             } else if ("@`%`".equals(variant)) {
+                return userNameRest(expr);
+            } else if (Pattern.matches("@`(.*)`", variant)) {
+                /* MySqlLexer.java parser `root`@`127.0.0.1` to `root` and @`127.0.0.1` respectively,
+                    however @`127.0.0.1` isn't identified here before, therefore we use a Regex to handle it */
                 return userNameRest(expr);
             } else {
                 throw new ParserException("syntax error. " + lexer.info());

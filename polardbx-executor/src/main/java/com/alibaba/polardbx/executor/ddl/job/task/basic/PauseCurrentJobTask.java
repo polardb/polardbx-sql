@@ -32,9 +32,12 @@ import lombok.Getter;
 
 import java.sql.Connection;
 
+/**
+ * set the current running task to pause status for test purpose
+ * 数据迁移测试专用，其他DDL请勿使用！！！！
+ */
 @Getter
 @TaskName(name = "PauseCurrentJobTask")
-// set the current running task to pause status for test purpose
 public class PauseCurrentJobTask extends BaseDdlTask {
 
     @JSONCreator
@@ -63,7 +66,7 @@ public class PauseCurrentJobTask extends BaseDdlTask {
     @Override
     protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         executeImpl(metaDbConnection, executionContext);
-        updateSupportedCommands(false, true, metaDbConnection);
+        updateSupportedCommands(true, true, metaDbConnection);
     }
 
     @Override

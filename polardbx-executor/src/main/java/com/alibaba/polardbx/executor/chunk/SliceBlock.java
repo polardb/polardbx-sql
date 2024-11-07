@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
 import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMapping;
@@ -535,7 +536,7 @@ public class SliceBlock extends AbstractCommonBlock {
             // should use collation handler to calculate hashcode under partition wise
             int position = realPositionOf(pos);
             Slice subRegion = getRegionInner(position);
-            return dataType.hashcode(subRegion);
+            return XxhashUtils.finalShuffle(dataType.hashcode(subRegion));
         }
     }
 
@@ -678,11 +679,11 @@ public class SliceBlock extends AbstractCommonBlock {
             int beginOffset = beginOffsetInner(position);
             int endOffset = endOffsetInner(position);
 
-            return this.data.compareTo(beginOffset, endOffset - beginOffset, that, 0, that.length()) == 0 ? 1 : 0;
+            return this.data.equals(beginOffset, endOffset - beginOffset, that, 0, that.length()) ? 1 : 0;
         } else {
             Slice value = getDictValue(position);
 
-            return value.compareTo(that) == 0 ? 1 : 0;
+            return value.equals(that) ? 1 : 0;
         }
     }
 
@@ -793,7 +794,7 @@ public class SliceBlock extends AbstractCommonBlock {
 
         if (compatible) {
             Slice subRegion = getRegionInner(pos);
-            return dataType.hashcode(subRegion);
+            return XxhashUtils.finalShuffle(dataType.hashcode(subRegion));
         }
 
         if (dictionary == null) {
@@ -866,7 +867,7 @@ public class SliceBlock extends AbstractCommonBlock {
 
         if (compatible) {
             Slice subRegion = getRegionInner(position);
-            return dataType.hashcode(subRegion);
+            return Long.hashCode(XxhashUtils.finalShuffle(dataType.hashcode(subRegion)));
         }
 
         if (dictionary == null) {

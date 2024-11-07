@@ -22,8 +22,8 @@
                               LogicalView(tableNames=[[t_contacts_person]])
                 PhysicalProject
                   HashAgg
-                    PhysicalProject
-                      MppExchange
+                    MppExchange
+                      PhysicalProject
                         BKAJoin
                           LogicalIndexScan(tableNames=[[MAIN_USER_ID_$ca99]])
                           LogicalView(tableNames=[[t_contacts_person]])

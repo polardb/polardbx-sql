@@ -78,6 +78,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.OutFileParams;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.eclipse.jetty.util.StringUtil;
 
 import java.sql.Connection;
@@ -225,6 +226,7 @@ public class OutFileStatisticsCursor extends OutFileCursor {
         this.iColumnMeta = new ColumnMeta(null, "sql", null, col);
 
         outFileParams.setColumnMeata(Lists.newArrayList(iColumnMeta));
+        outFileParams.setFieldEscape(null);
         SpillMonitor spillMonitor = context.getQuerySpillSpaceMonitor();
         this.context = context;
         singleStreamSpiller = (AsyncFileSingleBufferSpiller)
@@ -657,12 +659,13 @@ public class OutFileStatisticsCursor extends OutFileCursor {
                     param.add("'" + rs.getString("CMSKETCH") + "'");
 
                     boolean ignoreColumn = ignoreStringColumn(currentSchema, currentTable, currentColumn);
-                    param.add(ignoreColumn ? "''" : "'" + rs.getString("HISTOGRAM") + "'");
+                    param.add(
+                        ignoreColumn ? "''" : "'" + StringEscapeUtils.escapeJava(rs.getString("HISTOGRAM")) + "'");
 
                     if (ignoreColumn || StringUtils.isEmpty(rs.getString("TOPN"))) {
                         param.add(null);
                     } else {
-                        param.add("'" + rs.getString("TOPN") + "'");
+                        param.add("'" + StringEscapeUtils.escapeJava(rs.getString("TOPN")) + "'");
                     }
                     param.add(String.valueOf(rs.getLong("NULL_COUNT")));
                     param.add(String.valueOf(rs.getFloat("SAMPLE_RATE")));
@@ -749,6 +752,21 @@ public class OutFileStatisticsCursor extends OutFileCursor {
             }
             outputCatalog(String.format(SET_SESSION, key, value));
         }
+    }
+
+    private static String mysqlRealEscapeString(String sql) {
+        byte[] bytes = sql.getBytes();
+        ArrayList<Byte> bytesAfterProcess = new ArrayList<>(bytes.length);
+        for (Byte b : bytes) {
+            if (b == '\"') {
+                bytesAfterProcess.add((byte) '\\');
+            } else if (b == '\\') {
+                bytesAfterProcess.add((byte) '\\');
+            }
+            bytesAfterProcess.add(b);
+        }
+        //return new String(Bytes.toArray(bytesAfterProcess));
+        return sql;
     }
 
     static class SourceInUsed {

@@ -26,9 +26,9 @@ import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.pl.PLUtils;
 import com.alibaba.polardbx.executor.pl.PlContext;
+import com.alibaba.polardbx.executor.pl.ProcedureManager;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
-import com.alibaba.polardbx.executor.pl.ProcedureManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
@@ -36,6 +36,8 @@ import com.alibaba.polardbx.optimizer.parse.util.SpParameter;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.handler.SetHandler;
+import com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureHandler;
+import com.alibaba.polardbx.server.handler.pl.inner.InnerProcedureUtils;
 import com.alibaba.polardbx.server.util.ProcedureUtils;
 
 import java.util.Map;
@@ -52,6 +54,10 @@ public class CallHandler implements PlCommandHandler {
 
         ProcedureResultHandler handler = null;
         try {
+            if (InnerProcedureUtils.isInnerProcedure(statement)) {
+                InnerProcedureHandler.handle(statement, c, hasMore);
+                return true;
+            }
             SQLCreateProcedureStatement createProcedureStatement = getProcedureStmt(statement, c);
 
             // plContext and procedure result handler will only create once(call statement from user), internal call will reuse

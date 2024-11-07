@@ -85,10 +85,11 @@ public class PartitionTupleRoutingContext {
          * Each entry of list is :
          * key : 0: partition columns,  1: subpartitions columns
          * val : the index of col in (sub)partition columns list of original partition definition
-         *
+         * Notice: if a subpart col already exists in partBy, its index mapping item of the pair of
+         * fullColMetaToPartColMetaMapping will be ignore.
          * <pre>
          *      e.g
-         *          the full part cols: A,C,D,E
+         *          the full part cols: A,C,D,E  (all part cols including both partBy and subpartBy)
          *          the part cols:      A,C,D
          *          the subPartCols:    D,E,C
          *          the mapping:   {0, 0}, {0,1}, {0,2}, {1,1}
@@ -203,6 +204,23 @@ public class PartitionTupleRoutingContext {
         return allParams;
     }
 
+    /**
+     * Compute the col index mapping
+     * from
+     * partCol meta definition order
+     * to
+     * the col meta definition order of insert values,
+     * and output the result into outputPartColIdxList and outputPartColRelRowTypeList
+     *
+     * <pre>
+     *  outputPartColIdxList: the index mapping of a col on the col meta definition order of insert values
+     *  e.g.
+     *      insert values col order: insert into t1 (b, c, a) ....
+     *      insert values col index:                 0  1  2
+     *      part col definition order : a,  b
+     *      the outputPartColIdxList:   2,  0
+     * </pre>
+     */
     protected void computePartColIndexMappings(List<ColumnMeta> fullPartColMetas,
                                                List<ColumnMeta> targetTupleRowColMetas,
                                                List<Integer> outputPartColIdxList,
@@ -250,6 +268,9 @@ public class PartitionTupleRoutingContext {
         fullPartColMetaInfo.setFullPartColRelRowType(partColRelRowType);
         fullPartColMetaInfo.setFullPartColIndexMappings(outputFullPartColIdxList);
 
+        /**
+         * Construct the partColName to partCol definition index for both partBy and subpartBy
+         */
         Map<String, Integer> partColIdxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         Map<String, Integer> subPartColIdxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         List<String> partCols = partBy.getPartitionColumnNameList();
@@ -262,6 +283,10 @@ public class PartitionTupleRoutingContext {
                 subPartColIdxMap.put(subPartCols.get(i), i);
             }
         }
+
+        /**
+         * C
+         */
         List<Pair<Integer, Integer>> fullColIndexMapping = new ArrayList<>();
         for (int i = 0; i < fullPartColMetas.size(); i++) {
             ColumnMeta cm = fullPartColMetas.get(i);

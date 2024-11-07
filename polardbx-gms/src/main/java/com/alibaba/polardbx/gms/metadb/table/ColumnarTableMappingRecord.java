@@ -34,6 +34,7 @@ public class ColumnarTableMappingRecord implements SystemTableRecord {
     public long latestVersionId;
     public String status;
     public String extra;
+    public String type;
 
     public ColumnarTableMappingRecord() {
     }
@@ -56,6 +57,7 @@ public class ColumnarTableMappingRecord implements SystemTableRecord {
         this.latestVersionId = rs.getLong("latest_version_id");
         this.status = rs.getString("status");
         this.extra = rs.getString("extra");
+        this.type = rs.getString("type");
         return this;
     }
 
@@ -68,6 +70,7 @@ public class ColumnarTableMappingRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.latestVersionId);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.status);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.extra);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.type);
         return params;
     }
 }

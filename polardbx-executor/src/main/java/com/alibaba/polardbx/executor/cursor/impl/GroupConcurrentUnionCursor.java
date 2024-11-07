@@ -18,6 +18,8 @@ package com.alibaba.polardbx.executor.cursor.impl;
 
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.exception.TddlException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -28,6 +30,9 @@ import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.GenericPhyObjectRecorder;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
@@ -133,7 +138,13 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
             if (cursors.size() > 0) {
                 currentCursor = cursors.get(currentIndex);
             }
-        } else if (executionContext.getParamManager().getBoolean(ConnectionParams.BLOCK_CONCURRENT)) {
+        } else if (executionContext.getParamManager().getBoolean(ConnectionParams.BLOCK_CONCURRENT) || isDDL) {
+            FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_INTERRUPTED, executionContext, () -> {
+                DdlContext ddlContext = executionContext.getDdlContext();
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_INTERRUPTED, String.valueOf(ddlContext.getJobId()),
+                    ddlContext.getSchemaName(), ddlContext.getObjectName());
+            });
+
             List<Future<Cursor>> futures = new ArrayList<>(subNodes.size());
             for (RelNode subNode : subNodes) {
                 GenericPhyObjectRecorder phyObjectRecorder =
@@ -202,59 +213,17 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
         } else {
             completedCursorQueue = new LinkedBlockingQueue<>(subNodes.size());
 
-            if (isDDL) {
-                for (RelNode subNode : subNodes) {
-                    GenericPhyObjectRecorder phyObjectRecorder =
-                        CrossEngineValidator.getPhyObjectRecorder(subNode, executionContext);
-                    if (!phyObjectRecorder.checkIfDone()) {
-                        FutureCursor cursor = new FutureCursor(ExecutorContext.getContext(schemaName)
-                            .getTopologyExecutor()
-                            .execByExecPlanNodeFuture(subNode, executionContext, completedCursorQueue)
-                        );
-                        cursors.add(cursor);
+            //非DDL语句，走prefetch的逻辑
+            prefetchCursor();
 
-                        String phyTableKey = genPhyTableKeyForDdl(subNode);
-                        if (TStringUtil.isNotBlank(phyTableKey)) {
-                            phyObjectRecorderMap.put(phyTableKey, phyObjectRecorder);
-                        }
-                    } else {
-                        numObjectsSkipped.incrementAndGet();
-                    }
-                }
-
-                if (numObjectsSkipped.get() == totalSize) {
-                    super.doInit();
-                    return;
-                }
-
-            } else {
-                //非DDL语句，走prefetch的逻辑
-                prefetchCursor();
-            }
-
-            GenericPhyObjectRecorder phyObjectRecorder = null;
             try {
                 long startWaitNano = System.nanoTime();
                 Future<Cursor> future = completedCursorQueue.take();
                 currentCursor = future.get();
 
                 RuntimeStatHelper.statWaitLockTimecost(targetPlanStatGroup, startWaitNano);
-
-                if (isDDL && currentCursor instanceof MyPhyDdlTableCursor) {
-                    RelNode relNode = ((MyPhyDdlTableCursor) currentCursor).getRelNode();
-                    String phyTableKey = genPhyTableKeyForDdl(relNode);
-                    if (TStringUtil.isNotBlank(phyTableKey)) {
-                        phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
-                        if (phyObjectRecorder != null) {
-                            numObjectsDone.incrementAndGet();
-                            phyObjectRecorder.recordDone();
-                        }
-                    }
-                }
             } catch (Throwable e) {
-                if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
-                    throw GeneralUtil.nestedException(e);
-                }
+                throw GeneralUtil.nestedException(e);
             }
         }
         super.doInit();
@@ -279,48 +248,24 @@ public class GroupConcurrentUnionCursor extends AbstractCursor {
                     && currentIndex >= numObjectsDone.get()) {
                     return null;
                 }
-            } else if (currentIndex >= (isDDL ? cursors.size() : totalSize)) {
+            } else if (currentIndex >= totalSize) {
                 // 取尽所有cursor
                 return null;
             }
 
             if (currentCursor == null && completedCursorQueue != null) {
-                GenericPhyObjectRecorder phyObjectRecorder = null;
                 try {
                     long startWaitLockNano = System.nanoTime();
-                    Future<Cursor> future;
-                    if (isDDL) {
-                        future = completedCursorQueue.poll(MEDIAN_JOB_IDLE_WAITING_TIME, TimeUnit.MILLISECONDS);
-                        if (future == null) {
-                            // Try again
-                            continue;
-                        }
-                    } else {
-                        future = completedCursorQueue.take();
-                    }
+                    Future<Cursor> future = completedCursorQueue.take();
 
                     currentCursor = future.get();
 
                     RuntimeStatHelper.statWaitLockTimecost(targetPlanStatGroup, startWaitLockNano);
                     RuntimeStatHelper.registerCursorStatByParentCursor(executionContext, this, currentCursor);
-
-                    if (isDDL && currentCursor instanceof MyPhyDdlTableCursor) {
-                        RelNode relNode = ((MyPhyDdlTableCursor) currentCursor).getRelNode();
-                        String phyTableKey = genPhyTableKeyForDdl(relNode);
-                        if (TStringUtil.isNotBlank(phyTableKey)) {
-                            phyObjectRecorder = phyObjectRecorderMap.get(phyTableKey);
-                            if (phyObjectRecorder != null) {
-                                numObjectsDone.incrementAndGet();
-                                phyObjectRecorder.recordDone();
-                            }
-                        }
-                    }
                 } catch (ExecutionException e) {
                     throw GeneralUtil.nestedException(e.getCause());
                 } catch (Throwable e) {
-                    if (phyObjectRecorder == null || !phyObjectRecorder.checkIfIgnoreException(e)) {
-                        throw GeneralUtil.nestedException(e);
-                    }
+                    throw GeneralUtil.nestedException(e);
                 }
             } else if (currentCursor == null) {
                 currentCursor = cursors.get(currentIndex);

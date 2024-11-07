@@ -220,7 +220,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
 
         for (Tuple tuple : joinKeyTuples) {
             // since p.size() == 1, we can simplify null value condition
-            Object lookupValue = tuple.get(0);
+            Object lookupValue = tuple.get(lookupColumnPositions[0]);
             if (lookupValue == null) {
                 if (isAntiJoin()) {
                     return Collections.emptyMap();
@@ -561,7 +561,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
     private SqlNode buildCondition(Collection<Tuple> joinKeyTuples) {
         Iterable<Tuple> lookupKeys = extractLookupKeys(joinKeyTuples);
         Collection<Tuple> distinctLookupKeys = distinctLookupKeysChunk(lookupKeys);
-
+        // got correct lookup values already
         if (p.size() == 1) {
             List<Object> flattedValues = distinctLookupKeys.stream()
                 .map(b -> b.get(0))
@@ -577,7 +577,7 @@ public class ShardingLookupConditionBuilder extends LookupConditionBuilder {
         List<Object> values = new ArrayList<>();
         // Pick the target values from chunk and convert to row-oriented layout
         for (Tuple tuple : chunk) {
-            values.add(tuple.get(0));
+            values.add(tuple.get(lookupColumnPositions[0]));
         }
         return values;
     }

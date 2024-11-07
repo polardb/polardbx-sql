@@ -38,7 +38,7 @@ import java.util.Map;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.resultSetContentSameAssert;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
-import static org.hamcrest.number.OrderingComparison.greaterThan;
+import static org.hamcrest.number.OrderingComparisons.greaterThan;
 
 /**
  * @author chenmo.cm

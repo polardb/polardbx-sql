@@ -23,12 +23,12 @@ import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
-import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
@@ -234,6 +234,11 @@ public class CharField extends AbstractStorageField {
         if (isNull()) {
             return NULL_HASH_CODE;
         }
+        long hashCode = calcHashCodeByCollationHandler();
+        return XxhashUtils.finalShuffle(hashCode);
+    }
+
+    long calcHashCodeByCollationHandler() {
         if (isLatin1CharSet() && !isBinaryCollation()) {
             return getCollationHandler().hashcode(convertLatin1ToUtf8(packedBinary, 0, realLength));
         } else {

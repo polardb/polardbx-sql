@@ -132,6 +132,7 @@ public class PushJoinRule extends RelOptRule {
         final PlannerContext plannerContext = PlannerContext.getPlannerContext(join);
         final Map<String, Object> extraCmds = plannerContext.getExtraCmds();
         boolean enableGroupParallelism = plannerContext.getExecutionContext().getGroupParallelism() > 1;
+        boolean autoCommit = plannerContext.getExecutionContext().isAutoCommit();
 
         SqlKind sqlKind = plannerContext.getSqlKind();
         String pushPolicy = null;
@@ -169,7 +170,10 @@ public class PushJoinRule extends RelOptRule {
                 if (!rightPartitionInfo.isBroadcastTable()) {
                     if (leftView.getLockMode() != SqlSelect.LockMode.UNDEF || sqlKind.belongsTo(SqlKind.DML)) {
                         if (enableGroupParallelism) {
-                            return false;
+                            boolean allowPushDown = checkIfAllowPushDownBroTblJoin(leftView, sqlKind, autoCommit);
+                            if (!allowPushDown) {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -183,7 +187,11 @@ public class PushJoinRule extends RelOptRule {
                 if (!leftPartitionInfo.isBroadcastTable()) {
                     if (rightView.getLockMode() != SqlSelect.LockMode.UNDEF || sqlKind.belongsTo(SqlKind.DML)) {
                         if (enableGroupParallelism) {
-                            return false;
+//                            return false;
+                            boolean allowPushDown = checkIfAllowPushDownBroTblJoin(rightView, sqlKind, autoCommit);
+                            if (!allowPushDown) {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -271,6 +279,21 @@ public class PushJoinRule extends RelOptRule {
          * search filter and join node that already being push down. union their condition to filters.
          */
         return findShardColumnMatch(rel, rel, lShardColumnRef, rShardColumnRef);
+    }
+
+    private static boolean checkIfAllowPushDownBroTblJoin(LogicalView lv, SqlKind sqlKind,
+                                                          boolean autoCommit) {
+        boolean allowPushDown = false;
+        if (lv.getLockMode() != SqlSelect.LockMode.UNDEF) {
+            allowPushDown = false;
+        } else {
+            if (sqlKind == SqlKind.INSERT || sqlKind == SqlKind.REPLACE) {
+                if (autoCommit) {
+                    allowPushDown = true;
+                }
+            }
+        }
+        return allowPushDown;
     }
 
     protected void tryPushJoin(RelOptRuleCall call, RelNode rel, LogicalView leftView, LogicalView rightView,

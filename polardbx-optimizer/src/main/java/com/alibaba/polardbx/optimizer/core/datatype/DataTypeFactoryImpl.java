@@ -16,10 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.datatype;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.type.EnumSqlType;
@@ -80,10 +81,20 @@ public class DataTypeFactoryImpl implements DataTypeFactory {
             return DataTypes.ULongType;
         case DECIMAL:
             return new DecimalType(precision, scale);
+        // 注意目前只处理 scale 大于 0 的情况，因为之前没有办法区分0位小数保留和null的情况，
+        // 目前会存储未指定精度并存储为DECIMAL_NOT_SPECIFIED
         case FLOAT:
-            return DataTypes.FloatType;
+            if (scale > 0 && scale < XResultUtil.DECIMAL_NOT_SPECIFIED) {
+                return new FloatType(scale);
+            } else {
+                return DataTypes.FloatType;
+            }
         case DOUBLE:
-            return DataTypes.DoubleType;
+            if (scale > 0 && scale < XResultUtil.DECIMAL_NOT_SPECIFIED) {
+                return new DoubleType(scale);
+            } else {
+                return DataTypes.DoubleType;
+            }
         case DATETIME:
             return new DateTimeType(MySQLTimeTypeUtil.normalizeScale(scale));
         case ENUM:

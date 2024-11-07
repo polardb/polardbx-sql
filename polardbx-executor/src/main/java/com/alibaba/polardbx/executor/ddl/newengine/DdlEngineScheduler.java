@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -31,10 +30,11 @@ import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.executor.changeset.ChangeSetApplyExecutorMap;
-import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
+import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequest;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlResourceManagerUtils;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
@@ -44,10 +44,8 @@ import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Sets;
-import org.apache.calcite.rel.metadata.BuiltInMetadata;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -148,6 +146,7 @@ public class DdlEngineScheduler {
         if (DdlHelper.isRunnable(schemaName)) {
             String lowerCaseSchemaName = schemaName.toLowerCase();
             DdlEngineDagExecutorMap.register(lowerCaseSchemaName);
+            DdlEngineDagExecutorMap.registerRemote(lowerCaseSchemaName);
             ChangeSetApplyExecutorMap.register(lowerCaseSchemaName);
             synchronized (activeSchemaDdlConfig) {
                 activeSchemaDdlConfig.put(lowerCaseSchemaName,
@@ -160,6 +159,7 @@ public class DdlEngineScheduler {
         if (DdlHelper.isRunnable(schemaName)) {
             String lowerCaseSchemaName = schemaName.toLowerCase();
             DdlEngineDagExecutorMap.deregister(lowerCaseSchemaName);
+            DdlEngineDagExecutorMap.deregisterRemote(lowerCaseSchemaName);
             ChangeSetApplyExecutorMap.deregister(lowerCaseSchemaName);
             synchronized (activeSchemaDdlConfig) {
                 activeSchemaDdlConfig.remove(lowerCaseSchemaName);
@@ -225,7 +225,7 @@ public class DdlEngineScheduler {
                 }
 
                 if (System.currentTimeMillis() - startTime >= MORE_WAITING_TIME * 3) {
-                    throw new TimeoutException("wait job transfering to idle time out.");
+                    throw new TimeoutException("wait job transferring to idle time out.");
                 }
             }
         } finally {
@@ -457,6 +457,7 @@ public class DdlEngineScheduler {
 
         private volatile boolean scheduleSuspended;
 
+
         private DdlJobScheduler() {
         }
 
@@ -467,6 +468,8 @@ public class DdlEngineScheduler {
             }
 
             Thread.currentThread().setName(DDL_SCHEDULER_NAME);
+
+            refreshResourceToAllocate();
 
             while (true) {
                 try {
@@ -642,5 +645,11 @@ public class DdlEngineScheduler {
 
     public AtomicReference<LeaseRecord> getDdlLeaderLease() {
         return this.ddlLeaderLease;
+    }
+
+    public static void refreshResourceToAllocate() {
+        synchronized (TaskScheduler.resourceToAllocate) {
+            DdlResourceManagerUtils.initializeResources(TaskScheduler.resourceToAllocate);
+        }
     }
 }

@@ -66,6 +66,7 @@ import com.alibaba.polardbx.executor.chunk.SliceBlockBuilder;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
+import com.alibaba.polardbx.executor.mpp.operator.RangeScanMode;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.transaction.PhyOpTrxConnUtils;
@@ -150,7 +151,7 @@ public class TableScanClient {
     protected final boolean useTransaction;
     protected final boolean enableTaskCpu;
     protected final CursorMeta meta;
-    protected final int prefetchNum;
+    protected volatile int prefetchNum;
     protected final AtomicInteger noMoreSplitNum = new AtomicInteger(0);
     protected final AtomicInteger sourceExecNum = new AtomicInteger(0);
     protected final List<Split> splitList = Collections.synchronizedList(new ArrayList<>());
@@ -179,6 +180,8 @@ public class TableScanClient {
     private boolean killStreaming;
     private boolean lessMy56Version = false;
 
+    private RangeScanMode rangeScanMode;
+
     public TableScanClient(ExecutionContext context, CursorMeta meta,
                            boolean useTransaction, int prefetchNum) {
         this.context = context;
@@ -200,6 +203,12 @@ public class TableScanClient {
         } catch (Throwable t) {
             //ignore
         }
+    }
+
+    public TableScanClient(ExecutionContext context, CursorMeta meta,
+                           boolean useTransaction, int prefetchNum, RangeScanMode rangeScanMode) {
+        this(context, meta, useTransaction, prefetchNum);
+        this.rangeScanMode = rangeScanMode;
     }
 
     // Must be called before start
@@ -279,7 +288,9 @@ public class TableScanClient {
 
         if (needFetchNum > 0) {
             for (int i = 0; i < needFetchNum; i++) {
-                PrefetchThread thread = new PrefetchThread(splitList.get(pushdownSplitIndex.get()));
+                int splitIndex = pushdownSplitIndex.get();
+                PrefetchThread thread =
+                    new PrefetchThread(splitList.get(splitIndex), rangeScanMode != null, splitIndex);
                 prefetchThreads.add(thread);
                 // Use async X-protocol or original jdbc.
                 if (thread.isPureAsyncMode()) {
@@ -387,7 +398,7 @@ public class TableScanClient {
         cancelAllThreads(true);
         notifyBlockedCallers();
         prefetchThreads.clear();
-        readyResultSet.clear();
+        clearResultSet();
         this.completePrefetchNum.set(0);
         this.pushdownSplitIndex.set(0);
         this.completeExecuteNum.set(0);
@@ -396,6 +407,14 @@ public class TableScanClient {
 
     public void setTargetPlanStatGroup(RuntimeStatistics.OperatorStatisticsGroup targetPlanStatGroup) {
         this.targetPlanStatGroup = targetPlanStatGroup;
+    }
+
+    public RangeScanMode getRangeScanMode() {
+        return rangeScanMode;
+    }
+
+    public void setPrefetchNum(int prefetchNum) {
+        this.prefetchNum = prefetchNum;
     }
 
     public synchronized void setException(TddlRuntimeException exception) {
@@ -436,9 +455,17 @@ public class TableScanClient {
             cancelAllThreads(false);
             isClosed = true;
             prefetchThreads.clear();
-            readyResultSet.clear();
+            clearResultSet();
         }
         notifyBlockedCallers();
+    }
+
+    /**
+     * Clears the current ResultSet object.
+     * This method should be synchronized, otherwise the async execute of addSplitResultSet may cause the status incorrect.
+     */
+    synchronized void clearResultSet() {
+        readyResultSet.clear();
     }
 
     public void cancelAllThreads(boolean ignoreCnt) {
@@ -450,8 +477,12 @@ public class TableScanClient {
 
     }
 
-    public SplitResultSet newSplitResultSet(JdbcSplit jdbcSplit) {
-        return new SplitResultSet(jdbcSplit);
+    public SplitResultSet newSplitResultSet(JdbcSplit jdbcSplit, boolean rangeScan, int splitIndex) {
+        if (!rangeScan) {
+            return new SplitResultSet(jdbcSplit);
+        } else {
+            return new SplitResultSet(jdbcSplit, splitIndex);
+        }
     }
 
     public class SplitResultSet {
@@ -474,6 +505,8 @@ public class TableScanClient {
         protected SettableFuture blockedFuture;
         protected SettableFuture<String> connectionFuture;
 
+        protected int splitIndex;
+
         SplitResultSet(JdbcSplit jdbcSplit) {
             this.jdbcSplit = jdbcSplit;
             // Check whether use pure async mode.
@@ -481,6 +514,11 @@ public class TableScanClient {
                 .getTopologyHandler().get(jdbcSplit.getDbIndex()).getDataSource();
             final boolean isXDatasource = ((TGroupDataSource) dataSource).isXDataSource();
             this.pureAsync = isXDatasource && XConnectionManager.getInstance().isEnablePureAsyncMpp();
+        }
+
+        SplitResultSet(JdbcSplit jdbcSplit, int splitIndex) {
+            this(jdbcSplit);
+            this.splitIndex = splitIndex;
         }
 
         public boolean isPureAsyncMode() {
@@ -1284,9 +1322,9 @@ public class TableScanClient {
         AtomicReference<ScheduledFuture> timeoutNotify = new AtomicReference<>(null);
         boolean ignoreCnt;
 
-        public PrefetchThread(Split split) {
+        public PrefetchThread(Split split, boolean rangeScan, int splitIndex) {
             this.split = (JdbcSplit) split.getConnectorSplit();
-            this.resultSet = newSplitResultSet(this.split);
+            this.resultSet = newSplitResultSet(this.split, rangeScan, splitIndex);
         }
 
         public boolean isPureAsyncMode() {

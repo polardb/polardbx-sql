@@ -62,15 +62,10 @@
             <artifactId>polardbx-parser</artifactId>
             <version>${project.version}</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>cglib</groupId>-->
-<!--            <artifactId>cglib-nodep</artifactId>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>com.clearspring.analytics</groupId>-->
-<!--            <artifactId>stream</artifactId>-->
-<!--            <version>${stream.version}</version>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>com.cronutils</groupId>
+            <artifactId>cron-utils</artifactId>
+        </dependency>
         <dependency>
             <groupId>cglib</groupId>
             <artifactId>cglib-nodep</artifactId>
@@ -97,22 +92,14 @@
             <artifactId>junit</artifactId>
             <version>4.13.2</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>com.sun</groupId>-->
-<!--            <artifactId>tools</artifactId>-->
-<!--            <version>${sum.tools.version}</version>-->
-<!--        </dependency>-->
+
         <dependency>
-            <groupId>${project.groupId}</groupId>
+            <groupId>com.alibaba.polardbx</groupId>
             <artifactId>polardbx-calcite</artifactId>
             <exclusions>
                 <exclusion>
                     <artifactId>commons-logging</artifactId>
                     <groupId>commons-logging</groupId>
-                </exclusion>
-                <exclusion>
-                    <groupId>${project.groupId}</groupId>
-                    <artifactId>polardbx-common</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -121,34 +108,30 @@
             <artifactId>druid</artifactId>
             <version>${druid.version}</version>
         </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>jul-to-slf4j</artifactId>
             <version>${jul-to.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.clearspring.analytics</groupId>
             <artifactId>stream</artifactId>
             <version>${stream.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
             <version>${snakeyaml.version}</version>
         </dependency>
-        <!--        <dependency>-->
-        <!--            <groupId>com.alibaba.polardbx</groupId>-->
-        <!--            <artifactId>polardbx-calcite</artifactId>-->
-        <!--            <classifier>tests</classifier>-->
-        <!--            <scope>test</scope>-->
-        <!--        </dependency>-->
         <dependency>
             <groupId>net.hydromatic</groupId>
             <artifactId>foodmart-data-hsqldb</artifactId>
-            <version>0.5</version>
+            <version>0.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -176,7 +159,7 @@
         <dependency>
             <groupId>org.codehaus.janino</groupId>
             <artifactId>commons-compiler</artifactId>
-            <version>3.1.9</version>
+            <version>3.1.6</version>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
@@ -184,5 +167,6 @@
             <version>${mockito.verison}</version>
             <scope>test</scope>
         </dependency>
+
     </dependencies>
 </project>

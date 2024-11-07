@@ -18,7 +18,15 @@ package com.alibaba.polardbx.executor.ddl.job.meta.misc;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.ddl.job.meta.GsiMetaChanger;
+import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CheckCciMetaTask;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
@@ -30,9 +38,13 @@ import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableType.BROADCAST;
 import static com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableType.GSI;
@@ -262,7 +274,9 @@ public class RepartitionMetaChanger {
                                                     Map<String, String> tableNameMap,
                                                     boolean autoPartition,
                                                     boolean single,
-                                                    boolean broadcast) {
+                                                    boolean broadcast,
+                                                    long versionId,
+                                                    long jobId) {
         // 1. cut over table_partitions meta and local indexes meta
         // 2. cut over global indexes meta
         // 3. cut over columns meta
@@ -272,12 +286,12 @@ public class RepartitionMetaChanger {
                 // index table
                 cutOver(metaDbConn, schemaName, tableName, newTableName, false, false, false, true);
                 cutOverIndexes(metaDbConn, schemaName, logicalTableName, tableName, newTableName);
-                cutOverColumns(metaDbConn, schemaName, tableName, newTableName);
+                cutOverColumns(metaDbConn, schemaName, tableName, newTableName, versionId, jobId);
             } else {
                 // primary table
                 cutOver(metaDbConn, schemaName, tableName, newTableName, single, broadcast, autoPartition,
                     false);
-                cutOverColumns(metaDbConn, schemaName, tableName, newTableName);
+                cutOverColumns(metaDbConn, schemaName, tableName, newTableName, versionId, jobId);
             }
         });
     }
@@ -338,7 +352,9 @@ public class RepartitionMetaChanger {
     public static void cutOverColumns(Connection metaDbConn,
                                       final String schemaName,
                                       final String sourceTableName,
-                                      final String targetTableName) {
+                                      final String targetTableName,
+                                      long versionId,
+                                      long jobId) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
 
@@ -374,8 +390,74 @@ public class RepartitionMetaChanger {
             tableInfoManager.alterModifyColumnCutOver(schemaName, targetTableName, sourceTableName);
             tableInfoManager.alterModifyColumnCutOver(schemaName, random, targetTableName);
 
+            // add evolution record for cci
+            Set<Pair<Long, String>> columnarIndexes = tableInfoManager.queryCci(schemaName, sourceTableName);
+            if (GeneralUtil.isNotEmpty(columnarIndexes)) {
+                List<String> indexNames = columnarIndexes.stream().map(Pair::getValue).collect(Collectors.toList());
+                List<String> addColumns =
+                    targetTableColumns.stream()
+                        .filter(column -> sourceTableColumns.stream().noneMatch(
+                            srcColumn -> CheckCciMetaTask.equalsColumnRecord(column, srcColumn)))
+                        .collect(Collectors.toList()).stream().map(c -> c.columnName).collect(Collectors.toList());
+                List<String> dropColumns =
+                    sourceTableColumns.stream()
+                        .filter(column -> targetTableColumns.stream().noneMatch(
+                            srcColumn -> CheckCciMetaTask.equalsColumnRecord(column, srcColumn)))
+                        .collect(Collectors.toList()).stream().map(c -> c.columnName).collect(Collectors.toList());
+                Map<String, String> isNullable = new HashMap<>();
+                for (ColumnsRecord columnsRecord : targetTableColumns) {
+                    isNullable.put(columnsRecord.columnName, columnsRecord.isNullable);
+                }
+                // columns, indexes
+                changeCciRelatedMeta(metaDbConn, tableInfoManager, schemaName, sourceTableName, indexNames, addColumns,
+                    dropColumns, isNullable);
+
+                TableMetaChanger.changeColumnarTableMeta(metaDbConn, schemaName, sourceTableName, addColumns,
+                    dropColumns, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), versionId, jobId);
+            }
+
         } finally {
             tableInfoManager.setConnection(null);
+        }
+    }
+
+    public static void changeCciRelatedMeta(Connection metaDbConnection, TableInfoManager tableInfoManager,
+                                            String schemaName,
+                                            String logicalTableName, List<String> indexNames, List<String> addColumns,
+                                            List<String> dropColumns, Map<String, String> isNullable) {
+
+        for (String indexName : indexNames) {
+            final GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean =
+                ExecutorContext
+                    .getContext(schemaName)
+                    .getGsiManager()
+                    .getGsiMetaManager()
+                    .getIndexMeta(schemaName, logicalTableName, indexName, IndexStatus.ALL);
+
+            final int seqInIndex =
+                gsiIndexMetaBean.indexColumns.size() + gsiIndexMetaBean.coveringColumns.size() + 1;
+
+            for (String column : dropColumns) {
+                ExecutorContext
+                    .getContext(schemaName)
+                    .getGsiManager()
+                    .getGsiMetaManager()
+                    .removeColumnMeta(metaDbConnection, schemaName, logicalTableName, indexName, column);
+            }
+
+            final List<GsiMetaManager.IndexRecord> indexRecords =
+                GsiUtils.buildIndexMetaByAddColumns(
+                    addColumns,
+                    schemaName,
+                    logicalTableName,
+                    indexName,
+                    seqInIndex,
+                    IndexStatus.PUBLIC,
+                    isNullable
+                );
+            GsiMetaChanger.addIndexColumnMeta(metaDbConnection, schemaName, logicalTableName, indexRecords);
+
+            tableInfoManager.changeColumnarIndexTableColumns(indexNames, schemaName, logicalTableName);
         }
     }
 }

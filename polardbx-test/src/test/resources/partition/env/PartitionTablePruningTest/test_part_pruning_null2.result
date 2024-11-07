@@ -34,7 +34,8 @@ EXPLAIN SELECT a
 FROM tbl_rng_col
 WHERE b <= NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col[p1]", sql="SELECT `tbl_rng_col`.`a` AS `a` FROM ? AS `tbl_rng_col` WHERE (`tbl_rng_col`.`b` <= NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col[p1]", sql="SELECT `a` FROM `tbl_rng_col` AS `tbl_rng_col` WHERE (`b` <= NULL)")
 EXPLAIN SELECT a
 FROM tbl_rng_col
 WHERE b = NULL;
@@ -50,7 +51,8 @@ EXPLAIN SELECT a
 FROM tbl_rng_col
 WHERE b < NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col[p1]", sql="SELECT `tbl_rng_col`.`a` AS `a` FROM ? AS `tbl_rng_col` WHERE (`tbl_rng_col`.`b` < NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col[p1]", sql="SELECT `a` FROM `tbl_rng_col` AS `tbl_rng_col` WHERE (`b` < NULL)")
 CREATE TABLE `tbl_rng_col2` (
 	`a` bigint(20) DEFAULT NULL,
 	`b` bigint(20) DEFAULT NULL,
@@ -92,12 +94,14 @@ EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b <= NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` <= NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1]", sql="SELECT `a` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE (`b` <= NULL)")
 EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b = NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` = ?)", params="NULL")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1]", sql="SELECT `a` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE (`b` = ?)")
 EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b > NULL;
@@ -108,7 +112,8 @@ EXPLAIN SELECT a
 FROM tbl_rng_col2
 WHERE b < NULL;
 Logical ExecutionPlan
-PhyTableOperation(tables="tbl_rng_col2[p1]", sql="SELECT `tbl_rng_col2`.`a` AS `a` FROM ? AS `tbl_rng_col2` WHERE (`tbl_rng_col2`.`b` < NULL)")
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1]", sql="SELECT `a` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE (`b` < NULL)")
 SELECT a
 FROM tbl_rng_col2
 WHERE (b, c) = (1001, NULL);

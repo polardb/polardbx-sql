@@ -16,12 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
+import com.alibaba.polardbx.common.ColumnarOptions;
 import com.alibaba.polardbx.common.constants.SystemTables;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.properties.ColumnarConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
@@ -31,12 +33,15 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarConfigWithIndexNameRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableList;
@@ -48,6 +53,8 @@ import lombok.Getter;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition.SqlIndexResiding;
+import org.apache.calcite.util.Pair;
+import org.apache.commons.collections.MapUtils;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -70,6 +77,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -1354,6 +1362,12 @@ public class GsiMetaManager extends AbstractLifecycle {
             result.indexTableRelation = indexTableRelationBuilder.build();
             result.tableMeta = tableMetaBuilder.build();
 
+            try {
+                addColumnarOptions(result);
+            } catch (Throwable t) {
+                logger.error("Add columnar options failed.", t);
+            }
+
             return result;
         }
 
@@ -1386,6 +1400,12 @@ public class GsiMetaManager extends AbstractLifecycle {
                 result.tableMeta = tableMetaBuilder.build();
             } else {
                 result.tableMeta = ImmutableMap.of();
+            }
+
+            try {
+                addColumnarOptions(result);
+            } catch (Throwable t) {
+                logger.error("Add columnar options failed.", t);
             }
 
             return result;
@@ -1426,7 +1446,59 @@ public class GsiMetaManager extends AbstractLifecycle {
                 result.tableMeta = ImmutableMap.of();
             }
 
+            try {
+                addColumnarOptions(result);
+            } catch (Throwable t) {
+                logger.error("Add columnar options failed.", t);
+            }
+
             return result;
+        }
+
+        public static void addColumnarOptions(GsiMetaBean gsiMetaBean) {
+            String schemaName = null;
+            String tableName = null;
+            Map<String, GsiIndexMetaBean> columnarMetaBeans = new HashMap<>();
+            for (GsiTableMetaBean gsiTableMetaBean : gsiMetaBean.tableMeta.values()) {
+                GsiMetaManager.GsiIndexMetaBean indexMetaBean = gsiTableMetaBean.gsiMetaBean;
+                if (null != indexMetaBean && indexMetaBean.indexStatus.isPublished() && indexMetaBean.columnarIndex) {
+                    columnarMetaBeans.put(indexMetaBean.indexName, indexMetaBean);
+                    if (null == schemaName) {
+                        schemaName = indexMetaBean.tableSchema;
+                        tableName = indexMetaBean.tableName;
+                    }
+                }
+            }
+            if (MapUtils.isEmpty(columnarMetaBeans)) {
+                return;
+            }
+
+            // cci name -> config key -> record
+            Map<String, Map<String, String>> records = new HashMap<>();
+            Map<String, String> globalConfig = new HashMap<>();
+            try (Connection connection = MetaDbUtil.getConnection()) {
+                ColumnarConfigAccessor accessor = new ColumnarConfigAccessor();
+                accessor.setConnection(connection);
+                for (ColumnarConfigWithIndexNameRecord record : accessor.query(schemaName, tableName)) {
+                    if (0 == record.tableId) {
+                        globalConfig.put(record.configKey, record.configValue);
+                        continue;
+                    }
+                    records.computeIfAbsent(record.indexName, k -> new HashMap<>())
+                        .put(record.configKey, record.configValue);
+                }
+            } catch (Throwable t) {
+                logger.error("Get columnar config error.", t);
+                return;
+            }
+
+            if (records.isEmpty()) {
+                return;
+            }
+
+            for (Entry<String, GsiIndexMetaBean> gsiIndexMetaBean : columnarMetaBeans.entrySet()) {
+                gsiIndexMetaBean.getValue().updateColumnarOptions(gsiIndexMetaBean.getKey(), records, globalConfig);
+            }
         }
 
         /**
@@ -1451,6 +1523,12 @@ public class GsiMetaManager extends AbstractLifecycle {
 
             result.indexTableRelation = indexTableRelationBuilder.build();
             result.tableMeta = tableMetaBuilder.build();
+
+            try {
+                addColumnarOptions(result);
+            } catch (Throwable t) {
+                logger.error("Add columnar options failed.", t);
+            }
 
             return result;
         }
@@ -1793,6 +1871,7 @@ public class GsiMetaManager extends AbstractLifecycle {
         public final boolean clusteredIndex;
         public final boolean columnarIndex;
         public final IndexVisibility visibility;
+        public AtomicReference<Map<String, String>> columnarOptions = new AtomicReference<>(new HashMap<>());
 
         public GsiIndexMetaBean(String tableCatalog, String tableSchema, String tableName, boolean nonUnique,
                                 String indexSchema, String indexName, List<GsiIndexColumnMetaBean> indexColumns,
@@ -1859,6 +1938,35 @@ public class GsiMetaManager extends AbstractLifecycle {
                 hashcode += 0xB66B; // Magic number.
             }
             return hashcode;
+        }
+
+        public void updateColumnarOptions(String cciName, Map<String, Map<String, String>> records,
+                                          Map<String, String> globalConfig) {
+            Map<String, String> configMap;
+            Map<String, String> options = new HashMap<>();
+            if (null != (configMap = records.get(cciName))) {
+                for (Entry<String, String> option : configMap.entrySet()) {
+                    String optionName = option.getKey();
+                    String optionValue = option.getValue();
+                    if (ColumnarOptions.TYPE.equalsIgnoreCase(optionName)
+                        && ColumnarConfig.SNAPSHOT.equalsIgnoreCase(optionValue)) {
+                        // This cci is a snapshot cci, add columnar snapshot options.
+                        options.put(ColumnarOptions.TYPE, configMap.get(ColumnarOptions.TYPE));
+                        String attribute = ColumnarOptions.SNAPSHOT_RETENTION_DAYS;
+                        options.put(attribute, ColumnarConfig.getValue(attribute, configMap, globalConfig));
+                        attribute = ColumnarOptions.AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL;
+                        options.put(attribute, ColumnarConfig.getValue(attribute, configMap, globalConfig));
+                    } else if ((ColumnarOptions.TYPE.equalsIgnoreCase(optionName)
+                        && ColumnarConfig.DEFAULT.equalsIgnoreCase(optionValue))
+                        || ColumnarOptions.SNAPSHOT_RETENTION_DAYS.equalsIgnoreCase(optionName)
+                        || ColumnarOptions.AUTO_GEN_COLUMNAR_SNAPSHOT_INTERVAL.equalsIgnoreCase(optionName)) {
+                        // ignore
+                    } else if (null != ColumnarConfig.get(optionName)) {
+                        options.put(optionName, optionValue);
+                    }
+                }
+            }
+            columnarOptions.set(options);
         }
     }
 

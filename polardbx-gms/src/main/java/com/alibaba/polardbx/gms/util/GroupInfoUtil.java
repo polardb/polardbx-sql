@@ -285,9 +285,9 @@ public class GroupInfoUtil {
         return bytes;
     }
 
-    private static String doMurmur3Hash32(String dbName) {
-        String dbNameLowerCase = dbName.toLowerCase();
-        byte[] rawData = dbNameLowerCase.getBytes(StandardCharsets.UTF_8);
+    public static String doMurmur3Hash32(String strVal) {
+        String strLowerCase = strVal.toLowerCase();
+        byte[] rawData = strLowerCase.getBytes(StandardCharsets.UTF_8);
         int hashIntVal = MurmurHashUtils.murmurHash32WithZeroSeed(rawData);
         byte[] hashValBytes = intToBytesByBigEnd(hashIntVal);
         String hashCodeHexStr = HexBin.encode(hashValBytes);

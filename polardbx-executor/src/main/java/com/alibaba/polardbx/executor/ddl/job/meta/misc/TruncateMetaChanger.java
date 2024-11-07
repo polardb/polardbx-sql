@@ -72,12 +72,10 @@ public class TruncateMetaChanger {
 
         long newVersion = Math.max(sourceTableExt.version, targetTableExt.version) + 1;
 
-        tableInfoManager
-            .alterTableExtName(schemaName, sourceTableName, random);
-        tableInfoManager
-            .alterTableExtName(schemaName, targetTableName, sourceTableName);
-        tableInfoManager
-            .alterTableExtName(schemaName, random, targetTableName);
+        tableInfoManager.alterTableExtNameAndIndexes(schemaName, sourceTableName, random);
+        tableInfoManager.alterTableExtNameAndIndexes(schemaName, targetTableName, sourceTableName);
+        tableInfoManager.alterTableExtNameAndIndexes(schemaName, random, targetTableName);
+
         tableInfoManager.updateTablesExtVersion(schemaName, sourceTableName, newVersion);
         tableInfoManager.updateTablesExtVersion(schemaName, targetTableName, newVersion);
     }
@@ -106,12 +104,10 @@ public class TruncateMetaChanger {
         long newVersion =
             Math.max(sourceTablePartitions.get(0).metaVersion, targetTablePartitions.get(0).metaVersion) + 1;
 
-        tableInfoManager
-            .alterTablePartitionName(schemaName, sourceTableName, random);
-        tableInfoManager
-            .alterTablePartitionName(schemaName, targetTableName, sourceTableName);
-        tableInfoManager
-            .alterTablePartitionName(schemaName, random, targetTableName);
+        tableInfoManager.truncateTableCutOver(schemaName, sourceTableName, random);
+        tableInfoManager.truncateTableCutOver(schemaName, targetTableName, sourceTableName);
+        tableInfoManager.truncateTableCutOver(schemaName, random, targetTableName);
+
         tableInfoManager.updateTablePartitionVersion(schemaName, sourceTableName, newVersion);
         tableInfoManager.updateTablePartitionVersion(schemaName, targetTableName, newVersion);
     }

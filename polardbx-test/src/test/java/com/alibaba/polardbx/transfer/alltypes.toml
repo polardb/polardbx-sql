@@ -9,9 +9,6 @@ runmode = 'local'
 # number of rows (the actual value will be slightly greater)
 row_count = 100
 
-# [Unused] just compatible to the framework
-initial_balance = 1000
-
 # the following suffix will be appended to CREATE TABLE SQL
 create_table_suffix = 'PARTITION BY KEY(id) PARTITIONS 16'
 
@@ -19,7 +16,7 @@ create_table_suffix = 'PARTITION BY KEY(id) PARTITIONS 16'
 report_interval = 5
 
 # max test time, in seconds
-timeout = 60
+timeout = 30
 
 # prepare data threads
 threads = 4
@@ -28,4 +25,8 @@ big_column = false
 
 [write_only]
 enabled = true
-threads = 2
+threads = 1
+
+[check_columnar]
+enabled = true
+threads = 1

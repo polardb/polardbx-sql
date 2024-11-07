@@ -54,6 +54,7 @@ public class LogicalTableColumnBackFillTask extends BaseBackfillTask implements 
     protected void executeImpl(ExecutionContext executionContext) {
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         GsiBackfill columnsBackFill =
             GsiBackfill.createGsiAddColumnsBackfill(
                 schemaName, sourceTableName, ImmutableList.of(targetTableName), Lists.newArrayList(columns),

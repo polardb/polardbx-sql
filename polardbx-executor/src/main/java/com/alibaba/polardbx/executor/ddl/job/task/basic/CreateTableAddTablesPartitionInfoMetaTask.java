@@ -39,6 +39,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.ttl.TtlDefinitionInfo;
 import lombok.Getter;
 import org.apache.commons.lang.StringUtils;
 
@@ -55,6 +56,8 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
     private TableGroupDetailConfig tableGroupConfig;
     private LocalPartitionDefinitionInfo localPartitionDefinitionInfo;
     private String tableGroupAlignWithTargetTable;
+    private TtlDefinitionInfo ttlDefinitionInfo;
+    private boolean indexAlignWithPrimaryTableGroup;
     private String primaryTable;
     private String locality;
     //specified in create table statement
@@ -69,17 +72,21 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
                                                      boolean temporary,
                                                      TableGroupDetailConfig tableGroupConfig,
                                                      LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
+                                                     TtlDefinitionInfo ttlDefinitionInfo,
                                                      String tableGroupAlignWithTargetTable,
+                                                     boolean withTableGroupImplicit,
+                                                     boolean indexAlignWithPrimaryTableGroup,
                                                      String primaryTable,
                                                      String joinGroup,
                                                      boolean oss,
-                                                     boolean withTableGroupImplicit,
                                                      boolean autoCreateTg) {
         super(schemaName, logicalTableName);
         this.temporary = temporary;
         this.tableGroupConfig = tableGroupConfig;
 
         this.localPartitionDefinitionInfo = localPartitionDefinitionInfo;
+        this.ttlDefinitionInfo = ttlDefinitionInfo;
+        this.indexAlignWithPrimaryTableGroup = indexAlignWithPrimaryTableGroup;
         this.tableGroupAlignWithTargetTable = tableGroupAlignWithTargetTable;
         this.primaryTable = primaryTable;
         this.joinGroup = joinGroup;
@@ -189,6 +196,9 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
         if (localPartitionDefinitionInfo != null) {
             new AddLocalPartitionTask(localPartitionDefinitionInfo).executeImpl(metaDbConnection, executionContext);
         }
+        if (ttlDefinitionInfo != null) {
+            new AddTtlInfoTask(ttlDefinitionInfo).executeImpl(metaDbConnection, executionContext);
+        }
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
@@ -203,6 +213,9 @@ public class CreateTableAddTablesPartitionInfoMetaTask extends BaseGmsTask {
         TableMetaChanger.removePartitionInfoMeta(metaDbConnection, schemaName, logicalTableName);
         if (localPartitionDefinitionInfo != null) {
             new AddLocalPartitionTask(localPartitionDefinitionInfo).rollbackImpl(metaDbConnection, executionContext);
+        }
+        if (ttlDefinitionInfo != null) {
+            new AddTtlInfoTask(ttlDefinitionInfo).rollbackImpl(metaDbConnection, executionContext);
         }
         JoinGroupTableDetailAccessor joinGroupTableDetailAccessor = new JoinGroupTableDetailAccessor();
         joinGroupTableDetailAccessor.setConnection(metaDbConnection);

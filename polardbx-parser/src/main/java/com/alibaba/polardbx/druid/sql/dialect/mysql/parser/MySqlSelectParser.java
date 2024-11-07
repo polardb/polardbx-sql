@@ -27,6 +27,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLAggregateExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLSizeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTimestampExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLVariantRefExpr;
@@ -912,7 +913,20 @@ public class MySqlSelectParser extends SQLSelectParser {
         while (lexer.token() != Token.RPAREN && lexer.token() != Token.EOF) {
             if (lexer.token() == Token.PRIMARY) {
                 lexer.nextToken();
-                hint.getIndexList().add(new SQLIdentifierExpr("PRIMARY"));
+                // support force index(primary.local_index)
+                if (lexer.token() == Token.DOT) {
+                    lexer.nextToken();
+
+                    if (lexer.token() == Token.PRIMARY) {
+                        hint.getIndexList().add(new SQLPropertyExpr("PRIMARY", "PRIMARY"));
+                        lexer.nextToken();
+                    } else {
+                        SQLName name = this.exprParser.name();
+                        hint.getIndexList().add(new SQLPropertyExpr("PRIMARY", name.getSimpleName()));
+                    }
+                } else {
+                    hint.getIndexList().add(new SQLIdentifierExpr("PRIMARY"));
+                }
             } else {
                 if (lexer.token() == Token.LITERAL_CHARS) {
                     // Use literal char is not support in MySQL.

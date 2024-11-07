@@ -31,6 +31,7 @@ package com.alibaba.polardbx.executor.mpp.server;
 
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.exception.code.ErrorType;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -146,8 +147,12 @@ public class StatementResource {
 
             UriInfo uriInfo =
                 MockUriInfo.from(uriBuilderFrom(serverUri).replacePath("/v1/statement").build().toString());
+
+            long mppQueryResultMaxWaitInMillis = DynamicConfig.getInstance().getMppQueryResultMaxWaitInMillis();
+
             StatementResource
-                .getQueryResultsLocal(localResultResponse, Optional.empty(), query, uriInfo, new Duration(1, SECONDS));
+                .getQueryResultsLocal(localResultResponse, Optional.empty(), query, uriInfo,
+                    new Duration(mppQueryResultMaxWaitInMillis, MILLISECONDS));
         } catch (Exception t) {
             localResultResponse.setException(t);
         }
@@ -190,12 +195,14 @@ public class StatementResource {
             String queryId = request.getQueryId();
             StatementResource.Query query = queries.get(queryId);
             if (query != null) {
+                long mppQueryResultMaxWaitInMillis = DynamicConfig.getInstance().getMppQueryResultMaxWaitInMillis();
+
                 StatementResource.getQueryResultsLocal(
                     queryResult,
                     Optional.of(request.getToken()),
                     query,
                     uriInfo,
-                    new Duration(1, SECONDS)
+                    new Duration(mppQueryResultMaxWaitInMillis, MILLISECONDS)
                 );
             } else {
                 throw new Exception("queryId:" + queryId + " not found");
@@ -462,6 +469,7 @@ public class StatementResource {
             ImmutableList.Builder<Chunk> pages = ImmutableList.builder();
             // wait up to max wait for data to arrive; then try to return at least DESIRED_RESULT_BYTES
             long bytes = 0;
+            long positionCount = 0;
             while (bytes < DESIRED_RESULT_BYTES) {
                 SerializedChunk serializedPage;
 
@@ -473,12 +481,13 @@ public class StatementResource {
 
                 Chunk chunk = serde.deserialize(serializedPage);
                 bytes += chunk.getElementUsedBytes();
+                positionCount += chunk.getPositionCount();
                 pages.add(chunk);
                 // only wait on first call
                 maxWait = afterFristWait;
             }
 
-            if (bytes == 0) {
+            if (positionCount == 0) {
                 return null;
             }
             return (Iterable) pages.build();

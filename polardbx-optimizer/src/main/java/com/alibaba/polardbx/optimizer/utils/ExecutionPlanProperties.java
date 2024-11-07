@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.utils;
 
 import org.apache.calcite.util.BitSets;
 
+import java.lang.reflect.Field;
 import java.util.BitSet;
 
 /**
@@ -72,4 +73,33 @@ public final class ExecutionPlanProperties {
 
     public static final BitSet DDL_STATEMENT = BitSets
         .of(DDL);
+
+    public static final BitSet DML_STATEMENT = BitSets
+        .of(DML);
+
+    private static Integer cachedMaxPropertyValue = null;
+
+    public static int getMaxPropertyValue() {
+        if (cachedMaxPropertyValue != null) {
+            // cache
+            return cachedMaxPropertyValue;
+        }
+        try {
+            Field[] fields = ExecutionPlanProperties.class.getFields(); // 获取所有公共字段
+
+            int maxPropertyValue = Integer.MIN_VALUE;
+            for (Field field : fields) {
+                if (field.getType() == int.class && (field.getModifiers() & java.lang.reflect.Modifier.STATIC) != 0
+                    && (field.getModifiers() & java.lang.reflect.Modifier.FINAL) != 0) {
+                    int value = field.getInt(null); // 获取字段的值
+                    maxPropertyValue = Math.max(maxPropertyValue, value); // 计算最大值
+                }
+            }
+            int result = maxPropertyValue + 1;
+            cachedMaxPropertyValue = result;
+            return result;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

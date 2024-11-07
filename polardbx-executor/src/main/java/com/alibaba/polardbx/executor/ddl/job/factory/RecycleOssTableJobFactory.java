@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableUpdateMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RenameTableValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UnBindingArchiveTableMetaDirectTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
+import com.alibaba.polardbx.optimizer.archive.TtlSourceInfo;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.collect.Lists;
@@ -75,10 +77,19 @@ public class RecycleOssTableJobFactory extends DdlJobFactory {
 
         List<DdlTask> tasks = Lists.newArrayList();
         tasks.add(validateTask);
-        Optional<Pair<String, String>> source = CheckOSSArchiveUtil.getTTLSource(schemaName, logicalTableName);
+//        Optional<Pair<String, String>> source = CheckOSSArchiveUtil.getTTLSource(schemaName, logicalTableName);
+        Optional<TtlSourceInfo> source = CheckOSSArchiveUtil.getTtlSourceInfo(schemaName, logicalTableName);
         source.ifPresent(x -> {
-            sourceSchemaName = x.getKey();
-            sourceTableName = x.getValue();
+
+            boolean useRowLevelTtl = x.isUseRowLevelTtl();
+            if (useRowLevelTtl) {
+                sourceSchemaName = x.getTtlInfoRecord().getTableSchema();
+                sourceTableName = x.getTtlInfoRecord().getTableName();
+            } else {
+                sourceSchemaName = x.getTableLocalPartitionRecord().getTableSchema();
+                sourceTableName = x.getTableLocalPartitionRecord().getTableName();
+            }
+
             TableMeta tm =
                 OptimizerContext.getContext(sourceSchemaName).getLatestSchemaManager().getTable(sourceTableName);
 
@@ -90,11 +101,23 @@ public class RecycleOssTableJobFactory extends DdlJobFactory {
 
             // unbinding task
             DdlTask unBindingTask = new UnBindingArchiveTableMetaDirectTask(sourceSchemaName, sourceTableName,
+                x.isUseRowLevelTtl(),
                 schemaName, logicalTableName);
+
             TableSyncTask tableSyncTask = new TableSyncTask(sourceSchemaName, sourceTableName);
+
             tasks.add(validateTableVersionTask);
             tasks.add(unBindingTask);
             tasks.add(tableSyncTask);
+
+            if (useRowLevelTtl) {
+                String ttlTmpSchema = x.getTtlInfoRecord().getArcTmpTblSchema();
+                String ttlTmpTbl = x.getTtlInfoRecord().getArcTmpTblName();
+                String dropSql = String.format("DROP TABLE IF EXISTS `%s`.`%s`", ttlTmpSchema, ttlTmpTbl);
+                SubJobTask dropTtlTmpTblTask = new SubJobTask(ttlTmpSchema, dropSql, "");
+                tasks.add(dropTtlTmpTblTask);
+            }
+
         });
         DdlTask addMetaTask = new RenameTableAddMetaTask(schemaName, logicalTableName, newLogicalTableName);
         DdlTask phyDdlTask = new RenameTablePhyDdlTask(schemaName, physicalPlanData);

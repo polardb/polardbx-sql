@@ -130,6 +130,17 @@ public abstract class Loader extends PhyOperationBuilderCommon {
                 // Batch insert
                 result = applyBatchWithReturning(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(),
                     baseEcAndIndexPair.getValue().getValue());
+                SQLRecorderLogger.ddlLogger.warn(
+                    MessageFormat.format(
+                        "[{0}] [{1}][{2}] loader with returning insert {3} rows, {4} affected, the range is [{5}], [{6}]",
+                        insertEc.getTraceId(),
+                        insertEc.getTaskId().toString(),
+                        insertEc.getBackfillId().toString(),
+                        batchParams.size(),
+                        result,
+                        batchParams.isEmpty() ? "" : GsiUtils.rowToString(batchParams.get(0)),
+                        batchParams.isEmpty() ? "" :
+                            GsiUtils.rowToString(batchParams.get(batchParams.size() - 1))));
 
                 // Batch insert success, check lock exists
                 return checkBeforeCommit(checker, insertEc, result);
@@ -137,8 +148,10 @@ public abstract class Loader extends PhyOperationBuilderCommon {
                 // Batch insert failed
                 SQLRecorderLogger.ddlLogger
                     .warn(MessageFormat.format(
-                        "[{0}] Batch insert(returning) failed first row: {1} cause: {2}, phyTableName: {3}",
+                        "[{0}][{1}][{2}] Batch insert(returning) failed first row: {3} cause: {4}, phyTableName: {5}",
                         baseEcAndIndexPair.getKey().getTraceId(),
+                        baseEcAndIndexPair.getKey().getTaskId().toString(),
+                        baseEcAndIndexPair.getKey().getBackfillId().toString(),
                         GsiUtils.rowToString(batchParams.get(0)),
                         e.getMessage(), baseEcAndIndexPair.getValue().getValue()));
 
@@ -163,14 +176,27 @@ public abstract class Loader extends PhyOperationBuilderCommon {
                     result = applyBatch(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(),
                         baseEcAndIndexPair.getValue().getValue());
 
+                    SQLRecorderLogger.ddlLogger.warn(
+                        MessageFormat.format("[{0}] [{1}][{2}] loader insert {3} rows, the range is [{4}], [{5}]",
+                            insertEc.getTraceId(),
+                            insertEc.getTaskId().toString(),
+                            insertEc.getBackfillId().toString(),
+                            batchParams.size(),
+                            batchParams.isEmpty() ? "" : GsiUtils.rowToString(batchParams.get(0)),
+                            batchParams.isEmpty() ? "" :
+                                GsiUtils.rowToString(batchParams.get(batchParams.size() - 1))));
+
                     // Batch insert success, check lock exists
                     return checkBeforeCommit(checker, insertEc, result);
                 } catch (TddlNestableRuntimeException e) {
                     // Batch insert failed
+                    ExecutionContext ec = baseEcAndIndexPair.getKey();
                     SQLRecorderLogger.ddlLogger
                         .warn(MessageFormat.format(
-                            "[{0}] Batch insert failed first row: {1} cause: {2}, phyTableName: {3}",
-                            baseEcAndIndexPair.getKey().getTraceId(),
+                            "[{0}] [{1}] [{2}] Batch insert failed first row: {3} cause: {4}, phyTableName: {5}",
+                            ec.getTraceId(),
+                            ec.getTaskId().toString(),
+                            ec.getBackfillId().toString(),
                             GsiUtils.rowToString(batchParams.get(0)),
                             e.getMessage(), baseEcAndIndexPair.getValue().getValue()));
 
@@ -257,6 +283,7 @@ public abstract class Loader extends PhyOperationBuilderCommon {
             exList.add(new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_BACKFILL_DUPLICATE_ENTRY,
                 String.join("-", pkParams),
                 "PRIMARY"));
+            // TODO(yijin_MPP) add error message here into test case.
         } finally {
             if (null != checkerCursor) {
                 checkerCursor.close(exList);
@@ -271,12 +298,19 @@ public abstract class Loader extends PhyOperationBuilderCommon {
     private static Integer checkBeforeCommit(Supplier<Boolean> checker, ExecutionContext insertEc, int result) {
         if (checker.get()) {
             insertEc.getTransaction().commit();
+            SQLRecorderLogger.ddlLogger.warn(
+                String.format(
+                    "[%s] [%s] [%s] Loader success to commit in backfill extractor.",
+                    insertEc.getTraceId(), insertEc.getTaskId(), insertEc.getBackfillId()));
             return result;
         } else {
             insertEc.getTransaction().rollback();
+            String errInfo = String.format(
+                "[%s] [%s] [%s] Loader check error. Fail to commit in backfill extractor. Please retry or recover DDL later.",
+                insertEc.getTraceId(), insertEc.getTaskId(), insertEc.getBackfillId());
+            SQLRecorderLogger.ddlLogger.warn(errInfo);
             // This means extractor's connection fail. Throw a special error.
-            throw new TddlNestableRuntimeException(
-                "Loader check error. Fail to commit in backfill extractor. Please retry or recover DDL later.");
+            throw new TddlNestableRuntimeException(errInfo);
         }
     }
 

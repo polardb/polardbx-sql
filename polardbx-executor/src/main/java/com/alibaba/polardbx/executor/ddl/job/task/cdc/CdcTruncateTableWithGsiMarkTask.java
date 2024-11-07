@@ -20,7 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
-import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.BaseCdcTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -42,17 +42,19 @@ import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 @TaskName(name = "CdcTruncateTableWithGsiMarkTask")
 @Getter
 @Setter
-public class CdcTruncateTableWithGsiMarkTask extends BaseDdlTask {
+public class CdcTruncateTableWithGsiMarkTask extends BaseCdcTask {
     private String logicalTableName;
     private String tmpTableName;
     private String truncateSql;
+    private final long versionId;
 
     @JSONCreator
-    public CdcTruncateTableWithGsiMarkTask(String schemaName, String logicalTableName, String tmpTableName) {
+    public CdcTruncateTableWithGsiMarkTask(String schemaName, String logicalTableName, String tmpTableName, long versionId) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
         this.tmpTableName = tmpTableName;
         this.truncateSql = String.format("truncate table %s", surroundWithBacktick(logicalTableName));
+        this.versionId = versionId;
     }
 
     @Override
@@ -79,9 +81,20 @@ public class CdcTruncateTableWithGsiMarkTask extends BaseDdlTask {
         } else {
             Map<String, Set<String>> tmpTableTopology = TruncateUtil.getTmpTableTopology(schemaName, tmpTableName);
             CdcManagerHelper.getInstance()
-                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), truncateSql,
+                .notifyDdlNew(schemaName, logicalTableName, SqlKind.TRUNCATE_TABLE.name(), getDdlStmt(truncateSql),
                     ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public,
                     buildExtendParameter(executionContext), true, tmpTableTopology);
         }
+    }
+
+    private String getDdlStmt(String ddl) {
+        if (CdcMarkUtil.isVersionIdInitialized(versionId)) {
+            return CdcMarkUtil.buildVersionIdHint(versionId) + ddl;
+        }
+        return ddl;
+    }
+    @Override
+    protected String remark() {
+        return String.format("|ddlVersionId: %s", versionId);
     }
 }

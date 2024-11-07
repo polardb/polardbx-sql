@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.executor.ddl.job.task;
 
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
 import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
@@ -24,9 +27,16 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.ddl.newengine.resource.DdlEngineResources.normalizeServerKey;
 
 /**
  * 几个基础操作：
@@ -34,38 +44,76 @@ import java.util.stream.Collectors;
  * 2. 等待结果：轮询/同步等待结果
  * 3. 容错：xxxx
  */
-public interface RemoteExecutableDdlTask {
+public interface RemoteExecutableDdlTask extends DdlTask {
 
     default Optional<String> chooseServer() {
-        // choose standby node
-        List<GmsNode> standbyNodeList = GmsNodeManager.getInstance().getStandbyNodes();
-        if (enableStandbyNode() && !standbyNodeList.isEmpty()) {
-            List<String> candidates = standbyNodeList.stream().map(GmsNode::getServerKey).collect(Collectors.toList());
-            candidates.add(null);
-            String chosenNode = candidates.get(RandomUtils.nextInt(0, candidates.size()));
+        return Optional.empty();
+    }
 
-            if (chosenNode != null) {
-                return Optional.of(chosenNode);
+    static Set<String> fetchServerKeyFromGmsNode(List<GmsNode> nodeList) {
+        Set<String> serverKeys = new HashSet<>();
+        for (GmsNode node : nodeList) {
+            serverKeys.add(node.getServerKey());
+        }
+        return serverKeys;
+    }
+
+    default List<String> chooseCandidate() {
+        List<String> candidates = new ArrayList<>();
+        // we should only choose master node here.(master node = master + standby cn).
+        List<GmsNode> masterNodeList = GmsNodeManager.getInstance().getMasterNodes();
+        List<GmsNode> standbyNodeList = GmsNodeManager.getInstance().getStandbyNodes();
+        Set<String> masterNodeKeySet = fetchServerKeyFromGmsNode(masterNodeList);
+        Set<String> standbyNodeKeySet = fetchServerKeyFromGmsNode(standbyNodeList);
+        if (!enableStandbyNode() && !forbidRemoteDdlTask()) {
+            // non-standby node.
+            candidates.addAll(masterNodeKeySet);
+            candidates.removeAll(standbyNodeKeySet);
+        } else if (enableStandbyNode() && !forbidRemoteDdlTask()) {
+            // all master node.
+            candidates.addAll(masterNodeKeySet);
+        }
+        candidates.add(null);
+        return candidates;
+    }
+
+    default DdlEngineResources getDdlEngineResources() {
+        return new DdlEngineResources();
+    }
+
+    default String detectServerFromCandidate(Map<String, Integer> runningTaskNum) {
+        List<String> candidates = chooseCandidate();
+        DdlEngineResources ddlEngineResources = getDdlEngineResources();
+        if (forbidRemoteDdlTask()) {
+            return null;
+        }
+        List<String> finalCandidates = new ArrayList<>();
+        if (ddlEngineResources == null || ddlEngineResources.resources.isEmpty()) {
+            finalCandidates = candidates;
+        } else {
+            for (String candidate : candidates) {
+                DdlEngineResources ddlEngineResources1 = DdlEngineResources.copyFrom(ddlEngineResources);
+                ddlEngineResources1.setServerKey(candidate);
+                if (TaskScheduler.resourceToAllocate.cover(ddlEngineResources1)) {
+                    finalCandidates.add(candidate);
+                }
             }
         }
+//        SQLRecorderLogger.ddlEngineLogger.info(
+//            String.format("remote task %d %s %s candidate server: %s", getTaskId(), getName(), executionInfo(),
+//                finalCandidates));
+        if (finalCandidates == null || finalCandidates.isEmpty()) {
+            return null;
+        }
 
-        if (forbidRemoteDdlTask()) {
-            return Optional.empty();
-        }
-        List<GmsNode> remoteNodeList = GmsNodeManager.getInstance().getRemoteNodes();
-        if (CollectionUtils.isEmpty(remoteNodeList)) {
-            //no remote node, so choose local node
-            return Optional.empty();
-        }
-        List<String> candidates = remoteNodeList.stream().map(GmsNode::getServerKey).collect(Collectors.toList());
-        candidates.add(null);
-        String chosenNode = candidates.get(RandomUtils.nextInt(0, candidates.size()));
-        if (chosenNode == null) {
-            //choose local node by random
-            return Optional.empty();
-        }
-        //choose remote node by random
-        return Optional.of(chosenNode);
+        finalCandidates.sort(Comparator.comparingInt(o -> runningTaskNum.getOrDefault(normalizeServerKey(o), 0)));
+
+        String result = finalCandidates.get(0);
+//        SQLRecorderLogger.ddlEngineLogger.info(
+//            String.format("remote task %d %s %s candidate server: %s, result is: %s", getTaskId(), getName(),
+//                executionInfo(),
+//                finalCandidates, result));
+        return result;
     }
 
     default boolean forbidRemoteDdlTask() {

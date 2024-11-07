@@ -54,7 +54,6 @@ import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlPlanScheduler;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.AsyncPhyObjectRecorder;
 import com.alibaba.polardbx.executor.ddl.sync.JobRequest;
-import com.alibaba.polardbx.executor.gms.ColumnarManager;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.executor.gms.TableListListener;
 import com.alibaba.polardbx.executor.gsi.GsiManager;
@@ -68,6 +67,7 @@ import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -102,6 +102,7 @@ import com.alibaba.polardbx.optimizer.view.ViewManager;
 import com.alibaba.polardbx.repo.mysql.spi.MyDataSourceGetter;
 import com.alibaba.polardbx.rule.TddlRule;
 import com.alibaba.polardbx.server.conn.InnerConnectionManager;
+import com.alibaba.polardbx.server.handler.SyncPointExecutor;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
@@ -117,6 +118,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
 
 /**
  * 依赖的组件
@@ -260,20 +263,17 @@ public class MatrixConfigHolder extends AbstractLifecycle {
         // Start XA recover task. In case of leader of CN without requests(in other AZ)
         // and that makes all pending trx unfinished forever.
         if (storageInfoManager.supportXA() || storageInfoManager.supportTso()) {
-            TransactionManager.getInstance(schemaName).enableXaRecoverScan();
-            TransactionManager.getInstance(schemaName).enableKillTimeoutTransaction();
-            TransactionManager.getInstance(schemaName).enableLogCleanTask();
-            TransactionManager.getInstance(schemaName).scheduleTransactionStatisticsTask();
+            transactionManager.scheduleTimerTask();
         }
         if (ConfigDataMode.isPolarDbX()) {
             PurgeOssFileScheduleTask.getInstance().init(new ParamManager(dataSource.getConnectionProperties()));
         }
 
-        if (ConfigDataMode.isPolarDbX() && !ConfigDataMode.isFastMock()) {
-            executorContext.setReloadColumnarManager(ColumnarManager::reload);
-        }
-
         executorContext.setInnerConnectionManager(InnerConnectionManager.getInstance());
+
+        this.executorContext.setSyncPointExecutor(SyncPointExecutor.getInstance());
+        DbGroupInfoManager.getInstance().reloadGroupsOfDb(schemaName);
+        oc.setFinishInit(true);//Label oc of the db finish init
     }
 
     private void loadContext() {
@@ -525,7 +525,7 @@ public class MatrixConfigHolder extends AbstractLifecycle {
             try {
                 try (Connection metaDbConn = MetaDbUtil.getConnection()) {
                     metaDbConn.setAutoCommit(false);
-                    SchemaMetaUtil.cleanupSchemaMeta(schemaName, metaDbConn);
+                    SchemaMetaUtil.cleanupSchemaMeta(schemaName, metaDbConn, DEFAULT_DDL_VERSION_ID);
                     metaDbConn.commit();
                 } catch (SQLException e) {
                     throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
@@ -714,6 +714,27 @@ public class MatrixConfigHolder extends AbstractLifecycle {
             try (ITStatement stmt = conn.createStatement()) {
                 stmt.executeUpdate(sql);
             }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public int executeBackgroundDmlWithTConnection(String sql,
+                                                   String schema,
+                                                   InternalTimeZone timeZone,
+                                                   TConnection conn) {
+        try {
+            if (timeZone != null) {
+                conn.setTimeZone(timeZone);
+            }
+            ExecutionContext executionContext = conn.getExecutionContext();
+            executionContext.setSchemaName(schema);
+            executionContext.setPrivilegeMode(false);
+            int affectRows = 0;
+            try (ITStatement stmt = conn.createStatement()) {
+                affectRows = stmt.executeUpdate(sql);
+            }
+            return affectRows;
         } catch (SQLException e) {
             throw GeneralUtil.nestedException(e);
         }

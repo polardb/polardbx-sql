@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.LockUtils;
@@ -188,8 +187,7 @@ public class AsyncCommitTransaction extends TsoTransaction {
         } catch (Throwable e) {
             final IConnection conn = heldConn.getRawConnection();
             final String group = heldConn.getGroup();
-            throw new TddlRuntimeException(ERR_TRANS_COMMIT, e,
-                "XA PREPARE failed: " + getXid(group, conn));
+            throw new TddlRuntimeException(ERR_TRANS_COMMIT, e, "XA PREPARE failed: " + getXid(group, conn));
         }
 
     }
@@ -256,7 +254,8 @@ public class AsyncCommitTransaction extends TsoTransaction {
         });
     }
 
-    private void commitOneBranch(TransactionConnectionHolder.HeldConnection heldConn) {
+    @Override
+    protected void beforeCommitOneBranchHook(TransactionConnectionHolder.HeldConnection heldConn) {
         IConnection conn = heldConn.getRawConnection();
         if (heldConn.isDnLeader()) {
             try {
@@ -266,31 +265,6 @@ public class AsyncCommitTransaction extends TsoTransaction {
                 conn.discard(e);
                 throw new TddlRuntimeException(ERR_TRANS_COMMIT, e);
             }
-        }
-
-        // XA transaction must be 'PREPARED' state here.
-        String xid = getXid(heldConn.getGroup(), conn);
-        try (Statement stmt = conn.createStatement()) {
-            try {
-                final XConnection xConnection;
-                if (conn.isWrapperFor(XConnection.class) &&
-                    (xConnection = conn.unwrap(XConnection.class)).supportMessageTimestamp()) {
-                    conn.flushUnsent();
-                    xaCommitXConn(xConnection, xid);
-                } else {
-                    stmt.execute(getXACommitWithTsoSql(xid));
-                }
-                heldConn.setCommitted(true);
-            } catch (SQLException ex) {
-                if (ex.getErrorCode() == ErrorCode.ER_XAER_NOTA.getCode()) {
-                    logger.warn("XA COMMIT got ER_XAER_NOTA: " + xid, ex);
-                } else {
-                    throw GeneralUtil.nestedException(ex);
-                }
-            }
-        } catch (Throwable e) {
-            // discard connection if something failed.
-            conn.discard(e);
         }
     }
 

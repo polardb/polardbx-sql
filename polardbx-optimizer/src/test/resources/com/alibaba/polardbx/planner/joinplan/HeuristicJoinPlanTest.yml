@@ -325,22 +325,20 @@
     left join t_shard_business_id b on a.id=b.id join t_shard_name c on a.name = c.name join t_shard_id3 d on b.create_time= d.create_time;
 
   plan: |
-    HashAgg(count(a.name)="SUM($f4)")
-      Project(name="name", count(a.name)="count(a.name)", name0="name0", $f1="$f1", $f4="count(a.name) * $f1")
-        HashJoin(condition="name = name", type="inner")
-          HashAgg(group="name", count(a.name)="COUNT(name)")
-            HashJoin(condition="create_time = create_time", type="inner")
-              Gather(concurrent=true)
-                LogicalView(tables="[0000-0003].t_shard_id3_[0-3]", shardCount=16, sql="SELECT `create_time` FROM `t_shard_id3` AS `t_shard_id3`")
-              HashJoin(condition="id = id", type="left")
-                Gather(concurrent=true)
-                  LogicalView(tables="[0000-0003].t_shard_id1", shardCount=4, sql="SELECT `id`, `name` FROM `t_shard_id1` AS `t_shard_id1`")
-                Gather(concurrent=true)
-                  LogicalView(tables="[0000-0003].t_shard_business_id", shardCount=4, sql="SELECT `id`, `create_time` FROM `t_shard_business_id` AS `t_shard_business_id`")
-          HashAgg(group="name", $f1="COUNT()")
-            Gather(concurrent=true)
-              LogicalView(tables="[0000-0003].t_shard_name", shardCount=4, sql="SELECT `name` FROM `t_shard_name` AS `t_shard_name`")
-
+    hashagg(count(a.name)="sum($f4)")
+      project(name="name", count(a.name)="count(a.name)", name0="name0", $f1="$f1", $f4="count(a.name) * $f1")
+        hashjoin(condition="name = name", type="inner")
+          hashagg(group="name", count(a.name)="count(name)")
+            hashjoin(condition="create_time = create_time", type="inner")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].t_shard_id3_[0-3]", shardcount=16, sql="select `create_time` from `t_shard_id3` as `t_shard_id3`")
+              hashjoin(condition="id = id", type="left")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].t_shard_id1", shardcount=4, sql="select `id`, `name` from `t_shard_id1` as `t_shard_id1`")
+                gather(concurrent=true)
+                  logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `id`, `create_time` from `t_shard_business_id` as `t_shard_business_id`")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].t_shard_name", shardcount=4, sql="select `name`, count(*) as `$f1` from `t_shard_name` as `t_shard_name` group by `name`")
 - sql: |
     /*+TDDL:cmd_extra(RBO_HEURISTIC_JOIN_REORDER_LIMIT=1,CBO_TOO_MANY_JOIN_LIMIT=0,CBO_LEFT_DEEP_TREE_JOIN_LIMIT=0,CBO_ZIG_ZAG_TREE_JOIN_LIMIT=0,CBO_BUSHY_TREE_JOIN_LIMIT=0)*/
     select count(a.name) from t_shard_id1 a
@@ -376,6 +374,6 @@
                 logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `name`, `create_time` from `t_shard_business_id` as `t_shard_business_id` order by `name`")
               gather(concurrent=true)
                 logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `create_time` from `t_shard_business_id` as `t_shard_business_id`")
-          hashagg(group="name", $f1="count()")
+          hashagg(group="name", $f1="sum($f1)")
             gather(concurrent=true)
-              logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `name` from `t_shard_business_id` as `t_shard_business_id`")
+              logicalview(tables="[0000-0003].t_shard_business_id", shardcount=4, sql="select `name`, count(*) as `$f1` from `t_shard_business_id` as `t_shard_business_id` group by `name`")

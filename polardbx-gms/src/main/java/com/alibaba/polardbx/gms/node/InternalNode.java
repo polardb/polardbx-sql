@@ -253,6 +253,7 @@ public class InternalNode implements Node {
         return host + ":" + rpcPort;
     }
 
+    @Override
     public String getHostPort() {
         return host + ":" + port;
     }

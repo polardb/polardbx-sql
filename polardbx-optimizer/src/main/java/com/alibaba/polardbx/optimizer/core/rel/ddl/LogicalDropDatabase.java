@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.ddl.DropDatabase;
 
 /**

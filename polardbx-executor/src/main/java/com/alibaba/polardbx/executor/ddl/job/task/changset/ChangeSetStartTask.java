@@ -54,6 +54,7 @@ public class ChangeSetStartTask extends BasePhyDdlTask {
     public void executeImpl(ExecutionContext executionContext) {
         executionContext = executionContext.copy();
         executionContext.setBackfillId(getTaskId());
+        executionContext.setTaskId(getTaskId());
         executionContext.setSchemaName(schemaName);
 
         ChangeSetManager changeSetManager = new ChangeSetManager(schemaName);

@@ -100,6 +100,13 @@ public class RelMdSelectivity
 
   public Double getSelectivity(Correlate rel, RelMetadataQuery mq,
                                RexNode predicate) {
+    if (predicate == null || rel == null) {
+      return 1.0D;
+    }
+    int maxIndex = RexUtil.findMaxIndex(predicate);
+    if (maxIndex >= rel.getLeft().getRowType().getFieldCount()) {
+      return 1.0D;
+    }
     return mq.getSelectivity(rel.getLeft(), predicate);
   }
 
