@@ -236,11 +236,11 @@
             <artifactId>aircompressor</artifactId>
             <version>${aircompressor.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.alibaba.polardbx</groupId>
-            <artifactId>airlift-all-shade</artifactId>
-            <version>${airlift.shade.version}</version>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.alibaba.polardbx</groupId>-->
+<!--            <artifactId>airlift-all-shade</artifactId>-->
+<!--            <version>${airlift.shade.version}</version>-->
+<!--        </dependency>-->
         <dependency>
             <groupId>javax.validation</groupId>
             <artifactId>validation-api</artifactId>

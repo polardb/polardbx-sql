@@ -29,7 +29,7 @@ public class InstanceVersion {
     private static final String regex = "\\d+\\.\\d+\\.\\d+";
     private static final String VERSION_PREFIX_56 = "5.6.29";
     private static final String VERSION_PREFIX_57 = "5.7.25";
-    private static final String VERSION_PREFIX_8 = "8.0.3";
+    private static final String VERSION_PREFIX_8 = "8.0.32";
     private static final String DEFAULT_VERSION_PREFIX = VERSION_PREFIX_56;
     static volatile InstanceVersion instanceVersion = new InstanceVersion();
     /**
