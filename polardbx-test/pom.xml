@@ -15,7 +15,7 @@
     <artifactId>polardbx-test</artifactId>
 
     <properties>
-        <mysql_connector_v5>5.1.40.12</mysql_connector_v5>
+        <mysql_connector_v5>5.1.49</mysql_connector_v5>
         <mysql_connector_v8>8.0.26</mysql_connector_v8>
         <polardbx_connector>1.4.0-SNAPSHOT</polardbx_connector>
         <mvn_parallel>none</mvn_parallel>
@@ -39,12 +39,6 @@
             <groupId>net.jcip</groupId>
             <artifactId>jcip-annotations</artifactId>
             <version>${jcip.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba.external</groupId>
-            <artifactId>test.junit.hamcrest</artifactId>
-            <version>${test.junit.hamcrest.version}</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
@@ -95,18 +89,13 @@
             <version>${mysql_connector_v5}</version>
             <scope>test</scope>
         </dependency>
+
         <dependency>
-            <groupId>com.aliyun</groupId>
-            <artifactId>polardbx-java-connector</artifactId>
-            <version>${polardbx_connector}</version>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest</artifactId>
             <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.junit.jupiter</groupId>
-                    <artifactId>junit-jupiter</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
+
 
 
         <dependency>

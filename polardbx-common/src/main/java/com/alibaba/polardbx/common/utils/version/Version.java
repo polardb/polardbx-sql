@@ -35,7 +35,7 @@ public final class Version {
     }
 
     // TODO get product version from config property
-    public static final String PRODUCT_VERSION = "2.5.0";
+    public static final String PRODUCT_VERSION = "2.4.1";
 
     private static final Logger logger = LoggerFactory.getLogger(Version.class);
     private static final Package myPackage = VersionAnnotation.class.getPackage();
