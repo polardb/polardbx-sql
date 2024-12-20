@@ -591,6 +591,10 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                         stmt.getTableElementList().add(column);
                     }
 
+                    if (lexer.token() == Token.HINT) {
+                        lexer.nextToken();
+                    }
+
                     if (lexer.token() != Token.COMMA) {
                         break;
                     } else {
@@ -656,6 +660,28 @@ public class MySqlCreateTableParser extends SQLCreateTableParser {
                 SQLExpr expr = new SQLCharExpr(lexer.stringVal());
                 lexer.nextToken();
                 stmt.addOption("DICTIONARY_COLUMNS", expr);
+                continue;
+            }
+
+            if (lexer.identifierEquals("PAGE_CHECKSUM")) {
+                lexer.nextToken();
+                if (lexer.token() == Token.EQ) {
+                    lexer.nextToken();
+                }
+
+                SQLExpr expr = this.exprParser.expr();
+                stmt.setPageChecksum(expr);
+                continue;
+            }
+
+            if (lexer.identifierEquals("TRANSACTIONAL")) {
+                lexer.nextToken();
+                if (lexer.token() == Token.EQ) {
+                    lexer.nextToken();
+                }
+
+                SQLExpr expr = this.exprParser.expr();
+                stmt.setTransactional(expr);
                 continue;
             }
 
