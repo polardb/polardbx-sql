@@ -147,7 +147,7 @@ do
         txc_log_path="/home/admin/logs/txc"
         clean_db_log $txc_log_path $clean_level
     else
-        print "clean finish! current useage[$use%] `date`===================="
+        print "clean finish! current usage[$use%] `date`===================="
         exit
     fi
 done
@@ -157,5 +157,5 @@ if [ $use -ge $max_used ];then
 fi
 
 use=`df -h $drds_path|sed '1d'|awk '{print $5+0}'`
-print "clean finish! current useage[$use%] `date`===================="
+print "clean finish! current usage[$use%] `date`===================="
 
