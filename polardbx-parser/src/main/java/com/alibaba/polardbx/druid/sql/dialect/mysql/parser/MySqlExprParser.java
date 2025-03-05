@@ -1254,7 +1254,7 @@ public class MySqlExprParser extends SQLExprParser {
             accept(Token.RPAREN);
         }
 
-        if (lexer.identifierEquals(FnvHash.Constants.STORED)) {
+        if (lexer.identifierEquals(FnvHash.Constants.STORED) || lexer.identifierEquals("PERSISTENT")) {
             lexer.nextToken();
             column.setStored(true);
         }
@@ -1928,7 +1928,15 @@ public class MySqlExprParser extends SQLExprParser {
 
         SQLPartition partitionDef = new SQLPartition();
 
-        partitionDef.setName(this.name());
+        SQLName name;
+        if (lexer.token() == Token.LITERAL_INT) {
+            Number number = lexer.integerValue();
+            name = new SQLIdentifierExpr(number.toString());
+            lexer.nextToken();
+        } else {
+            name = this.name();
+        }
+        partitionDef.setName(name);
 
         SQLPartitionValue values = this.parsePartitionValues();
         if (values != null) {

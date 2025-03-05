@@ -147,7 +147,7 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
         int elementIdx = -1;
         for (int i = 0; i < tableElementList.size(); i++) {
             SQLTableElement element = tableElementList.get(i);
-            if (element instanceof MySqlTableIndex)  {
+            if (element instanceof MySqlTableIndex) {
                 MySqlTableIndex idx = (MySqlTableIndex) element;
                 if (idx.isColumnar()) {
                     targetArcCci = idx;
@@ -160,7 +160,6 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
             tableElementList.remove(elementIdx);
         }
     }
-
 
     public List<SQLCommentHint> getHints() {
         return hints;
@@ -1178,6 +1177,21 @@ public class MySqlCreateTableStatement extends SQLCreateTableStatement implement
     public SQLExpr getAutoSplit() {
         return this.autoSplit;
     }
+
+    public void setPageChecksum(SQLExpr x) {
+        if (x != null) {
+            x.setParent(this);
+        }
+        addOption("PAGE_CHECKSUM", x);
+    }
+
+    public void setTransactional(SQLExpr x) {
+        if (x != null) {
+            x.setParent(this);
+        }
+        addOption("TRANSACTIONAL", x);
+    }
+
 
     private final Set<String> VALID_TABLE_OPTIONS = new HashSet<String>(Arrays.asList(
         "AUTO_INCREMENT", "AVG_ROW_LENGTH", "CHARACTER SET", "DEFAULT CHARACTER SET", "CHARSET", "DEFAULT CHARSET",

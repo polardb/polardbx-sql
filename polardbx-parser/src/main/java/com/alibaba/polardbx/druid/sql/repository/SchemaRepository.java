@@ -98,6 +98,8 @@ public class SchemaRepository {
 
     private String defaultCharset;
 
+    private boolean forceReplace;
+
     public SchemaRepository() {
 
     }
@@ -218,6 +220,14 @@ public class SchemaRepository {
 
     public void setDefaultSchema(Schema schema) {
         this.defaultSchema = schema;
+    }
+
+    public boolean isForceReplace() {
+        return forceReplace;
+    }
+
+    public void setForceReplace(boolean forceReplace) {
+        this.forceReplace = forceReplace;
     }
 
     public SchemaObject findTable(String tableName) {
@@ -899,6 +909,10 @@ public class SchemaRepository {
         String name = x1.computeName();
         SchemaObject table = schema.findTableOrView(name);
         if (table != null) {
+            if (x1.isIfNotExists() && !forceReplace) {
+                return table;
+            }
+
             if (LOG.isDebugEnabled()) {
                 LOG.debug("replaced table '" + name + "'");
             }
